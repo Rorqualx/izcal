@@ -108,6 +108,13 @@ If the rebase cannot pass inside the security window, follow S-4e's backport rul
 - In the same pull request, update the version pins that other documents quote (the README's table and each report's header).
 - Every factual claim needs a source in `research_notes/` or an inline link. Mark unverified claims as unverified.
 
+## License
+
+- Contributions are licensed under MIT, the project's license ([LICENSE](LICENSE)); no separate agreement is needed.
+- **Never copy code from MPL, GPL or LGPL projects into Izcal's files**, Servo included. Depending on such crates is fine: Stylo, `selectors` and WebRender are MPL-2.0 dependencies. Copying their code into an MIT file is not, because the copied file would have to keep its original license. Learn behavior from them as black-box references or from the specifications.
+- New dependencies must use a permissive license (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode) or MPL-2.0. Anything else needs a decision recorded in the Stage 1 design.
+- Release binaries ship the license notices of every dependency, and say where the source of the MPL dependencies is.
+
 ## Large files and artifacts
 
 Build outputs and V8 archives never go into git (`.gitignore`, and the `size` and `binary` checks). Publish archives as release assets of the fork: `izcal-v8-build` does this for tags. Commit their `SHA256SUMS`, `args.gn` and binding files instead.

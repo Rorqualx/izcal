@@ -1,6 +1,6 @@
 # HGBA Stage 1 architecture design: planning pass
 
-*Planning-pass output for HGBA-2.1 (Section 6; current revision 2.1.6) and HGBA-3.1 (Section 8; current revision 3.1.4). Date: 14 October 2026. Status: draft 0.9.2 (0.9 = M0 results folded in; 0.9.1 = consistency pass; 0.9.2 = 17 October 2026: product name Izcal (D-S9), `v8-cppgc-ext` retired under HGBA-2.1.6 S-4e; D-S8 deferred). Section 11 defaults signed off by the project owner on 14 October 2026. Technical facts verified 14 October 2026; sources in `research_notes/Stage 1 design facts/facts.md`.*
+*Planning-pass output for HGBA-2.1 (Section 6; current revision 2.1.6) and HGBA-3.1 (Section 8; current revision 3.1.5). Date: 14 October 2026. Status: draft 0.9.3 (0.9 = M0 results folded in; 0.9.1 = consistency pass; 0.9.2 = 17 October 2026: product name Izcal (D-S9), `v8-cppgc-ext` retired under HGBA-2.1.6 S-4e; 0.9.3 = 17 October 2026: license changed to MIT (D-S6), so Servo's MPL-2.0 layout code is not ported; D-S8 deferred). Section 11 defaults signed off by the project owner on 14 October 2026. Technical facts verified 14 October 2026; sources in `research_notes/Stage 1 design facts/facts.md`.*
 
 HGBA-2.1 and HGBA-3.1 say **what** must be true and how each claim can fail. This document says **how the engine is built**: the process map, the crate graph, the substrate, IPC, the renderer pipeline, the shell features, the build and test infrastructure, the milestones and the team. It changes no target. Where it makes a design choice the specs leave open, it states the choice, the alternative and what would reverse it. Choices that belong to the project owner are collected in Section 11, each with a recommended default.
 
@@ -245,7 +245,7 @@ Flush runs at the start of every style and layout pass and on every forced synch
 
 The driver API is `layout(node, constraint_space) -> Arc<Fragment>` with fragments immutable and cached by constraint space (LayoutNG). Stage 1 implements caching and from-scratch layout only. The Spineless ordered dirty queue, durability tiers and demand-driven forced flush are Stage B (INC-1, INC-2, INC-4, FLUSH-1), added behind a switch and checked against from-scratch output on every frame in CI.
 
-**Consequence of fact 1.** Servo's layout cannot be the in-process baseline, because it reads Servo's concrete DOM types. The table, fragmentation and writing-mode long tail is therefore new code on the Stage 1 critical path, and its oracle is weaker than HGBA-3.1 assumed: reference-engine differential and WPT (moderate strength), not lockstep equality (strong). Two mitigations: Servo is still usable as a **black-box reference engine** driven over WebDriver, which gives a Rust-lineage third opinion next to Chrome and Firefox; and porting Servo's table algorithm (MPL-2.0) into the driver keeps its logic even though its DOM coupling cannot be kept. Under HGBA-3.1's EQ-1 these contexts are reported in the moderate oracle class.
+**Consequence of fact 1.** Servo's layout cannot be the in-process baseline, because it reads Servo's concrete DOM types. The table, fragmentation and writing-mode long tail is therefore new code on the Stage 1 critical path, and its oracle is weaker than HGBA-3.1 assumed: reference-engine differential and WPT (moderate strength), not lockstep equality (strong). Two mitigations: Servo is still usable as a **black-box reference engine** driven over WebDriver, which gives a Rust-lineage third opinion next to Chrome and Firefox; and Servo's table behavior can be studied through it. Servo's table code is **not** ported: it is MPL-2.0 and Izcal is MIT (D-S6), so copied files would have to stay MPL. Tables are written from the CSS 2 and CSS Table specifications instead. Under HGBA-3.1's EQ-1 these contexts are reported in the moderate oracle class.
 
 ### 5.7 Paint and pixel-optional rendering
 
@@ -398,7 +398,7 @@ HGBA-3.1 makes team scale an output of the planning pass. This design proposes *
 |---|---|---|
 | Substrate and IPC | B1, B2, constellation, DST farm | 2–3 |
 | JS, bindings and DOM | V8 embedding, codegen, DOM, event loop, web APIs | 5–6 |
-| Style and layout | Stylo adapter, data plane, layout driver (Taffy, Parley, new long-tail layout, porting Servo's table algorithm) | 3–4 |
+| Style and layout | Stylo adapter, data plane, layout driver (Taffy, Parley, new long-tail layout, tables written from the CSS specifications) | 3–4 |
 | Graphics | Paint, WebRender, GPU service, HAL | 2 |
 | Network and security | Network service, sandboxing per platform, VER-1 | 2 |
 | Infrastructure | CI tiers, oracles, perf lab, fuzzing, release | 2–3 |
@@ -424,7 +424,7 @@ HGBA-3.1 makes team scale an output of the planning pass. This design proposes *
 | Risk | Where | Mitigation |
 |---|---|---|
 | V8 GC timing is not reproducible | Section 3.3 | Answered in M0 for a synthetic script (HGBA-3.1 Q-3): the fork's predictable platform gives identical hashes across runs, processes and operating systems; the worker-task mode is a mandatory recording field. The corpus-page probe in M1 confirms it with a DOM. Fallback, if that or a later V8 breaks it, is whole-VM determinism for the JS layer only |
-| Long-tail layout (tables, fragmentation, writing modes) is new code with a moderate oracle | Section 5.6 | Port Servo's table algorithm; three reference engines; report under EQ-1's moderate class |
+| Long-tail layout (tables, fragmentation, writing modes) is new code with a moderate oracle | Section 5.6 | Write tables from the CSS 2 and CSS Table specifications, not from Servo's MPL-2.0 code (D-S6); three reference engines; report under EQ-1's moderate class |
 | Project-built V8 | Section 7.1 | Build farm in M0; measure build cost; mirror archives to developers |
 | Two GPU stacks in Stage 1 | Section 5.7 | Shared-texture interop tested on all platforms; P-2 (Vello) decides consolidation |
 | Carrying a `rusty_v8` fork | Sections 3.3, 7.1 | Small, upstreamable commits (`cppgc` APIs, predictable platform, two submodules); S-4e update procedure inside the security window, with the security-backport rule as the fallback |
@@ -443,7 +443,7 @@ HGBA-3.1 makes team scale an output of the planning pass. This design proposes *
 | D-S3 | Extensions in Stage 1 | **None**; content blocking is built in; extensions arrive in Stage 2 via Wasmtime | Kept. Power users will find Stage 1 incomplete; that is accepted |
 | D-S4 | Telemetry and crash reports | **Usage telemetry opt-in; crash reports opt-out** with first-run disclosure, a per-crash prompt and minidumps only | **Split.** Opt-in crash reporting yields an unrepresentative sample of the users who hit crashes. Minidump-only reports and a best-effort URL filter limit, but cannot guarantee to remove, page content a report can carry |
 | D-S5 | First platforms | **Linux and macOS** first; Windows sandbox and process work by M5; Windows complete before M8 | Kept, with Windows pulled forward to M5 for sandboxing, process launch and IPC, which are the parts where Linux/macOS assumptions are expensive to undo. M0 already builds V8 and reruns the spike on Windows |
-| D-S6 | License | **MPL-2.0** for engine crates | Kept. Compatible with Stylo, WebRender and the Servo table algorithm the layout driver may port |
+| D-S6 | License | **MIT** for all of Izcal's own code and documents, in both repositories (the `rusty_v8` fork was already MIT) | **Changed** on 17 October 2026 from the proposed MPL-2.0. The recorded MPL rationale (compatibility with Stylo and WebRender) does not require MPL: MPL is file-level, so an MIT project can depend on MPL crates. MIT matches the permissive new engines (Ladybird BSD-2, Blitz MIT OR Apache-2.0, Chromium BSD-3) and maximizes embedding and adoption. Consequences: (a) MPL-2.0 dependencies (Stylo, `selectors`, WebRender, Brave's `adblock`) stay MPL; binaries ship their license notices and point to their source; (b) no MPL code is copied into Izcal files, so the layout driver writes tables from the specifications (Section 5.6); (c) MIT has no explicit patent grant (accepted); (d) closed forks of Izcal are permitted |
 
 ---
 

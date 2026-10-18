@@ -1,8 +1,10 @@
 # HGBA-3.0: Build the Engine Around Its Oracles
 
-*Spec-direction document. Successor direction to HGBA-2.0 (current revision 2.1.6). Evidence cut-off: 14 October 2026. Status: direction document, frozen at 3.1.4 for the planning pass (see below); not a full specification.*
+*Spec-direction document. Successor direction to HGBA-2.0 (current revision 2.1.6). Evidence cut-off: 14 October 2026. Status: direction document, frozen at 3.1.5 for the planning pass (see below); not a full specification.*
 
-**Frozen at 3.1.4 (14 October 2026) for the planning pass.** This is the post-spike revision: the `cppgc` spike, including the data-plane measurement, has run and is folded in. Further changes wait for the planning pass.
+**Frozen at 3.1.5 (17 October 2026) for the planning pass.** This is the post-spike revision: the `cppgc` spike, including the data-plane measurement, has run and is folded in. Further changes wait for the planning pass.
+
+*Revision 3.1.5 (17 October 2026): the long-tail layout row no longer ports Servo's table algorithm. Izcal is MIT (Stage 1 design D-S6) and Servo's layout is MPL-2.0, so tables are written from the CSS specifications; Servo stays a black-box reference engine.*
 
 *Revision 3.1.4 (14 October 2026): Q-3 answered by M0: V8 is deterministic under the project fork's predictable platform, with bit-identical hashes on macOS, Linux and Windows; the flags alone are not sufficient. D10 gains a revisit trigger; recordings carry a mandatory worker-task-mode field.*
 
@@ -288,7 +290,7 @@ The central finding on reuse is that **"reuse" and "new" are not alternatives bu
 | Text and inline layout | **Reuse Parley** (evaluate against Servo's inline layout) | Adopted by Bevy and the Gosub engine; used by Blitz; active 2026 development | [Linebender Q1 2026](https://linebender.org/blog/tmil-25/); [Blitz](https://cdn.jsdelivr.net/gh/dioxuslabs/blitz@main/README.md) |
 | HTML parsing | **Reuse html5ever** | Used by Servo and Blitz; spec-tracking | [Blitz](https://cdn.jsdelivr.net/gh/dioxuslabs/blitz@main/README.md) |
 | Raster / GPU | **Reuse WebRender + wgpu**; evaluate Vello Hybrid | As HGBA-2.0; Vello still beta | [Linebender](https://linebender.org/blog/tmil-25/) |
-| Remaining layout (tables, fragmentation, writing modes) | **Build new** in the layout driver, porting Servo's table algorithm (MPL-2.0) where useful; floats come from Taffy | Servo layout cannot run over a non-Servo DOM: its `layout_api` crate (rewritten April 2026) still depends on the `script` crate's concrete node types. Taffy has had floats since 0.10, on by default. The oracle is reference engines (Chrome, Firefox, and Servo driven as a black box) plus WPT, which is the moderate oracle class under EQ-1 | Planning-pass verification, 14 October 2026 (`research_notes/Stage 1 design facts/facts.md`) |
+| Remaining layout (tables, fragmentation, writing modes) | **Build new** in the layout driver, with tables written from the CSS 2 and CSS Table specifications (Servo's MPL-2.0 table code is not ported, because Izcal is MIT: Stage 1 design D-S6); floats come from Taffy | Servo layout cannot run over a non-Servo DOM: its `layout_api` crate (rewritten April 2026) still depends on the `script` crate's concrete node types. Taffy has had floats since 0.10, on by default. The oracle is reference engines (Chrome, Firefox, and Servo driven as a black box) plus WPT, which is the moderate oracle class under EQ-1 | Planning-pass verification, 14 October 2026 (`research_notes/Stage 1 design facts/facts.md`) |
 | Layout driver (caching, scheduling, fragments) | **Build new** (B5, B6) | Incrementality and immutability must be designed in; LayoutNG shows the design | [Chrome LayoutNG](https://developer.chrome.com/docs/chromium/layoutng) |
 | DOM + WebIDL bindings | **Build new** on `cppgc` | Already a rewrite in HGBA-2.0 (Servo's DOM is SpiderMonkey GC objects) | HGBA-2.0 D1 |
 | Data plane, mutation log | **Build new** (B4) | No reusable component exists | — |

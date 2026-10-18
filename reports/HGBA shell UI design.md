@@ -1,6 +1,6 @@
 # HGBA shell UI design
 
-*Companion to the Stage 1 architecture design, HGBA-2.1 and HGBA-3.1. Written against design draft 0.8, HGBA-2.1.3 and HGBA-3.1.3; current revisions are draft 0.9.2, 2.1.6 and 3.1.4. Date: 14 October 2026. Status: draft 0.2, complete for review. Evidence notes: `research_notes/Shell UI design/`.*
+*Companion to the Stage 1 architecture design, HGBA-2.1 and HGBA-3.1. Written against design draft 0.8, HGBA-2.1.3 and HGBA-3.1.3; current revisions are draft 0.9.3, 2.1.6 and 3.1.5. Date: 14 October 2026. Status: draft 0.2, complete for review. Evidence notes: `research_notes/Shell UI design/`.*
 
 This document consolidates every UI decision scattered across the HGBA documents, then designs the shell the same way the engine was designed. Each surface traces to a requirement, each claim about user behaviour carries a source, each element has a maturity label, and each target can fail. It changes no engine target. Thresholds marked † are set by this document.
 
