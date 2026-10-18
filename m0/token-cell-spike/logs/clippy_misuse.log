@@ -1,0 +1,93 @@
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> /Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/src/isolate.rs:2346:8
+     |
+2346 |       .fetch_update(
+     |        ^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+     |
+2346 -       .fetch_update(
+2346 +       .try_update(
+     |
+
+warning: `v8` (lib) generated 1 warning (run `cargo clippy --fix --lib -p v8 -- ` to apply 1 suggestion)
+    Checking token-cell-v8 v0.0.0 (/Users/joederas/Documents/Cline/code/browser/m0/token-cell-spike/token-cell-v8)
+warning: use of a disallowed method `v8::Function::call`
+ --> src/misuse.rs:8:7
+  |
+8 |     f.call(scope, recv, &[]); // method syntax through Local's Deref
+  |       ^^^^
+  |
+  = note: CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
+  = note: `#[warn(clippy::disallowed_methods)]` on by default
+
+warning: use of a disallowed method `v8::Function::call`
+  --> src/misuse.rs:12:5
+   |
+12 |     Function::call(&f, scope, recv, &[]); // path syntax
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
+
+warning: use of a disallowed method `v8::Function::call`
+  --> src/misuse.rs:16:13
+   |
+16 |     let p = Function::call; // taken as a value, called later
+   |             ^^^^^^^^^^^^^^
+   |
+   = note: CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
+
+warning: use of a disallowed method `v8::Object::get`
+  --> src/misuse.rs:21:15
+   |
+21 |     let _ = o.get(scope, k);
+   |               ^^^
+   |
+   = note: CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
+
+warning: use of a disallowed method `v8::Value::to_rust_string_lossy`
+  --> src/misuse.rs:25:7
+   |
+25 |     v.to_rust_string_lossy(scope) // transitive: calls Value::to_string inside rusty_v8
+   |       ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
+
+warning: use of a disallowed method `v8::Isolate::perform_microtask_checkpoint`
+  --> src/misuse.rs:29:11
+   |
+29 |     scope.perform_microtask_checkpoint(); // through PinScope's DerefMut to Isolate
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
+
+warning: use of a disallowed method `v8::Script::run`
+  --> src/misuse.rs:33:15
+   |
+33 |     let _ = s.run(scope);
+   |               ^^^
+   |
+   = note: CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
+
+warning: direct cast of function item into an integer
+  --> src/misuse.rs:17:7
+   |
+17 |     p as usize
+   |       ^^^^^^^^
+   |
+   = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+   |
+17 |     p as *const () as usize
+   |       ++++++++++++
+
+warning: `token-cell-v8` (lib) generated 8 warnings (run `cargo clippy --fix --lib -p token-cell-v8 -- ` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s

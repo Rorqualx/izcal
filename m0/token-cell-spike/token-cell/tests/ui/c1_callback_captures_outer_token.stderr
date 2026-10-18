@@ -1,0 +1,20 @@
+error[E0501]: cannot borrow `*t` as mutable because previous closure requires unique access
+ --> tests/ui/c1_callback_captures_outer_token.rs:7:9
+  |
+7 |         lend(t, || *c.borrow_mut(t) += 1);
+  |         ----^^^^--^^^^^^^^^^^^^^^-^^^^^^^
+  |         |       |                |
+  |         |       |                first borrow occurs due to use of `*t` in closure
+  |         |       closure construction occurs here
+  |         second borrow occurs here
+  |         first borrow later used by call
+
+error[E0500]: closure requires unique access to `*t` but it is already borrowed
+ --> tests/ui/c1_callback_captures_outer_token.rs:7:17
+  |
+7 |         lend(t, || *c.borrow_mut(t) += 1);
+  |         ---- -  ^^               - second borrow occurs due to use of `*t` in closure
+  |         |    |  |
+  |         |    |  closure construction occurs here
+  |         |    borrow occurs here
+  |         first borrow later used by call

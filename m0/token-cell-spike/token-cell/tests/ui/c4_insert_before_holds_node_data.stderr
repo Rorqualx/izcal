@@ -1,0 +1,9 @@
+error[E0499]: cannot borrow `*t` as mutable more than once at a time
+  --> tests/ui/c4_insert_before_holds_node_data.rs:20:42
+   |
+19 |         let data = node.data.borrow_mut(t); // e.g. caching child's state
+   |                                         - first mutable borrow occurs here
+20 |         doc.insert_before(root, x, None, t).unwrap(); // runs the observer
+   |                                          ^ second mutable borrow occurs here
+21 |         data.connected = true;
+   |         --------------------- first borrow later used here

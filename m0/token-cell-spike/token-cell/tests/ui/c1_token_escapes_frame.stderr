@@ -1,0 +1,10 @@
+error[E0521]: borrowed data escapes outside of closure
+ --> tests/ui/c1_token_escapes_frame.rs:7:36
+  |
+5 |     let mut stash: Option<&mut ScriptToken> = None;
+  |         --------- `stash` declared here, outside of the closure body
+6 |     enter(|t| {
+7 |         lend(t, || reenter(|inner| stash = Some(inner)));
+  |                             -----  ^^^^^^^^^^^^^^^^^^^ `inner` escapes the closure body here
+  |                             |
+  |                             `inner` is a reference that is only valid in the closure body

@@ -1,0 +1,9 @@
+error[E0502]: cannot borrow `*t` as mutable because it is also borrowed as immutable
+  --> tests/ui/c4_text_ref_across_reaction.rs:12:9
+   |
+11 |         let text: &str = &node.data.borrow(t).text;
+   |                                            - immutable borrow occurs here
+12 |         doc.insert_before(root, x, None, t).unwrap();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here
+13 |         println!("{text}");
+   |                    ---- immutable borrow later used here
