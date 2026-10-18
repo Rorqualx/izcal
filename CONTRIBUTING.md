@@ -67,6 +67,7 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 | `actionlint` | A GitHub workflow has an error |
 | `mdlinks` | A relative Markdown link points at a file that does not exist |
 | `revision` | A frozen spec changes without adding or changing a revision or status line (see "Specs") |
+| `provenance` | Added code carries another browser project's copyright or license header (Chromium, V8, Servo, Mozilla, Apple/WebKit, KDE, SerenityOS/Ladybird) or a copyleft SPDX tag (see "Original code") |
 | `review` | The AI code review finds a high-severity defect (below) |
 
 **Skipping a check** is allowed only with a reason: `IZCAL_HOOKS_SKIP=review git commit ...`, with the reason in the commit body. The `commit-msg` hook adds a `Hooks-Skipped:` trailer, so the skip is visible in history. Never use `--no-verify` to skip checks. `pre-push` and CI re-run them anyway.
@@ -108,10 +109,18 @@ If the rebase cannot pass inside the security window, follow S-4e's backport rul
 - In the same pull request, update the version pins that other documents quote (the README's table and each report's header).
 - Every factual claim needs a source in `research_notes/` or an inline link. Mark unverified claims as unverified.
 
+## Original code
+
+Izcal is a new engine, not a derivative of another browser (Stage 1 design D-S10).
+
+- **No code from another browser or browser engine is copied, ported or translated into Izcal**, whatever its license. That covers Servo, Chromium and Blink, WebKit, Gecko and Firefox, Ladybird, and their forks. It applies to people and to AI tools alike: an agent asked to "do what Chromium does" works from the specification, not from Chromium's source.
+- **The specifications are the source.** Other engines are black-box references only: differential testing, WPT results, observed behavior. If you read another engine's source to understand a bug, do not write Izcal code from it.
+- **Dependencies are not copying.** Izcal uses libraries as libraries: V8 (through the `rusty_v8` fork, whose changes are written against V8's public interfaces), Stylo, `selectors`, WebRender, html5ever, Taffy, Parley, wgpu, `adblock`, neqo and rustls. A new dependency that is itself part of another browser needs a decision recorded in the Stage 1 design.
+- **Enforcement.** The `provenance` check fails on code that carries another browser project's copyright or license header. The AI review blocks code that looks copied or translated from another engine.
+
 ## License
 
 - Contributions are licensed under MIT, the project's license ([LICENSE](LICENSE)); no separate agreement is needed.
-- **Never copy code from MPL, GPL or LGPL projects into Izcal's files**, Servo included. Depending on such crates is fine: Stylo, `selectors` and WebRender are MPL-2.0 dependencies. Copying their code into an MIT file is not, because the copied file would have to keep its original license. Learn behavior from them as black-box references or from the specifications.
 - New dependencies must use a permissive license (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode) or MPL-2.0. Anything else needs a decision recorded in the Stage 1 design.
 - Release binaries ship the license notices of every dependency, and say where the source of the MPL dependencies is.
 

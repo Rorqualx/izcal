@@ -13,7 +13,7 @@
 #   IZCAL_REVIEW_MAX_LINES=4000      diff lines sent to the review
 #
 # Checks: conflict, size, binary, secrets, rustfmt, shellcheck, actionlint,
-#         mdlinks, revision, review.
+#         mdlinks, revision, provenance, review.
 # Bash 3.2 compatible (macOS /bin/bash).
 
 set -u
@@ -239,6 +239,23 @@ $spec"
   if [ -n "$bad" ]; then fail revision; echo "    spec changed without a revision line:$bad" | indent; else ok revision; fi
 fi
 
+# --- provenance: no code from other browsers (Stage 1 design D-S10) ----------
+# Flags added lines in code files that carry another browser project's
+# copyright or license header. Docs may cite them, so only code is checked.
+if ! skipped provenance; then
+  code=$(files_matching '\.(rs|cc|cpp|c|h|hpp|mm|m|py|js|ts|gn|gni|idl|webidl|sh)$' | grep -v '/third_party/' || true)
+  bad=""
+  if [ -n "$code" ]; then
+    printf '%s\n' "$code" | tr '\n' '\0' > "$TMP/prov_paths"
+    # The [o]/[P] brackets keep this line from matching its own pattern.
+    pat='C[o]pyright.{0,40}(Chromium Authors|V8 project authors|Servo Project Developers|M[o]zilla Foundation|Apple Inc|Google (Inc|LLC)|KDE|SerenityOS|Ladybird)|M[o]zilla Public License|S[P]DX-License-Identifier: *(MPL|GPL|LGPL|AGPL)'
+    if [ "$MODE" = staged ]; then xargs -0 git diff --cached -U0 -- < "$TMP/prov_paths" > "$TMP/prov.diff"
+    else xargs -0 git diff -U0 "$BASE" "$HEAD" -- < "$TMP/prov_paths" > "$TMP/prov.diff"; fi
+    bad=$(awk -v pat="$pat" '/^\+\+\+ / {f=substr($0,7); next} /^\+/ && $0 ~ pat {print f ": " substr($0,2,100)}' "$TMP/prov.diff")
+  fi
+  if [ -n "$bad" ]; then fail provenance; echo "    code with another browser project's copyright or license (D-S10):"; echo "$bad" | indent | indent; else ok provenance; fi
+fi
+
 # --- review: AI code review of the diff (code only) ---------------------------
 # Blocks only on a high-severity finding. If the reviewer cannot run (no CLI,
 # no network, timeout), it warns and lets the commit through: an outage must
@@ -257,7 +274,7 @@ if [ "$REVIEW" = 1 ] && ! skipped review; then
     head -n "$max" "$TMP/diff" > "$TMP/diff.cut"
     note=""; [ "$total" -gt "$max" ] && note="The diff was cut to its first $max of $total lines; say so if that hides context you need."
     schema='{"type":"object","properties":{"verdict":{"enum":["pass","warn","block"]},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"enum":["high","medium","low"]},"file":{"type":"string"},"line":{"type":"integer"},"issue":{"type":"string"}},"required":["severity","file","issue"]}}},"required":["verdict","findings"]}'
-    prompt="You are reviewing a staged change to Izcal, a Rust browser engine on V8 (a rusty_v8 fork). The unified diff is on stdin. Report only real defects: correctness bugs, memory or thread safety (unsafe, cppgc/GC rules, write barriers), security, broken builds or CI, and violations of the project's written rules. You may read files in the repository for context: CONTRIBUTING.md, the specs in reports/ (HGBA-2 targets such as S-4c/S-4e/S-4f, the Stage 1 design's crate rules G1-G8). Do not report style or formatting (other checks cover those) or speculation. Severity high = would ship a bug or break the build; medium = likely bug; low = minor. verdict: block if any high finding, warn if any medium, else pass. Keep each issue to one or two sentences. $note"
+    prompt="You are reviewing a staged change to Izcal, a Rust browser engine on V8 (a rusty_v8 fork). The unified diff is on stdin. Report only real defects: correctness bugs, memory or thread safety (unsafe, cppgc/GC rules, write barriers), security, broken builds or CI, violations of the project's written rules, and code that appears copied, ported or translated from another browser engine (Servo, Chromium/Blink, WebKit, Gecko/Firefox, Ladybird), which is forbidden by Stage 1 design D-S10 and is always high severity. You may read files in the repository for context: CONTRIBUTING.md, the specs in reports/ (HGBA-2 targets such as S-4c/S-4e/S-4f, the Stage 1 design's crate rules G1-G8). Do not report style or formatting (other checks cover those) or speculation. Severity high = would ship a bug or break the build; medium = likely bug; low = minor. verdict: block if any high finding, warn if any medium, else pass. Keep each issue to one or two sentences. $note"
     start=$(date +%s)
     if command -v timeout >/dev/null; then TO="timeout 300"; elif command -v gtimeout >/dev/null; then TO="gtimeout 300"; else TO=""; fi
     # shellcheck disable=SC2086 # TO is a command prefix
