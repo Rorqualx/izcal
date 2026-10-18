@@ -1,0 +1,526 @@
+# Izcal DevTools spec
+
+*First-principles specification of Izcal's developer tools: the native inspection protocol, its backend, the `hg-devtools` frontend, and the adapters to standard protocols, editors and agents. Date: 18 October 2026. Status: draft 0.3. Research notes, fact-check and design critique: `research_notes/Izcal DevTools spec/`. Relates to: Stage 1 design [D-S11][S1] and D-S2 (amendments in Section 9.5), HGBA-2 [M-1][H2], P1, I-1 and ANC-1, HGBA-3 [B1, B2, B4, B5, B8, B9 and B10][H3], DET-1, AG-0 and AG-3, shell UI design [UI-1, UI-2 and UI-10][SH].*
+
+*Revision 0.3 (18 October 2026): owner decisions: DT-D10 Option B ("D-S11 as written, plus history"), DT-D11 ruling (a). Stage 1 now includes the CDP DOM, CSS, Network, Page and Overlay domains and recorded sessions with a scrubbable console and network view (Section 9.1); the DevTools track is 4–5†, plus 1–1.5† of DevTools work in other tracks (Section 9.2). The owner accepted that recording ships in Stage 1 before the M4 review has measured it: the M4 review stays, and now confirms or replaces the provisional† thresholds (DT-1(b), DT-15) and decides remedies, not whether recorded sessions ship (Section 10). Security surfaces are unchanged. Compatibility adapters with no normative specification may use recorded black-box observations as their oracle; web-visible behavior stays under M-1 part 4 (Section 7). Sections 6.1, 6.3, 7, 8, 9 and 10 are updated to match.*
+
+*Revision 0.2 (18 October 2026): phase 8 applied. The fact-check (60 claims: 49 confirmed, 8 corrected, 1 misattributed, 2 unverifiable) and design critique (33 findings: 10 High, 14 Medium, 9 Low) are `factcheck.md` and `design_critique.md` in the research notes folder. All corrections and the misattribution are applied; the unverifiable claims and the 6 resolved flags are marked in Section 11.2. Every High and Medium finding is fixed by a design change: recordings start at process launch ("Reload to record") and cover the tab's browsing context group in dedicated processes; recording runs the configuration M0 proved deterministic, so it is an explicit mode whose cost is measured at M4; replay and the frontend are split per (site, container), so no P1 exception is needed; every CDP, BiDi and DAP session is a scoped, audited principal, AI on or off; credential input is never recorded, and redacted bundles state how far they reproduce; DT-2 tests minimality and necessity; the M2 WebDriver server no longer waits for IIP; Stage 1 staffing is re-costed. Two owner decisions are open (DT-D10, DT-D11). About 75 primary sources are linked inline.*
+
+*Revision 0.1 (17 October 2026): first draft, written from the five research notes by the synthesis author.*
+
+Developer tools have been rebuilt every time a browser's architecture changed, mostly because they reached into engine internals. Firebug ended with "more than a million" users because multiprocess Firefox broke its synchronous, same-process access to the page ([Mozilla Hacks, 2017](https://hacks.mozilla.org/2017/10/saying-goodbye-to-firebug/)). Attempts to share one engine's inspection protocol with another failed; only automation was standardized, as [WebDriver BiDi](https://www.w3.org/TR/webdriver-bidi/). The research tools with the largest measured effects answered "why" backwards from what the developer saw, but reconstructed causes by tracing; the Java Whyline traced at 1.7–15.3× slowdown ([Ko and Myers, ICSE '08](https://faculty.washington.edu/ajko/papers/Ko2008JavaWhyline.pdf)). Izcal already records much of what they reconstructed (B1, B4, B5, B8, ANC-1, its own network stack). **The central idea: DevTools are queries over the engine's own records, served through one typed, published protocol.** The decisions that matter most: (1) **Izcal's own inspection protocol (IIP) is the core**, generated from the engine's IPC IDL; BiDi, a CDP profile, DAP and MCP are adapters over it. (2) **History comes from recorded sessions that start at a navigation**, in fresh processes running the configuration M0 proved deterministic; recording is an explicit mode with a measured cost, and ships in Stage 1 with a scrubbable console and network view (DT-D10 Option B). (3) **Every surface is a scoped principal**: no listening port by default, consent, origin sets, sensitive classes and an audit log for every session. (4) **The frontend respects site isolation**: page data and write rights live in one pane per inspected (site, container), and every graphical view has a table equivalent.
+
+Note sources are cited as **H** ([history and postmortems][H]), **P** ([protocols and standards][P]), **G** ([invisible gaps][G]), **V** ([visualization and UX][V]) and **A** ([agents and integrations][A]), with the row number. Primary sources are linked inline for the claims a decision or target depends on; the rest are reachable through the note row.
+
+## 1. The problem and who has it
+
+| User | Task, in their words | What fails today |
+|---|---|---|
+| **Web developers, everyday** | "Why is this element here?", "why is this slow?", "why did this request fail?" | Layout debugging ranked first "by far" of 23 design challenges ([Mozilla Hacks, 2019](https://hacks.mozilla.org/2019/02/web-design-challenges-survey-finding/)); 65% of JS faults are DOM-related ([Ocariza et al.](https://people.ece.ubc.ca/amesbah/resources/papers/frolin-esem13.pdf)); tools show state, not causes ([G 5.1–5.9][G]) |
+| **Developers chasing bugs that do not reproduce** | "What happened just before this broke?" | Non-reproducible reports are 17% of bug reports and stay open three months longer ([Joorabchi et al.](https://people.ece.ubc.ca/amesbah/resources/papers/mona-msr14.pdf)); async wait is about 45% of flaky-test fix commits ([Luo et al.](http://mir.cs.illinois.edu/lamyaa/publications/fse14.pdf)) and 45.1% of flaky tests ([Romano et al.](https://arxiv.org/abs/2103.02669)) |
+| **Test and CI engineers** | "Run this across browsers, and tell me why it failed" | Automation fragmented around CDP until BiDi ([P 3.4][P]); CI artifacts hold DOM snapshots, not execution ([G 15.13][G]) |
+| **Developers' AI agents** | "Verify the fix in a real browser" | Debug ports with ambient access to the profile, stale node references, token-heavy dumps ([A 2.3–2.7, 4.1–4.4][A]) |
+| **Developers who use screen readers or keyboards** | The same tasks | "The accessibility of DevTools is a work-in-progress" ([Chrome docs, 2019](https://developer.chrome.com/docs/devtools/accessibility/navigation)); no vendor publishes a conformance statement ([V 9.1–9.2][V]) |
+
+**What Izcal's specs already decide.**
+
+- **[M-1][H2] and D-S10.** No code from another browser, including DevTools frontends.
+- **[D-S11 and the 13.2 DevTools row][S1].** `hg-devtools` is an HTML app rendered by Izcal (as the shell under D-S2); the backend implements CDP domains from the published definition plus V8's inspector; the remote-debugging port is off by default; Stage 1 has Console, Sources, Elements and Network; a track of **2 engineers†**.
+- **P1 and I-1** ([HGBA-2 Sections 2 and 4.1][H2]). Every site gets its own locked renderer keyed by (site, container); never co-locate cross-site data in one address space; an agent is a separate principal; a trade of a higher principle needs a recorded exception.
+- **Process model** (Stage 1 design Section 1). Renderers are **1 per site per site instance**, so same-site tabs may share one; per-tab figures are "ill-defined" (RES-3).
+- **B1 and Stage 1 design Sections 3.2–3.4.** Production recording is off by default and user-initiated; replays run in the simulator, which runs the whole browser in one OS process; GPU, audio and media are outside it. **M0 measured V8 as deterministic only under the fork's predictable platform** (1,000 of 1,000 identical hashes, identical on macOS, Linux and Windows); the stock platform gave 848–989 distinct GC-observable hashes in 1,000 runs and still diverged occasionally with `--predictable --single-threaded`. The worker-task mode is a mandatory recording field (`m0/determinism_crossplatform.md`).
+- **B9 and B10.** Agents act through a principal with origin sets bounded by the container; B9 "replaces" agents as "CDP clients with ambient access to every origin". AI is off by default: no agent processes, no AI entry points, no agent-only computation; rule **G4** keeps `hg-agent*` out of default binaries.
+- **ANC-1 and G9.** Algorithms carry `// spec:` anchors that `hg-anchor` joins to WPT tests.
+- **Shell UI design** UI-1, UI-2 and UI-10 (accessibility, keyboard, trusted-region prompts). **Stage 1 design 7.3:** the WebDriver server is **M2 infrastructure** on the critical path.
+
+**Success** is measured by Section 8: exact or self-limiting replays, sufficient and minimal "why" answers, a stable protocol, BiDi conformance, the shell's accessibility bar, no leaked secret, no unscoped surface, nothing agent-related with AI off, a disclosed recording cost, and every view justified by a task.
+
+## 2. History: what came before and why it was built that way
+
+### 2.1 Chronology
+
+| Year | Project | What it did | Why that way | Fate, and why |
+|---|---|---|---|---|
+| 2001 | **Venkman** | JS debugger on a private XPCOM API | The engine's only interface | Broke in Firefox 33 "as the APIs which it needs have been removed" ([H 1.3][H]) |
+| 2006–17 | **Firebug** | HTML, CSS, JS and network on any page; "about 10 Firebug extensions in 2008 and more than 60 in 2011"; HAR export (October 2009) | AJAX; single-process Firefox allowed synchronous access ([H 2.1–2.4][H]) | **Ended with Firefox 57 (November 2017) with more than 1,000,000 users**: e10s moved add-on code out of the content process, and "the Firebug Working Group agreed they didn't have enough resources" for the rewrite ([Mozilla Hacks](https://hacks.mozilla.org/2017/10/saying-goodbye-to-firebug/)) |
+| 2006– | **WebKit Web Inspector** | HTML UI | A web-app UI was cheap ([H 3.1][H]) | Alive; Safari 6's Xcode-style layout "alienated some web developers" ([WebKit, 2013](https://webkit.org/blog/2518/state-of-web-inspector/)) and was reverted |
+| 2008–13 | **Opera Dragonfly + Scope** | Remote debugging; schema-first protobuf services with codegen; published spec | Opera ran on devices ([H 4.1–4.3][H]) | Died with Presto in 2013; no other browser adopted Scope ([P 2.5][P], Low) |
+| 2008–12 | **Chrome DevTools + Remote Debugging Protocol v1.0** | The frontend's RPC published as a protocol (Chrome 18), with a compatibility commitment (Medium) | The wire between Chrome's web-app frontend and its engine ([igvita, 2012](https://www.igvita.com/2012/04/09/driving-google-chrome-via-websocket-api/)) | Became **CDP**: 59 domains, 677 commands, 232 events, **40 of 59 domains experimental**, no external governance ([browser_protocol.json](https://raw.githubusercontent.com/ChromeDevTools/devtools-protocol/master/json/browser_protocol.json); [js_protocol.json](https://raw.githubusercontent.com/ChromeDevTools/devtools-protocol/master/json/js_protocol.json)) |
+| 2011–16 | **Tilt (3D view)** | DOM as a 3D stack | A GSoC visualization | Removed in Firefox 47: "not enough users"; it "relies heavily on directly accessing the content document" and was "never updated to use the RDP", so e10s broke it ([Bugzilla 1245875](https://bugzilla.mozilla.org/show_bug.cgi?id=1245875)) |
+| 2013 | **Timelapse/Dolos** | Record and replay inside WebKit, <1.1× interactive slowdown | Research on reproduction | With **12** developers (14 recruited, 2 pilots), replay had "no statistically significant effects" on speed or success; reproduction took 8–25% of task time ([Burg et al., UIST '13](https://homes.cs.washington.edu/~mernst/pubs/record-replay-uist2013.pdf)) |
+| 2010–22 | **weinre; RemoteDebug; Valence** | One engine's inspector served to others; protocol bridges | Each engine had its own dialect ([H 8.1–8.4][H]) | No RemoteDebug spec; weinre and Valence archived (Valence's date unverified). Translating engine-shaped protocols cost too much |
+| 2016 | **LSP; DAP** | One protocol between M editors and N servers | The M×N problem ([P 4.1–4.4][P]) | Converged: 16 listed DAP clients ([DAP implementors](https://microsoft.github.io/debug-adapter-protocol/implementors/tools/)) |
+| 2016–20 | **Firefox Web Replay** | Record and replay inside Gecko | Research inside a product | On 17 January 2020 its author filed the removal: "I was laid off yesterday … pretty soon it will break and stay broken". It landed 28 February 2020 (Firefox 75), and he continued in a Gecko fork that became Replay.io ([Bugzilla 1609815](https://bugzilla.mozilla.org/show_bug.cgi?id=1609815)). It never supported media, Web Audio or WebRTC ([G 15.9][G]) |
+| 2019 | Firefox removes Shader, Canvas, Web Audio editors | — | — | Shader Editor: "1800 opens on release" in 90 days against 4,553,729 for the Inspector, but "disabled by default, and a lot of people don't know about it"; no owner; "these panels" took "up to 20% of developer time" in DevTools-wide updates ([Bugzilla 1342237](https://bugzilla.mozilla.org/show_bug.cgi?id=1342237)) |
+| 2020– | **Replay.io** | Time travel, recorded at the system-library boundary | A startup bet | "We started with a solution and have been searching for a problem"; Test Suites ended 31 August 2024 ([Replay](https://replay.io/blog/a-new-direction)); recorder built on Chromium 108 ([docs](https://docs.replay.io/reference/replay-runtimes/replay-firefox)) |
+| 2021–25 | **Firefox's partial CDP** (82 APIs) | Let Puppeteer drive Firefox | Puppeteer spoke only CDP | Removed in Firefox 141; Mozilla's reasons: BiDi "offers a superset of the features", and clients had migrated ([fxdx](https://fxdx.dev/deprecating-cdp-support-in-firefox-embracing-the-future-with-webdriver-bidi/); [Newsletter 141](https://fxdx.dev/firefox-webdriver-newsletter-141/)). Google's view: "Puppeteer could never guarantee its full API" ([Chrome blog](https://developer.chrome.com/blog/firefox-support-in-puppeteer-with-webdriver-bidi)) |
+| 2022–25 | **Performance Insights panel** | A simpler panel beside Performance | Less density | Deprecated in Chrome 131, removed in 132 ([Chrome blog](https://developer.chrome.com/blog/insights-panel-deprecation)); reduced density "came at a cost", sending developers back to Performance ([Perf tooling 2024](https://developer.chrome.com/blog/perf-tooling-2024)) |
+| 2023–24 | **Okta HAR breach → Chrome 130** | Stolen HAR files let attackers "hijack the legitimate Okta sessions of 5 customers" ([Okta RCA](https://sec.okta.com/articles/2023/11/unauthorized-access-oktas-support-case-management-system-root-cause)); Chrome then excluded sensitive data from HAR by default ([DevTools 130](https://developer.chrome.com/blog/new-in-devtools-130)) | HAR was never standardized ([draft](https://webperfwg.org/specs/HAR/Overview.html)) | Safe defaults came 15 years after Firebug's 2009 export |
+| 2024–26 | **MCP; Chrome DevTools MCP** (preview 23 September 2025; "Chrome DevTools for agents 1.0" 19 May 2026) | Agents read console, network, DOM, traces | Agents were "programming with a blindfold on" ([Chrome blog](https://developer.chrome.com/blog/chrome-devtools-mcp); [1.0](https://developer.chrome.com/blog/devtools-for-agents-v1)) | Widely adopted; 59 tools; security by disclaimer; usage statistics "enabled by default" ([README](https://github.com/ChromeDevTools/chrome-devtools-mcp)) |
+| 2026 | **WebDriver BiDi** WD (8 October); **MCP 2026-07-28** (stateless) | Standard automation; agent tools under the Linux Foundation's Agentic AI Foundation ([Anthropic](https://anthropic.com/news/donating-the-model-context-protocol-and-establishing-of-the-agentic-ai-foundation)) | Multi-vendor, test-driven ([MCP blog](https://blog.modelcontextprotocol.io/posts/2026-07-28/)) | Converging; BiDi's ten modules exclude inspection ([W3C TR](https://www.w3.org/TR/webdriver-bidi/)) |
+
+### 2.2 Technology mismatches: assumptions that no longer hold
+
+| Assumption | Where | Why it no longer holds |
+|---|---|---|
+| The tool reaches into the page synchronously | Firebug, Tilt | Every frame may be in another process ([H 2.5, 7.1][H]) |
+| The protocol is the engine's internals, serialized | CDP, Scope, RDP | Bridges failed; partial clones disappointed ([P 10.1][P]) |
+| "Localhost is trusted" | Debug ports, MCP Inspector | Attackers used Chrome's port "to extract cookies", so Chrome 136 stopped honouring it on the default profile ([Chrome blog](https://developer.chrome.com/blog/remote-debugging-port)); MCP Inspector lacked authentication ([CVE-2025-49596](https://nvd.nist.gov/vuln/detail/CVE-2025-49596)); Playwright MCP did not check `Origin` ([CVE-2025-9611](https://nvd.nist.gov/vuln/detail/CVE-2025-9611)) |
+| Inspection is live only; recording can be bolted on | Every panel; Web Replay | History needs a known start state and a deterministic configuration; M0 found only the predictable platform gives the latter |
+| The network is observed from outside | Proxies, HAR | QUIC, ECH and partitioning hide the facts ([H 10.11, 10.13][H]) |
+| The user is a human; AI output can stand alone | Panels; AI chat | Agents need permissioned, structured access ([A 2.1–2.5][A]); 46% of developers distrust AI accuracy ([Stack Overflow 2025](https://survey.stackoverflow.co/2025/ai)) |
+
+## 3. Today: the landscape and its gaps
+
+### 3.1 The landscape in October 2026
+
+- **Protocols.** Google says Chromium "will continue to use CDP for debugging purposes" ([Chrome blog](https://developer.chrome.com/blog/webdriver-bidi)). BiDi ships in Firefox and through a translation layer in Chrome; WebKit's status is unverified. BiDi has no tracing, profiling, heap, style, mutation-stream, layer or accessibility-tree module, and no TLS, QUIC or DNS detail. No group charters a cross-engine inspection protocol ([P 10.3][P]).
+- **Editors.** DAP has "stepping back via the `stepBack` and `reverseContinue` requests" ([DAP spec](https://microsoft.github.io/debug-adapter-protocol/specification)); no browser backs them with real replay.
+- **Agents.** Chrome DevTools MCP lists 59 tools ([reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md)) and "exposes content of the browser instance … modify any data"; Playwright MCP "is **not** a security boundary" ([README](https://github.com/microsoft/playwright-mcp)).
+- **AI in the panels.** Chrome's needs sign-in ([docs](https://developer.chrome.com/docs/devtools/ai-assistance/get-started)), keeps data "for up to 18 months" and trains on consumer data by default ([data usage](https://developer.chrome.com/docs/devtools/ai-assistance/data-usage-and-enterprise-controls)); developers were mostly hostile ([V 7.5–7.6][V]).
+- **Formats.** HAR is marked "DO NOT USE"; qlog is draft-14 (6 July 2026) ([Datatracker](https://datatracker.ietf.org/doc/draft-ietf-quic-qlog-main-schema/)); Perfetto TrackEvent has causal flows ([Perfetto](https://perfetto.dev/docs/reference/synthetic-track-event)); [Trace Context](https://www.w3.org/TR/trace-context/) is a Recommendation; [ECMA-426](https://ecma-international.org/publications-and-standards/standards/ecma-426/) (December 2024) standardized source maps, with Scopes at Stage 3 ([tc39/ecma426](https://github.com/tc39/ecma426)).
+
+### 3.2 What current tools cannot see or do
+
+| Gap | Evidence | Izcal's opening | Unique? |
+|---|---|---|---|
+| **Which mutation caused this restyle, relayout or shift** | Shift culprits are a best guess from four causes ([Chrome docs](https://developer.chrome.com/docs/performance/insights/cls-culprit)); no tool answers "which DOM mutation caused this restyle" ([G 5.4–5.9][G]) | B4 log + B5 invalidation under replay | Yes |
+| **Bugs and tests that do not reproduce** | Mozilla's 122,213 intermittent-failure bugs: 65,652 closed INCOMPLETE, 18,875 FIXED ([Bugzilla query](https://bugzilla.mozilla.org/rest/bug?keywords=intermittent-failure&count_only=1), the note's own) | B1 replay; interleaving explorer | Yes |
+| **Why a task ran when it did** | Task queues are sets, chosen in an implementation-defined manner ([HTML](https://html.spec.whatwg.org/multipage/webappapis.html#event-loops)); LoAF omits cross-origin and worker attribution ([Chrome docs](https://developer.chrome.com/docs/web-platform/long-animation-frames)) | Seeded scheduler shows and varies the choice | Yes |
+| **Why, per specification** | Only hand-built "why" features: Inactive CSS, bfcache reasons ([G 5.6–5.8][G]) | Spec anchors (ANC-1) | Yes |
+| **Accessibility tree history and accname** | "Screens that change unexpectedly" ranks 4th ([WebAIM #10](https://webaim.org/projects/screenreadersurvey10/)); tools show snapshots only | B8 stable IDs, diffs, repair overlay | Yes |
+| **Network below HTTP** | No reuse or coalescing reasons; qlog and NetLog outside DevTools ([G 2.1–2.10][G]) | Own stack (rustls, neqo, hickory-dns) | Owns the code |
+| **Process and isolation boundaries; storage keys** | No DevTools view of placement or cache keys ([G 3.1–3.4, 9.1–9.4][G]) | B2 typed IPC; placement in `hg-navigation` | Partly |
+| **Who received what** | An ML detector found 26% more fingerprinting scripts than prior heuristics ([Iqbal et al.](https://arxiv.org/abs/2008.04480)) | Own bindings tally API calls by caller | Cheap in Izcal |
+| **Extension interference; agent history** | Hydration broken by extensions since 2022 ([React #24430](https://github.com/facebook/react/issues/24430)); no tool offers stable node IDs to agents ([A 4.3][A]) | Principal-tagged mutations; B8 + B1 + B9 | Partly |
+
+**Which gaps stay closed (P1).** Page-facing APIs keep their limits (cross-origin LoAF attribution, `"masked"` bfcache reasons, coarse GPU timing, cross-origin memory). DevTools may show precise values to the user locally, never to content, and to other principals only within their origin sets ([G 16][G]).
+
+## 4. First principles
+
+### 4.1 Users' real tasks
+
+Developers ask "why did" and "why didn't", and their "initial guesses were wrong almost 90% of the time" ([Ko and Myers](https://faculty.washington.edu/ajko/papers/Ko2008JavaWhyline.pdf)). "How did this runtime state occur?" leads the hard debugging questions ([LaToza and Myers](https://people.cs.gmu.edu/~tlatoza/papers/plateau2010.pdf)). A third to a half of debugging time goes to foraging ([V 10.1–10.3][V]), and developers "did not run the debugger in 91% of IDE sessions" although 81% say they use it ([Beller et al.](https://www.spinellis.gr/pubs/conf/2018-ICSE-debugging-analysis/html/BSSZ18.pdf)). So the tools are organized around tasks:
+
+| ID | Task | Starts from | Answer needed |
+|---|---|---|---|
+| T1 | Why does this look or sit like this? | A pixel, box, node or style value | Input → script → mutation → restyle/relayout → paint, and the deciding spec step |
+| T2 | Why was this interaction slow? | An interaction or long frame | Costs from a live profile, causes from the recording |
+| T3 | Why did this fail, and does it fail again? | A failure, an error, a recording | The failing execution point, replayable; which task order fails |
+| T4 | What did the network do, and can I make it do something else? | A request or connection | DNS, TLS, QUIC, reuse and partition decisions with reasons; overrides and faults |
+| T5 | What does assistive technology get? | A node or page | Author and repaired trees, their history, accname steps |
+| T6 | Debug JS or Wasm at source level, in my editor | A breakpoint | Original scopes, bindings, reverse steps |
+| T7 | Automate and test across browsers | A test suite | WebDriver, BiDi |
+| T8 | Let my agent inspect, debug and verify | A task | Compact, provenance-tagged, permissioned results |
+| T9 | Hand a bug to someone else | A recording | A portable, redacted artifact that states how far it reproduces |
+| T10 | Audit who received what | A page | Calls and flows by origin, not verdicts |
+
+### 4.2 Platform primitives
+
+The design starts from what the engine holds: the **mutation log** with old values (Stage 1 design 5.4); **phase outputs** with a from-scratch reference path (B5); the **semantic tree** with stable IDs (B8); each process's **substrate inputs** (clock, entropy, IPC, network bytes, scheduler choices; B1); **typed IPC** from `.hgidl` (B2); the network service's DNS, TLS, QUIC and partition state; the **anchor index**; and V8's inspector. Two facts constrain everything else. **A log of inputs replays only from a known start state**, and the only one Izcal can reproduce is a freshly launched process. **The log is per process, and a process is per site**, so what is recorded or replayed is a set of (site, container) processes, never "a tab". The specifications fix the vocabulary: navigables, browsing context groups and event loops (HTML), cascade and layout (CSS), HTML-AAM and accname, Fetch's network partition key.
+
+### 4.3 Izcal's principles
+
+P1 and I-1: no DevTools, replay or automation process holds two sites' data or rights. P2: inspection never changes what content observes (DT-16). P3 (HGBA-3): an answer is replayable and checkable. P6 and B10: no AI in the default UI. M-1: protocol, frontend and adapters are built new from specifications.
+
+### 4.4 Assumptions kept and broken
+
+| Assumption | Keep or break | Why |
+|---|---|---|
+| Synchronous reach, live-only inspection, a human at the keyboard, trusted localhost | **Break** | Section 2.2; Izcal is multiprocess and site-isolated (B2) |
+| Tools are part of the browser | **Keep and break**: `hg-devtools` ships in the browser; the protocol is a product with a published schema | Formats and separable projects outlived their tools ([H 12.4][H]) |
+| The protocol mirrors engine internals | **Break, with one exception**: IIP follows Izcal's data model, and V8's inspector passes through | CDP's semantics are Chromium's ([P 1.4–1.5][P]); translating V8's own interface would repeat Valence's cost |
+| Recording is free and always on | **Break**: an explicit mode, started at a navigation, with a measured cost | Section 4.2; M0 |
+| Replay is a separate tool | **Break**: recordings back the same views, which gain a scrubber and retroactive queries | Replay alone did not help (Timelapse) |
+| A side panel is the shape of DevTools | **Break as default, keep as option** | New paradigms work as modes, not replacements ([Debugger Canvas](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/p1064-213-deline.pdf)) |
+| Subsystem panels | **Keep only as entry points where a task starts from that object**: a log line (T3), a node (T1, T5), a source line (T6), a request (T4), a moment (T2, T3), a storage key (T4, T10); each under DT-19 | The tasks' starting objects, not familiarity, justify them |
+| DevTools are for professionals | **Break** by progressive disclosure inside the main views | Ply's novices were "50% faster" ([Ply, UIST '18](https://par.nsf.gov/servlets/purl/10109034)); separate simple panels lost |
+| Edits are throwaway | **Break for CSS; DOM edits become patches** | Changes are lost on reload ([V 5.9][V]); Mozilla singled out moving CSS changes to the editor ([Mozilla Hacks, 2019](https://hacks.mozilla.org/2019/02/web-design-challenges-survey-finding/); rank unverifiable) |
+| Explanations come from AI | **Break**: deterministic, anchored explanations | Distrust of AI accuracy (Section 2.2) |
+
+## 5. Lessons learned
+
+Ideas and evidence only, never code or templates (M-1).
+
+| Project | What happened | Lesson | How Izcal applies it |
+|---|---|---|---|
+| Firebug, Venkman | e10s broke same-process access; tools and 60+ extensions on private APIs vanished | Every tool is a remote client of a versioned, typed interface | The frontend uses only IIP (G10); stability tiers (DT-4) |
+| Scope, RemoteDebug, Valence, Firefox CDP | No cross-engine inspection protocol survived ([P 10.1][P]) | Offer compatibility at the edge | CDP as a published profile (DT-6) |
+| BiDi, LSP, DAP, MCP vs Scope and RDP | Convergent protocols had external clients, schema, several implementers and conformance suites ([P 2.1–2.5, 10.2][P]) | That is the recipe | IIP: one schema, tiers, session handles, conformance suite |
+| Shader Editor, Tilt | 1,800 opens against 4.55M for the Inspector, but disabled by default; Tilt had no usage figure ([Bugzilla 1342237](https://bugzilla.mozilla.org/show_bug.cgi?id=1342237)) | Views need a task, an owner and usage data; low use of a hidden view partly measures discoverability | DT-19 with a grace period for new and off-by-default views |
+| Performance Insights, Edge Layers | Separate simple panels lost; their ideas survived inside the expert view ([V 2.2][V]) | Explanations belong in the main views | Progressive disclosure |
+| Whyline, Unravel, Ply | Asking backwards from output gave the largest gains: the Alice Whyline cut debugging time "by nearly a factor of 8" ([CHI '04](https://hci.rwth-aachen.de/materials/conferences/CHI2004/1p151.pdf)); Unravel cut time to the first key source by 53% ([project page](https://dtr.northwestern.edu/projects/rec0iUQDDzXcX4p4g)) | Start from the symptom | Why-queries on anything |
+| Timelapse, Replay.io, Pernosco | Recording was solved; replay alone gave no speed-up; retroactive logging and one-click dataflow were valued ([Pernosco dataflow](https://pernos.co/about/dataflow/)) | Replay must feed everyday tools | Recordings back the views; retroactive logpoints; "where did this value come from" |
+| Elm, Replay, TTD | Import and export was "*the* feature"; traces hold personal data ([V 3.7, 3.12][V]) | Recordings are artifacts and a privacy risk | Redacted bundles with a verified reproduction range |
+| Firefox Web Replay | Removal proposed the day after its author's layoff; the work left with him and became a company ([Bugzilla 1609815](https://bugzilla.mozilla.org/show_bug.cgi?id=1609815)) | Replay owned by one person outside the core leaves with that person | B1 is the substrate CI runs on, owned by a track |
+| Okta HAR, Chrome 130 | HAR files with session tokens led to hijacks | Exports are data flows | Redaction by default, manifest, second step (DT-10) |
+| Chrome 136, MCP Inspector, Playwright MCP | Local debug endpoints exploited (Section 2.2) | No unauthenticated endpoint | No port by default; OS-authenticated IPC; consent; tokens (DT-11) |
+| Chrome DevTools MCP, GitHub MCP, Claude Code | Ambient access and telemetry on by default; "Always Allow" enabled exfiltration ([Invariant Labs](https://invariantlabs.ai/blog/mcp-github-vulnerability)); Claude Code says "a repository you check out must not be able to connect Claude to your browser" ([docs](https://code.claude.com/docs/en/chrome)) | Enforcement and user consent, not disclaimers | Every session scoped; no "always allow"; never enabled by project files (DT-13) |
+| Chrome AI assistance vs DevTools MCP | Hostility to in-panel chat; demand for the agent protocol ([V 7.5–7.7][V]) | Serve the developer's own agent | No AI in the frontend; MCP when AI is on |
+| Edge DevTools for VS Code | Embeds a DevTools frontend; documents CSS mirror editing ([Microsoft Learn](https://learn.microsoft.com/en-us/microsoft-edge/visual-studio-code/microsoft-edge-devtools-extension)) | Integrate through protocols | `izcal-lsp`, DAP; no per-editor frontend |
+| Chrome and Firefox DevTools accessibility | Retrofitted bug by bug ([V 9.1–9.2][V]) | Retrofitting never finishes | Table-first rendering from the first view (DT-8) |
+
+## 6. Design
+
+### 6.1 Architecture
+
+**Decision DT-D1: Izcal's own native inspection protocol is the core.** The **Izcal Inspection Protocol (IIP)** is designed from Izcal's data, not from another engine's frontend RPC.
+
+- **One source.** IIP interfaces are declared in `.hgidl` with an `[inspect, tier = stable | beta | experimental]` annotation. `hg-ipc-codegen` gains a backend that emits, from the same declarations, the internal B2 endpoints, the **published schema** (JSON Schema 2020-12, as MCP uses, and CDDL, as BiDi uses), reference docs and client types (Rust; TypeScript for `hg-devtools`). A native message not in the schema cannot be sent.
+- **One exception: V8's inspector passes through.** The script domains (Runtime, Debugger, Profiler, HeapProfiler, Console) are V8's own interface, defined by V8 as CDP JSON. IIP carries them unchanged in a `script.v8` domain: IIP owns the session, target handle and capability check; V8 owns the messages. Translating them into native IIP and back for CDP clients would be the bridge cost that sank RemoteDebug and Valence. `script.v8` publishes its V8 version, is re-tested against js-debug on every V8 update, and is exempt from DT-4(d).
+- **Model.** Sessions hold **handles** with lifetimes (navigable, frame, worker, recording, segment…), the idea of RDP's actor tree ([P 2.1][P]). Domains carry commands, event streams and typed **queries** (filter, group, page, summarize), because agents and humans both need summaries, not dumps ([A 4.4][A]).
+- **Identity and time.** Every entity has a stable ID (data-plane nodes, B8 semantic nodes, requests, connections). Every event carries an **execution point** and a `caused_by` list, the causal-flow idea of Perfetto's TrackEvent. An execution point is (recording, process, segment, task sequence number, microtask checkpoint, and inside a task the count of inspector pause events at a source location): as fine as V8's public inspector can name a point without an engine progress counter (Q-DT-11).
+- **Provenance.** Page-derived values carry origin, frame, principal and an `untrusted` flag.
+- **Wire.** JSON-RPC 2.0 externally; B2 endpoints and shared memory inside.
+- **Stability.** Every native domain stays **experimental or beta until Stage 2 exits**, because node IDs, execution points and the recording format will change with B5's incremental layout and a possible D8 fallback; until then BiDi, DAP and MCP carry the outside stability promise. After that, stable domains change only additively within a major version, and removal needs 12 months of deprecation, the window MCP 2026-07-28 sets ([MCP blog](https://blog.modelcontextprotocol.io/posts/2026-07-28/)), plus two releases† (Izcal's own condition). Experimental domains are opt-in per session. `hg-inspect-conformance` runs every release (DT-4).
+
+**Evidence.** Convergent protocols had external clients, a schema, a conformance suite and several implementers ([P 10.2][P]); Scope died because no second implementer joined ([P 2.5][P]), so outside adoption is a risk (Section 10). CDP as the core (D-S11 as written) cannot express B1, B4, B5, B8 or anchors; BiDi is deliberately not an inspection protocol.
+
+**Processes.** Four new process kinds, all sandboxed, none launched by default, and **none holding data or rights of more than one (site, container)** except the structural metadata noted.
+
+| Process | Count | Launched when | Holds |
+|---|---|---|---|
+| **DevTools workspace renderer** | 0 or 1 per DevTools window | DevTools opens | Layout, arrangements, frame and process tree, timeline. Only **structural metadata** the broker already holds: frame, request and segment IDs, each frame's site and container, timings, status codes, sizes. No URLs beyond the site, headers, bodies, DOM, console text or sources; **no write capability** |
+| **DevTools pane renderer** | 0 or 1 per inspected (site, container) per window | A frame of that site is inspected | The views for that site's frames, composited into the workspace like out-of-process iframes; IIP endpoints only for those frames; write rights (evaluate, edit, navigate, input) only as the session grants |
+| **Replay host** | 0 or 1 per recorded process queried | A recording is queried | `hg-substrate-sim` running **one** recorded process; no network, storage service or GPU device; that process's recording, read-only |
+| **Automation gateway** | 0 or 1 per external session | The user enables a remote surface | Adapter code parsing untrusted client input outside the broker; runs no web content, decodes page data only through generated B2 decoders, holds only the endpoints granted to the session |
+
+The agent host (B9) runs the MCP server when AI is on; the broker owns sessions, grants, consent and redaction. Compromising pane S yields what compromising site S's own renderer yields, and no more, so **the frontend needs no P1 exception**. The cost is one process per inspected site and, in Stage 2, compositing cross-site views.
+
+**Crates** (placed in the Stage 1 layers, [Section 2][S1]):
+
+| Layer | Crate | Role |
+|---|---|---|
+| L2 | `hg-inspect-schema` | Generated IIP types, tiers, schema files |
+| L2 | `hg-recording` | Recording per process and segment: engine configuration (platform, mandatory worker-task mode, V8 flags, build ID), launch inputs, input log, per-task digest of outgoing IPC, checkpoint hashes, placeholder and redaction maps |
+| L4 | `hg-inspect-renderer` | Renderer agent: DOM and data-plane reads, mutation taps with principal and JS stack (probe data off the JS heap), style, layout and semantic queries, overlays; script only through `hg-script` (G6) |
+| L5 | `hg-inspect` | Broker: sessions, grants, consent, session log, routing, stitching, redaction |
+| L5 | `hg-net-observe` | Network service: DNS, TLS, QUIC (qlog), pool and partition events; overrides and protocol forcing |
+| L5 | `hg-why`, `hg-explain` | Causality engine in the replay host (replay, counterfactual and reference-path checks); mapping of causes to anchors and observations |
+| L5 | `hg-export`, `hg-redact` | HAR, qlog, Perfetto, Chrome trace JSON, OTLP, recording bundles; writers accept only `Redacted<T>`, which only `hg-redact` constructs |
+| L5 | `hg-devtools` | The frontend (D-S11): workspace and panes |
+| L5 | `hg-bidi`, `hg-cdp`, `hg-dap`, `hg-lsp` | WebDriver Classic and BiDi; CDP profile; DAP adapter; a small LSP server for CSS write-back |
+| L5 (`ai`) | `hg-agent-mcp` | MCP server in the agent host |
+| L6 | `hg-replay-main`, `hg-automation-main`, `hg-devtools-cli`; shims `izcal-dap`, `izcal-lsp`, `izcal-mcp` | Entry points; `izcal-mcp` is a separate package built only with `ai` |
+| tools | `hg-inspect-conformance` | Conformance suite; schema-diff check |
+
+**Proposed crate rules** (amendments, Section 9.5):
+
+- **G10.** Every client crate (`hg-devtools`, `hg-bidi`, `hg-cdp`, `hg-dap`, `hg-lsp`, `hg-agent-mcp`) depends on `hg-inspect-schema`, never on `hg-dom`, `hg-dataplane`, `hg-style`, `hg-layout`, `hg-semantic` or `hg-net` internals (Firebug lesson). `hg-graph-lint` checks the Rust crates; a JS import lint lets `hg-devtools` import only the generated client module.
+- **G11.** Only `hg-export` writes DevTools data outside IIP, and only `Redacted<T>` values, enforced by the type.
+- **G12.** Engine crates in a replay host receive only a `hg-substrate-sim` instance, constructed in one place in `hg-replay-main`; only the host's own plumbing uses `hg-substrate-os`.
+- G4 covers `hg-agent-mcp`; G9 applies to the adapters' handlers.
+
+**Decision DT-D2: recorded sessions, started at a navigation, in fresh processes.** History comes from **recorded sessions**, each replayable from its first byte (Section 4.2).
+
+- **Start state.** A replayable recording starts at **process launch**: a fresh renderer plus its recorded inputs is the one start state Izcal can reproduce, and the one M0 and DET-1 replay from. Opening DevTools on a loaded page gives **live** views at once, labelled "live: no history before now". **Reload to record** (or "Record next navigation") moves the tab into fresh processes and reloads it. A per-site setting records every navigation while DevTools is open.
+- **Recorded unit.** Renderers are per site and same-site tabs may share one, so the unit is the tab's **browsing context group**. While recording, its frames run in renderer processes **dedicated to the group**, one per (site, container), launched fresh. Other tabs of the site stay in their own processes and are never recorded. Opener-linked windows must share an event loop with the tab (HTML agent clusters), so they are recorded too: Reload to record lists and reloads them, or the user cancels. Service and shared workers run outside the dedicated processes; what they send in is recorded as IPC input, and they are not replayed. Dedication is a user-invoked override (P2 class (b)), checked by DT-16.
+- **Engine configuration.** Recorded processes run **the configuration M0 measured as deterministic**: the fork's predictable platform with queued worker tasks, `--predictable --single-threaded`, `Date.now` routed through the substrate clock (readings logged), and the worker-task mode stored ([Stage 1 design 3.3][S1]). M0 proved this for a synthetic probe in simulation, not for real pages in the production substrate. It turns off concurrent GC and compilation, so it is slower by an amount nobody has measured. **Recording is therefore an explicit mode**, measured by the recording probe (M2, M4; DT-15). It ships in Stage 1 (DT-D10 Option B) under provisional† thresholds that the M4 review confirms or replaces. Unrecorded sessions run the default configuration.
+- **Segments and buffer.** A recording is a sequence of **segments**, one per recorded process lifetime; a top-level cross-document navigation starts a new segment in a fresh process unless another live same-site document in the group prevents it. The buffer (512 MB† default) **evicts whole segments only**. When the current segment would overflow, recording stops and keeps the start ("history covers 00:00–04:12"); it never wraps inside a segment, because a segment's start is its start state.
+- **Contents.** Per process and segment: configuration, launch inputs, the B1 input log, a per-task digest of outgoing IPC (which detects divergence at the first differing task) and checkpoint hashes (DOM serialization, display list, semantic tree) at each flush.
+- **Never recorded.** Keystrokes and IME input into password fields and fields whose `autocomplete` marks credentials, one-time codes or payment cards; password-manager fills; WebAuthn, FedCM and payment-handler results. Each becomes a placeholder of the same length and type, and the replay is labelled **approximate from that point**. TLS secrets stay below the recorded boundary.
+- **Views.** The same views as a live session, plus a scrubber and **retroactive logpoints** over every past execution of a line, the feature Replay's users valued most ([Replay docs](https://docs.replay.io/reference/replay-devtools/time-travel-tools)). Logpoint expressions run in V8's side-effect-free mode; one that allocates is labelled "may perturb GC-observable behavior". Nothing reaches disk until saved.
+
+*Evidence:* reproduction takes 8–25% of debugging time, yet replay alone did not speed developers up ([Burg et al.](https://homes.cs.washington.edu/~mernst/pubs/record-replay-uist2013.pdf)); time travel helped where it fed everyday work ([Pernosco](https://pernos.co/about/overview/)). *Limits:* GPU, audio and media are outside the simulator; `SharedArrayBuffer` races are not recorded (Q-DT-2).
+
+**Decision DT-D3: why-queries answered under replay, checked by counterfactuals.** A why-query names a target (pixel, box, node, computed value, JS value, semantic node, request) and an execution point. `hg-why` replays the target's process in its replay host with **probes on**: every dirty bit points to the mutation that set it; every mutation carries principal and JS stack; style invalidation comes from each flush's snapshots; layout records changed constraint inputs and cache misses (B5); the semantic tree records diffs. Probe data lives on the Rust side, so it does not shift GC. The answer is a chain: input → script (stack) → mutation(s) → restyle (changed properties, winning declaration) → relayout → paint → semantic change. Chains that cross processes (a `postMessage` from a cross-site frame, a response) are stitched by `hg-inspect` from IDs recorded on both ends of each IPC message.
+
+**Verification.** Every answer is checked before it is shown; DT-2 measures the checks. (1) **Sufficiency:** applying the reported mutations to the state at the last flush before the target changed reproduces the new value on B5's from-scratch reference path, which is the **value oracle**, not a causal one. (2) **Minimality:** removing any one reported mutation no longer reproduces it; redundant causes are reported as one joint set. (3) **Upstream necessity:** suppressing the reported input or script task and re-executing the segment in simulation (a labelled "what-if run") prevents the reported mutation. A failed check, or a stage the engine cannot explain, shows "not explained", never a guess. Until B5's incremental layout lands (Stage 2), layout answers stop at "mutation → node relaid out → changed fragment".
+
+**Costs, not only causes (T2).** A replay shows causes, not costs. Costs come from V8's sampling profiler (through `hg-script`) during the live session; in a recorded session its samples carry execution points. Replay times are recorded-clock times, and profiles taken while recording are labelled "recording configuration"; cost-accurate profiling uses an unrecorded session.
+
+**Decision DT-D4: spec-linked explanations.** `hg-explain` attaches the specification step that decided each cause, at three labelled levels: **anchored** (an Izcal function with a `// spec:` anchor: navigation, layout driver, accname, Fetch, cookies, DOM); **mapped** (a dependency such as Stylo or Taffy decided it, and a curated table maps it to a spec section); **observation** (an entry in `compat/observations/`). Mapped explanations are shown as weaker than anchored ones, and every mapping entry is joined to at least one WPT or spec-derived property test that exercises it (DT-3). Plain language comes first, the spec step and its WPT tests on disclosure. This generalizes Inactive CSS and bfcache reasons, each hand-built for one feature.
+
+**Decision DT-D5: protocol-level network views, and driving the network.** `hg-net-observe` emits typed events for DNS (resolver, DoH, HTTPS/SVCB records, ECH config); connection decisions (pool key, which is I-1's partition key; reuse and coalescing with reasons; Alt-Svc); TLS from rustls (version, key exchange, cipher, chain, CT, revocation, ECH outcome); QUIC and HTTP/3 from neqo as **qlog**. Driving the network happens in two separate places:
+
+- **Live, as user actions**, only on origins where the session holds **write** capability: edit and resend (in the page's partition, with its cookies); **response overrides** and mock endpoints; **per-request protocol forcing** (HTTP/1.1, 2 or 3; ECH on or off) with side-by-side comparison; **replay of a recorded exchange against the live server**, with a diff. Every affected request is labelled in every view and logged (DT-21).
+- **In simulation only, as what-if runs**: per-layer faults (DNS failure, TLS alert, QUIC loss, HTTP reset) against corpus archives or Izcal-run mock servers. A production recording cannot be re-run below its boundary, because its TLS handshakes used the OS CSPRNG (Stage 1 design 3.1), and everything after a fault is a new execution. What-if simulations co-locate only processes of one (site, container); protocol-level faults amend Stage 1 design 3.2.
+
+A **Reporting API view** lists reports, endpoints and deliveries. TLS secrets are never exported by default; an [RFC 9850](https://www.rfc-editor.org/rfc/rfc9850.html) key log exists only per session, in a non-default container, behind an explicit setting, because it "MUST NOT be used in a production system".
+
+**Decision DT-D6: semantic history from B8.** The accessibility view shows the author tree, the repaired tree (overlay entries with class, rule and sources), their diff, and a **timeline of tree changes**, each linked to its mutation and to the accname or HTML-AAM step that computed the name. It is built from the AccessKit update stream (Stage 1 design 5.8), kept only while DevTools is open, for the local user. B10 says that with AI off, "provenance export, stable-ID semantic diffs, visibility flags for agents and pixel-optional agent tabs are not computed"; that rule concerns computation for agents, and this view serves the user, so it lives outside feature `ai`. The view says it does not replace testing with real screen readers.
+
+**Other views** (Stage 2–3): process and IPC with placement reasons; storage keys; principal-tagged mutations (local only); per-site memory; an API-surface ledger of calls, not verdicts; an **interleaving explorer** re-running a recording under other seeds within the orders HTML permits.
+
+### 6.2 User experience
+
+**Decision DT-D7: a workspace model; no arrangement is forced.** Four arrangements, remembered per project: **docked** (default on first open; new layouts were reverted elsewhere when they replaced the familiar one, [V 1.5–1.6][V]); **full workspace** per task (Layout, Interaction, Network, Accessibility, Recording); **separate window**; **page overlay** (box model, grid, stacking contexts, shift regions, focus order and cause annotations drawn on the page). Overlays are a compositor layer, never in the page's DOM and **excluded from capture surfaces** (`getDisplayMedia`, Region Capture) (DT-16). In Stage 1 the workspace shows one site's pane at a time, chosen by a frame selector; in Stage 2, **cross-site views** (one waterfall or timeline for all frames) are composed from rows each pane renders. The entry points are the objects tasks start from (Section 4.4): Console, Elements, Sources, Network, Timeline (with the recording scrubber) and Application. Specialist views open from a selection or a question.
+
+**Interaction rules.**
+
+- **Ask why from anything** (one shortcut): "Why is it like this?" and "Why did it change?" on every pixel, box, node, value, request and semantic node. Without a recording, the answer covers what live state supports and offers Reload to record.
+- **The console is the entry point**: a logged value links to its origin, an error to its execution point.
+- **A persistent working set** of pinned nodes, rules, requests and execution points travels with recordings, because foraging is a third to a half of debugging time ([V 10.1–10.3][V]).
+- **CSS edits persist** as a change set mapped to authored CSS through ECMA-426; `izcal-lsp` applies it in the editor. DOM edits become reviewable patches, because mapping them to framework source is not possible in general.
+- **Progressive disclosure**: one plain sentence ("This element moved because an image above it loaded without a height"), then chain, spec step, raw data.
+- **No AI in the frontend.** With AI on, "Share with agent" gives the user's agent a revocable grant to a node, request or recording range, served as provenance-filtered query results, never a raw bundle. With AI off it does not exist.
+
+**Decision DT-D8: table-first rendering and full accessibility.** Every view is an IIP query whose result is a **table**, which is the accessible DOM; charts and graphs render the same rows. A lint fails a view without its table (DT-8). Events are announced in CodeTalk's four categories, discoverability, glanceability, navigability and alertability ([Potluri et al., CHI '18](https://www.microsoft.com/en-us/research/uploads/prod/2018/04/CodeTalkCHI2018CameraReady.pdf)). The keyboard model is the shell's (APG patterns, F6 cycling; [SH 4.9][SH]), and keyboard walkthroughs run under the deterministic substrate (UI-2's method).
+
+**Decision DT-D9: usage-driven review.** Every view, entry points included, has a **task**, an **owner** and an **opt-in usage metric** (D-S4), reported per task and per view with the opt-in sample size at each stage review, because no vendor publishes such figures systematically ([G 1.10][G]). A view under DT-19's threshold for two reviews, or without an owner, is merged or removed. Exempt: text equivalents, security surfaces, views serving UI-1, UI-2 and DT-9 tasks, and new or off-by-default views until they have been discoverable for one review (the Shader Editor lesson).
+
+### 6.3 Integrations
+
+Every external surface is an adapter over IIP, and every external session is a scoped principal (Section 6.5).
+
+| Surface | Users | Built from | What it exposes | Stage |
+|---|---|---|---|---|
+| **WebDriver + BiDi** (`hg-bidi`) | WPT testdriver, Selenium, Puppeteer (BiDi), WebdriverIO | [WebDriver](https://www.w3.org/TR/2018/REC-webdriver1-20180605/) (Rec 2018; [Level 2](https://www.w3.org/TR/webdriver2/) WD 2026) and [BiDi](https://www.w3.org/TR/webdriver-bidi/) | All BiDi modules; user contexts map to containers; `locateNodes` with the accessibility locator from B8; additions only upstream or under `izcal:`. The **M2 server is Infrastructure's minimal slice** (Section 9.1) | 1 |
+| **CDP profile** (`hg-cdp`) | js-debug, JetBrains, Puppeteer (CDP), Lighthouse | Published definition ([P 1.5][P]), as an interface spec (D-S11) | **Published profile**: JS domains through `script.v8`, then DOM, CSS, Network, Page, Overlay, Target per release; no experimental domains; other commands return a defined "not in Izcal CDP profile" error; out-of-set frames are opaque targets | 1 (JS, DOM, CSS, Network, Page, Overlay; DT-D10 Option B); 2 (rest) |
+| **DAP** (`hg-dap`, `izcal-dap`) | VS Code, Visual Studio, Neovim, Zed, Emacs, Eclipse, IntelliJ | [DAP spec](https://microsoft.github.io/debug-adapter-protocol/specification) | Breakpoints, stepping, scopes; ECMA-426 Scopes; DWARF for Wasm; **`stepBack` and `reverseContinue` on recordings** (back to the segment start or nearest checkpoint, replay forward, count pause events); data breakpoints from the mutation log | 2 |
+| **CSS write-back** (`hg-lsp`, `izcal-lsp`) | Any LSP editor | LSP `workspace/applyEdit`, ECMA-426 | CSS change sets as workspace edits; the editor owns files, the browser the runtime ([H 11.4][H]) | 2 |
+| **MCP** (`hg-agent-mcp`, `izcal-mcp`) | Claude Code, Codex, Copilot, Cursor, Gemini CLI | MCP 2026-07-28 and its [security best practices](https://modelcontextprotocol.io/specification/latest/basic/security_best_practices) | Semantic snapshots and diffs with provenance, console and network summaries, why-queries, recording queries, performance summaries, WebMCP listing; `evaluate`, input and edit only on read-write origins; summaries with paging (DT-14) | 2 (with B9) |
+| **Exports** (`hg-export`) | Support, Perfetto, qvis, observability | HAR 1.2; qlog -14; Perfetto TrackEvent; Chrome trace JSON; OTLP | HAR with `_izcal` fields (partition key, protocol, TLS, QUIC), linked to qlog; traces with causal flows; OTLP to a **user-configured local endpoint**; bundles | HAR 1; qlog, Perfetto 2; OTLP 3 |
+| **CLI** (`hg-devtools-cli`) | CI, scripts | IIP | Run, record from launch, export, check budgets **deterministically in simulation** | 1 (text); 2 (CI) |
+| **Trace Context** | Backend correlation | [W3C Trace Context](https://www.w3.org/TR/trace-context/) | Reads `traceparent`; adds no headers by default (P2) | 2 |
+| **WebMCP inspector** | Tool authors | WebMCP draft (Q-5) | Tools, schemas, call log; works with AI off | 3, if it ships |
+| **Author views** | Frameworks, design systems | IIP `views` domain; W-1 components | Component trees and stores in the author's terms, from the framework's tooling as an IIP client or a W-1 component with declared capabilities (D-S3); no WebExtension `devtools.*` API, which W-1 does not provide; no page-visible API | 3 |
+
+**Transports.** No adapter opens a listening TCP port by default.
+
+- **Client launches Izcal** (test runners, CI, headless embedders): a pipe (`--automation-pipe`) into a fresh, isolated automation container. Further grants come from launch-time configuration over the pipe, never from project files, and are logged.
+- **Client attaches to a running Izcal** (editors, agents): a stdio shim, which MCP clients "SHOULD support" ([MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)), connects over **OS-authenticated local IPC** (a user-only Unix socket with a peer-credential check, or a Windows named pipe with an ACL for the user's SID). The trusted-region prompt (UI-10) shows the peer's **verified executable path and code-signing identity**, not a client-supplied name. The shim holds no authority.
+- **Grant tokens.** After consent, the broker issues a scoped, time-bounded token (origins, read or write, classes; default expiry 8 hours†), revocable at once from the "being controlled" banner. Stateless MCP or reconnecting clients present it instead of re-prompting; there is still no "always allow".
+- **WebDriver's HTTP server** (`izcaldriver`) runs only after a one-time enablement in settings, after Safari ([WebKit, 2016](https://webkit.org/blog/6900/webdriver-support-in-safari-10/)); loopback only, `Host` and `Origin` validated, random session URLs.
+- **Loopback WebSocket for CDP clients** without pipe support: per session, user-enabled, path token, `Origin`/`Host` checks, never `0.0.0.0`.
+
+### 6.4 Data flow for one question
+
+In a recorded session, the site-A pane sends `why.query{target: box(node 4812), at: <point>}`; `hg-inspect` checks the grant and starts a replay host for that frame's process. `hg-why` finds that an `<img>` without a height (node 4790) got its intrinsic size when response 311 arrived. The checks pass: that mutation alone reproduces the position, the set is minimal, and a what-if run without the response leaves the button in place. `hg-explain` adds the CSS sizing step (mapped, with its WPT tests) and the image-loading step (anchored); a screen reader hears "Why-answer ready".
+
+### 6.5 Security, privacy and consent
+
+The rules apply to every surface, consistent with P1, I-1, B9 and B10.
+
+1. **Every session is a scoped principal.** Each session (`devtools-user`, `automation(client)`, `editor(dap)`, `editor(lsp)`, `agent(task)`) gets a container, an **origin set** (read-only and read-write) and **sensitive classes** (cookies and storage, bodies, form values, TLS secrets). Out-of-set content never reaches it (out-of-set frames are opaque); every command is checked against the grant; every write goes in a hash-chained **session log**. The broker cannot tell a human client from an agent, so **this applies to every external session, AI on or off**. It is B9's enforcement mechanism, in `hg-inspect` in default binaries; it is not agent-only computation under B10, because it runs for every automation client, and it closes the CDP path with ambient access that B9 replaces.
+2. **Consent in the browser.** Attaching needs a trusted-region prompt that chooses the container, the origin set (default: the active tab's site), read-only or read-write (default read-only) and classes (default none), plus a persistent "being controlled" banner and stop control ([WebKit, 2016](https://webkit.org/blog/6900/webdriver-support-in-safari-10/)). `navigator.webdriver` is true, as [WebDriver](https://www.w3.org/TR/webdriver2/) specifies; agent tabs carry the agent token. A container policy can forbid attach or cap it at read-only, as for agents (B9).
+3. **Isolated profiles by default.** Pipe-launched sessions get an ephemeral container with no user data and all its origins read-write, which WPT and test runners need. A user's container needs a grant naming it. Project files cannot enable any surface ([Claude Code docs](https://code.claude.com/docs/en/chrome)).
+4. **No open ports by default**; `Origin` and `Host` checks and per-session tokens wherever a listener exists, against DNS-rebinding and CSRF attacks of the [CVE-2025-9611](https://nvd.nist.gov/vuln/detail/CVE-2025-9611) kind.
+5. **Export redaction.** Sensitive classes are masked at the IIP boundary for every principal except `devtools-user` unless granted. Exports drop `Cookie`, `Set-Cookie`, `Authorization`, `Proxy-Authorization`, credential-shaped values in URLs and bodies, form and storage values, qlog connection IDs and tokens, and TLS secrets; each carries a **redaction manifest** shown before saving; including secrets is a second, logged step.
+6. **Recording redaction, and what it costs.** A recording is an input log, so redacting a value changes what a replay computes. `hg-redact` substitutes each value with a **consistent placeholder** of the same length and type across the bundle (the same token in a response, the request echoing it, and storage), **replays the redacted bundle**, and shows the first divergence: "reproduces exactly until 00:41; approximate after". A redacted bundle reproduces layout, DOM and control flow that do not depend on redacted values, and values that only pass through. It cannot reproduce anything that branches on, parses or displays them. Credential input is never recorded at all (DT-D2).
+7. **The frontend respects I-1.** Page data and write rights live in per-site panes; the workspace holds structural metadata and no write capability. Panes run only Izcal's code, under Trusted Types and a strict CSP, rendering page strings as text. No P1 exception is needed.
+8. **Replay respects I-1.** A replay host runs one recorded process; cross-process answers are stitched in the broker; what-if simulations co-locate only one (site, container). The four new process kinds join the per-process threat models (Stage 1 design 13.2).
+9. **Agents (MCP).** The server exists only with AI on (B10, AG-0). Each task starts with **empty origin sets** (B9). Page-derived text is marked untrusted with its origin. Izcal's tool descriptions are static and hashed; a WebMCP tool's description is hashed at grant, and a change revokes the grant ([Invariant Labs](https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks)). No "always allow" across origins ([Invariant Labs](https://invariantlabs.ai/blog/mcp-github-vulnerability)). Writes on sensitive classes go through B9's trusted confirmation surface. No telemetry and no external lookups (unlike Chrome DevTools MCP's CrUX calls). Enforcement bounds what an injected agent can reach; it does not solve prompt injection, and the docs say so.
+10. **Recordings are sensitive.** Memory-only until saved; dropped when the tab or DevTools closes. Saved bundles are encrypted at rest with the profile key, stored in the container's partition and deleted with it. Recordings and replay-host or pane memory are **never attached to crash reports**; minidumps of recorded renderers exclude heap. Agents get query results, never bundles.
+
+### 6.6 Alternatives
+
+| Decision | Recommendation | Alternative | Cost | Reversal trigger |
+|---|---|---|---|---|
+| Core protocol | IIP with V8 pass-through (DT-D1) | CDP as backend; BiDi extended | A protocol to design and document | A multi-vendor inspection protocol is chartered |
+| Script domains | Pass V8's inspector through | Translate into native IIP | An engine-shaped domain inside IIP | V8 changes break js-debug in two consecutive updates |
+| Recording start | Process launch, Reload to record (DT-D2) | Mid-session start from snapshots | A reload before history | None planned: snapshotting a hostile production process adds attack surface |
+| Recorded unit | Browsing context group in dedicated processes | Record the shared site process and list the other tabs | Memory | The probe shows dedicated processes cost > 2×† the shared process's memory |
+| Recording configuration | Predictable platform while recording | Default configuration | Recording is a slower mode | A default-configuration recording passes DT-1(b) in the probe |
+| Recording at all | Recorded sessions back the views | Live-only tools; replay in CI only | DT-15 cost | DT-15 or DT-1(b) misses at the M4 review: recording becomes a CI and bug-report feature |
+| Replay process | One host per recorded process | Whole-browser simulation | Stitching | Not while I-1 holds; a lockstep multi-process simulator (Stage 3) could replace stitching |
+| Frontend process | Workspace plus per-site panes | One renderer with a P1 exception | One process per inspected site | None: write rights would make it a site-isolation bypass |
+| Cause tracking | At query time (DT-D3) | Live | Query latency | DT-17 fails after checkpointing |
+| Layout | Four arrangements, docked first | Docked only | Design effort | SUS drops > 5 points† (UI-11) |
+
+## 7. M-1 compliance
+
+**Dependencies used unmodified, through public APIs:** V8 through the project's `rusty_v8` fork (inspector and sampling profiler via `hg-script`, G6; the recording configuration uses the fork's existing predictable platform); neqo; rustls (key-log surface: Q-DT-5); hickory-dns; AccessKit; Stylo, Taffy and Parley as the engine uses them (Stylo spike, Section 9.1); `serde_json` and a protobuf encoder. A standalone DWARF reader such as `gimli` (not from a browser) is a candidate, subject to normal review.
+
+**Built new, by Izcal:** IIP and its codegen backend; every `hg-inspect*`, `hg-net-observe`, `hg-why`, `hg-explain`, `hg-export` and `hg-redact` crate; `hg-devtools`; the adapters; the recording format; the ECMA-426 consumer; the conformance suite; and, if needed, a cascade explainer written from CSS Cascade and checked against Stylo's computed values. **No code from any browser's DevTools** (`devtools-frontend`, Firefox DevTools, Web Inspector, Edge's tools), chromium-bidi, Replay's devtools or any browser's MCP server is copied, ported or translated, by people or AI tools (D-S10). Their ideas are evidence (Sections 2 and 5), never templates; existing clients (Chrome DevTools, js-debug, Puppeteer) are only clients and black-box test drivers.
+
+**What each part is anchored to:**
+
+| Part | Anchored to (pinned in `specs.lock` where it is a specification) |
+|---|---|
+| `hg-bidi` | W3C WebDriver BiDi (WD 2026-10-08), WebDriver (Rec 2018-06-05; Level 2 WD 2026-07-02); WPT `webdriver/` tests |
+| `hg-cdp` | Published CDP protocol definition (`browser_protocol.json`, `js_protocol.json`) at a pinned revision. Semantics the definition leaves implicit are settled by **black-box observations** of Chrome in `compat/observations/`, never by reading Chromium source. Using observations as the oracle for this compatibility interface is allowed by the DT-D11 ruling below |
+| `hg-dap`, `hg-lsp` | DAP specification (capability flags); LSP specification (`workspace/applyEdit`) |
+| `hg-agent-mcp` | MCP specification 2026-07-28 and its security best practices |
+| `hg-export` | HAR 1.2 draft (its de facto fields: black-box observations in `compat/observations/`, per DT-D11); qlog -14 and QUIC/HTTP/3 event drafts; Perfetto TrackEvent definitions; Chrome trace event format; OTLP; Trace Context; RFC 9850; ECMA-426 and proposals; Wasm DWARF convention |
+| `hg-explain` | `spec-anchors.json` (ANC-1), plus a curated mapping of dependency behavior to CSS Cascade, Sizing, Flexbox, Grid, Inline and Positioned Layout sections, each entry citing its section and WPT tests |
+| `hg-inspect-renderer`, `hg-why`, `hg-recording` | Izcal's own specifications: HGBA-3 B1, B4, B5, B8 and Stage 1 design Sections 1 and 3–5 (first-principles architecture, M-1 part 3); HTML's browsing context groups and agent clusters for the recorded unit |
+| `hg-net-observe` | Fetch (network partition key), RFC 9000/9114 event vocabulary through qlog, RFC 8446, RFC 6962/9162 for CT, the Reporting API, the ECH draft as pinned by the network service |
+| `hg-devtools` | WCAG 2.2 via WCAG2ICT, WAI-ARIA APG, UAAG 2.0 keyboard guidance, as for the shell |
+
+Adapter handlers carry anchors (G9); native IIP messages are anchored to their `.hgidl` source and the HGBA section defining the data.
+
+**Compatibility oracles (DT-D11, ruling (a), decided 18 October 2026).** Compatibility adapters with no normative specification (`hg-cdp`, HAR's de facto fields) may use recorded black-box observations of other engines' behavior as their test oracle, kept in `compat/observations/` (test cases and observed results, never source). Web-visible behavior stays under M-1 part 4: other engines remain black-box signals, never the definition of correct. The ruling is consistent with M-1 part 2, which records interop evidence as black-box observations where a specification is silent. It is narrow by design: it covers only these adapters' compatibility behavior and does not extend to anything a page can observe. Stage 1 design records it as D-S12.
+
+## 8. Targets
+
+† marks thresholds set by this document from first principles; none is measured. **Provisional†** thresholds are confirmed or replaced from measurement at the named review, and recorded in the decision log. "Corpus" is the Stage 1 recorded corpus (Stage 1 design 7.6); "recording configuration" is defined in DT-D2.
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| DT-1 | **Replay fidelity** | **Stage 1** for recorded sessions (moved from Stage 2 by DT-D10 Option B; (b)'s threshold stays provisional†). (a) Simulation recordings: DET-1 applies unchanged. (b) Recorded sessions: of ≥ 200† published scripted sessions on corpus pages, recorded in the recording configuration in the production substrate, the share replaying to the end with every output digest and checkpoint hash matching; floor **≥ 95%, provisional†** until the M4 review. Excluded classes are listed, not open-ended (GPU output, media and audio, `SharedArrayBuffer` races, credential placeholders), with the share of sessions hitting each published. (c) **100%** of divergences are flagged at the first mismatching task digest or checkpoint; nothing past a divergence is shown as exact. (d) With probes, logpoints or breakpoints attached, a replay matches the unprobed recording's digests and hashes, or flags the divergence, **100%**. (e) For redacted bundles, the reported "exact until" point equals the first actual divergence in **100%** of a redaction test set. (f) **100%** of recordings start at process launch; no partial segment is ever kept | T2 nightly in the DST farm; recording probe at M2 and M4 | (b): root-cause by class; a class that cannot be fixed is declared in the UI; below 80%† at the M4 review, DT-D2's reversal trigger fires. (c), (d), (f): ship blocker for recording-backed views |
+| DT-2 | **Why-query correctness** | On the DT-1(b) session set (with JS) plus a published **planted-cause suite** (≥ 500† cases where a known input event, script task or mutation is the cause): an independent harness re-runs the checks of DT-D3 and finds (a) sufficiency on the reference path, (b) minimality and (c) upstream necessity by what-if run, each in **100%** of shown answers; (d) on the planted suite, recall ≥ **95%†** (the planted cause is reported) and precision ≥ **95%†** (no reported cause outside the planted set unless a what-if run confirms it). The distribution of chain sizes and the "not explained" rate are published per release | T1 on a sample, T2 on the full sets | Why-queries are disabled for the failing stage or class until fixed |
+| DT-3 | **Explanations are right and resolve** | 100% of explanation links resolve against the pinned `specs.lock` snapshots or an observation-log entry, and each is labelled anchored, mapped or observation; 100% of mapping entries are joined to at least one WPT test or spec-derived property test; a sampled expert audit of mapped explanations each release finds an error rate ≤ **2%†**; coverage published per release and non-decreasing | `hg-anchor` in T1; release audit | The explanation, or the mapping entry, is suppressed; the cause chain still shows |
+| DT-4 | **Protocol schema stability** | (a) No domain is marked stable before Stage 2 exits; (b) after that, 0 breaking changes to stable domains within a major version (schema diff); (c) removal only after ≥ 12 months (MCP's window) and ≥ 2 releases† (Izcal's); (d) 100% of native IIP messages are generated from `.hgidl` and present in the published schema (`script.v8` is exempt and publishes its V8 version); (e) the conformance suite passes 100% of the tier it covers | T0 schema-diff check; conformance suite each release | Ship blocker: revert, or bump the major version with a migration note |
+| DT-5 | **WebDriver and BiDi conformance** | Pass rates for WPT `webdriver/tests/classic/` and `webdriver/tests/bidi/` at the pinned WPT revision, published per module per release; per-module floors set at the M8 review and non-decreasing (as C-1); by M8, 100% of the testdriver commands used by C-1's directories are implemented | `hg-wpt` in T1 | Revert the regressing change; a missing testdriver command blocks M8 |
+| DT-6 | **CDP profile is exact** | **Stage 1 scope:** JS, DOM, CSS, Network, Page and Overlay domains (DOM to Overlay moved from Stage 2 by DT-D10 Option B). The profile is published per release. Pass rates of **third-party client suites run as black-box drivers** (Puppeteer's own tests for the profile's domains; js-debug's integration tests) are published, with floors set at first measurement and non-decreasing; 100% of commands outside the profile return the defined error, never silent acceptance; smoke flows pass (js-debug breakpoint and step; Puppeteer launch, navigate, evaluate, screenshot) | Client suites and smoke flows in T1 | The failing command leaves the profile |
+| DT-7 | **Reverse execution is exact** | For a published set of debugging scenarios within the execution-point model (Section 6.1), every DAP `stepBack` and `reverseContinue` lands on a state (scopes, variables, DOM hash) identical to forward replay to the same point **and** to the original recording's digests and hashes there, **100%**; smoke flows pass in VS Code, nvim-dap and Zed | DAP test client against replays, T1 | `supportsStepBack` is advertised as false until fixed |
+| DT-8 | **DevTools are accessible** | UI-1 and UI-2 applied to `hg-devtools`: 0 automated WCAG 2.2 AA (WCAG2ICT) failures on every view; manual audit with NVDA, JAWS, VoiceOver and Orca each release; 100% of actions keyboard-operable; **100%** of graphical views have a table or text equivalent carrying the same rows | CI checks; table-equivalent lint; release audit | Ship blocker for the affected view |
+| DT-9 | **Screen-reader developers can do the tasks** | Pre-registered study (T1, T4, T6), ≥ 8† daily screen-reader users and ≥ 8† sighted developers: screen-reader completion ≥ **80%†** of the sighted rate; sample confirmed by power analysis | Contracted study, Stage 2 | Redesign the failing views before the next stage |
+| DT-10 | **No secrets leave, or are recorded** | Seeded-canary corpus (cookies, `Authorization`, bearer tokens in URLs and bodies, typed input into password, one-time-code and card fields, other form values, storage values, response bodies, TLS secrets, connection IDs): **0** canaries in default exports of every format and in default recording bundles; **0** credential-field canaries in in-memory recordings; 100% listed in the redaction manifest; including secrets needs a second explicit step, logged | Canary suite on every export and recording path, T1 | Ship blocker |
+| DT-11 | **Surfaces are closed by default** | Default configuration: **0** TCP sockets in LISTEN and **0** UDP sockets accepting unsolicited inbound traffic outside client-initiated flows (QUIC, WebRTC), checked per OS (`ss`, `lsof`, `Get-NetUDPEndpoint`) plus an inbound probe; **0** sessions without in-browser consent or a pipe launch into an isolated container; **0** sessions reach a user container without a grant naming it; with a loopback listener enabled, 100% of a DNS-rebinding, CSRF and `Origin` suite is rejected | Socket scan in the AG-0 harness; red-team suite each release | Ship blocker |
+| DT-12 | **Agent surface with AI off** | With AI off: the agent host never launches; `izcal-mcp` is absent from default packages; no `hg-agent*` crate is linked into a launched process (G4); `hg-devtools` shows 0 AI entry points, checked against AG-0's surface list. Run in AG-0's fresh-install and upgrade scenarios | AG-0 harness, every release | Ship blocker |
+| DT-13 | **Every external session holds its scope** | A published injection and exfiltration suite (payloads in DOM text, console messages, source comments, response bodies, WebMCP descriptions) run against **MCP, CDP, BiDi and DAP** sessions: **100%** of attempts to read out-of-set origins, act on read-only origins or read ungranted sensitive classes are blocked by engine enforcement, with AI off for CDP, BiDi and DAP, and for MCP with the model's own defenses disabled (extends AG-3); 100% of results carry provenance; 100% of write actions appear in the session log; 100% of WebMCP description changes after grant revoke the grant | Suite per release; CDP, BiDi and DAP parts from M6, MCP part once the server exists | Ship blocker for the failing surface |
+| DT-14 | **Agent results are compact without losing answers** | Median MCP tool result ≤ **2,000 tokens†**, p95 ≤ **8,000†**, on a published agent task set with a fixed tokenizer; and task success with compact results is not lower than with uncompressed results (AG-2's method: fixed model and scaffold) | Task set per release | Redesign the tool's summary before release |
+| DT-15 | **Recording cost is measured and bounded** | **Stage 1** (moved from Stage 2 by DT-D10 Option B; (b) stays provisional†). (a) The recording probe publishes, on the four reference devices, the recording configuration's cost against an unrecorded session: Speedometer 3, corpus p95 interaction latency, dedicated-process memory. (b) **Provisional†** bounds until the M4 review: p95 interaction latency ≤ **1.5×†**, Speedometer 3 ≥ **0.67×†**, memory within the configured buffer plus the dedicated processes. (c) DevTools closed, or open without recording: no recording and no inspection instrumentation; overhead within DET-2's noise | Performance lab A/B at M2, M4 and each release after | (a) missing: ship blocker for recorded sessions. (b) missed after mitigation: recording becomes a CI and bug-report feature only (DT-D2's reversal) |
+| DT-16 | **Inspection is invisible to content** | (a) Under DET-1 replay, DevTools attached with recording, overlays and read-only inspection (dedicated processes included) leaves DOM serialization, the JS-observable event log and the content display-list hash bit-identical to a session without DevTools, **1,000 of 1,000**. (b) Overlays never appear in the page DOM or any capture surface, 100%. (c) Production A/B: bfcache eviction and tab-discard decisions match with and without DevTools open, or differences are published. Docs state that DevTools' timing overhead is detectable | DST harness, T2; performance lab | Ship blocker for the feature that perturbs |
+| DT-17 | **Why-queries are fast enough** | p95 time to first answer ≤ **3 s†** for segments ≤ **5 min†** on the reference devices; measured with replay from the segment start until replay-host checkpoints exist (Q-DT-3) | Performance lab | Checkpointing; then live cause tracking (Section 6.6) |
+| DT-18 | **Network views are true** | Property test: the partition key, reuse or coalescing decision and Alt-Svc state shown for each request equal those the network service used, 100%; qlog output validates against the pinned schema; HAR output validates | T1 | The view is hidden until fixed |
+| DT-19 | **Every view earns its place** | 100% of views, entry points included, have a registry entry (task, owner, metric) at merge; usage from opt-in telemetry is published per task and per view at each stage review, with the opt-in sample size; a view opened in < **0.5%†** of opt-in DevTools sessions at two consecutive reviews, or without an owner, is merged or removed. Exempt as in DT-D9 | Registry lint in T0; stage review | Governance gate, not a ship blocker; a kept exception is recorded with its reason |
+| DT-20 | **Why-queries help people** | Pre-registered, counterbalanced study, ≥ 24† participants including novices, layout and slow-interaction tasks, with and without why-queries: median time to correct diagnosis down ≥ **30%†** (for comparison, novices with the Java Whyline were twice as fast as experts without it, ICSE '08; Ply's novices were 50% faster); power analysis confirms the sample | Contracted study, Stage 2 | Why-queries stay available but are not the default entry point; redesign, because Timelapse showed capability alone does not help |
+| DT-21 | **Network interventions take effect and are labelled** | On a published suite: overrides, mock endpoints, forced protocols and edit-and-resend take effect in **100%** of cases and are labelled in 100% of affected views; 100% are refused without write capability for the origin; a seeded what-if fault produces the expected error path in **100%** of cases | T1 | The intervention is hidden until fixed |
+
+## 9. Milestones and staffing
+
+### 9.1 Mapping to Stage 1 milestones
+
+The frontend needs M4 and M6; until then `hg-devtools-cli` is the tool. Stage 1 scope is DT-D10 Option B (decided 18 October 2026). **No DevTools deliverable is on the critical path** (M0 → M1 → M2 → M3 → M4 → M6 → M8): the M2 WebDriver server does not depend on IIP.
+
+| Milestone | DevTools exit criterion | Track |
+|---|---|---|
+| M1 | IIP conventions in `.hgidl`; codegen emits schema and docs for a first domain; recording format per process with configuration, output digests and checkpoint hashes beside the mandatory worker-task-mode field; Stylo public-API spike starts | DevTools; Substrate and IPC |
+| M2 | **WebDriver server (Infrastructure)** on a minimal slice (navigation, script evaluation, element lookup, input, screenshots), declared as experimental `[inspect]` interfaces and served over plain B2 endpoints, with no dependency on the `hg-inspect` broker, schema publication or conformance suite. DevTools: broker sessions and grants; `hg-inspect-renderer` DOM and `script.v8`; the CLI inspects a DOM; conformance and schema-diff checks in T0. **Recording probe, part 1**: corpus pages with script and DOM, recorded in the recording configuration in the production substrate, replayed per process; exact-replay share and cost published. **Stylo spike result**: whether its public API gives matched rules, cascade order, overridden declarations and source locations; if not, the cascade explainer is scheduled for M3–M6 | Infrastructure; Substrate and IPC with DevTools; DevTools |
+| M3 | Style domain: computed style and matched rules (Stylo or the explainer) | DevTools |
+| M4 | Workspace and pane renderers draw; overlays as a compositor layer, excluded from capture. **Recording probe, part 2** with display-list checkpoints. **M4 review** confirms or replaces DT-1(b) and DT-15's provisional† thresholds and decides remedies for any miss (Section 8's "If it fails" column); per DT-D10 Option B it no longer decides whether recorded sessions ship | DevTools; Graphics; Substrate and IPC |
+| M5 | `hg-net-observe` events; HAR through `hg-redact`; qlog from neqo. **Recording substrate** (after the M2 and M4 probes): per-process recording in the recording configuration in the production substrate; the browsing context group in dedicated, freshly launched processes; Reload to record; segments and buffer; credential placeholders | Network and security; Substrate and IPC; DevTools |
+| M6 | Console, Sources, Elements, Network; docked and separate window; per-site panes with frame selector; consent, grants, session log; DT-8 audit begins; DT-10 (exports), DT-11 and DT-13 (existing non-MCP surfaces) green; threat models for the four new processes (13.2 requires them before M6) | DevTools; Shell; Accessibility; Network and security |
+| M7 | CDP profile (DT-6): JS, DOM, CSS, Network, Page, Overlay; `hg-bidi` over IIP replaces the M2 slice; BiDi breadth (DT-5). **Recorded sessions** with a scrubbable console and network view (DT-1, DT-15 as they apply; DT-10 for recordings) | DevTools; Infrastructure; Substrate and IPC |
+| M8 | Met or waived: DT-1 (b)–(f) as they apply to recorded sessions, (b) at its provisional† or M4-review threshold; DT-4 (a), (d), (e); DT-5; DT-6 (JS, DOM, CSS, Network, Page, Overlay); DT-8; DT-10 (exports and recordings); DT-11; DT-12; DT-13 (non-MCP); DT-15 at its provisional† or M4-review bounds; DT-16 (what exists); DT-18; DT-19 (registry) | — |
+
+**Fallback.** If IIP slips, the M2 slice keeps serving WPT; WPT never waits for the DevTools track.
+
+**Stage 2:** recording-backed views beyond the console and network view (scrubbing in other panels, retroactive logpoints); why-queries and explanations (DT-2, DT-3, DT-17, DT-20) with B5; semantic history; network interventions (DT-21); CDP domains beyond Stage 1's six; DAP reverse execution (DT-7); `izcal-lsp`; composed cross-site views; Performance, Application, Memory; MCP with B9 (DT-13, DT-14); DT-9; first stable IIP domains. **Stage 3:** comparison views, interleaving explorer, author views, WebMCP inspector, OTLP, multi-site what-if runs, remote devices.
+
+### 9.2 What the work costs
+
+D-S11's 2† engineers were sized for four panels plus CDP backend domains. This spec adds a protocol, a session and consent model, per-site panes, a recording and causality engine, adapters and a higher accessibility bar. Estimates are first-principles guesses† in engineer-months over Stage 1's 24–36-month† placeholder. The notes hold no team-size data for any DevTools team; the only datum is that a few niche Firefox panels took "up to 20% of developer time" during DevTools-wide updates ([Bugzilla 1342237](https://bugzilla.mozilla.org/show_bug.cgi?id=1342237)), a maintenance cost, not a team size.
+
+| Stage 1, DevTools track (narrow scope) | Engineer-months† |
+|---|---|
+| IIP schema, codegen backend, conformance suite | 12 |
+| Broker sessions, grants, consent, session log | 10 |
+| Frontend: workspace, per-site panes, four panels, two arrangements, table-first accessibility | 30 |
+| CLI text client | 3 |
+| CDP JS profile over `script.v8`; client-suite harness | 4 |
+| HAR export, `hg-redact` | 4 |
+| Stylo spike; cascade explainer if needed | 2 + 8 contingent |
+| Recording probe (DevTools share) | 3 |
+| **Total, narrow scope (Option A)** | **68 + 8: about 2.5–3.2 engineers, so 3†** |
+| Option B: CDP DOM, CSS, Network, Page and Overlay domains; their client-suite coverage | Covered by the step from 3† to 4–5† |
+| Option B: recorded sessions (DevTools share): Reload to record, segment buffer, scrubbable console and network view | Covered by the step from 3† to 4–5† |
+| **Total, Option B (decided)** | **Narrow scope plus 1–2 more engineers: 4–5†** (over 24–36 months that step is 24–72 engineer-months†, by arithmetic, not costed line by line) |
+
+| Stage 1, added work in other tracks (not in their 8.3 rows) | Engineer-months† |
+|---|---|
+| Substrate and IPC: per-process recording, digests, recording configuration in the production substrate, dedicated-process placement in `hg-navigation`, probe | 12 |
+| Infrastructure: migration to `hg-bidi` by M7; socket scan; DT-13 suite (the M2 slice is already in scope) | 7 |
+| Network and security: `hg-net-observe`, qlog; four threat models | 8 |
+| JS, bindings and DOM: `hg-script` inspector interface, side-effect-free evaluation, profiler hookup | 3 |
+| Shell: prompts, banner, grant management | 3 |
+| Accessibility: DT-8 audits | 4 |
+| **Total** | **37: about 1–1.5 engineers across tracks** |
+
+**Decided staffing (DT-D10 Option B, 18 October 2026):** DevTools track **4–5†**, plus the 37 engineer-months (**1–1.5†**) of DevTools work in other tracks above, unchanged. Stage 1 design 8.3 carries both rows.
+
+**Stage 2** needs about **5–7†** DevTools engineers, plus a contracted UX and accessibility researcher for DT-9 and DT-20.
+
+### 9.3 Dependencies on other tracks
+
+B5 incremental layout gates full layout why-queries; the B9 principal gates MCP; AccessKit integration gates semantic history; DET-1 gates DT-1(a) and DT-16; the recording probe gates every recording-backed view; the Stylo spike gates the Styles pane at M6. The added work above sits in other tracks' rows, which is why DT-D10 changed Section 8.3: Option B adds a 1–1.5† row for DevTools work in other tracks.
+
+### 9.4 Decisions (taken 18 October 2026)
+
+**Decided (18 October 2026): DT-D10 — Stage 1 DevTools scope and staffing: Option B ("D-S11 as written, plus history").** Stage 1 scope is Option A's narrow scope plus the CDP DOM, CSS, Network, Page and Overlay domains and recorded sessions with a scrubbable console and network view. Staffing: DevTools track **4–5†**, plus **1–1.5†** of DevTools work spread across other tracks (Section 9.2's second table). The owner accepted the stated consequence that recording ships in Stage 1 before the M4 review has measured it: the M4 review stays, and its role becomes confirming or replacing the provisional† thresholds (DT-1(b), DT-15) and deciding remedies, not deciding whether recorded sessions ship. The security surfaces are unchanged. The options and 0.2's recommendation below are kept as history.
+
+*As written in 0.2:* 0.1's Option A kept 2† while adding work and moving cost to other tracks; re-costed, it does not fit.
+
+| Option | Stage 1 scope | Change to Section 8.3 | Cost and consequence |
+|---|---|---|---|
+| **A. Narrow, honestly staffed (recommended)** | IIP and conformance suite; sessions, grants, consent; four panels on IIP with per-site panes and table-first accessibility; redacted HAR; CDP JS domains only (js-debug works); closed transports; recording probe. Other CDP domains move to Stage 2 | DevTools 2† → **3†**; **+1–1.5†** across other tracks; total from 20–26† to about **22–28†** | About +2–2.5 engineers over Stage 1, under D-S8's deferred funding decision; changes D-S11's Stage 1 CDP scope; no security surface cut |
+| **A−. Narrow at 2†** | As A, minus the separate window and the CDP JS profile (to Stage 2); conformance suite deferred to M7 | DevTools stays 2†; other tracks' +1–1.5† still needed | No CDP-client debugging in Stage 1; protocol drift caught late; no slack at M6; security surfaces still not cut |
+| **B. D-S11 as written, plus history** | As A, plus CDP DOM, CSS, Network, Page, Overlay, and recorded sessions with a scrubbable console and network view | DevTools **4–5†**, plus +1–1.5† | About +4–5 engineers; recording would ship before the M4 review measures it |
+
+*0.2's recommendation (history; not taken):* **A.** It keeps every security surface, gives CDP clients a working debugger, and starts recorded sessions only after they are measured. It costs about 2–2.5 engineers† more than Section 8.3 states. This spec does not change Section 8.3; the owner decides.
+
+**Decided (18 October 2026): DT-D11 — an M-1 ruling for compatibility oracles: (a), narrow ruling.** Compatibility adapters with no normative specification (`hg-cdp`, HAR's de facto fields) may use recorded black-box observations as their oracle, in `compat/observations/`; web-visible behavior stays under M-1 part 4. This is consistent with M-1 part 2 (interop evidence recorded as black-box observations where a specification is silent). Section 7 records the ruling and its scope; Stage 1 design records it as D-S12. The options below are kept as history.
+
+*As written in 0.2:* M-1 part 4 makes other engines black-box signals only, never the definition of correct. CDP has no specification, so where its definition is silent, "correct" for `hg-cdp` can only mean what Chrome observably does.
+
+| Option | Meaning | Cost |
+|---|---|---|
+| **(a) Ruling (recommended)** | Compatibility adapters with no normative specification (`hg-cdp`, HAR's de facto fields) may use recorded black-box observations as their oracle, in `compat/observations/`. Web-visible behavior stays under M-1 part 4 | A precedent the decision log must keep narrow |
+| (b) No ruling | `hg-cdp` implements only what the definition states; the rest returns the defined error | js-debug and Puppeteer flows that rely on unstated behavior break; DT-6 floors stay low |
+
+There is **no P1 exception to decide**: per-site panes and replay hosts remove the one 0.1 proposed.
+
+### 9.5 Amendments this spec proposes to other documents (not applied, except where marked)
+
+| Document | Proposed amendment |
+|---|---|
+| Stage 1 design D-S11 and the 13.2 DevTools row ("implements the Chrome DevTools Protocol domains"; "remote-debugging port is off by default") | The backend implements **IIP**, with V8's inspector passed through; CDP is an opt-in profile over it, Stage 1 scope per DT-D10. No listening port by default: pipe launch, OS-authenticated IPC with consent, or a per-session loopback listener with token and `Origin`/`Host` checks; every session scoped. *D-S11 and the 13.2 row now point to this spec (Stage 1 design 0.11)* |
+| Stage 1 design Section 1 | Add the workspace and pane renderers, replay host and automation gateway; a recorded browsing context group runs in dedicated, freshly launched renderers (user-invoked) |
+| Stage 1 design Section 2 | Add Section 6.1's crates and rules G10–G12 |
+| Stage 1 design Section 3.2 | Add protocol-level faults (DNS, TLS alert, QUIC loss, HTTP reset) for what-if runs |
+| Stage 1 design Section 3.4 ("user-initiated per tab"; "replays run in the simulator") | Recording starts at process launch by Reload to record, covers the browsing context group in dedicated processes, runs the recording configuration, never holds credential input, and replays one process per replay host |
+| Stage 1 design 13.2, threat models | Add the four new process kinds |
+| HGBA-3 B10 | Note that session-scope enforcement for automation clients is not agent-only computation |
+| AG-0's UI-surface list | Add `hg-devtools` surfaces (DT-12) |
+| Stage 1 design 8.3; decision log | Per DT-D10 Option B: DevTools 4–5†, plus a 1–1.5† row for DevTools work in other tracks; the DT-D11 ruling as D-S12. 0.1's proposed P1 exception is withdrawn. *Applied in Stage 1 design 0.11* |
+
+## 10. Risks
+
+| Risk | Why it matters | Mitigation |
+|---|---|---|
+| **The recording configuration is too slow, or does not replay real pages** | M0 proved determinism on a synthetic probe in simulation only | Probe at M2 and M4, before recorded sessions land at M7; provisional thresholds; reversal to CI-only recording |
+| **Recording ships in Stage 1 before it is measured** | Owner-accepted consequence of DT-D10 Option B (18 October 2026): recorded sessions are committed to Stage 1 before the M4 review has measured their fidelity and cost on real pages | Recording probe at M2 and M4; provisional† thresholds (DT-1(b), DT-15); the M4 review confirms or replaces them and decides remedies |
+| **Reload to record loses the bug** | Some bugs appear before DevTools opens or after long sessions | "Record every navigation" per site; CLI and CI record from launch; whole-segment buffer with a visible range |
+| **Dedicated processes cost too much memory** | A recorded group adds processes | Measured in the probe; the shared-process alternative (Section 6.6) |
+| **No outside client adopts IIP** | Scope died alone ([P 2.5][P]) | Izcal's adapters are its first clients; schema and suite published from M2; BiDi, DAP and MCP carry most clients |
+| **IIP slips and stalls WPT** | WPT runs through WebDriver | The M2 slice is independent of IIP |
+| **Stylo's API cannot fill the Styles pane, or explain causes** | Stylo is an unmodified dependency | M1–M2 spike; budgeted cascade explainer; mapped explanations joined to tests |
+| **Per-site panes are hard to compose** | Cross-site views need rows from several processes | Stage 1 shows one site at a time; composition costed in Stage 2 |
+| **The CDP profile disappoints, as Firefox's subset did** | Users expect full CDP | Published profile, defined errors, third-party client suites; BiDi recommended for automation |
+| **MCP keeps changing** | Four revisions in 20 months ([MCP blog](https://blog.modelcontextprotocol.io/posts/2026-07-28/)) | Thin server over IIP queries |
+| **Prompt injection through page content** | Enforcement bounds reach, not intent ([A 3.3–3.9][A]) | Origin sets on every session; provenance; DT-13 with model defenses off |
+
+## 11. Open questions and flagged claims
+
+### 11.1 Open questions
+
+- **Q-DT-1.** Does the recording configuration hold in the production substrate on real pages: can queued worker tasks drain at deterministic points under the production executor, what share replays exactly, at what cost? The recording probe answers it (M2, M4).
+- **Q-DT-2.** `SharedArrayBuffer` races between a recorded process's threads: serialize those threads while recording, at what cost, or keep them out of scope?
+- **Q-DT-3.** Replay-host checkpoints: snapshots of the simulated process inside the replay host (for example by `fork` on Linux and macOS), never of a production process. How, and on Windows? Until then queries replay from the segment start.
+- **Q-DT-4.** What Stylo's public API exposes (the M1–M2 spike). If little, why-answers stop at "mutation → restyled node → changed properties → winning declaration".
+- **Q-DT-5.** Do neqo's qlog output and rustls's API cover DT-D5's events (qlog -14, key-log hook, ECH status)?
+- **Q-DT-6.** What does a page see when the user shares a tab with an agent?
+- **Q-DT-7.** *Resolved:* `izcal-mcp` is a separate optional package built only with `ai` (B10's "not loaded"); DT-12 checks its absence.
+- **Q-DT-8.** A small typed query API, or SQL over recordings like [Perfetto's](https://perfetto.dev/docs/) Trace Processor?
+- **Q-DT-9.** Which BiDi extensions (semantic snapshots, why-queries) to propose upstream, and when?
+- **Q-DT-10.** Remote device debugging without a listening port: the OS device bridge with on-device consent?
+- **Q-DT-11.** Is a progress counter inside V8 worth a fork-policy decision (finer execution points, cheaper reverse execution)?
+- **Q-DT-12.** Is the workspace's structural metadata (subframe sites, timings, sizes) low-risk enough for one process, or should composed views keep timings in panes?
+
+### 11.2 Claims that are single-source, unverified or conflicting
+
+None is used as a measured threshold.
+
+- **Resolved by the fact-check (18 October 2026):** Firefox's CDP removal in 141 (Mozilla's newsletter); RFC 9850's date (July 2026); Performance Insights (deprecated in Chrome 131, removed in 132, so the notes agree); Tilt's reasons (all three, e10s included, in Bugzilla 1245875); CVE-2025-49596 (NVD, now High); Unravel's figures (project page, now High).
+- **Unverifiable:** the rank of "Moving CSS changes back to my editor" among frustrations (only in a chart image); Valence's archive date (19 January 2022 rests on the note; GitHub's API does not expose it).
+- **Search budget.** All five strands ran out of search budget, then fetched only known primary URLs.
+- **History unverified from primary sources:** IE Developer Toolbar launch; Microsoft's statement on Edge DevTools; Opera's Dragonfly end of life; WebIDE's removal cause; Lighthouse's origin; Vue DevTools v7 ([H Gaps][H]); Firebug's "maintenance mode since 2.0"; the Remote Debugging Protocol's compatibility commitment (webkit-dev returned 403).
+- **Conflicting or partial:** Chrome's Layers panel deprecation ([G 6.2][G] vs [V 2.2][V]); Chrome DevTools MCP consent (no mechanism in the 1.0 post, [P 5.12][P]; a per-request dialog with `--autoConnect`, [A 2.4][A]; both can be true); [V 2.4][V]'s 0.02% vs 70% panel figures (mailing-list snippet).
+- **From memory or snippets:** CDP "Stable 1.3 = Chrome 64" ([P 1.4][P]); CDP multi-client from Chrome 63; Safari and Playwright BiDi status ([P 3.7][P]; [A 8][A]); LoAF absence in Firefox and Safari, not checked against BCD ([P 9.2][P]); the OpenTelemetry Browser SDK release ([P 8.4][P]); the 97M MCP downloads (press; 10,000+ servers is in Anthropic's post); the 2026 browser-MCP CVEs ([A 3.14][A]).
+- **Vendor or secondary figures:** Replay's Web Debug Bench ([G 15.17][G]); the 50,000-line trace case study ([P 5.13][P]); Atlas hardening and the "lethal trifecta" ([A 3.4, 3.8][A]); Edge DevTools for VS Code's architecture ([H 11.2][H]).
+- **From abstracts, snippets or unverified links:** Telescope ([V 4.4][V]); Piorkowski's 50% foraging ([V 10.3][V]); WASP, EIA and CaMeL ([A 3.6–3.9][A]); Ply → Inactive CSS; why Debugger Canvas ended ([V Flagged][V]).
+- **Not found:** the share of INP regressions unexplained after LoAF; Chrome's invalidation tracking status; native qlog in Chrome ([G 17][G]); usage data for in-DevTools AI, editor-embedded DevTools, Polypane, Sizzy and VisBug ([V Flagged][V]); any DevTools team size.
+- **M0's scope.** Cross-OS identity was observed for M0's probe, not guaranteed for all programs; the recording configuration has not run in the production substrate or on real pages (Q-DT-1).
+
+[H]: ../research_notes/Izcal%20DevTools%20spec/history_postmortems.md
+[P]: ../research_notes/Izcal%20DevTools%20spec/protocols_standards.md
+[G]: ../research_notes/Izcal%20DevTools%20spec/invisible_gaps.md
+[V]: ../research_notes/Izcal%20DevTools%20spec/visualization_ux.md
+[A]: ../research_notes/Izcal%20DevTools%20spec/agents_integrations.md
+[H2]: HGBA%202%20browser%20architecture%20spec.md
+[H3]: Future%20software%20browser%20engine.md
+[S1]: HGBA%20Stage%201%20architecture%20design.md
+[SH]: HGBA%20shell%20UI%20design.md
