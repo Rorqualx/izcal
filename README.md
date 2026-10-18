@@ -1,6 +1,6 @@
 # Izcal
 
-Izcal is a Rust-first browser engine built on V8 (through a project fork of `rusty_v8`), Stylo, Taffy, Parley and WebRender. **HGBA** (Hardware-Growth Browser Architecture) is the name of its architecture and specifications; the product name is Izcal (Stage 1 design, D-S9). The project is at the end of milestone M0: specifications, spikes and build infrastructure, with no engine code yet.
+Izcal is a new Rust-first browser engine, written from the web specifications and first principles (HGBA-2's method constraint M-1). It uses V8 (through a project fork of `rusty_v8`), Stylo, Taffy, Parley and WebRender as dependencies, and copies no other browser's code. **HGBA** (Hardware-Growth Browser Architecture) is the name of its architecture and specifications; the product name is Izcal (Stage 1 design, D-S9). The project is at the end of milestone M0: specifications, spikes and build infrastructure, with no engine code yet.
 
 ## Specifications
 
@@ -8,10 +8,10 @@ The documents cite each other by ID. This table maps the IDs to files.
 
 | ID | File | Current revision |
 |---|---|---|
-| HGBA-2 (spec; targets S-, C-, P-, R-, I-, decisions D1–D13) | `reports/HGBA 2 browser architecture spec.md` | 2.1.6, frozen |
-| HGBA-3 (direction: oracles, data plane, determinism; B-, DET-, AG-) | `reports/Future software browser engine.md` | 3.1.5, frozen |
-| Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S9) | `reports/HGBA Stage 1 architecture design.md` | draft 0.9.3 |
-| Shell UI design | `reports/HGBA shell UI design.md` | draft 0.2 |
+| HGBA-2 (spec; targets S-, C-, P-, R-, I-, decisions D1–D13) | `reports/HGBA 2 browser architecture spec.md` | 2.2.0, frozen |
+| HGBA-3 (direction: oracles, data plane, determinism; B-, DET-, AG-) | `reports/Future software browser engine.md` | 3.2.0, frozen |
+| Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S11) | `reports/HGBA Stage 1 architecture design.md` | draft 0.10 |
+| Shell UI design | `reports/HGBA shell UI design.md` | draft 0.3 |
 
 Reviews that fed the specs are also in `reports/`; the evidence behind every report is in `research_notes/<report name>/`.
 
