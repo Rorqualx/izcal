@@ -1,6 +1,6 @@
 # HGBA shell UI design
 
-*Companion to the Stage 1 architecture design, HGBA-2.1 and HGBA-3.1. Written against design draft 0.8, HGBA-2.1.3 and HGBA-3.1.3; current revisions are draft 0.9.3, 2.1.6 and 3.1.5. Date: 14 October 2026. Status: draft 0.2, complete for review. Evidence notes: `research_notes/Shell UI design/`.*
+*Companion to the Stage 1 architecture design, HGBA-2.1 and HGBA-3.1. Written against design draft 0.8, HGBA-2.1.3 and HGBA-3.1.3; current revisions are draft 0.10, 2.2.0 and 3.2.0. Date: 14 October 2026. Status: draft 0.3, complete for review (0.3, 17 October 2026: keyboard model anchored to WAI-ARIA APG and UAAG 2.0 under HGBA-2 M-1). Evidence notes: `research_notes/Shell UI design/`.*
 
 This document consolidates every UI decision scattered across the HGBA documents, then designs the shell the same way the engine was designed. Each surface traces to a requirement, each claim about user behaviour carries a source, each element has a maturity label, and each target can fail. It changes no engine target. Thresholds marked † are set by this document.
 
@@ -211,7 +211,7 @@ The name is **"Troubleshoot"**, and every option says exactly what it disables. 
 ### 4.9 Accessibility of the shell
 
 - **Standards:** WCAG 2.2 AA applied to software through **WCAG2ICT (2024)**, plus **UAAG 2.0**, the browser-specific guideline.
-- **Keyboard model:** follows Chromium's documented model. F6 cycles between the toolbar, tab strip, page and panels. Toolbar buttons are reached with arrow keys inside the toolbar, not by tabbing through each one. Every action has a keyboard path.
+- **Keyboard model:** anchored to the WAI-ARIA Authoring Practices toolbar, tabs and landmark patterns and to UAAG 2.0 keyboard guidance. Chromium's published shortcut model is the compatibility reference for users' habits (tested by UI-2), not the source. F6 cycles between the toolbar, tab strip, page and panels. Toolbar buttons are reached with arrow keys inside the toolbar, not by tabbing through each one. Every action has a keyboard path.
 - **Screen readers:** the shell is a page (UP4), so it exposes its tree through the same AccessKit path as content. Firefox's HTML UI and its 2023 accessibility rewrite (screen readers 2–20× faster) show this design can perform. 52% of screen-reader users mainly use Chrome (WebAIM 2024), so their Chrome keyboard habits are the reference.
 - **Forced colors and contrast** follow the OS (R0). Dark mode follows the OS; no representative usage data exists (gap).
 
