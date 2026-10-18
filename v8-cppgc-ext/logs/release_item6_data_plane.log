@@ -1,0 +1,51 @@
+
+=================== DOM size 1000 ===================
+kDetailed: used=136000B (kBrief said 257880B) spaces=[("NormalPageSpace0", 0), ("NormalPageSpace1", 0), ("NormalPageSpace2", 0), ("NormalPageSpace3", 136000), ("LargePageSpace", 0)] DomNode objects on heap=1000 (136.0B/object incl. header; heap may hold earlier runs' DOMs)
+memory/node: cppgc DOM heap(used)=128.9B  DOM Rust-side malloc=285.9B req / 301.0B actual  => DOM total=429.9B
+memory/node: data plane=166.2B owned (columns+boxes) / 145.9B req / 152.4B actual malloc
+data plane share of total node memory = 26.2% (actual malloc; 35.5% of DOM-only cppgc+malloc); vs cppgc heap alone 118.2%
+excluded: script-side handle table 8B/node; DomNode payload size_of=104B; attr strings + decl blocks are shared Arcs (counted on DOM side only)
+initial flush: 8160 logged mutations in 329µs (40.3ns/mutation)
+projection+equality on the full built tree (1000 connected nodes): projection 0.070ms + equality 0.045ms = 0.115ms (median of 5) oracle=Ok(())
+data plane after shrink_to_fit: 152.5B/node actual malloc (-0.1B/node was Vec growth slack); share of total node memory 26.2%
+data plane column breakdown (bytes/node): generation 4 + links 20 + tag 4 + state 4 + attrs ptr 16 + attrs heap 83.7 + classes ptr 16 + classes heap 7.8 + inline-style ref 8 + dirty 1
+log append (steady-state capacity): 5.0ns/append, size_of::<Mutation>()=32B
+flush N=    1: mean=48ns p50=42ns p99=167ns max=1458ns (n=5000)  | oracle after 5000 flushes: Ok(())
+flush N=  100: mean=5198ns p50=4959ns p99=7875ns max=50417ns (n=1000)  | oracle after 1000 flushes: Ok(())
+flush N=10000: mean=557408ns p50=552750ns p99=617125ns max=623542ns (n=20)  | oracle after 20 flushes: Ok(())
+projection+equality after the flush runs: projection 0.811ms + equality 0.637ms = 1.448ms (8657 connected nodes, 13821 slots; median of 5)
+negative control (one unlogged mutation): oracle -> Err("node #5236 id=NodeId { idx: 2, generation: 1 }: state flags differs")
+
+=================== DOM size 10000 ===================
+kDetailed: used=3239656B (kBrief said 3352152B) spaces=[("NormalPageSpace0", 0), ("NormalPageSpace1", 0), ("NormalPageSpace2", 0), ("NormalPageSpace3", 3239656), ("LargePageSpace", 0)] DomNode objects on heap=23821 (136.0B/object incl. header; heap may hold earlier runs' DOMs)
+memory/node: cppgc DOM heap(used)=141.8B  DOM Rust-side malloc=283.7B req / 299.2B actual  => DOM total=441.1B
+memory/node: data plane=210.9B owned (columns+boxes) / 191.0B req / 197.5B actual malloc
+data plane share of total node memory = 30.9% (actual malloc; 44.8% of DOM-only cppgc+malloc); vs cppgc heap alone 139.3%
+excluded: script-side handle table 8B/node; DomNode payload size_of=104B; attr strings + decl blocks are shared Arcs (counted on DOM side only)
+initial flush: 81546 logged mutations in 2.84025ms (34.8ns/mutation)
+projection+equality on the full built tree (10000 connected nodes): projection 0.843ms + equality 0.630ms = 1.473ms (median of 5) oracle=Ok(())
+data plane after shrink_to_fit: 174.0B/node actual malloc (23.5B/node was Vec growth slack); share of total node memory 28.3%
+data plane column breakdown (bytes/node): generation 4 + links 20 + tag 4 + state 4 + attrs ptr 16 + attrs heap 83.4 + classes ptr 16 + classes heap 7.9 + inline-style ref 8 + dirty 1
+log append (steady-state capacity): 5.0ns/append, size_of::<Mutation>()=32B
+flush N=    1: mean=55ns p50=42ns p99=291ns max=1792ns (n=5000)  | oracle after 5000 flushes: Ok(())
+flush N=  100: mean=6146ns p50=5791ns p99=11125ns max=33375ns (n=1000)  | oracle after 1000 flushes: Ok(())
+flush N=10000: mean=693783ns p50=687375ns p99=830500ns max=877250ns (n=20)  | oracle after 20 flushes: Ok(())
+projection+equality after the flush runs: projection 1.995ms + equality 1.463ms = 3.458ms (18969 connected nodes, 25586 slots; median of 5)
+negative control (one unlogged mutation): oracle -> Err("node #1 id=NodeId { idx: 1, generation: 1 }: state flags differs")
+
+=================== DOM size 100000 ===================
+kDetailed: used=18959352B (kBrief said 19081368B) spaces=[("NormalPageSpace0", 0), ("NormalPageSpace1", 0), ("NormalPageSpace2", 0), ("NormalPageSpace3", 18959352), ("LargePageSpace", 0)] DomNode objects on heap=139407 (136.0B/object incl. header; heap may hold earlier runs' DOMs)
+memory/node: cppgc DOM heap(used)=136.7B  DOM Rust-side malloc=283.8B req / 299.3B actual  => DOM total=436.0B
+memory/node: data plane=186.9B owned (columns+boxes) / 167.1B req / 173.6B actual malloc
+data plane share of total node memory = 28.5% (actual malloc; 39.8% of DOM-only cppgc+malloc); vs cppgc heap alone 127.0%
+excluded: script-side handle table 8B/node; DomNode payload size_of=104B; attr strings + decl blocks are shared Arcs (counted on DOM side only)
+initial flush: 815394 logged mutations in 33.020375ms (40.5ns/mutation)
+projection+equality on the full built tree (100000 connected nodes): projection 13.160ms + equality 8.060ms = 21.220ms (median of 5) oracle=Ok(())
+data plane after shrink_to_fit: 153.6B/node actual malloc (20.0B/node was Vec growth slack); share of total node memory 26.1%
+data plane column breakdown (bytes/node): generation 4 + links 20 + tag 4 + state 4 + attrs ptr 16 + attrs heap 83.2 + classes ptr 16 + classes heap 8.0 + inline-style ref 8 + dirty 1
+log append (steady-state capacity): 5.0ns/append, size_of::<Mutation>()=32B
+flush N=    1: mean=111ns p50=84ns p99=334ns max=3834ns (n=5000)  | oracle after 5000 flushes: Ok(())
+flush N=  100: mean=12560ns p50=12333ns p99=18625ns max=30833ns (n=1000)  | oracle after 1000 flushes: Ok(())
+flush N=10000: mean=1290423ns p50=1231500ns p99=1636417ns max=1892292ns (n=20)  | oracle after 20 flushes: Ok(())
+projection+equality after the flush runs: projection 24.562ms + equality 14.752ms = 39.314ms (109262 connected nodes, 117893 slots; median of 5)
+negative control (one unlogged mutation): oracle -> Err("node #1 id=NodeId { idx: 1, generation: 1 }: state flags differs")

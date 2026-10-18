@@ -1,0 +1,19 @@
+# Exercises the *patched* rusty_v8 Rust API (upstream/work/v8, created by
+# upstream/verify.sh from the patch) against the prebuilt librusty_v8.a. The
+# patch's new C++ functions are not in the prebuilt; they are provided by
+# v8-cppgc-ext's shim, whose "BEGIN UPSTREAM" block is byte-identical to the
+# binding.cc hunk of the patch.
+[package]
+name = "upstream-verify"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+v8 = "=152.2.0"
+v8-cppgc-ext = { path = "../.." }
+
+[patch.crates-io]
+v8 = { path = "../work/v8" }
+
+[workspace]

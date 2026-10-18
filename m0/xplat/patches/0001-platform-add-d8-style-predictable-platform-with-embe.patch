@@ -1,0 +1,495 @@
+From 18b333574cbd922d1ec515c5c5d14dddfff381b6 Mon Sep 17 00:00:00 2001
+From: joe deras <joederasespinoza@gmail.com>
+Date: Wed, 14 Oct 2026 15:02:13 -0600
+Subject: [PATCH 1/2] platform: add d8-style predictable platform with embedder
+ clock
+
+new_predictable_platform(clock, worker_task_mode, reported_worker_threads)
+creates a DefaultPlatform subclass (so v8::platform::PumpMessageLoop and
+NotifyIsolateShutdown keep working) modelled on d8's PredictablePlatform:
+
+- worker-thread tasks (CallOnWorkerThread, job workers) never run on a
+  V8-owned thread: they run inline on the posting thread
+  (WorkerTaskMode::Inline) or are queued until the embedder calls
+  Platform::run_worker_tasks (WorkerTaskMode::Queued). Delayed worker tasks
+  are queued with a due time on the platform clock.
+- MonotonicallyIncreasingTime and CurrentClockTimeMillis (Date.now) come
+  from a Rust PlatformClock (any Fn() -> f64 returning seconds works);
+  None selects d8's synthetic counter clock. The foreground task runners
+  use the same clock for delayed tasks.
+
+V8::set_predictable_flags(seed) sets
+--predictable --single-threaded --random-seed=<seed>.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016KFRu6a8J14PPt1sVJZJxH
+---
+ src/V8.rs                          |  14 +++
+ src/binding.cc                     | 153 ++++++++++++++++++++++++++++
+ src/lib.rs                         |   3 +
+ src/platform.rs                    | 154 +++++++++++++++++++++++++++++
+ tests/test_predictable_platform.rs |  60 +++++++++++
+ 5 files changed, 384 insertions(+)
+ create mode 100644 tests/test_predictable_platform.rs
+
+diff --git a/src/V8.rs b/src/V8.rs
+index f2a05b8..89b97c0 100644
+--- a/src/V8.rs
++++ b/src/V8.rs
+@@ -168,6 +168,20 @@ pub fn set_flags_from_string(flags: &str) {
+   }
+ }
+ 
++/// Sets `--predictable --single-threaded --random-seed=<random_seed>`, the
++/// flags a deterministic embedder pairs with
++/// [`new_predictable_platform`](crate::new_predictable_platform).
++/// `--predictable` implies single-threaded GC and disables concurrent
++/// compilation and the memory reducer; `--single-threaded` disables background
++/// tasks; `--random-seed` seeds `Math.random` and the isolate RNG (a seed of 0
++/// lets `--predictable` choose its fixed default). Call before
++/// [`initialize`].
++pub fn set_predictable_flags(random_seed: i32) {
++  set_flags_from_string(&format!(
++    "--predictable --single-threaded --random-seed={random_seed}"
++  ));
++}
++
+ /// Allows the host application to provide a callback which can be used
+ /// as a source of entropy for random number generators.
+ pub fn set_entropy_source(
+diff --git a/src/binding.cc b/src/binding.cc
+index b03bb60..614dc20 100644
+--- a/src/binding.cc
++++ b/src/binding.cc
+@@ -1,5 +1,6 @@
+ // Copyright 2019-2021 the Deno authors. All rights reserved. MIT license.
+ #include <algorithm>
++#include <atomic>
+ #include <cassert>
+ #include <cstddef>
+ #include <cstdint>
+@@ -3408,6 +3409,158 @@ v8::Platform* v8__Platform__NewCustomPlatform(int thread_pool_size,
+       .release();
+ }
+ 
++// Rust-side callbacks for PredictablePlatform's clock. `context` is a pointer
++// to the Rust Box<dyn PlatformClock>, or null for d8's synthetic clock.
++extern "C" {
++double v8__Platform__PredictablePlatform__BASE__MonotonicallyIncreasingTime(
++    void* context);
++double v8__Platform__PredictablePlatform__BASE__CurrentClockTimeMillis(
++    void* context);
++void v8__Platform__PredictablePlatform__BASE__DROP(void* context);
++}
++
++// A d8-style predictable platform (cf. v8/src/d8/d8-platforms.cc
++// PredictablePlatform) for deterministic embedders:
++// - Worker-thread tasks (CallOnWorkerThread, PostJob workers) never run on a
++//   V8-owned thread. They are either run inline on the posting thread, or
++//   queued until the embedder drains them with RunWorkerTasks() on a thread
++//   of its choice. Delayed worker tasks are queued with a due time on the
++//   platform clock (d8 drops them).
++// - MonotonicallyIncreasingTime and CurrentClockTimeMillis (Date.now) come
++//   from an embedder callback; without one, d8's synthetic clock is used
++//   (a counter advancing 10us per read). The foreground task runners use the
++//   same clock for delayed tasks.
++// It derives from DefaultPlatform (with no worker threads) because
++// v8::platform::PumpMessageLoop/NotifyIsolateShutdown static_cast to it.
++// Only one PredictablePlatform may exist per process, like V8's platform.
++class PredictablePlatform final : public v8::platform::DefaultPlatform {
++ public:
++  PredictablePlatform(int reported_worker_threads, bool inline_worker_tasks,
++                      void* clock_context)
++      : DefaultPlatform(0, v8::platform::IdleTaskSupport::kDisabled),
++        reported_worker_threads_(reported_worker_threads),
++        inline_worker_tasks_(inline_worker_tasks),
++        clock_context_(clock_context) {
++    instance_.store(this);
++    SetTimeFunctionForTesting(&StaticMonotonicTime);
++  }
++
++  ~PredictablePlatform() override {
++    instance_.store(nullptr);
++    v8__Platform__PredictablePlatform__BASE__DROP(clock_context_);
++  }
++
++  static PredictablePlatform* From(v8::Platform* platform) {
++    PredictablePlatform* p = instance_.load();
++    return p == platform ? p : nullptr;
++  }
++
++  int NumberOfWorkerThreads() override { return reported_worker_threads_; }
++
++  double MonotonicallyIncreasingTime() override {
++    if (clock_context_ == nullptr) {
++      return 1e-5 * synthetic_time_.fetch_add(1, std::memory_order_relaxed);
++    }
++    return v8__Platform__PredictablePlatform__BASE__MonotonicallyIncreasingTime(
++        clock_context_);
++  }
++
++  double CurrentClockTimeMillis() override {
++    if (clock_context_ == nullptr) return MonotonicallyIncreasingTime() * 1e3;
++    return v8__Platform__PredictablePlatform__BASE__CurrentClockTimeMillis(
++        clock_context_);
++  }
++
++  // Runs queued worker tasks (and delayed ones that are due) on the calling
++  // thread until none are runnable. Returns the number of tasks run.
++  size_t RunWorkerTasks() {
++    size_t n = 0;
++    for (;;) {
++      std::unique_ptr<v8::Task> task;
++      {
++        std::lock_guard<std::mutex> lock(mutex_);
++        if (!delayed_.empty()) {
++          double now = MonotonicallyIncreasingTime();
++          for (auto it = delayed_.begin(); it != delayed_.end();) {
++            if (it->first <= now) {
++              queue_.push_back(std::move(it->second));
++              it = delayed_.erase(it);
++            } else {
++              ++it;
++            }
++          }
++        }
++        if (queue_.empty()) return n;
++        task = std::move(queue_.front());
++        queue_.erase(queue_.begin());
++      }
++      task->Run();
++      n++;
++    }
++  }
++
++  size_t PendingWorkerTasks() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    return queue_.size() + delayed_.size();
++  }
++
++ protected:
++  void PostTaskOnWorkerThreadImpl(v8::TaskPriority priority,
++                                  std::unique_ptr<v8::Task> task,
++                                  const v8::SourceLocation& location) override {
++    if (inline_worker_tasks_) {
++      task->Run();
++      return;
++    }
++    std::lock_guard<std::mutex> lock(mutex_);
++    queue_.push_back(std::move(task));
++  }
++
++  void PostDelayedTaskOnWorkerThreadImpl(
++      v8::TaskPriority priority, std::unique_ptr<v8::Task> task,
++      double delay_in_seconds, const v8::SourceLocation& location) override {
++    double due = MonotonicallyIncreasingTime() + delay_in_seconds;
++    std::lock_guard<std::mutex> lock(mutex_);
++    delayed_.emplace_back(due, std::move(task));
++  }
++
++ private:
++  static double StaticMonotonicTime() {
++    return instance_.load()->MonotonicallyIncreasingTime();
++  }
++
++  static inline std::atomic<PredictablePlatform*> instance_{nullptr};
++  const int reported_worker_threads_;
++  const bool inline_worker_tasks_;
++  void* const clock_context_;
++  std::atomic<uint64_t> synthetic_time_{0};
++  std::mutex mutex_;
++  std::vector<std::unique_ptr<v8::Task>> queue_;
++  std::vector<std::pair<double, std::unique_ptr<v8::Task>>> delayed_;
++};
++
++v8::Platform* v8__Platform__NewPredictablePlatform(int reported_worker_threads,
++                                                   bool inline_worker_tasks,
++                                                   void* clock_context) {
++  return std::make_unique<PredictablePlatform>(
++             std::max(reported_worker_threads, 0), inline_worker_tasks,
++             clock_context)
++      .release();
++}
++
++// Returns SIZE_MAX if `platform` is not the PredictablePlatform.
++size_t v8__Platform__PredictablePlatform__RunWorkerTasks(
++    v8::Platform* platform) {
++  PredictablePlatform* p = PredictablePlatform::From(platform);
++  return p ? p->RunWorkerTasks() : SIZE_MAX;
++}
++
++size_t v8__Platform__PredictablePlatform__PendingWorkerTasks(
++    v8::Platform* platform) {
++  PredictablePlatform* p = PredictablePlatform::From(platform);
++  return p ? p->PendingWorkerTasks() : SIZE_MAX;
++}
++
+ bool v8__Platform__PumpMessageLoop(v8::Platform* platform, v8::Isolate* isolate,
+                                    bool wait_for_work) {
+   return v8::platform::PumpMessageLoop(
+diff --git a/src/lib.rs b/src/lib.rs
+index d32db0f..f35f1b8 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -148,10 +148,13 @@ pub use module::*;
+ pub use object::*;
+ pub use platform::IdleTask;
+ pub use platform::Platform;
++pub use platform::PlatformClock;
+ pub use platform::PlatformImpl;
+ pub use platform::Task;
++pub use platform::WorkerTaskMode;
+ pub use platform::new_custom_platform;
+ pub use platform::new_default_platform;
++pub use platform::new_predictable_platform;
+ pub use platform::new_single_threaded_default_platform;
+ pub use platform::new_unprotected_default_platform;
+ pub use primitives::*;
+diff --git a/src/platform.rs b/src/platform.rs
+index d501f87..612e2bc 100644
+--- a/src/platform.rs
++++ b/src/platform.rs
+@@ -28,6 +28,17 @@ unsafe extern "C" {
+     unprotected: bool,
+     context: *mut std::ffi::c_void,
+   ) -> *mut Platform;
++  fn v8__Platform__NewPredictablePlatform(
++    reported_worker_threads: int,
++    inline_worker_tasks: bool,
++    clock_context: *mut std::ffi::c_void,
++  ) -> *mut Platform;
++  fn v8__Platform__PredictablePlatform__RunWorkerTasks(
++    platform: *mut Platform,
++  ) -> usize;
++  fn v8__Platform__PredictablePlatform__PendingWorkerTasks(
++    platform: *mut Platform,
++  ) -> usize;
+   fn v8__Platform__DELETE(this: *mut Platform);
+ 
+   fn v8__Platform__PumpMessageLoop(
+@@ -294,6 +305,104 @@ unsafe extern "C" fn v8__Platform__CustomPlatform__BASE__DROP(
+   }
+ }
+ 
++/// Clock for [`new_predictable_platform`]. Both methods may be called from
++/// any thread that V8 uses, so implementations must be `Send + Sync`, and
++/// they must not call into V8.
++pub trait PlatformClock: Send + Sync {
++  /// `Platform::MonotonicallyIncreasingTime`, in seconds. Must not decrease.
++  /// Also drives delayed foreground and worker tasks, GC heuristics that read
++  /// the platform clock, and `performance.now()`-like embedder clocks.
++  fn monotonically_increasing_time(&self) -> f64;
++
++  /// `Platform::CurrentClockTimeMillis`, in milliseconds since the Unix
++  /// epoch. This is what `Date.now()` and `new Date()` read. Defaults to
++  /// `monotonically_increasing_time() * 1000`, as in d8's predictable mode.
++  fn current_clock_time_millis(&self) -> f64 {
++    self.monotonically_increasing_time() * 1000.0
++  }
++}
++
++/// A closure returning seconds is a [`PlatformClock`] whose wall clock is
++/// derived from it (`Date.now() == f() * 1000`).
++impl<F: Fn() -> f64 + Send + Sync> PlatformClock for F {
++  fn monotonically_increasing_time(&self) -> f64 {
++    self()
++  }
++}
++
++/// How [`new_predictable_platform`] handles tasks that V8 posts to worker
++/// threads (`CallOnWorkerThread`, job workers, delayed worker tasks).
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum WorkerTaskMode {
++  /// Run each task synchronously on the thread that posts it. Delayed worker
++  /// tasks are still queued (see `Queued`). Simple, but V8 does not expect a
++  /// post to run the task re-entrantly; prefer `Queued` together with
++  /// `--single-threaded`, which keeps V8 from posting most worker tasks.
++  Inline,
++  /// Queue tasks until the embedder calls
++  /// [`Platform::run_worker_tasks`] (d8's behaviour, except that delayed
++  /// worker tasks run once the platform clock reaches their due time instead
++  /// of being dropped).
++  Queued,
++}
++
++type BoxedClock = Box<dyn PlatformClock>;
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn v8__Platform__PredictablePlatform__BASE__MonotonicallyIncreasingTime(
++  context: *mut std::ffi::c_void,
++) -> f64 {
++  let clock = unsafe { &*(context as *const BoxedClock) };
++  clock.monotonically_increasing_time()
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn v8__Platform__PredictablePlatform__BASE__CurrentClockTimeMillis(
++  context: *mut std::ffi::c_void,
++) -> f64 {
++  let clock = unsafe { &*(context as *const BoxedClock) };
++  clock.current_clock_time_millis()
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn v8__Platform__PredictablePlatform__BASE__DROP(
++  context: *mut std::ffi::c_void,
++) {
++  if !context.is_null() {
++    unsafe {
++      let _ = Box::from_raw(context as *mut BoxedClock);
++    }
++  }
++}
++
++/// Creates a d8-style predictable platform (V8's
++/// `src/d8/d8-platforms.cc` `PredictablePlatform`) for deterministic
++/// simulation:
++///
++/// - Worker-thread tasks never run on V8-owned threads: see
++///   [`WorkerTaskMode`]. No worker threads are created.
++///   `NumberOfWorkerThreads()` reports `reported_worker_threads`.
++/// - `MonotonicallyIncreasingTime` and `CurrentClockTimeMillis` (`Date.now`)
++///   come from `clock`. With `None`, d8's synthetic clock is used: a counter
++///   that advances by 10 µs on every read. The foreground task runners use
++///   the same clock for delayed tasks, so they only become runnable when the
++///   clock advances.
++/// - Foreground tasks are queued as in the default platform; drain them with
++///   [`Platform::pump_message_loop`].
++/// - Idle tasks are disabled.
++///
++/// Use it with [`set_predictable_flags`](crate::V8::set_predictable_flags)
++/// (`--predictable --single-threaded --random-seed=N`), set before
++/// `V8::initialize`. Only one predictable platform may exist per process.
++#[inline(always)]
++pub fn new_predictable_platform(
++  clock: Option<Box<dyn PlatformClock>>,
++  worker_task_mode: WorkerTaskMode,
++  reported_worker_threads: u32,
++) -> UniqueRef<Platform> {
++  Platform::new_predictable(clock, worker_task_mode, reported_worker_threads)
++}
++
+ /// Returns a new instance of the default v8::Platform implementation.
+ ///
+ /// |thread_pool_size| is the number of worker threads to allocate for
+@@ -470,6 +579,51 @@ impl Platform {
+   }
+ }
+ 
++impl Platform {
++  /// See [`new_predictable_platform`].
++  pub fn new_predictable(
++    clock: Option<Box<dyn PlatformClock>>,
++    worker_task_mode: WorkerTaskMode,
++    reported_worker_threads: u32,
++  ) -> UniqueRef<Self> {
++    let context = match clock {
++      Some(clock) => Box::into_raw(Box::new(clock)) as *mut std::ffi::c_void,
++      None => std::ptr::null_mut(),
++    };
++    unsafe {
++      UniqueRef::from_raw(v8__Platform__NewPredictablePlatform(
++        reported_worker_threads.min(i32::MAX as u32) as i32,
++        worker_task_mode == WorkerTaskMode::Inline,
++        context,
++      ))
++    }
++  }
++
++  /// Runs the worker tasks queued by a predictable platform (and delayed
++  /// worker tasks whose due time has been reached) on the calling thread,
++  /// until none is runnable. Returns the number of tasks run, or `None` if
++  /// `platform` was not created by [`new_predictable_platform`].
++  pub fn run_worker_tasks(platform: &SharedRef<Self>) -> Option<usize> {
++    let n = unsafe {
++      v8__Platform__PredictablePlatform__RunWorkerTasks(
++        &**platform as *const Self as *mut _,
++      )
++    };
++    (n != usize::MAX).then_some(n)
++  }
++
++  /// Number of worker tasks a predictable platform holds (queued plus
++  /// delayed), or `None` if `platform` is not a predictable platform.
++  pub fn pending_worker_tasks(platform: &SharedRef<Self>) -> Option<usize> {
++    let n = unsafe {
++      v8__Platform__PredictablePlatform__PendingWorkerTasks(
++        &**platform as *const Self as *mut _,
++      )
++    };
++    (n != usize::MAX).then_some(n)
++  }
++}
++
+ impl Platform {
+   /// Pumps the message loop for the given isolate.
+   ///
+diff --git a/tests/test_predictable_platform.rs b/tests/test_predictable_platform.rs
+new file mode 100644
+index 0000000..9e109b2
+--- /dev/null
++++ b/tests/test_predictable_platform.rs
+@@ -0,0 +1,60 @@
++use std::sync::Arc;
++use std::sync::atomic::AtomicU64;
++use std::sync::atomic::Ordering;
++
++// Virtual time in microseconds, advanced only by the test.
++static NOW_US: AtomicU64 = AtomicU64::new(1_000_000_000_000);
++
++fn eval(scope: &mut v8::PinScope, src: &str) -> String {
++  let source = v8::String::new(scope, src).unwrap();
++  let script = v8::Script::compile(scope, source, None).unwrap();
++  let result = script.run(scope).unwrap();
++  result.to_rust_string_lossy(scope)
++}
++
++fn run_once(platform: &v8::SharedRef<v8::Platform>) -> String {
++  let isolate = &mut v8::Isolate::new(Default::default());
++  v8::scope!(let scope, isolate);
++  let context = v8::Context::new(scope, Default::default());
++  let scope = &mut v8::ContextScope::new(scope, context);
++  let t0 = eval(scope, "Date.now()");
++  NOW_US.fetch_add(1_500, Ordering::SeqCst);
++  let t1 = eval(scope, "Date.now()");
++  let r = eval(scope, "[Math.random(), Math.random()].join()");
++  while v8::Platform::pump_message_loop(platform, scope, false) {}
++  assert!(v8::Platform::run_worker_tasks(platform).is_some());
++  format!("{t0} {t1} {r}")
++}
++
++#[test]
++fn predictable_platform() {
++  v8::V8::set_predictable_flags(42);
++  let calls = Arc::new(AtomicU64::new(0));
++  let calls2 = calls.clone();
++  let clock = move || {
++    calls2.fetch_add(1, Ordering::Relaxed);
++    NOW_US.load(Ordering::SeqCst) as f64 / 1e6
++  };
++  let platform = v8::new_predictable_platform(
++    Some(Box::new(clock)),
++    v8::WorkerTaskMode::Queued,
++    1,
++  )
++  .make_shared();
++  v8::V8::initialize_platform(platform.clone());
++  v8::V8::initialize();
++
++  NOW_US.store(1_000_000_000_000, Ordering::SeqCst);
++  let a = run_once(&platform);
++  NOW_US.store(1_000_000_000_000, Ordering::SeqCst);
++  let b = run_once(&platform);
++  assert_eq!(a, b);
++  let parts: Vec<&str> = a.split(' ').collect();
++  assert_eq!(parts[0], "1000000000");
++  assert_eq!(parts[1], "1000000001");
++  assert!(calls.load(Ordering::Relaxed) > 0);
++  assert_eq!(v8::Platform::pending_worker_tasks(&platform), Some(0));
++
++  unsafe { v8::V8::dispose() };
++  v8::V8::dispose_platform();
++}
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,54 @@
+Wed 10/14/2026 17:13:10.86 
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 1600 total over 200 runs
+== pred (in-process x200): 200 runs in 62.2s
+  total     distinct=   1  92c3fc8abd88ea44x200
+  R         distinct=   1  aa508f33760136b6x200
+  D         distinct=   1  e221096cd5924672x200
+  G         distinct=   1  76372f44f262847bx200
+  finalized distinct=   1  11200x200
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+== pred (fresh process x20): 20 runs in 7.0s
+  total     distinct=   1  92c3fc8abd88ea44x20
+  R         distinct=   1  aa508f33760136b6x20
+  D         distinct=   1  e221096cd5924672x20
+  G         distinct=   1  76372f44f262847bx20
+  finalized distinct=   1  11200x20
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 200 runs
+== pred-inline (in-process x200): 200 runs in 61.6s
+  total     distinct=   1  92c3fc8abd88ea44x200
+  R         distinct=   1  aa508f33760136b6x200
+  D         distinct=   1  e221096cd5924672x200
+  G         distinct=   1  76372f44f262847bx200
+  finalized distinct=   1  11200x200
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 30605 total over 200 runs
+== pred-noflags (in-process x200): 200 runs in 52.2s
+  total     distinct=   1  7bedd8f98870e917x200
+  R         distinct=   1  aa508f33760136b6x200
+  D         distinct=   1  e221096cd5924672x200
+  G         distinct=   1  2df3e532ae1bf52ex200
+  finalized distinct=   1  11200x200
+  first: run=0 total=7bedd8f98870e917 R=aa508f33760136b6 D=e221096cd5924672 G=2df3e532ae1bf52e finalized=11200
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 200 runs
+== default-flags (in-process x200): 200 runs in 61.5s
+  total     distinct= 200  03b6dd04f7f67d45x1 0431ac6a8ad49630x1 05c986f4ba18be75x1 0643d991911f99d9x1 07e35a855df91be7x1
+  R         distinct=   1  aa508f33760136b6x200
+  D         distinct= 200  014beeaa09a9e390x1 02b4020fa57f9efex1 0426df4cfbe95a7dx1 06ca674c9a719bd5x1 09131a61c1828e23x1
+  G         distinct=   1  76372f44f262847bx200
+  finalized distinct=   1  11200x200
+  first: run=0 total=35e911b32690efbf R=aa508f33760136b6 D=d7515176697839d7 G=76372f44f262847b finalized=11200
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 200 runs
+== default (in-process x200): 200 runs in 36.5s
+  total     distinct= 200  007260c6a37f0fc6x1 02e6f68fa0414dbfx1 0312d791ae23f992x1 0372a444ca335ab8x1 0946cce500f1dcafx1
+  R         distinct=   1  aa508f33760136b6x200
+  D         distinct= 200  00dab2dc7bfe40fdx1 01280725faf89646x1 02f45697510d9b4fx1 03152ac6938291e8x1 03a6adffbbc88172x1
+  G         distinct= 166  00253d85973c7330x1 018a465f8acbb1b6x1 0489a6b55263771dx1 0552757afcf754b1x1 0ba49da829095f49x1
+  finalized distinct=   1  11200x200
+  first: run=0 total=007260c6a37f0fc6 R=aa508f33760136b6 D=2cb117a453b1b9d2 G=ee0cfc95d1a42591 finalized=11200
+done 

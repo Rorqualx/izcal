@@ -1,0 +1,24 @@
+warning: v8@152.2.0: Not using sccache or ccache
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> C:\hgba-m0\rusty_v8\src\isolate.rs:2346:8
+     |
+2346 |       .fetch_update(
+     |        ^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+     |
+2346 -       .fetch_update(
+2346 +       .try_update(
+     |
+
+warning: `v8` (lib) generated 1 warning (run `cargo fix --lib -p v8` to apply 1 suggestion)
+   Compiling determinism-probe v0.1.0 (C:\hgba-m0\probe-diag)
+warning: linker stdout: LINK : warning LNK4098: defaultlib 'libcmt.lib' conflicts with use of other libs; use /NODEFAULTLIB:library
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `determinism-probe` (bin "determinism-probe") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 1.95s
+EXIT 0 
+        1 file(s) copied.

@@ -1,0 +1,13 @@
+warning: v8@152.2.0: Not using sccache or ccache
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running `C:\hgba-m0\t-rel\release\item3_dom_js_edges.exe`
+3a: wrapper alive, expando=1, unwrap==node: true
+3a: node drops so far=0 -> PASS
+3a': after dropping the DOM-side root too: wrapper collected=true node finalized=1
+3b: node reachable via wrapper: id=Some(2) same_ptr=true node_drops=0
+3b: PASS
+3c: wrapper collected=false (3b wrapper collected=true) cppgc nodes finalized=1 (expect 2) -> FAIL
+3d: after dropping all JS roots + GC: wrapper alive=true rust_node dropped=0 -> cycle LEAKED (negative result confirmed) (expected: leaked)
+3d: after manually dropping the Rust struct: wrapper collected=true
+RESULT FAIL ([true, true, false, true])
+EXIT 0 

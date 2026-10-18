@@ -1,0 +1,4 @@
+[submodule "m0/rusty_v8"]
+	path = m0/rusty_v8
+	url = https://github.com/Rorqualx/rusty_v8-izcal.git
+	branch = hgba

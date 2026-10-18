@@ -1,0 +1,19 @@
+warning: v8@152.2.0: Not using sccache or ccache
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running tests\heap_consistency.rs (C:\hgba-m0\t-dbg\release\deps\heap_consistency-1389bd74d485079a.exe)
+
+running 1 test
+test control_without_barrier_loses_object ... skipped on debug V8 (MarkingVerifier aborts by design)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests\testing_api.rs (C:\hgba-m0\t-dbg\release\deps\testing_api-7b7605fc71fdfe5d.exe)
+
+running 1 test
+test forced_compaction_does_not_move_objects ... skipped on debug V8 (DCHECK(!enable_for_next_gc_for_testing_))
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+EXIT 0 

@@ -1,0 +1,33 @@
+[package]
+name = "drm-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "HGBA DRM-1/DRM-2 spike: protected media mode host on the OS's licensed web engine (wry)"
+
+[[bin]]
+name = "drm-spike"
+path = "src/main.rs"
+
+[[bin]]
+name = "summarize"
+path = "src/bin/summarize.rs"
+
+[dependencies]
+wry = "0.57"
+tao = "0.37"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 2
+
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.39"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSUUID", "NSString", "NSError"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration", "WKWebsiteDataStore", "WKPreferences", "WKContentRuleList", "WKContentRuleListStore", "WKUserContentController", "block2"] }

@@ -1,0 +1,107 @@
+Cloning into 'rusty_v8'...
+Note: switching to '2768994f664e8a6e3aba27503606c58339136e2a'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Submodule 'build' (https://github.com/denoland/chromium_build.git) registered for path 'build'
+Submodule 'buildtools' (https://chromium.googlesource.com/chromium/src/buildtools.git) registered for path 'buildtools'
+Submodule 'third_party/abseil-cpp' (https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp.git) registered for path 'third_party/abseil-cpp'
+Submodule 'third_party/dragonbox/src' (https://chromium.googlesource.com/external/github.com/jk-jeon/dragonbox.git) registered for path 'third_party/dragonbox/src'
+Submodule 'third_party/fast_float/src' (https://chromium.googlesource.com/external/github.com/fastfloat/fast_float.git) registered for path 'third_party/fast_float/src'
+Submodule 'third_party/fp16/src' (https://github.com/Maratyszcza/FP16.git) registered for path 'third_party/fp16/src'
+Submodule 'third_party/highway/src' (https://chromium.googlesource.com/external/github.com/google/highway.git) registered for path 'third_party/highway/src'
+Submodule 'third_party/icu' (https://chromium.googlesource.com/chromium/deps/icu.git) registered for path 'third_party/icu'
+Submodule 'third_party/jinja2' (https://chromium.googlesource.com/chromium/src/third_party/jinja2.git) registered for path 'third_party/jinja2'
+Submodule 'third_party/libc++/src' (https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx.git) registered for path 'third_party/libc++/src'
+Submodule 'third_party/libc++abi/src' (https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi.git) registered for path 'third_party/libc++abi/src'
+Submodule 'third_party/libunwind/src' (https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libunwind.git) registered for path 'third_party/libunwind/src'
+Submodule 'third_party/llvm-libc/src' (https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc.git) registered for path 'third_party/llvm-libc/src'
+Submodule 'third_party/markupsafe' (https://chromium.googlesource.com/chromium/src/third_party/markupsafe.git) registered for path 'third_party/markupsafe'
+Submodule 'third_party/partition_alloc' (https://chromium.googlesource.com/chromium/src/base/allocator/partition_allocator.git) registered for path 'third_party/partition_alloc'
+Submodule 'third_party/rust' (https://chromium.googlesource.com/chromium/src/third_party/rust) registered for path 'third_party/rust'
+Submodule 'third_party/simdutf' (https://chromium.googlesource.com/chromium/src/third_party/simdutf) registered for path 'third_party/simdutf'
+Submodule 'tools/clang' (https://chromium.googlesource.com/chromium/src/tools/clang.git) registered for path 'tools/clang'
+Submodule 'tools/win' (https://chromium.googlesource.com/chromium/src/tools/win) registered for path 'tools/win'
+Submodule 'v8' (https://github.com/denoland/v8.git) registered for path 'v8'
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/build'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/buildtools'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/fast_float/src'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/fp16/src'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/dragonbox/src'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/jinja2'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/abseil-cpp'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/highway/src'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/libunwind/src'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/llvm-libc/src'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/markupsafe'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/libc++abi/src'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/partition_alloc'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/simdutf'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/tools/clang'...
+Skipping submodule 'tools/win'
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/v8'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/libc++/src'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/rust'...
+Cloning into '/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/third_party/icu'...
+From https://github.com/denoland/chromium_build
+ * branch            2c779f961da7f5632d6836113112179e67938868 -> FETCH_HEAD
+Submodule path 'build': checked out '2c779f961da7f5632d6836113112179e67938868'
+From https://chromium.googlesource.com/chromium/src/buildtools
+ * branch            0d8a204ff274ee12fa9ace5e3ffd8e5fbcb54926 -> FETCH_HEAD
+Submodule path 'buildtools': checked out '0d8a204ff274ee12fa9ace5e3ffd8e5fbcb54926'
+From https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp
+ * branch            d16e32215c3ab90ba57c2e904a5344d85c7353e4 -> FETCH_HEAD
+Submodule path 'third_party/abseil-cpp': checked out 'd16e32215c3ab90ba57c2e904a5344d85c7353e4'
+Submodule path 'third_party/dragonbox/src': checked out 'beeeef91cf6fef89a4d4ba5e95d47ca64ccb3a44'
+From https://chromium.googlesource.com/external/github.com/fastfloat/fast_float
+ * branch            34164f547b7df3f5d794ff67e9f885c36819ebfc -> FETCH_HEAD
+Submodule path 'third_party/fast_float/src': checked out '34164f547b7df3f5d794ff67e9f885c36819ebfc'
+Submodule path 'third_party/fp16/src': checked out '782eea126dc5c755827be751a099eb01826175cf'
+From https://chromium.googlesource.com/external/github.com/google/highway
+ * branch            2607d3b5b0113992fe84d3848859eae13b3b52c1 -> FETCH_HEAD
+Submodule path 'third_party/highway/src': checked out '2607d3b5b0113992fe84d3848859eae13b3b52c1'
+From https://chromium.googlesource.com/chromium/deps/icu
+ * branch            d578f2e8b7bd5938e21cfb6bf15c079e0aa5b738 -> FETCH_HEAD
+Submodule path 'third_party/icu': checked out 'd578f2e8b7bd5938e21cfb6bf15c079e0aa5b738'
+Submodule path 'third_party/jinja2': checked out 'c3027d884967773057bf74b957e3fea87e5df4d7'
+From https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx
+ * branch              b16984ce99c702355a5b2b4c52574e82cec41fb9 -> FETCH_HEAD
+Submodule path 'third_party/libc++/src': checked out 'b16984ce99c702355a5b2b4c52574e82cec41fb9'
+From https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi
+ * branch            8f11bb1d4438d0239d0dfc1bd9456a9f31629dda -> FETCH_HEAD
+Submodule path 'third_party/libc++abi/src': checked out '8f11bb1d4438d0239d0dfc1bd9456a9f31629dda'
+From https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libunwind
+ * branch            1fd455816c724182cf8736811182bf0c37b03035 -> FETCH_HEAD
+Submodule path 'third_party/libunwind/src': checked out '1fd455816c724182cf8736811182bf0c37b03035'
+From https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc
+ * branch            75ae50cd48c8a9d70f552ccff040029968778da9 -> FETCH_HEAD
+Submodule path 'third_party/llvm-libc/src': checked out '75ae50cd48c8a9d70f552ccff040029968778da9'
+Submodule path 'third_party/markupsafe': checked out '4256084ae14175d38a3ff7d739dca83ae49ccec6'
+From https://chromium.googlesource.com/chromium/src/base/allocator/partition_allocator
+ * branch            ff3b8b885b8374cbd3902642d94dc737bda93d5d -> FETCH_HEAD
+Submodule path 'third_party/partition_alloc': checked out 'ff3b8b885b8374cbd3902642d94dc737bda93d5d'
+From https://chromium.googlesource.com/chromium/src/third_party/rust
+ * branch              afbc96607d0e659715d803cc099607dd1737fc41 -> FETCH_HEAD
+Submodule path 'third_party/rust': checked out 'afbc96607d0e659715d803cc099607dd1737fc41'
+Submodule path 'third_party/simdutf': checked out 'f7356eed293f8208c40b3c1b344a50bd70971983'
+From https://chromium.googlesource.com/chromium/src/tools/clang
+ * branch            56a7ab321b6840e949e3acf5f4528dadc6cb05bc -> FETCH_HEAD
+Submodule path 'tools/clang': checked out '56a7ab321b6840e949e3acf5f4528dadc6cb05bc'
+From https://github.com/denoland/v8
+ * branch              c4ca1eccb90c5464d826b7713dc27178a53b0cfe -> FETCH_HEAD
+Submodule path 'v8': checked out 'c4ca1eccb90c5464d826b7713dc27178a53b0cfe'
+git clone --depth 1 --branch v152.2.0 --recurse-submodules  -j 8  rusty_v8  7.06s user 7.67s system 30% cpu 48.282 total
+exit=0

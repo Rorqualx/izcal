@@ -1,0 +1,58 @@
+
+===== barrier =====
+marking steps until done: 1; is_marking=true
+A.first_child == B: true (Member size 4 bytes)
+after GC: B finalized=false while A.first_child still points at it=true
+OUTCOME B survived
+===== barrier: process outcome=Ok
+
+===== omitted =====
+marking steps until done: 1; is_marking=true
+A.first_child == B: true (Member size 4 bytes)
+
+
+#
+# Fatal error in ../../../v8/src/heap/cppgc-internal/marking-verifier.cc, line 42
+# MarkingVerifier: Encountered unmarked object.
+#
+# Hint:
+#   TNode (0x1e0402000850)
+#     \-> TNode (0x1e0402000898)
+#
+#
+#
+#FailureMessage Object: 0x16f4cd788
+==== C stack trace ===============================
+
+    0   item5_write_barrier                 0x0000000100969ef4 v8::base::debug::StackTrace::StackTrace() + 28
+    1   item5_write_barrier                 0x00000001009705e0 v8::platform::(anonymous namespace)::PrintStackTrace() + 112
+    2   item5_write_barrier                 0x0000000100954a84 V8_Fatal(char const*, int, char const*, ...) + 352
+    3   item5_write_barrier                 0x00000001028c11a4 cppgc::internal::MarkingVerifierBase::MarkingVerifierBase(cppgc::internal::HeapBase&, cppgc::internal::CollectionType, cppgc::internal::VerificationState&, std::__Cr::unique_ptr<cppgc::Visitor, std::__Cr::default_delete<cppgc::Visitor>>) + 0
+    4   item5_write_barrier                 0x00000001009438d0 void cppgc::Visitor::TraceImpl<RustObj>(RustObj const*) + 104
+    5   item5_write_barrier                 0x000000010093f780 void cppgc::Visitor::Trace<RustObj>(cppgc::internal::BasicMember<RustObj, cppgc::internal::StrongMemberTag, cppgc::internal::DijkstraWriteBarrierPolicy, cppgc::internal::DisabledCheckingPolicy, cppgc::internal::CompressedPointer> const&) + 156
+    6   item5_write_barrier                 0x000000010093f6d8 cppgc__Visitor__Trace__Member + 32
+    7   item5_write_barrier                 0x0000000100936d34 _ZN64_$LT$v8..cppgc..Member$LT$T$GT$$u20$as$u20$v8..cppgc..Traced$GT$5trace17h4dbcf365b713426aE + 44
+    8   item5_write_barrier                 0x0000000100939210 _ZN72_$LT$cppgc_spike..tree..TNode$u20$as$u20$v8..cppgc..GarbageCollected$GT$5trace17hdd7f054ddd59f8ecE + 140
+    9   item5_write_barrier                 0x000000010093c728 rusty_v8_RustObj_trace + 148
+    10  item5_write_barrier                 0x000000010093f1ec RustObj::Trace(cppgc::Visitor*) const + 32
+    11  item5_write_barrier                 0x000000010093fb20 cppgc::internal::TraceTraitBase<RustObj>::Trace(cppgc::Visitor*, void const*) + 40
+    12  item5_write_barrier                 0x00000001028c156c cppgc::internal::HeapVisitor<cppgc::internal::MarkingVerifierBase>::Traverse(cppgc::internal::RawHeap&) + 580
+    13  item5_write_barrier                 0x00000001028c1248 cppgc::internal::MarkingVerifierBase::Run(cppgc::EmbedderStackState, std::__Cr::optional<unsigned long>) + 44
+    14  item5_write_barrier                 0x0000000100ec05d8 v8::internal::CppHeap::CompactAndSweep() + 148
+    15  item5_write_barrier                 0x0000000100ec37c0 _ZZN2v88internal7CppHeap24CollectGarbageForTestingEN5cppgc8internal14CollectionTypeENS2_18EmbedderStackStateEENK3$_0clEv + 272
+    16  item5_write_barrier                 0x0000000100ec3698 _ZN4heap4base5Stack24SetMarkerAndCallbackImplIZN2v88internal7CppHeap24CollectGarbageForTestingEN5cppgc8internal14CollectionTypeENS6_18EmbedderStackStateEE3$_0EEvPS1_PvPKv + 40
+    17  item5_write_barrier                 0x0000000102926380 PushAllRegistersAndIterateStack + 40
+    18  item5_write_barrier                 0x0000000100ebdf04 v8::internal::CppHeap::CollectGarbageForTesting(cppgc::internal::CollectionType, cppgc::EmbedderStackState) + 248
+    19  item5_write_barrier                 0x0000000100ec0ae4 v8::internal::CppHeap::FinalizeIncrementalGarbageCollectionForTesting(cppgc::EmbedderStackState) + 60
+    20  item5_write_barrier                 0x000000010093aed8 cppgc_spike::TestingHeap::finalize::hb55fee736d045173 + 48
+    21  item5_write_barrier                 0x00000001009358f0 item5_write_barrier::scenario::h0f8f35379d387728 + 1664
+    22  item5_write_barrier                 0x0000000100935258 item5_write_barrier::main::h02b445189750aa99 + 680
+    23  item5_write_barrier                 0x0000000100934a9c core::ops::function::FnOnce::call_once::h0060c0c7b0059b87 + 20
+    24  item5_write_barrier                 0x000000010093631c std::sys::backtrace::__rust_begin_short_backtrace::h54c5361117b35105 + 24
+    25  item5_write_barrier                 0x0000000100935b68 _ZN3std2rt10lang_start28_$u7b$$u7b$closure$u7d$$u7d$17h76b6b2a37aac1717E + 28
+    26  item5_write_barrier                 0x0000000104ff9004 std::rt::lang_start_internal::h0662b076b027b010 + 952
+    27  item5_write_barrier                 0x0000000100935b40 std::rt::lang_start::h86c2878941b0f5de + 84
+    28  item5_write_barrier                 0x0000000100935ad4 main + 36
+    29  dyld                                0x000000019eeaeb98 start + 6076
+===== omitted: process outcome=Signal(5)
+./target-v8debug/debug/$b  0.02s user 0.02s system 3% cpu 1.043 total

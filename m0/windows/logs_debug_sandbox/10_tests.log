@@ -1,0 +1,81 @@
+warning: v8@152.2.0: Not using sccache or ccache
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running unittests src\lib.rs (C:\hgba-m0\t-dbg\release\deps\v8_cppgc_ext-6e5de3282c48c4ba.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\abi.rs (C:\hgba-m0\t-dbg\release\deps\abi-83d63be7408604a2.exe)
+
+running 5 tests
+test build_config_child ... ok
+test fork_configuration_matches_expectations ... ok
+test member_roundtrips_across_the_cage ... ok
+test statistics_cross_the_libcxx_boundary_intact ... ok
+test v8_accepts_fork_build_configuration ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\heap_consistency.rs (C:\hgba-m0\t-dbg\release\deps\heap_consistency-1389bd74d485079a.exe)
+
+running 4 tests
+test barriers_outside_gc_are_noops ... ok
+test control_without_barrier_loses_object ... ok
+test dijkstra_barrier_keeps_late_stored_object_alive ... ok
+test steele_barrier_retraces_marked_object ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\prefinalizer.rs (C:\hgba-m0\t-dbg\release\deps\prefinalizer-be4d9a15b025632c.exe)
+
+running 5 tests
+test item4_prefinalizers_detached_incremental ... ok
+test item4_prefinalizers_unified_precise_gc ... ok
+test prefinalizer_on_16_byte_aligned_type ... ok
+test register_prefinalizer_after_allocation ... ok
+test weak_callback_clears_dead_untraced_pointer ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests\scopes.rs (C:\hgba-m0\t-dbg\release\deps\scopes-583f57e128034545.exe)
+
+running 5 tests
+test disallow_scope_reports_gc_forbidden ... ok
+test heap_state_inside_destructor ... ok
+test heap_state_tracks_incremental_gc ... ok
+test no_gc_scope_defers_cppgc_gc ... ok
+test static_no_gc_enter_leave_balance ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\statistics.rs (C:\hgba-m0\t-dbg\release\deps\statistics-66b18d502b0cfb71.exe)
+
+running 3 tests
+test brief_and_detailed_statistics_detached ... ok
+test no_compactable_spaces_on_rusty_v8_heaps ... ok
+test statistics_of_isolate_cpp_heap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests\testing_api.rs (C:\hgba-m0\t-dbg\release\deps\testing_api-7b7605fc71fdfe5d.exe)
+
+running 6 tests
+test forced_compaction_does_not_move_objects ... ok
+test is_heap_object_old_follows_mark_bits ... ok
+test isolate_testing_gc_with_explicit_stack_state ... ok
+test marking_step_without_gc_panics_instead_of_crashing - should panic ... ok
+test override_embedder_stack_state_scope_makes_gc_precise ... ok
+test standalone_testing_heap_steps_and_toggles ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests\upstream_api.rs (C:\hgba-m0\t-dbg\release\deps\upstream_api-54d860d9a7e2e8bd.exe)
+
+running 2 tests
+test upstream_everything ... ok
+test upstream_isolate_gc_and_override ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+TEST_EXIT 0 

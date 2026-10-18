@@ -1,0 +1,37 @@
+Wed 10/14/2026 17:19:46.70 PROBE_EXIT=leak (platform SharedRef forgotten at exit) 
+== pred (fresh process x50): 50 runs in 2.7s
+  total     distinct=   1  92c3fc8abd88ea44x50
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=   1  e221096cd5924672x50
+  G         distinct=   1  76372f44f262847bx50
+  finalized distinct=   1  11200x50
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+== pred-inline (fresh process x50): 50 runs in 2.7s
+  total     distinct=   1  cdc6061a80562140x50
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=   1  e221096cd5924672x50
+  G         distinct=   1  3b91518141f2e11fx50
+  finalized distinct=   1  11200x50
+  first: run=0 total=cdc6061a80562140 R=aa508f33760136b6 D=e221096cd5924672 G=3b91518141f2e11f finalized=11200
+== pred-noflags (fresh process x50): 50 runs in 3.2s
+  total     distinct=   1  7bedd8f98870e917x50
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=   1  e221096cd5924672x50
+  G         distinct=   1  2df3e532ae1bf52ex50
+  finalized distinct=   1  11200x50
+  first: run=0 total=7bedd8f98870e917 R=aa508f33760136b6 D=e221096cd5924672 G=2df3e532ae1bf52e finalized=11200
+== default (fresh process x50): 50 runs in 2.2s
+  total     distinct=  50  09c663aa22014641x1 0c62e779fd0d2858x1 1b97255c98957f11x1 1cf402a03e92ee26x1 1e4926111d3fceecx1
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=  50  05d438fd6cd3c156x1 061861b31a6b0eeax1 09cfc99871f007c1x1 0c8e905465e7a287x1 14b305967e653e13x1
+  G         distinct=  50  01d4c6514ed9b8bex1 04d5e8cb183e8148x1 05367a24d3a15d6bx1 09809a262e6d2334x1 1695d13dc01555ebx1
+  finalized distinct=   1  11200x50
+  first: run=0 total=f2a5d6cd0636b3c0 R=aa508f33760136b6 D=dd071b86fac2b539 G=82591e02afe37cc4 finalized=11200
+== default-flags (fresh process x50): 50 runs in 2.8s
+  total     distinct=  50  0a067455e2c44b24x1 0a7027e278e3a6a9x1 0f314aef733fa387x1 27a5d475aaf5df18x1 2c975ee349f17e64x1
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=  50  06a500e79f9811f3x1 09dd716501836bd4x1 12426723050721a1x1 151bc071f7ca5249x1 1801650cac0c5991x1
+  G         distinct=   1  76372f44f262847bx50
+  finalized distinct=   1  11200x50
+  first: run=0 total=68a7cd9828522cd1 R=aa508f33760136b6 D=151bc071f7ca5249 G=76372f44f262847b finalized=11200
+done 

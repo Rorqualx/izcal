@@ -1,0 +1,143 @@
+Wed 10/14/2026 17:09:54.71 
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 8000 total over 1000 runs
+== pred (in-process x1000): 1000 runs in 35.4s
+  total     distinct=   1  92c3fc8abd88ea44x1000
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=   1  e221096cd5924672x1000
+  G         distinct=   1  76372f44f262847bx1000
+  finalized distinct=   1  11200x1000
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+
+thread 'main' (9052) panicked at src\main.rs:166:7:
+child failed: V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 8 total over 1 runs
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1000 runs
+== pred-inline (in-process x1000): 1000 runs in 35.9s
+  total     distinct=   1  cdc6061a80562140x1000
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=   1  e221096cd5924672x1000
+  G         distinct=   1  3b91518141f2e11fx1000
+  finalized distinct=   1  11200x1000
+  first: run=0 total=cdc6061a80562140 R=aa508f33760136b6 D=e221096cd5924672 G=3b91518141f2e11f finalized=11200
+[FATAL:partition_root_internal.h(526)] Check failed: IsManagedByPartitionAlloc(object_addr). 
+#0 0x7ff6299f5ad2 (C:\hgba-m0\determinism-probe\probe_rel.exe+0xb35ad2)
+#1 0x7ff6296bea87 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x7fea87)
+#2 0x7ff6296c60ac (C:\hgba-m0\determinism-probe\probe_rel.exe+0x8060ac)
+#3 0x7ff6292fbf2e (C:\hgba-m0\determinism-probe\probe_rel.exe+0x43bf2e)
+#4 0x7ff6292fce40 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x43ce40)
+#5 0x7ff628ef2e1c (C:\hgba-m0\determinism-probe\probe_rel.exe+0x32e1c)
+#6 0x7ff628ec9750 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x9750)
+#7 0x7ff628ec8298 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x8298)
+#8 0x7ff628ec2de2 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x2de2)
+#9 0x7ff628ec5756 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x5756)
+#10 0x7ff628ec576c (C:\hgba-m0\determinism-probe\probe_rel.exe+0x576c)
+#11 0x7ff62a8b1aa0 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x19f1aa0)
+#12 0x7ff628ec509c (C:\hgba-m0\determinism-probe\probe_rel.exe+0x509c)
+#13 0x7ff62aafe2b8 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x1c3e2b8)
+#15 0x7ff9c92ecaec (C:\Windows\SYSTEM32\ntdll.dll+0xacaec)
+#14 0x7ff9c821cd87 (C:\Windows\System32\KERNEL32.DLL+0x2cd87)
+#16 0xaaaaaaaaaaaaaaaa <unknown>
+#17 0xaaaaaaaaaaaaaaaa <unknown>
+#18 0xaaaaaaaaaaaaaaaa <unknown>
+#19 0xaaaaaaaaaaaaaaaa <unknown>
+#20 0xaaaaaaaaaaaaaaaa <unknown>
+#21 0xaaaaaaaaaaaaaaaa <unknown>
+#22 0xaaaaaaaaaaaaaaaa <unknown>
+#23 0xaaaaaaaaaaaaaaaa <unknown>
+#24 0xaaaaaaaaaaaaaaaa <unknown>
+#25 0xaaaaaaaaaaaaaaaa <unknown>
+#26 0xaaaaaaaaaaaaaaaa <unknown>
+#27 0xaaaaaaaaaaaaaaaa <unknown>
+#28 0xaaaaaaaaaaaaaaaa <unknown>
+#29 0xaaaaaaaaaaaaaaaa <unknown>
+#30 0xaaaaaaaaaaaaaaaa <unknown>
+#31 0xaaaaaaaaaaaaaaaa <unknown>
+
+thread 'main' (14404) panicked at src\main.rs:166:7:
+child failed: V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1 runs
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 147004 total over 1000 runs
+== pred-noflags (in-process x1000): 1000 runs in 45.7s
+  total     distinct=   1  7bedd8f98870e917x1000
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=   1  e221096cd5924672x1000
+  G         distinct=   1  2df3e532ae1bf52ex1000
+  finalized distinct=   1  11200x1000
+  first: run=0 total=7bedd8f98870e917 R=aa508f33760136b6 D=e221096cd5924672 G=2df3e532ae1bf52e finalized=11200
+
+thread 'main' (23108) panicked at src\main.rs:166:7:
+child failed: V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 148 total over 1 runs
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1000 runs
+== default (in-process x1000): 1000 runs in 27.2s
+  total     distinct=1000  00619ab14ee33d51x1 008dd0d563c78085x1 00e380f105ee5060x1 00ec49ae88f3caccx1 012e5eb887ae65e2x1
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=1000  00287fff97363966x1 00330005ef672d45x1 00a052c4f21afdd8x1 00ba561141e2d0cax1 010076cee3536fc3x1
+  G         distinct= 989  00558cd42b5b4664x1 0071e49f670dbda4x1 00a9893275dd3d50x1 00e1262369c543e6x1 012caee123d86e33x1
+  finalized distinct=   1  11200x1000
+  first: run=0 total=8416b22656f2b0d4 R=aa508f33760136b6 D=d74760580929d9ec G=862ce14e6ef7ab19 finalized=11200
+
+thread 'main' (24844) panicked at src\main.rs:166:7:
+child failed: V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1 runs
+[FATAL:partition_root_internal.h(526)] Check failed: IsManagedByPartitionAlloc(object_addr). 
+#0 0x7ff6299f5ad2 (C:\hgba-m0\determinism-probe\probe_rel.exe+0xb35ad2)
+#1 0x7ff6296bea87 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x7fea87)
+#2 0x7ff6296c60ac (C:\hgba-m0\determinism-probe\probe_rel.exe+0x8060ac)
+#3 0x7ff6292fbf2e (C:\hgba-m0\determinism-probe\probe_rel.exe+0x43bf2e)
+#4 0x7ff6292fce40 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x43ce40)
+#5 0x7ff628ef2e1c (C:\hgba-m0\determinism-probe\probe_rel.exe+0x32e1c)
+#6 0x7ff628ef3ea0 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x33ea0)
+#7 0x7ff628ec8298 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x8298)
+#8 0x7ff628ec2de2 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x2de2)
+#9 0x7ff628ec5756 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x5756)
+#10 0x7ff628ec576c (C:\hgba-m0\determinism-probe\probe_rel.exe+0x576c)
+#11 0x7ff62a8b1aa0 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x19f1aa0)
+#12 0x7ff628ec509c (C:\hgba-m0\determinism-probe\probe_rel.exe+0x509c)
+#13 0x7ff62aafe2b8 (C:\hgba-m0\determinism-probe\probe_rel.exe+0x1c3e2b8)
+#15 0x7ff9c92ecaec (C:\Windows\SYSTEM32\ntdll.dll+0xacaec)
+#14 0x7ff9c821cd87 (C:\Windows\System32\KERNEL32.DLL+0x2cd87)
+#16 0xaaaaaaaaaaaaaaaa <unknown>
+#17 0xaaaaaaaaaaaaaaaa <unknown>
+#18 0xaaaaaaaaaaaaaaaa <unknown>
+#19 0xaaaaaaaaaaaaaaaa <unknown>
+#20 0xaaaaaaaaaaaaaaaa <unknown>
+#21 0xaaaaaaaaaaaaaaaa <unknown>
+#22 0xaaaaaaaaaaaaaaaa <unknown>
+#23 0xaaaaaaaaaaaaaaaa <unknown>
+#24 0xaaaaaaaaaaaaaaaa <unknown>
+#25 0xaaaaaaaaaaaaaaaa <unknown>
+#26 0xaaaaaaaaaaaaaaaa <unknown>
+#27 0xaaaaaaaaaaaaaaaa <unknown>
+#28 0xaaaaaaaaaaaaaaaa <unknown>
+#29 0xaaaaaaaaaaaaaaaa <unknown>
+#30 0xaaaaaaaaaaaaaaaa <unknown>
+#31 0xaaaaaaaaaaaaaaaa <unknown>
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1000 runs
+== default-flags (in-process x1000): 1000 runs in 37.4s
+  total     distinct=1000  000729211361872ax1 007913ebc4bb06bex1 008d8b548cbbc2a4x1 00b98805dbfac010x1 00e26105fef6016ex1
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=1000  0002e34ecfd45203x1 000e8ae25adc5d28x1 0077097b774ae49fx1 008796799f011123x1 00b2595942d5743fx1
+  G         distinct=   2  3b91518141f2e11fx1 76372f44f262847bx999
+  finalized distinct=   1  11200x1000
+  first: run=0 total=3f43bb87de3fa660 R=aa508f33760136b6 D=a0dd6c277e50419e G=76372f44f262847b finalized=11200
+
+thread 'main' (13384) panicked at src\main.rs:166:7:
+child failed: V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1 runs
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+done 

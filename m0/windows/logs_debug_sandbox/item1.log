@@ -1,0 +1,137 @@
+warning: v8@152.2.0: Not using sccache or ccache
+warning: unused import: `CppHeapExt`
+  --> compat\examples\spike\common.rs:12:20
+   |
+12 | use v8_cppgc_ext::{CppHeapExt, DetailLevel, HeapHandle, HeapState, IsolateExt, NoGarbageCollectionScope};
+   |                    ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `v8-cppgc-ext` (example "spike_item1_nogc_scope") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `C:\hgba-m0\t-dbg\release\examples\spike_item1_nogc_scope.exe`
+item1: V8 15.2.124.1-rusty ; each scenario runs in its own process under a 120 s watchdog
+
+===== scenario detached-quiescent =====
+scope-entry (single shot, incl. watchdog thread spawn): 140000ns is_marking_after_entry=false
+in-scope: gc_attempts=2257 marking_steps=0 marking_done_flag=false still_marking=false finalized_during_scope=0 live_finalized=0 reader_traversals=16066 reader_errors=[]
+addresses-stable-in-scope=true
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 addresses-stable-after-gc=true tree_ok=Ok(true)
+RESULT PASS
+===== scenario detached-quiescent: outcome=Ok wall=1.5484853s
+
+===== scenario detached-marking =====
+before-entry: is_marking=true is_sweeping=false
+scope-entry (single shot, incl. watchdog thread spawn): 151900ns is_marking_after_entry=true
+in-scope: gc_attempts=2263 marking_steps=2263 marking_done_flag=true still_marking=true finalized_during_scope=0 live_finalized=0 reader_traversals=15830 reader_errors=[]
+addresses-stable-in-scope=true
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 addresses-stable-after-gc=true tree_ok=Ok(true)
+RESULT PASS
+===== scenario detached-marking: outcome=Ok wall=1.5279271s
+
+===== scenario detached-latency =====
+amortized enter+leave pair: 4.15ns (10M pairs; Instant tick on this Mac is ~41.7ns)
+detached entry latency, idle heap: n=100000 p50=0ns p99=100ns p99.9=100ns max=18700ns
+detached entry latency, during incremental+concurrent marking: n=20000 p50=0ns p99=100ns p99.9=200ns max=3000ns
+===== scenario detached-latency: outcome=Ok wall=1.886644s
+
+===== scenario compaction-probe =====
+
+
+#
+# Fatal error in ..\..\..\rusty_v8\v8\src\heap\cppgc-internal\compactor.cc, line 470
+# Debug check failed: !enable_for_next_gc_for_testing_.
+#
+#
+#
+#FailureMessage Object: 00000094FB1AEDE0
+==== C stack trace ===============================
+
+	v8::base::debug::StackTrace::StackTrace [0x0x7ff6c9386f86+38]
+	v8::platform::DefaultPlatform::GetStackTracePrinter [0x0x7ff6c8b605d7+71]
+	V8_Fatal [0x0x7ff6c8ce620c+268]
+	v8::base::PrintStackTraceIfAvailable [0x0x7ff6c8ce5c93+35]
+	v8::internal::CppHeap::InitializeMarking [0x0x7ff6c8ba8fba+538]
+	v8::internal::CppHeap::StartIncrementalGarbageCollectionForTesting [0x0x7ff6c8baa082+98]
+	cppgc__testing__StandaloneTestingHeap__StartGarbageCollection [0x0x7ff6c8afe193+19]
+	ZN22spike_item1_nogc_scope4main17heabd44420341dd96E [0x0x7ff6c8ae43e0+6080]
+	ZN3std3sys9backtrace28__rust_begin_short_backtrace17haafa085dcc1caaaeE [0x0x7ff6c8af8e86+6]
+	ZN3std2rt10lang_start28_$u7b$$u7b$closure$u7d$$u7d$17hce458c0aa3740ebfE.llvm.6307578044399419896 [0x0x7ff6c8af15fc+12]
+	std::rt::lang_start_internal [0x0x7ff6cbfcf2d5+181] (/rustc/f8297e351a40c1439a467bbbb6879088047f50b3/library\std\src\rt.rs:171)
+	main [0x0x7ff6c8ae85ac+44]
+	invoke_main [0x0x7ff6cd15e989+57] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:79)
+	__scrt_common_main_seh [0x0x7ff6cd15e8a2+306] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288)
+	__scrt_common_main [0x0x7ff6cd15e75e+14] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:331)
+	mainCRTStartup [0x0x7ff6cd15e9fe+14] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_main.cpp:17)
+	BaseThreadInitThunk [0x0x7ff9c821cd87+23]
+	RtlUserThreadStart [0x0x7ff9c92ecaec+44]
+===== scenario compaction-probe: outcome=ExitCode(-2147483645) wall=1.1801973s
+
+===== scenario unified-marking =====
+marking-started=true after 0 JS alloc rounds (500ns)
+scope-entry (single shot, incl. watchdog thread spawn): 233300ns is_marking_after_entry=true
+in-scope: full_gc_requests=5 marking_ended_during_scope=true finalized_during_scope=5000 live_finalized=0 reader_traversals=13053 reader_errors=[]
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 tree_ok=Ok(true)
+RESULT readers_ok=true scope_blocked_v8_initiated_finalization=false (cppgc objects finalized inside scope: 5000)
+===== scenario unified-marking: outcome=Ok wall=1.5920019s
+
+===== scenario unified-latency =====
+unified entry latency, not marking: n=13050 p50=0ns p99=400ns p99.9=800ns max=7800ns
+unified entry latency, V8 incremental marking active: n=2101150 p50=0ns p99=100ns p99.9=100ns max=58300ns
+===== scenario unified-latency: outcome=Ok wall=60.1170136s
+
+===== scenario unified-alloc-only =====
+marking-started=true after 0 JS alloc rounds (500ns)
+scope-entry (single shot, incl. watchdog thread spawn): 268600ns is_marking_after_entry=true
+in-scope: full_gc_requests=0 marking_ended_during_scope=true finalized_during_scope=5000 live_finalized=0 reader_traversals=13480 reader_errors=[]
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 tree_ok=Ok(true)
+RESULT readers_ok=true scope_blocked_v8_initiated_finalization=false (cppgc objects finalized inside scope: 5000)
+===== scenario unified-alloc-only: outcome=Ok wall=1.5949201s
+
+===== scenario unified-blocked-owner =====
+blocked-owner: phases=1769 phases_started_during_marking=1769 finalized_during_phases=0 finalized_total=353799 live_finalized=0 traversals=42456 errors=[]
+RESULT PASS
+===== scenario unified-blocked-owner: outcome=Ok wall=10.1115537s
+
+===== scenario unified-disallow =====
+disallow-scope entered; IsGarbageCollectionAllowed=false
+requesting full GC inside DisallowGarbageCollectionScope (expect a crash)...
+
+
+#
+# Fatal error in ..\..\..\rusty_v8\v8\src\heap\cppgc-js\cpp-heap.cc, line 913
+# Check failed: !IsGCForbidden().
+#
+#
+#
+#FailureMessage Object: 0000001BEC7CEB80
+==== C stack trace ===============================
+
+	v8::base::debug::StackTrace::StackTrace [0x0x7ff6c9386f86+38]
+	v8::platform::DefaultPlatform::GetStackTracePrinter [0x0x7ff6c8b605d7+71]
+	V8_Fatal [0x0x7ff6c8ce620c+268]
+	v8::internal::CppHeap::EnterFinalPause [0x0x7ff6c8ba9853+339]
+	v8::internal::MarkCompactCollector::MarkLiveObjects [0x0x7ff6c96dcc29+393]
+	v8::internal::MarkCompactCollector::CollectGarbage [0x0x7ff6c96dc9e4+132]
+	v8::internal::Heap::MarkCompact [0x0x7ff6c8da1b88+328]
+	v8::internal::Heap::PerformGarbageCollection [0x0x7ff6c8da0ad6+1078]
+	v8::internal::DependentCode::MarkCodeForDeoptimization<v8::internal::AllocationSite> [0x0x7ff6c8dd54dc+908]
+	v8::internal::DependentCode::MarkCodeForDeoptimization<v8::internal::AllocationSite> [0x0x7ff6c8dd527c+300]
+	PushAllRegistersAndIterateStack [0x0x7ff6cd15e4ed+109]
+	v8::internal::Heap::CollectGarbage [0x0x7ff6c8d9cd40+1136]
+	v8::internal::Heap::CollectAllGarbage [0x0x7ff6c8d9d368+56]
+	v8::internal::Heap::PreciseCollectAllGarbage [0x0x7ff6c8d9ea75+85]
+	v8__Isolate__RequestGarbageCollectionForTesting [0x0x7ff6c8afbf4b+27]
+	ZN22spike_item1_nogc_scope4main17heabd44420341dd96E [0x0x7ff6c8ae37ff+3039]
+	ZN3std3sys9backtrace28__rust_begin_short_backtrace17haafa085dcc1caaaeE [0x0x7ff6c8af8e86+6]
+	ZN3std2rt10lang_start28_$u7b$$u7b$closure$u7d$$u7d$17hce458c0aa3740ebfE.llvm.6307578044399419896 [0x0x7ff6c8af15fc+12]
+	std::rt::lang_start_internal [0x0x7ff6cbfcf2d5+181] (/rustc/f8297e351a40c1439a467bbbb6879088047f50b3/library\std\src\rt.rs:171)
+	main [0x0x7ff6c8ae85ac+44]
+	invoke_main [0x0x7ff6cd15e989+57] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:79)
+	__scrt_common_main_seh [0x0x7ff6cd15e8a2+306] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288)
+	__scrt_common_main [0x0x7ff6cd15e75e+14] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:331)
+	mainCRTStartup [0x0x7ff6cd15e9fe+14] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_main.cpp:17)
+	BaseThreadInitThunk [0x0x7ff9c821cd87+23]
+	RtlUserThreadStart [0x0x7ff9c92ecaec+44]
+===== scenario unified-disallow: outcome=ExitCode(-2147483645) wall=1.1884207s
+EXIT 0 

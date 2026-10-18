@@ -1,0 +1,16 @@
+warning: v8@152.2.0: Not using sccache or ccache
+warning: unused import: `CppHeapExt`
+  --> compat\examples\spike\common.rs:12:20
+   |
+12 | use v8_cppgc_ext::{CppHeapExt, DetailLevel, HeapHandle, HeapState, IsolateExt, NoGarbageCollectionScope};
+   |                    ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `v8-cppgc-ext` (example "spike_item2_crossthread_raw") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running `C:\hgba-m0\t-rel\release\examples\spike_item2_crossthread_raw.exe --secs 30`
+item2: secs=30 racy_control=false cycles=8109 cycles_with_marking_active=8039 inserts=80685 removes=28077 worker_traversals=129744 finalized_total=88849 finalized_during_worker_phases=0 removed_nodes_finalized=88849
+errors=[]
+RESULT PASS
+EXIT 0 

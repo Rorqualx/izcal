@@ -1,0 +1,123 @@
+item1: V8 15.2.124.1-rusty ; each scenario runs in its own process under a 120 s watchdog
+
+===== scenario detached-quiescent =====
+scope-entry (single shot, incl. watchdog thread spawn): 89958ns is_marking_after_entry=false
+in-scope: gc_attempts=3800 marking_steps=0 marking_done_flag=false still_marking=false finalized_during_scope=0 live_finalized=0 reader_traversals=7897 reader_errors=[]
+addresses-stable-in-scope=true
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 addresses-stable-after-gc=true tree_ok=Ok(true)
+RESULT PASS
+===== scenario detached-quiescent: outcome=Ok wall=1.522912416s
+
+===== scenario detached-marking =====
+before-entry: is_marking=true is_sweeping=false
+scope-entry (single shot, incl. watchdog thread spawn): 43500ns is_marking_after_entry=true
+in-scope: gc_attempts=4014 marking_steps=4014 marking_done_flag=true still_marking=true finalized_during_scope=0 live_finalized=0 reader_traversals=8080 reader_errors=[]
+addresses-stable-in-scope=true
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 addresses-stable-after-gc=true tree_ok=Ok(true)
+RESULT PASS
+===== scenario detached-marking: outcome=Ok wall=1.519764208s
+
+===== scenario detached-latency =====
+amortized enter+leave pair: 10.63ns (10M pairs; Instant tick on this Mac is ~41.7ns)
+detached entry latency, idle heap: n=100000 p50=0ns p99=42ns p99.9=42ns max=167ns
+detached entry latency, during incremental+concurrent marking: n=20000 p50=0ns p99=42ns p99.9=84ns max=208ns
+===== scenario detached-latency: outcome=Ok wall=1.335041542s
+
+===== scenario compaction-probe =====
+
+
+#
+# Fatal error in ../../../../v8/src/heap/cppgc-internal/compactor.cc, line 470
+# Debug check failed: !enable_for_next_gc_for_testing_.
+#
+#
+#
+#FailureMessage Object: 0x16dde1e48
+==== C stack trace ===============================
+
+    0   spike_item1_nogc_scope              0x0000000102085934 v8::base::debug::StackTrace::StackTrace() + 28
+    1   spike_item1_nogc_scope              0x000000010208bf60 v8::platform::(anonymous namespace)::PrintStackTrace() + 112
+    2   spike_item1_nogc_scope              0x0000000102071044 V8_Fatal(char const*, int, char const*, ...) + 352
+    3   spike_item1_nogc_scope              0x00000001020709c8 v8::base::FatalOOM(v8::base::OOMType, char const*) + 0
+    4   spike_item1_nogc_scope              0x0000000102577b4c v8::internal::CppHeap::InitializeMarking(cppgc::internal::CollectionType, std::__Cr::shared_ptr<heap::base::IncrementalMarkingSchedule>, v8::base::Flags<v8::internal::CppHeap::GarbageCollectionFlagValues, int, int>) + 440
+    5   spike_item1_nogc_scope              0x0000000102578a9c v8::internal::CppHeap::StartIncrementalGarbageCollectionForTesting() + 156
+    6   spike_item1_nogc_scope              0x000000010204c084 cppgc__testing__StandaloneTestingHeap__StartGarbageCollection + 24
+    7   spike_item1_nogc_scope              0x000000010204bc94 v8_cppgc_ext::testing::StandaloneTestingHeap::start_garbage_collection::h36d659c23d458eac + 32
+    8   spike_item1_nogc_scope              0x0000000102043bdc spike_item1_nogc_scope::common::TestingHeap::start::h93a6b5f7d8028a32 + 24
+    9   spike_item1_nogc_scope              0x0000000102037c88 spike_item1_nogc_scope::compaction_probe::he4f79a2a89725b0f + 1128
+    10  spike_item1_nogc_scope              0x00000001020398c4 spike_item1_nogc_scope::child::h31f1705cb689a543 + 244
+    11  spike_item1_nogc_scope              0x00000001020397b4 spike_item1_nogc_scope::main::haa37c4c85da3174c + 880
+    12  spike_item1_nogc_scope              0x0000000102022a8c core::ops::function::FnOnce::call_once::hb900251ee49f699b + 20
+    13  spike_item1_nogc_scope              0x0000000102021784 std::sys::backtrace::__rust_begin_short_backtrace::h5b3f35d230df58fe + 24
+    14  spike_item1_nogc_scope              0x00000001020413ac _ZN3std2rt10lang_start28_$u7b$$u7b$closure$u7d$$u7d$17h72c2ed6eab812229E + 28
+    15  spike_item1_nogc_scope              0x00000001061d64b4 std::rt::lang_start_internal::h0662b076b027b010 + 952
+    16  spike_item1_nogc_scope              0x0000000102041384 std::rt::lang_start::h3eeacfcee64011ad + 84
+    17  spike_item1_nogc_scope              0x000000010203a7e0 main + 36
+    18  dyld                                0x000000019eeaeb98 start + 6076
+===== scenario compaction-probe: outcome=Signal(5) wall=25.235041ms
+
+===== scenario unified-marking =====
+marking-started=true after 0 JS alloc rounds (208ns)
+scope-entry (single shot, incl. watchdog thread spawn): 96708ns is_marking_after_entry=true
+in-scope: full_gc_requests=5 marking_ended_during_scope=true finalized_during_scope=5000 live_finalized=0 reader_traversals=7006 reader_errors=[]
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 tree_ok=Ok(true)
+RESULT readers_ok=true scope_blocked_v8_initiated_finalization=false (cppgc objects finalized inside scope: 5000)
+===== scenario unified-marking: outcome=Ok wall=1.586184792s
+
+===== scenario unified-latency =====
+unified entry latency, not marking: n=20000 p50=0ns p99=42ns p99.9=125ns max=459ns
+unified entry latency, V8 incremental marking active: n=629050 p50=0ns p99=42ns p99.9=84ns max=30792ns
+===== scenario unified-latency: outcome=Ok wall=3.734341916s
+
+===== scenario unified-alloc-only =====
+marking-started=true after 0 JS alloc rounds (167ns)
+scope-entry (single shot, incl. watchdog thread spawn): 59917ns is_marking_after_entry=true
+in-scope: full_gc_requests=0 marking_ended_during_scope=true finalized_during_scope=5000 live_finalized=0 reader_traversals=7210 reader_errors=[]
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 tree_ok=Ok(true)
+RESULT readers_ok=true scope_blocked_v8_initiated_finalization=false (cppgc objects finalized inside scope: 5000)
+===== scenario unified-alloc-only: outcome=Ok wall=1.583715584s
+
+===== scenario unified-blocked-owner =====
+blocked-owner: phases=1518 phases_started_during_marking=1518 finalized_during_phases=0 finalized_total=303600 live_finalized=0 traversals=36432 errors=[]
+RESULT PASS
+===== scenario unified-blocked-owner: outcome=Ok wall=10.08321825s
+
+===== scenario unified-disallow =====
+disallow-scope entered; IsGarbageCollectionAllowed=false
+requesting full GC inside DisallowGarbageCollectionScope (expect a crash)...
+
+
+#
+# Fatal error in ../../../../v8/src/heap/cppgc-js/cpp-heap.cc, line 913
+# Check failed: !IsGCForbidden().
+#
+#
+#
+#FailureMessage Object: 0x16bb6db08
+==== C stack trace ===============================
+
+    0   spike_item1_nogc_scope              0x00000001042f9934 v8::base::debug::StackTrace::StackTrace() + 28
+    1   spike_item1_nogc_scope              0x00000001042fff60 v8::platform::(anonymous namespace)::PrintStackTrace() + 112
+    2   spike_item1_nogc_scope              0x00000001042e5044 V8_Fatal(char const*, int, char const*, ...) + 352
+    3   spike_item1_nogc_scope              0x00000001047ec2e4 v8::internal::UnifiedHeapMarker::conservative_visitor() + 0
+    4   spike_item1_nogc_scope              0x00000001048fea78 v8::internal::MarkCompactCollector::MarkLiveObjects() + 304
+    5   spike_item1_nogc_scope              0x00000001048fe89c v8::internal::MarkCompactCollector::CollectGarbage() + 144
+    6   spike_item1_nogc_scope              0x00000001048d29d0 v8::internal::Heap::MarkCompact() + 280
+    7   spike_item1_nogc_scope              0x00000001048d1860 v8::internal::Heap::PerformGarbageCollection(v8::internal::GarbageCollector, v8::internal::GarbageCollectionReason, char const*) + 760
+    8   spike_item1_nogc_scope              0x00000001048eb53c _ZZN2v88internal4Heap14CollectGarbageENS0_15AllocationSpaceENS0_23GarbageCollectionReasonENS_15GCCallbackFlagsENS_4base11StrongAliasINS0_24PerformHeapLimitCheckTagEbEENS6_INS0_37PerformIneffectiveMarkCompactCheckTagEbEEENK3$_1clEv + 500
+    9   spike_item1_nogc_scope              0x00000001048eb330 _ZN4heap4base5Stack24SetMarkerAndCallbackImplIZN2v88internal4Heap14CollectGarbageENS4_15AllocationSpaceENS4_23GarbageCollectionReasonENS3_15GCCallbackFlagsENS3_4base11StrongAliasINS4_24PerformHeapLimitCheckTagEbEENSA_INS4_37PerformIneffectiveMarkCompactCheckTagEbEEE3$_1EEvPS1_PvPKv + 40
+    10  spike_item1_nogc_scope              0x0000000105ea14c8 PushAllRegistersAndIterateStack + 40
+    11  spike_item1_nogc_scope              0x00000001048cd688 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags, v8::base::StrongAlias<v8::internal::PerformHeapLimitCheckTag, bool>, v8::base::StrongAlias<v8::internal::PerformIneffectiveMarkCompactCheckTag, bool>) + 976
+    12  spike_item1_nogc_scope              0x00000001048cdc6c v8::internal::Heap::CollectAllGarbage(v8::base::Flags<v8::internal::GCFlag, unsigned char, unsigned char>, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags, v8::base::StrongAlias<v8::internal::PerformHeapLimitCheckTag, bool>) + 56
+    13  spike_item1_nogc_scope              0x00000001042cca1c v8__Isolate__RequestGarbageCollectionForTesting + 32
+    14  spike_item1_nogc_scope              0x00000001042ac878 spike_item1_nogc_scope::unified_disallow::he54c3db563e767b0 + 612
+    15  spike_item1_nogc_scope              0x00000001042ad9c4 spike_item1_nogc_scope::child::h31f1705cb689a543 + 500
+    16  spike_item1_nogc_scope              0x00000001042ad7b4 spike_item1_nogc_scope::main::haa37c4c85da3174c + 880
+    17  spike_item1_nogc_scope              0x0000000104296a8c core::ops::function::FnOnce::call_once::hb900251ee49f699b + 20
+    18  spike_item1_nogc_scope              0x0000000104295784 std::sys::backtrace::__rust_begin_short_backtrace::h5b3f35d230df58fe + 24
+    19  spike_item1_nogc_scope              0x00000001042b53ac _ZN3std2rt10lang_start28_$u7b$$u7b$closure$u7d$$u7d$17h72c2ed6eab812229E + 28
+    20  spike_item1_nogc_scope              0x000000010844a4b4 std::rt::lang_start_internal::h0662b076b027b010 + 952
+    21  spike_item1_nogc_scope              0x00000001042b5384 std::rt::lang_start::h3eeacfcee64011ad + 84
+    22  spike_item1_nogc_scope              0x00000001042ae7e0 main + 36
+    23  dyld                                0x000000019eeaeb98 start + 6076
+===== scenario unified-disallow: outcome=Signal(5) wall=75.143708ms

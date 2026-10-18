@@ -1,0 +1,10 @@
+is_debug = false
+use_custom_libcxx = true
+v8_enable_sandbox = true
+v8_enable_external_code_space = true
+v8_enable_pointer_compression = true
+v8_enable_v8_checks = false
+host_cpu = "arm64"
+clang_base_path = "/Users/joederas/.cache/v8-cppgc-ext/clang-llvmorg-23-init-19482-g53d18800-1"
+treat_warnings_as_errors = false
+target_cpu = "arm64"

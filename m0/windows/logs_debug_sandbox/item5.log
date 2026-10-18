@@ -1,0 +1,63 @@
+warning: v8@152.2.0: Not using sccache or ccache
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `C:\hgba-m0\t-dbg\release\item5_write_barrier.exe`
+
+===== barrier =====
+marking steps until done: 1; is_marking=true
+A.first_child == B: true (Member size 4 bytes)
+after GC: B finalized=false while A.first_child still points at it=true
+OUTCOME B survived
+===== barrier: process outcome=Ok
+
+===== omitted =====
+marking steps until done: 1; is_marking=true
+A.first_child == B: true (Member size 4 bytes)
+
+
+#
+# Fatal error in ..\..\..\rusty_v8\v8\src\heap\cppgc-internal\marking-verifier.cc, line 42
+# MarkingVerifier: Encountered unmarked object.
+#
+# Hint:
+#   TNode (0000012402000850)
+#     \-> TNode (0000012402000898)
+#
+#
+#
+#FailureMessage Object: 00000086540FEAB0
+==== C stack trace ===============================
+
+	v8::base::debug::StackTrace::StackTrace [0x0x7ff74e6498f6+38]
+	v8::platform::DefaultPlatform::GetStackTracePrinter [0x0x7ff74de23397+71]
+	V8_Fatal [0x0x7ff74dfa8d5c+268]
+	cppgc::internal::VerificationState::VerifyMarked [0x0x7ff74e6fe8e1+177]
+	cppgc::Visitor::TraceImpl<RustObj> [0x0x7ff74ddc8255+85]
+	cppgc::Visitor::Trace<RustObj> [0x0x7ff74ddc43f3+163]
+	cppgc__Visitor__Trace__Member [0x0x7ff74ddc433d+29]
+	ZN72_$LT$cppgc_spike..tree..TNode$u20$as$u20$v8..cppgc..GarbageCollected$GT$5trace17h4b128060de824f69E [0x0x7ff74ddc2da8+24]
+	rusty_v8_RustObj_trace [0x0x7ff74ddc34e1+33]
+	RustObj::Trace [0x0x7ff74ddc3eed+29]
+	cppgc::internal::TraceTraitBase<RustObj>::Trace [0x0x7ff74ddc797e+30]
+	cppgc::internal::HeapVisitor<cppgc::internal::MarkingVerifierBase>::Traverse [0x0x7ff74e6fee03+835]
+	cppgc::internal::MarkingVerifierBase::Run [0x0x7ff74e6fe9cd+29]
+	v8::internal::CppHeap::CompactAndSweep [0x0x7ff74de6c99c+220]
+	heap::base::Worklist<cppgc::internal::HeapObjectHeader * __ptr64,64>::Local::NewSegment [0x0x7ff74de70c1a+506]
+	heap::base::Worklist<cppgc::internal::HeapObjectHeader * __ptr64,64>::Local::NewSegment [0x0x7ff74de70aac+140]
+	PushAllRegistersAndIterateStack [0x0x7ff75241a72d+109]
+	v8::internal::CppHeap::CollectGarbageForTesting [0x0x7ff74de6a2d9+201]
+	v8::internal::CppHeap::FinalizeIncrementalGarbageCollectionForTesting [0x0x7ff74de6cf43+51]
+	cppgc__testing__StandaloneTestingHeap__FinalizeGarbageCollection [0x0x7ff74ddc489b+27]
+	ZN19item5_write_barrier4main17h00d7f672c5a35d62E [0x0x7ff74ddc1774+1908]
+	ZN19item5_write_barrier4main17h00d7f672c5a35d62E [0x0x7ff74ddc1c96+3222]
+	ZN19item5_write_barrier4main17h00d7f672c5a35d62E [0x0x7ff74ddc1c7c+3196]
+	std::rt::lang_start_internal [0x0x7ff7512919e5+181] (/rustc/f8297e351a40c1439a467bbbb6879088047f50b3/library\std\src\rt.rs:171)
+	main [0x0x7ff74ddc1f7c+44]
+	invoke_main [0x0x7ff75241ab69+57] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:79)
+	__scrt_common_main_seh [0x0x7ff75241aa82+306] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288)
+	__scrt_common_main [0x0x7ff75241a93e+14] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:331)
+	mainCRTStartup [0x0x7ff75241abde+14] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_main.cpp:17)
+	BaseThreadInitThunk [0x0x7ff9c821cd87+23]
+	RtlUserThreadStart [0x0x7ff9c92ecaec+44]
+===== omitted: process outcome=ExitCode(-2147483645)
+===== omitted: exit code 0x80000003
+EXIT 0 

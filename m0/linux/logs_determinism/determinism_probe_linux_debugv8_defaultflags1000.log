@@ -1,0 +1,9 @@
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1000 runs
+== default-flags (in-process x1000): 1000 runs in 618.3s
+  total     distinct=1000  002ee1bcf65c92c1x1 002fbefba40a63dbx1 006cf4047f4fb184x1 00addfdc3b4255e8x1 00e48be48bd47dbax1
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=1000  00168470198a4001x1 0033dd289d20379cx1 009b8a74a79cb82dx1 0160b4b6a477f3a7x1 016a387fa3b54c8bx1
+  G         distinct=   1  76372f44f262847bx1000
+  finalized distinct=   1  11200x1000
+  first: run=0 total=f927e58d544f93a5 R=aa508f33760136b6 D=ad6f0958d197f479 G=76372f44f262847b finalized=11200

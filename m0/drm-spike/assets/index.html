@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HGBA protected media mode spike</title>
+<style>
+  body { font: 15px/1.5 -apple-system, "Segoe UI", sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; color: #1d1d1f; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .label { background: #fff4d6; border: 1px solid #e6c766; padding: 8px 12px; border-radius: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 20px 0; }
+  a.btn { display: block; padding: 14px; border: 1px solid #ccc; border-radius: 8px; text-decoration: none; color: inherit; background: #f7f7f9; }
+  a.btn:hover { background: #ececf1; }
+  a.btn small { display: block; color: #666; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Protected media mode spike (DRM-1 / DRM-2)</h1>
+<p class="label">Playing protected video using <b id="engine">the operating system's</b> media engine.
+HGBA's anti-fingerprinting and agent features do not apply in this mode.</p>
+<p id="info"></p>
+<div class="grid">
+  <a class="btn" href="https://www.netflix.com/">Netflix<small>stats: Ctrl+Shift+Alt+D (Mac: Ctrl+Shift+Option+D)</small></a>
+  <a class="btn" href="https://www.disneyplus.com/">Disney+<small>no public stats overlay; note quality menu</small></a>
+  <a class="btn" href="https://www.primevideo.com/">Prime Video<small>gear menu shows quality</small></a>
+  <a class="btn" href="https://open.spotify.com/">Spotify<small>audio only; note whether playback starts</small></a>
+  <a class="btn" href="https://www.max.com/">Max<small>settings menu shows quality</small></a>
+  <a class="btn" href="probe.html">Probe-only test page<small>requestMediaKeySystemAccess only; never creates MediaKeys</small></a>
+</div>
+<p>Sign in manually with your own account. This app never sees or stores credentials.
+Everything you do here is stored only in this container's data folder.</p>
+<script>
+  const ua = navigator.userAgent;
+  document.getElementById('engine').textContent = /Windows/.test(ua) ? "Windows' (WebView2)" : /Mac OS X/.test(ua) ? "macOS's (WebKit)" : "the operating system's";
+  document.getElementById('info').innerHTML = 'User agent: <code></code>';
+  document.querySelector('#info code').textContent = ua;
+</script>
+</body>
+</html>

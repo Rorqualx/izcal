@@ -1,0 +1,10 @@
+3a: wrapper alive, expando=1, unwrap==node: true
+3a: node drops so far=0 -> PASS
+3a': after dropping the DOM-side root too: wrapper collected=true node finalized=1
+3b: node reachable via wrapper: id=Some(2) same_ptr=true node_drops=0
+3b: PASS
+3c: wrapper collected=true (3b wrapper collected=true) cppgc nodes finalized=2 (expect 2) -> PASS
+3d: after dropping all JS roots + GC: wrapper alive=true rust_node dropped=0 -> cycle LEAKED (negative result confirmed) (expected: leaked)
+3d: after manually dropping the Rust struct: wrapper collected=true
+RESULT PASS ([true, true, true, true])
+./target-v8debug/debug/$b  0.08s user 0.03s system 9% cpu 1.116 total

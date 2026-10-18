@@ -1,0 +1,13 @@
+Windows release, C:\hgba-m0\probe-diag\probe_diag.exe (= determinism-probe + PROBE_EXIT shutdown switch, m0/xplat/probe-src/main.rs)
+<variant> 1 --quiet, exit codes (hex), 6-8 runs each:
+PROBE_EXIT=dispose (original: V8::dispose; dispose_platform; SharedRef dropped at end of main)
+  pred        : C0000005,C0000005,C0000005,80000003,80000003,80000003,C0000005,80000003
+  pred-inline : 80000003,C0000005,80000003,C0000005,80000003,C0000005,80000003,80000003
+  default     : C0000005,80000003,80000003,80000003,C0000005,80000003,80000003,80000003
+dispose + std::process::exit(0) before main returns (SharedRef never dropped): pred/pred-inline/default all 0 x8
+PROBE_EXIT=dropfirst (drop SharedRef, then dispose, dispose_platform): pred and default crash 6/6 (80000003/C0000005)
+PROBE_EXIT=droplast  (dispose, dispose_platform, then drop SharedRef):  pred and default crash 6/6; "platform ref dropped" never printed
+PROBE_EXIT=leak      (dispose, dispose_platform, mem::forget SharedRef): pred and default exit 0 6/6
+PROBE_EXIT=noplatform / nodispose: exit 0
+80000003 runs print: [FATAL:partition_root_internal.h(526)] Check failed: IsManagedByPartitionAlloc(object_addr).
+Debug-V8 build (/MTd, libcmtd): spawn pred x20 exits cleanly with the original program; test_predictable_platform passes.

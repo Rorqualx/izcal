@@ -1,0 +1,104 @@
+warning: v8@152.2.0: Not using sccache or ccache
+warning: unused import: `CppHeapExt`
+  --> compat\examples\spike\common.rs:12:20
+   |
+12 | use v8_cppgc_ext::{CppHeapExt, DetailLevel, HeapHandle, HeapState, IsolateExt, NoGarbageCollectionScope};
+   |                    ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `v8-cppgc-ext` (example "spike_item1_nogc_scope") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running `C:\hgba-m0\t-rel\release\examples\spike_item1_nogc_scope.exe`
+item1: V8 15.2.124.1-rusty ; each scenario runs in its own process under a 120 s watchdog
+
+===== scenario detached-quiescent =====
+scope-entry (single shot, incl. watchdog thread spawn): 148400ns is_marking_after_entry=false
+in-scope: gc_attempts=2251 marking_steps=0 marking_done_flag=false still_marking=false finalized_during_scope=0 live_finalized=0 reader_traversals=159385 reader_errors=[]
+addresses-stable-in-scope=true
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 addresses-stable-after-gc=true tree_ok=Ok(true)
+RESULT PASS
+===== scenario detached-quiescent: outcome=Ok wall=1.5201654s
+
+===== scenario detached-marking =====
+before-entry: is_marking=true is_sweeping=false
+scope-entry (single shot, incl. watchdog thread spawn): 163900ns is_marking_after_entry=true
+in-scope: gc_attempts=2273 marking_steps=2273 marking_done_flag=true still_marking=true finalized_during_scope=0 live_finalized=0 reader_traversals=159436 reader_errors=[]
+addresses-stable-in-scope=true
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 addresses-stable-after-gc=true tree_ok=Ok(true)
+RESULT PASS
+===== scenario detached-marking: outcome=Ok wall=1.5211685s
+
+===== scenario detached-latency =====
+amortized enter+leave pair: 3.23ns (10M pairs; Instant tick on this Mac is ~41.7ns)
+detached entry latency, idle heap: n=100000 p50=0ns p99=100ns p99.9=100ns max=6100ns
+detached entry latency, during incremental+concurrent marking: n=20000 p50=0ns p99=100ns p99.9=100ns max=300ns
+===== scenario detached-latency: outcome=Ok wall=163.1271ms
+
+===== scenario compaction-probe =====
+compaction forced for 3 incremental GCs: finalized=5000 addresses-stable=true tree_ok=Ok(true)
+===== scenario compaction-probe: outcome=Ok wall=22.1325ms
+
+===== scenario unified-marking =====
+marking-started=true after 0 JS alloc rounds (300ns)
+scope-entry (single shot, incl. watchdog thread spawn): 168100ns is_marking_after_entry=true
+in-scope: full_gc_requests=5 marking_ended_during_scope=true finalized_during_scope=5000 live_finalized=0 reader_traversals=132856 reader_errors=[]
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 tree_ok=Ok(true)
+RESULT readers_ok=true scope_blocked_v8_initiated_finalization=false (cppgc objects finalized inside scope: 5000)
+===== scenario unified-marking: outcome=Ok wall=1.527705s
+
+===== scenario unified-latency =====
+unified entry latency, not marking: n=8200 p50=0ns p99=500ns p99.9=600ns max=3200ns
+unified entry latency, V8 incremental marking active: n=4485300 p50=0ns p99=100ns p99.9=100ns max=533500ns
+===== scenario unified-latency: outcome=Ok wall=60.0791772s
+
+===== scenario unified-alloc-only =====
+marking-started=true after 0 JS alloc rounds (200ns)
+scope-entry (single shot, incl. watchdog thread spawn): 199500ns is_marking_after_entry=true
+in-scope: full_gc_requests=0 marking_ended_during_scope=true finalized_during_scope=5000 live_finalized=0 reader_traversals=135932 reader_errors=[]
+after-scope: finalized_total=5000 (garbage=5000) live_finalized=0 tree_ok=Ok(true)
+RESULT readers_ok=true scope_blocked_v8_initiated_finalization=false (cppgc objects finalized inside scope: 5000)
+===== scenario unified-alloc-only: outcome=Ok wall=1.5316446s
+
+===== scenario unified-blocked-owner =====
+blocked-owner: phases=8891 phases_started_during_marking=8891 finalized_during_phases=0 finalized_total=1778200 live_finalized=0 traversals=213384 errors=[]
+RESULT PASS
+===== scenario unified-blocked-owner: outcome=Ok wall=10.0386172s
+
+===== scenario unified-disallow =====
+disallow-scope entered; IsGarbageCollectionAllowed=false
+requesting full GC inside DisallowGarbageCollectionScope (expect a crash)...
+
+
+#
+# Fatal error
+# Check failed: !IsGCForbidden().
+#
+#
+#
+#FailureMessage Object: 000000850EAFEF00
+==== C stack trace ===============================
+
+	v8::base::debug::StackTrace::StackTrace [0x0x7ff7e54175b6+38]
+	v8::platform::DefaultPlatform::GetStackTracePrinter [0x0x7ff7e5014047+55]
+	V8_Fatal [0x0x7ff7e50a08ee+270]
+	v8::internal::CppHeap::EnterFinalPause [0x0x7ff7e50388a7+327]
+	v8::internal::MarkCompactCollector::MarkLiveObjects [0x0x7ff7e558e5b7+375]
+	v8::internal::MarkCompactCollector::CollectGarbage [0x0x7ff7e558e39a+122]
+	v8::internal::Heap::MarkCompact [0x0x7ff7e510a2e2+306]
+	v8::internal::Heap::PerformGarbageCollection [0x0x7ff7e51097e8+696]
+	v8::base::SmallVector<int,1,std::__Cr::allocator<int> >::Grow [0x0x7ff7e511cf1a+1034]
+	v8::base::SmallVector<int,1,std::__Cr::allocator<int> >::Grow [0x0x7ff7e511cd0c+508]
+	PushAllRegistersAndIterateStack [0x0x7ff7e6c1fa6d+109]
+	v8::internal::Heap::CollectGarbage [0x0x7ff7e5106884+468]
+	v8::internal::Heap::PreciseCollectAllGarbage [0x0x7ff7e5108295+101]
+	ZN22spike_item1_nogc_scope4main17heabd44420341dd96E [0x0x7ff7e4fd37ff+3039]
+	ZN3std3sys9backtrace28__rust_begin_short_backtrace17haafa085dcc1caaaeE [0x0x7ff7e4fe8e86+6]
+	ZN3std2rt10lang_start28_$u7b$$u7b$closure$u7d$$u7d$17hce458c0aa3740ebfE.llvm.6307578044399419896 [0x0x7ff7e4fe15fc+12]
+	std::rt::lang_start_internal [0x0x7ff7e69c34a5+181] (/rustc/f8297e351a40c1439a467bbbb6879088047f50b3/library\std\src\rt.rs:171)
+	main [0x0x7ff7e4fd85ac+44]
+	__scrt_common_main_seh [0x0x7ff7e6c1fca4+268] (D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288)
+	BaseThreadInitThunk [0x0x7ff9c821cd87+23]
+	RtlUserThreadStart [0x0x7ff9c92ecaec+44]
+===== scenario unified-disallow: outcome=ExitCode(-2147483645) wall=1.5247003s
+EXIT 0 

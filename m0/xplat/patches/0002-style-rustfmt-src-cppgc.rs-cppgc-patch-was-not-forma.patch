@@ -1,0 +1,83 @@
+From 895b6e73a281b3f3f2ceb78ccb8cec97a3a614ee Mon Sep 17 00:00:00 2001
+From: joe deras <joederasespinoza@gmail.com>
+Date: Wed, 14 Oct 2026 15:48:58 -0600
+Subject: [PATCH 2/2] style: rustfmt src/cppgc.rs (cppgc patch was not
+ formatted)
+
+Upstream CI runs `cargo fmt --check`.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016KFRu6a8J14PPt1sVJZJxH
+---
+ src/cppgc.rs | 27 ++++++++++++++++++++-------
+ 1 file changed, 20 insertions(+), 7 deletions(-)
+
+diff --git a/src/cppgc.rs b/src/cppgc.rs
+index faac48d..852c488 100644
+--- a/src/cppgc.rs
++++ b/src/cppgc.rs
+@@ -971,9 +971,8 @@ pub struct HeapHandle<'h> {
+ impl<'h> HeapHandle<'h> {
+   /// `v8::CppHeap::GetHeapHandle()`.
+   pub fn new(heap: &'h Heap) -> Self {
+-    let ptr = unsafe {
+-      v8__CppHeap__GetHeapHandle(heap as *const Heap as *mut Heap)
+-    };
++    let ptr =
++      unsafe { v8__CppHeap__GetHeapHandle(heap as *const Heap as *mut Heap) };
+     Self {
+       ptr: NonNull::new(ptr).unwrap(),
+       _heap: PhantomData,
+@@ -1008,7 +1007,10 @@ impl Heap {
+ 
+   /// `CppHeap::CollectStatistics()`, copied into Rust-owned structures. Must
+   /// be called on the heap's thread, outside of a garbage collection.
+-  pub fn collect_statistics(&self, detail_level: DetailLevel) -> HeapStatistics {
++  pub fn collect_statistics(
++    &self,
++    detail_level: DetailLevel,
++  ) -> HeapStatistics {
+     HeapStatistics::collect(self, detail_level)
+   }
+ 
+@@ -1218,7 +1220,11 @@ impl HeapStatistics {
+       let mut space_stats = Vec::with_capacity(totals.space_count);
+       for i in 0..totals.space_count {
+         let mut space = std::mem::MaybeUninit::uninit();
+-        assert!(cppgc__HeapStatistics__GetSpace(stats, i, space.as_mut_ptr()));
++        assert!(cppgc__HeapStatistics__GetSpace(
++          stats,
++          i,
++          space.as_mut_ptr()
++        ));
+         let space: HeapStatisticsSpace = space.assume_init();
+         let mut page_stats = Vec::with_capacity(space.page_count);
+         for j in 0..space.page_count {
+@@ -1241,7 +1247,11 @@ impl HeapStatistics {
+           });
+         }
+         let mut fl = std::mem::MaybeUninit::uninit();
+-        assert!(cppgc__HeapStatistics__GetFreeList(stats, i, fl.as_mut_ptr()));
++        assert!(cppgc__HeapStatistics__GetFreeList(
++          stats,
++          i,
++          fl.as_mut_ptr()
++        ));
+         let fl: HeapStatisticsFreeList = fl.assume_init();
+         space_stats.push(SpaceStatistics {
+           name: to_string(space.name, space.name_len),
+@@ -1396,7 +1406,10 @@ pub mod testing {
+   impl<'h> OverrideEmbedderStackStateScope<'h> {
+     pub fn new(handle: HeapHandle<'h>, state: EmbedderStackState) -> Self {
+       let inner = unsafe {
+-        cppgc__testing__OverrideEmbedderStackStateScope__NEW(handle.raw(), state)
++        cppgc__testing__OverrideEmbedderStackStateScope__NEW(
++          handle.raw(),
++          state,
++        )
+       };
+       Self {
+         inner: NonNull::new(inner).unwrap(),
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,31 @@
+V8 15.2.124.1-rusty
+== pred (in-process x200): 200 runs in 54.6s
+  total     distinct=   1  92c3fc8abd88ea44x200
+  R         distinct=   1  aa508f33760136b6x200
+  D         distinct=   1  e221096cd5924672x200
+  G         distinct=   1  76372f44f262847bx200
+  finalized distinct=   1  11200x200
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+== pred (fresh process x20): 20 runs in 5.8s
+  total     distinct=   1  92c3fc8abd88ea44x20
+  R         distinct=   1  aa508f33760136b6x20
+  D         distinct=   1  e221096cd5924672x20
+  G         distinct=   1  76372f44f262847bx20
+  finalized distinct=   1  11200x20
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+V8 15.2.124.1-rusty
+== pred-noflags (in-process x200): 200 runs in 49.3s
+  total     distinct=   1  7bedd8f98870e917x200
+  R         distinct=   1  aa508f33760136b6x200
+  D         distinct=   1  e221096cd5924672x200
+  G         distinct=   1  2df3e532ae1bf52ex200
+  finalized distinct=   1  11200x200
+  first: run=0 total=7bedd8f98870e917 R=aa508f33760136b6 D=e221096cd5924672 G=2df3e532ae1bf52e finalized=11200
+V8 15.2.124.1-rusty
+== default-flags (in-process x200): 200 runs in 53.8s
+  total     distinct= 200  00235dac0ef13d96x1 00a1ed4978e40d2bx1 02a70b05deefc129x1 063d2be64aa4c601x1 06f065707418eef2x1
+  R         distinct=   1  aa508f33760136b6x200
+  D         distinct= 200  01c62910516b078bx1 01cdde3aeb256dafx1 022515e51d2d192bx1 0233df7b403ce4e3x1 039f05effa817e9bx1
+  G         distinct=   2  3b91518141f2e11fx2 76372f44f262847bx198
+  finalized distinct=   1  11200x200
+  first: run=0 total=b760885fcf7c59aa R=aa508f33760136b6 D=4b6182a90fcc68c8 G=76372f44f262847b finalized=11200

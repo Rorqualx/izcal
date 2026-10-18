@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EME probe-only test</title>
+<style>
+  body { font: 14px/1.5 -apple-system, "Segoe UI", sans-serif; max-width: 900px; margin: 30px auto; padding: 0 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border: 1px solid #ccc; padding: 4px 8px; text-align: left; font-size: 13px; }
+  .yes { background: #dff5e1; } .no { background: #fbe3e3; }
+  code { font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>EME probe-only test</h1>
+<p>This page calls <code>navigator.requestMediaKeySystemAccess</code> for each key system and
+<b>never</b> creates <code>MediaKeys</code>, so under the plan's auto-trigger rule it must <b>not</b>
+cause a switch. <a href="index.html">Back to home</a></p>
+<p id="ctx"></p>
+<table><thead><tr><th>Key system</th><th>Variant</th><th>Supported</th><th>Detail</th></tr></thead><tbody id="rows"></tbody></table>
+<h3>Content-blocking self-test</h3>
+<p id="block">running...</p>
+<script>
+(async () => {
+  const send = (o) => { try { window.ipc.postMessage(JSON.stringify(o)); } catch (_) {} };
+  const ctx = document.getElementById('ctx');
+  ctx.textContent = 'isSecureContext=' + window.isSecureContext + ' | EME available=' +
+    (typeof navigator.requestMediaKeySystemAccess === 'function') + ' | UA=' + navigator.userAgent;
+  const avc = 'video/mp4; codecs="avc1.42E01E"';
+  const hevc = 'video/mp4; codecs="hvc1.1.6.L93.B0"';
+  const aac = 'audio/mp4; codecs="mp4a.40.2"';
+  const cfg = (initDataTypes, vrob, arob, video) => [{
+    initDataTypes,
+    videoCapabilities: [{ contentType: video || avc, robustness: vrob || '' }],
+    audioCapabilities: [{ contentType: aac, robustness: arob || '' }],
+  }];
+  const tests = [
+    ['com.widevine.alpha', 'default (cenc)', cfg(['cenc'])],
+    ['com.widevine.alpha', 'SW_SECURE_DECODE', cfg(['cenc'], 'SW_SECURE_DECODE', 'SW_SECURE_CRYPTO')],
+    ['com.widevine.alpha', 'HW_SECURE_ALL', cfg(['cenc'], 'HW_SECURE_ALL', 'HW_SECURE_CRYPTO')],
+    ['com.microsoft.playready', 'default (cenc)', cfg(['cenc'])],
+    ['com.microsoft.playready.recommendation', 'default (cenc)', cfg(['cenc'])],
+    ['com.microsoft.playready.recommendation', '2000', cfg(['cenc'], '2000', '2000')],
+    ['com.microsoft.playready.recommendation', '3000 (hardware)', cfg(['cenc'], '3000', '2000')],
+    ['com.microsoft.playready.recommendation.3000', 'default (cenc)', cfg(['cenc'])],
+    ['com.microsoft.playready.recommendation', '3000 + HEVC', cfg(['cenc'], '3000', '2000', hevc)],
+    ['com.apple.fps', 'sinf', cfg(['sinf'])],
+    ['com.apple.fps', 'skd', cfg(['skd'])],
+    ['com.apple.fps.1_0', 'sinf', cfg(['sinf'])],
+    ['org.w3.clearkey', 'keyids', cfg(['keyids', 'cenc'])],
+  ];
+  const rows = document.getElementById('rows');
+  const results = [];
+  for (const [ks, variant, conf] of tests) {
+    let ok = false, detail = '';
+    if (typeof navigator.requestMediaKeySystemAccess !== 'function') {
+      detail = 'EME API not exposed (insecure context or disabled)';
+    } else {
+      try {
+        const access = await navigator.requestMediaKeySystemAccess(ks, conf);
+        ok = true;
+        const c = access.getConfiguration();
+        detail = 'video=' + JSON.stringify((c.videoCapabilities || []).map(v => v.robustness || '(none)')) +
+                 ' initData=' + JSON.stringify(c.initDataTypes);
+        // Deliberately NOT calling access.createMediaKeys().
+      } catch (e) { detail = (e && e.name) + ': ' + (e && e.message); }
+    }
+    results.push({ keySystem: ks, variant, supported: ok, detail });
+    const tr = document.createElement('tr');
+    tr.className = ok ? 'yes' : 'no';
+    for (const t of [ks, variant, ok ? 'yes' : 'no', detail]) { const td = document.createElement('td'); td.textContent = t; tr.appendChild(td); }
+    rows.appendChild(tr);
+  }
+  // Legacy WebKit prefixed API (static capability check only).
+  let legacy = null;
+  try { if (window.WebKitMediaKeys) legacy = WebKitMediaKeys.isTypeSupported('com.apple.fps.1_0', 'video/mp4'); } catch (_) {}
+  results.push({ keySystem: 'WebKitMediaKeys com.apple.fps.1_0 (legacy)', variant: 'isTypeSupported', supported: !!legacy, detail: legacy === null ? 'API absent' : String(legacy) });
+  { const tr = document.createElement('tr'); tr.className = legacy ? 'yes' : 'no';
+    for (const t of ['com.apple.fps.1_0 (legacy WebKitMediaKeys)', 'isTypeSupported', legacy ? 'yes' : 'no', legacy === null ? 'API absent' : String(legacy)]) { const td = document.createElement('td'); td.textContent = t; tr.appendChild(td); }
+    rows.appendChild(tr); }
+
+  // Content-blocking self-test: a request to a tracker domain on the static block list.
+  let blocked;
+  try {
+    await fetch('https://securepubads.g.doubleclick.net/pagead/blocking-selftest.gif?hgba=1', { mode: 'no-cors', cache: 'no-store' });
+    blocked = false;
+  } catch (_) { blocked = true; }
+  // macOS (WKContentRuleList) blocks with a network error. Windows (WebView2) blocks by
+  // answering with a synthetic 403, which a no-cors fetch sees as an ordinary opaque
+  // response; there the host's 'blocked' records are the authoritative signal.
+  document.getElementById('block').textContent = blocked
+    ? 'Request to doubleclick.net failed with a network error (blocked).'
+    : 'Request to doubleclick.net returned an opaque response. On Windows that is the expected result of the block (synthetic 403); the host logs and counts it.';
+  send({ kind: 'probe_summary', secureContext: window.isSecureContext, results, blockSelfTest: blocked ? 'blocked' : 'opaque_response' });
+  document.title = 'EME probe-only test (done)';
+})();
+</script>
+</body>
+</html>

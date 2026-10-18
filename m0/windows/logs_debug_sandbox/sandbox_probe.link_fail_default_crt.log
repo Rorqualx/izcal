@@ -1,0 +1,84 @@
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling stable_deref_trait v1.2.1
+   Compiling writeable v0.6.4
+   Compiling libm v0.2.16
+   Compiling windows-link v0.2.1
+   Compiling litemap v0.8.3
+   Compiling glob v0.3.4
+   Compiling syn v3.0.9
+   Compiling clang-sys v1.9.1
+   Compiling libc v0.2.190
+   Compiling icu_locale_fallback_data v2.3.0
+   Compiling serde v1.0.229
+   Compiling core_maths v0.1.1
+   Compiling synstructure v0.14.0
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling serde_derive v1.0.229
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling zerotrie v0.2.5
+   Compiling zerofrom v0.1.8
+   Compiling calendrical_calculations v0.2.4
+   Compiling yoke v0.8.3
+   Compiling crc32fast v1.5.2
+   Compiling either v1.19.0
+   Compiling icu_calendar_data v2.3.0
+   Compiling regex-syntax v0.8.11
+   Compiling memchr v2.8.3
+   Compiling zerovec v0.11.8
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling regex-automata v0.4.18
+   Compiling nom v7.1.3
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling resb v0.1.2
+   Compiling icu_locale_core v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling syn v2.0.119
+   Compiling libloading v0.8.9
+   Compiling windows-sys v0.61.2
+   Compiling bindgen v0.72.1
+   Compiling cfg-if v1.0.5
+   Compiling home v0.5.12
+   Compiling icu_locale_fallback v2.3.0
+   Compiling prettyplease v0.2.37
+   Compiling zoneinfo64 v0.3.0
+   Compiling regex v1.13.1
+   Compiling cexpr v0.6.0
+   Compiling itertools v0.13.0
+   Compiling strck v1.0.0
+   Compiling bitflags v2.13.2
+   Compiling log v0.4.34
+   Compiling smallvec v1.16.3
+   Compiling rustc-hash v2.1.3
+   Compiling diplomat_core v0.16.1
+   Compiling which v6.0.3
+   Compiling icu_calendar v2.3.0
+   Compiling timezone_provider v0.2.6
+   Compiling gzip-header v1.1.0
+   Compiling ixdtf v0.6.6
+   Compiling diplomat v0.16.1
+   Compiling temporal_rs v0.2.6
+   Compiling diplomat-runtime v0.16.0
+   Compiling v8-cppgc-ext v0.2.0-fork (C:\hgba-m0\m0win\compat)
+   Compiling temporal_capi v0.2.6
+   Compiling v8 v152.2.0 (C:\hgba-m0\rusty_v8)
+warning: v8@152.2.0: Not using sccache or ccache
+error: linking with `link.exe` failed: exit code: 1120
+  |
+  = note: "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\link.exe" "/NOLOGO" "C:\\Users\\Joe\\AppData\\Local\\Temp\\rustcEMYSM9\\symbols.o" "<3 object files omitted>" "C:\\hgba-m0\\t-dbg\\release\\deps/{libv8-432c0c029ca73d20,libtemporal_capi-073c40dbe472a6d2,libdiplomat_runtime-2235d81617358c95,libtemporal_rs-4e46c9242b72a5b1,libicu_calendar-3dd925df6dafa332,libicu_locale_fallback-b1b23c7930e92ea6,libicu_locale_fallback_data-75d749980accb76e,libicu_calendar_data-840d648281432d99,libicu_provider-4f40f8d06823ccd0,libixdtf-ea7a1d660ffa6505,libnum_traits-42a5c480d2daa9e0,libtimezone_provider-a634154bb658bab8,libzoneinfo64-fa393455f0e3b1c5,libserde-7f673da807f941f5,libicu_locale_core-1b92e43906501368,libtinystr-5a15a0942bd16681,liblitemap-63f233538c53defa,libresb-0b9ce1aa984fdb43,libserde_core-18203a7b83d8c43a,libpotential_utf-e6e88aec9d061087,libwriteable-610f1b35ec286026,libcalendrical_calculations-80c9dfd04910a2ba,libcore_maths-212834881cd91297,liblibm-31e25e680a1b4abc,libzerovec-812f371535d153a8,libyoke-4f6f2402f92a5642,libstable_deref_trait-e4641c54161d668b,libzerofrom-d6e2f0d45b623d85,libzerotrie-2a3452e99ce69a8c,libbitflags-75cc18fbf045bfd4}.rlib" "<sysroot>\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib/{libstd-*,libpanic_unwind-*,libcfg_if-*,libwindows_targets-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libunwind-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "winmm.lib" "dbghelp.lib" "msvcprt.lib" "kernel32.lib" "kernel32.lib" "kernel32.lib" "ntdll.lib" "userenv.lib" "ws2_32.lib" "dbghelp.lib" "/defaultlib:msvcrt" "/NXCOMPAT" "/LIBPATH:C:\\hgba-m0\\t-dbg\\release\\gn_out/obj/" "/OUT:C:\\hgba-m0\\t-dbg\\release\\examples\\sandbox_probe.exe" "/OPT:REF,ICF" "/DEBUG" "/PDBALTPATH:%_PDB%" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\intrinsic.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\liballoc.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libcore.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libstd.natvis"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note:    Creating library C:\hgba-m0\t-dbg\release\examples\sandbox_probe.lib and object C:\hgba-m0\t-dbg\release\examples\sandbox_probe.exp␍
+          LINK : warning LNK4098: defaultlib 'libcmtd.lib' conflicts with use of other libs; use /NODEFAULTLIB:library␍
+          libv8-432c0c029ca73d20.rlib(platform-win32.obj) : error LNK2019: unresolved external symbol _CrtSetReportMode referenced in function "void __cdecl v8::base::EnsureConsoleOutputWin32(void)" (?EnsureConsoleOutputWin32@base@v8@@YAXXZ)␍
+          libv8-432c0c029ca73d20.rlib(platform-win32.obj) : error LNK2019: unresolved external symbol _CrtSetReportFile referenced in function "void __cdecl v8::base::EnsureConsoleOutputWin32(void)" (?EnsureConsoleOutputWin32@base@v8@@YAXXZ)␍
+          C:\hgba-m0\t-dbg\release\examples\sandbox_probe.exe : fatal error LNK1120: 2 unresolved externals␍
+          
+
+error: could not compile `v8-cppgc-ext` (example "sandbox_probe") due to 1 previous error
+EXIT 101 

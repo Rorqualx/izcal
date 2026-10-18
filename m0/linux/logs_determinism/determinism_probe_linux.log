@@ -1,0 +1,84 @@
+Linux HueyTheDestroyer 6.8.0-146-generic #146-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep  3 16:12:30 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+8
+ 17:06:18 up 1 day, 12 min,  2 users,  load average: 1.60, 1.48, 2.54
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 8000 total over 1000 runs
+== pred (in-process x1000): 1000 runs in 63.0s
+  total     distinct=   1  92c3fc8abd88ea44x1000
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=   1  e221096cd5924672x1000
+  G         distinct=   1  76372f44f262847bx1000
+  finalized distinct=   1  11200x1000
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+== pred (fresh process x50): 50 runs in 3.7s
+  total     distinct=   1  92c3fc8abd88ea44x50
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=   1  e221096cd5924672x50
+  G         distinct=   1  76372f44f262847bx50
+  finalized distinct=   1  11200x50
+  first: run=0 total=92c3fc8abd88ea44 R=aa508f33760136b6 D=e221096cd5924672 G=76372f44f262847b finalized=11200
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1000 runs
+== pred-inline (in-process x1000): 1000 runs in 62.8s
+  total     distinct=   1  cdc6061a80562140x1000
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=   1  e221096cd5924672x1000
+  G         distinct=   1  3b91518141f2e11fx1000
+  finalized distinct=   1  11200x1000
+  first: run=0 total=cdc6061a80562140 R=aa508f33760136b6 D=e221096cd5924672 G=3b91518141f2e11f finalized=11200
+== pred-inline (fresh process x50): 50 runs in 3.6s
+  total     distinct=   1  cdc6061a80562140x50
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=   1  e221096cd5924672x50
+  G         distinct=   1  3b91518141f2e11fx50
+  finalized distinct=   1  11200x50
+  first: run=0 total=cdc6061a80562140 R=aa508f33760136b6 D=e221096cd5924672 G=3b91518141f2e11f finalized=11200
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 147008 total over 1000 runs
+== pred-noflags (in-process x1000): 1000 runs in 87.7s
+  total     distinct=   1  7bedd8f98870e917x1000
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=   1  e221096cd5924672x1000
+  G         distinct=   1  2df3e532ae1bf52ex1000
+  finalized distinct=   1  11200x1000
+  first: run=0 total=7bedd8f98870e917 R=aa508f33760136b6 D=e221096cd5924672 G=2df3e532ae1bf52e finalized=11200
+== pred-noflags (fresh process x50): 50 runs in 5.5s
+  total     distinct=   1  7bedd8f98870e917x50
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=   1  e221096cd5924672x50
+  G         distinct=   1  2df3e532ae1bf52ex50
+  finalized distinct=   1  11200x50
+  first: run=0 total=7bedd8f98870e917 R=aa508f33760136b6 D=e221096cd5924672 G=2df3e532ae1bf52e finalized=11200
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1000 runs
+== default (in-process x1000): 1000 runs in 52.5s
+  total     distinct=1000  002906ef95d2db82x1 002d3d59611f9ef0x1 0038bb61f8d3969bx1 003dba2574bf3ef9x1 008e238718fd5861x1
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=1000  00715e69092f9eb1x1 00dfe1488c59b7efx1 010dad88232c1be5x1 01231f94b5416b8ex1 017601190c01bdbcx1
+  G         distinct= 912  0077abae4f9610e5x1 00902ed516bb0b5ax1 00a568e829520963x1 00a80f75e4d7cd63x1 00cd197633c8328cx1
+  finalized distinct=   1  11200x1000
+  first: run=0 total=a04234daf644ced9 R=aa508f33760136b6 D=083f4eb60dece6a4 G=885e1622cc5eee2e finalized=11200
+== default (fresh process x50): 50 runs in 2.6s
+  total     distinct=  50  048e152e7bdaca2ex1 067463200f41444ex1 137b8ccaa56bcf28x1 177cf657e63eedbcx1 28ca5d34b962bf11x1
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=  50  02829f7dd6294313x1 0b38c4986098a146x1 1dd2d5062fad8b8cx1 22ca27f87a95a7ecx1 2d7eed19a464da0ax1
+  G         distinct=  49  0e2a5e8d40a1b5d7x1 122e4129a617f55ax1 154a16729ce3aa38x1 1715aef39a92f59ex1 182920391fcfb3e1x1
+  finalized distinct=   1  11200x50
+  first: run=0 total=2b4d52a4852e5b80 R=aa508f33760136b6 D=c02f956651c4cb22 G=284b997ed66a46ef finalized=11200
+V8 15.2.124.1-rusty
+worker tasks drained by the embedder: 0 total over 1000 runs
+== default-flags (in-process x1000): 1000 runs in 63.1s
+  total     distinct=1000  00300656dbd6ac40x1 0059767e75a39983x1 007e5b5c35869b93x1 014d7c8eb83b31e4x1 01ae0a479734fc22x1
+  R         distinct=   1  aa508f33760136b6x1000
+  D         distinct=1000  00021b5ecd15e059x1 000aff6f7ee2bde9x1 00a19988cef7f5dbx1 00fec9870cee8c5cx1 01855550d229afcdx1
+  G         distinct=   1  76372f44f262847bx1000
+  finalized distinct=   1  11200x1000
+  first: run=0 total=c0afda6cf667166e R=aa508f33760136b6 D=4b32c3710d4392ac G=76372f44f262847b finalized=11200
+== default-flags (fresh process x50): 50 runs in 3.7s
+  total     distinct=  50  005285862e97de18x1 0c578a188deb86a8x1 0c8fe7c45764dd5ex1 1cc8e27b01197c9ax1 21631c4ec489f95bx1
+  R         distinct=   1  aa508f33760136b6x50
+  D         distinct=  50  00ddd2d0b3603aabx1 01957106032599a0x1 02ea238611cea265x1 04e9c9fe0f3a986cx1 0ed0ea700f118a8ax1
+  G         distinct=   1  76372f44f262847bx50
+  finalized distinct=   1  11200x50
+  first: run=0 total=723563cf0af065e8 R=aa508f33760136b6 D=fc80bbcd232e5dbe G=76372f44f262847b finalized=11200
+done

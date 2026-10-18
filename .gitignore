@@ -1,0 +1,16 @@
+.DS_Store
+
+# Cargo build output (the cppgc spike also used target-v8debug, target-tsan)
+target/
+target-*/
+
+# Prebuilt V8 archives (hundreds of MB). Publish them as release assets;
+# their SHA256SUMS, args.gn and src_binding_*.rs files stay tracked.
+m0/archives/*.a
+m0/archives/*.a.gz
+m0/linux/*.a.gz
+m0/windows/*.lib
+
+# Vendored LLVM and a symlink into ~/.local (machine-specific)
+m0/tools/llvm21/
+m0/tools/pybin

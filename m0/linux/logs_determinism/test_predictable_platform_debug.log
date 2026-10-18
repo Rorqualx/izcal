@@ -1,0 +1,8 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 1m 04s
+     Running tests/test_predictable_platform.rs (/home/joe/hgba-m0/target-platformtest-debug/debug/deps/test_predictable_platform-bab83783c794e79a)
+
+running 1 test
+test predictable_platform ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+

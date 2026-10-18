@@ -1,0 +1,5 @@
+item2: secs=30 racy_control=false cycles=8931 cycles_with_marking_active=8861 inserts=88880 removes=30925 worker_traversals=142896 finalized_total=98752 finalized_during_worker_phases=0 removed_nodes_finalized=98752
+errors=[]
+RESULT PASS
+./target/release/item2_crossthread_raw --secs 30  84.70s user 3.63s system 289% cpu 30.551 total
+exit=0
