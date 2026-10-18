@@ -2,6 +2,7 @@
 name = "drm-spike"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 publish = false
 description = "HGBA DRM-1/DRM-2 spike: protected media mode host on the OS's licensed web engine (wry)"
 

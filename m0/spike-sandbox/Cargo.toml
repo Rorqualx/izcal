@@ -2,6 +2,7 @@
 name = "cppgc-spike"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 v8 = { version = "=152.2.0", features = ["v8_enable_sandbox"] }

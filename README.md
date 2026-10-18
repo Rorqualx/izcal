@@ -9,8 +9,8 @@ The documents cite each other by ID. This table maps the IDs to files.
 | ID | File | Current revision |
 |---|---|---|
 | HGBA-2 (spec; targets S-, C-, P-, R-, I-, decisions D1–D13) | `reports/HGBA 2 browser architecture spec.md` | 2.1.6, frozen |
-| HGBA-3 (direction: oracles, data plane, determinism; B-, DET-, AG-) | `reports/Future software browser engine.md` | 3.1.4, frozen |
-| Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S9) | `reports/HGBA Stage 1 architecture design.md` | draft 0.9.2 |
+| HGBA-3 (direction: oracles, data plane, determinism; B-, DET-, AG-) | `reports/Future software browser engine.md` | 3.1.5, frozen |
+| Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S9) | `reports/HGBA Stage 1 architecture design.md` | draft 0.9.3 |
 | Shell UI design | `reports/HGBA shell UI design.md` | draft 0.2 |
 
 Reviews that fed the specs are also in `reports/`; the evidence behind every report is in `research_notes/<report name>/`.
@@ -40,4 +40,4 @@ Both repositories are public. The V8 archives built in M0 are not in git (see `.
 
 ## License
 
-MPL-2.0 is decided for the engine crates (Stage 1 design, D-S6). No license file has been added yet.
+MIT ([LICENSE](LICENSE)), for code and documents (Stage 1 design, D-S6). The `rusty_v8` fork is MIT too. Some dependencies keep their own licenses, notably Stylo, `selectors` and WebRender (MPL-2.0); see CONTRIBUTING.md, "License".
