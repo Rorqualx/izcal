@@ -10,7 +10,7 @@ cd izcal
 tools/setup-hooks.sh
 ```
 
-`setup-hooks.sh` points git at `.githooks/` for the project and for the fork. It also lists any missing tools. The checks need `gitleaks`, `shellcheck`, `actionlint` (`brew install gitleaks shellcheck actionlint`), `rustfmt` (from rustup), `python3`, and the Claude Code CLI `claude` for the review. A missing tool gives a warning, not a failure, except where noted.
+`setup-hooks.sh` points git at `.githooks/` for the project and for the fork. It also lists any missing tools. The checks need `gitleaks`, `shellcheck`, `actionlint`, `zizmor` and `cargo-deny` (`brew install gitleaks shellcheck actionlint zizmor cargo-deny`), `rustfmt` (from rustup), `python3`, and the Claude Code CLI `claude` for the review. A missing tool gives a warning, not a failure, except where noted.
 
 ## Branches
 
@@ -67,6 +67,7 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 | `actionlint` | A GitHub workflow has an error |
 | `mdlinks` | A relative Markdown link points at a file that does not exist |
 | `revision` | A frozen spec changes without adding or changing a revision or status line (see "Specs") |
+| `security` | Added Rust `unsafe` lacks a `// SAFETY:` comment just above it; an added line disables TLS verification, pipes a download into a shell or makes files world-writable; a changed GitHub workflow fails zizmor (unpinned actions, persisted credentials, cache poisoning, template injection); a changed `Cargo.lock` has a known vulnerability (cargo-deny with `tools/deny.toml`: vulnerabilities fail, unmaintained notices do not) |
 | `provenance` | Added code carries another browser project's copyright or license header (Chromium, V8, Servo, Mozilla, Apple/WebKit, KDE, SerenityOS/Ladybird) or a copyleft SPDX tag (see "Original code") |
 | `review` | The AI code review finds a high-severity defect (below) |
 
@@ -74,7 +75,7 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 
 ## Code review
 
-- **AI review, on every commit that changes code.** The pre-commit hook sends the staged diff of code files (Rust, C++, Python, shell, TOML, YAML, gn; not Markdown or logs) to Claude Code (`IZCAL_REVIEW_MODEL`, default `sonnet`), with read-only access to the repository. It reports correctness, memory-safety, GC, security and build defects, and checks the rules in this file and in the specs. A high-severity finding blocks the commit. Medium findings are printed as warnings. If the reviewer cannot run (no CLI, no network, timeout), the commit goes through with a warning. A typical review takes 5–30 seconds and costs about $0.01–0.10.
+- **AI review, on every commit that changes code.** The pre-commit hook sends the staged diff of code files (Rust, C++, Python, shell, TOML, YAML, gn; not Markdown or logs) to Claude Code (`IZCAL_REVIEW_MODEL`, default `sonnet`), with read-only access to the repository. It reports correctness, memory-safety, GC, security and build defects. Its security checklist is specific to Izcal: unvalidated data crossing a process or IPC boundary, capabilities passed further than needed, ambient authority in a sandboxed process, untrusted input parsed in a privileged process, cross-site data reaching one process, secrets logged or exported, missing consent or origin checks on inspection and agent surfaces, weak or hand-rolled cryptography, unsafe Rust whose safety argument does not hold, and injection, and checks the rules in this file and in the specs. A high-severity finding blocks the commit. Medium findings are printed as warnings. If the reviewer cannot run (no CLI, no network, timeout), the commit goes through with a warning. A typical review takes 5–30 seconds and costs about $0.01–0.10.
 - **Pull requests** need green CI. Self-merge is allowed, because the project has one maintainer. Once there are two, one approval from someone other than the author is required, and the AI review does not count as that approval.
 
 ## Merging

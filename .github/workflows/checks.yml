@@ -18,19 +18,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned to full commit hashes, so a moved tag cannot
+      # change what runs (the 2025 tj-actions compromise worked that way).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      # shellcheck, python3 and rustfmt (stable) come with the runner image.
-      - name: Install gitleaks and actionlint
+      # gitleaks, actionlint, zizmor and cargo-deny, each pinned and checked
+      # against its SHA-256 (tools/ci-install-tools.sh). shellcheck, python3
+      # and rustfmt (stable) come with the runner image.
+      - name: Install check tools
         run: |
-          bin="$RUNNER_TEMP/bin"; mkdir -p "$bin"
-          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-            | tar -xz -C "$bin" gitleaks
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$bin"
-          echo "$bin" >> "$GITHUB_PATH"
-          "$bin/gitleaks" version; "$bin/actionlint" -version | head -1; shellcheck --version | sed -n 2p; rustfmt --version
+          bash tools/ci-install-tools.sh "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          shellcheck --version | sed -n 2p; rustfmt --version
 
       - name: Checks
         env:

@@ -13,7 +13,7 @@
 #   IZCAL_REVIEW_MAX_LINES=4000      diff lines sent to the review
 #
 # Checks: conflict, size, binary, secrets, rustfmt, shellcheck, actionlint,
-#         mdlinks, revision, provenance, review.
+#         mdlinks, revision, provenance, security, review.
 # Bash 3.2 compatible (macOS /bin/bash).
 
 set -u
@@ -29,6 +29,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$MODE" ] || { echo "usage: checks.sh --staged | --range BASE HEAD [--review]" >&2; exit 2; }
 
+CHECKS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)  # also serves the fork
 ROOT=$(git rev-parse --show-toplevel) || exit 2
 cd "$ROOT" || exit 2
 # An unresolvable range would yield an empty file list and a silent pass.
@@ -117,7 +118,7 @@ if ! skipped secrets; then
   else
     pat='(gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[A-Za-z0-9-]{10,}|sk-(ant-)?[A-Za-z0-9_-]{30,})'
     # Report where, never what: the matched text would leak into logs.
-    hits=$(diff_text -U0 | grep -E '^(\+\+\+ |\+)' | awk -v pat="$pat" '/^\+\+\+ / {f=substr($0,7); next} $0 ~ pat {print f ": added line matches a credential pattern (redacted)"}' | sort -u)
+    hits=$(diff_text -U0 | grep -E '^(\+\+\+ |\+)' | PAT="$pat" awk '/^\+\+\+ / {f=substr($0,7); next} $0 ~ ENVIRON["PAT"] {print f ": added line matches a credential pattern (redacted)"}' | sort -u)
     if [ -n "$hits" ]; then fail secrets; echo "$hits" | indent; else ok "secrets (regex fallback; install gitleaks for full rules)"; fi
   fi
 fi
@@ -251,9 +252,93 @@ if ! skipped provenance; then
     pat='C[o]pyright.{0,40}(Chromium Authors|V8 project authors|Servo Project Developers|M[o]zilla Foundation|Apple Inc|Google (Inc|LLC)|KDE|SerenityOS|Ladybird)|M[o]zilla Public License|S[P]DX-License-Identifier: *(MPL|GPL|LGPL|AGPL)'
     if [ "$MODE" = staged ]; then xargs -0 git diff --cached -U0 -- < "$TMP/prov_paths" > "$TMP/prov.diff"
     else xargs -0 git diff -U0 "$BASE" "$HEAD" -- < "$TMP/prov_paths" > "$TMP/prov.diff"; fi
-    bad=$(awk -v pat="$pat" '/^\+\+\+ / {f=substr($0,7); next} /^\+/ && $0 ~ pat {print f ": " substr($0,2,100)}' "$TMP/prov.diff")
+    bad=$(PAT="$pat" awk '/^\+\+\+ / {f=substr($0,7); next} /^\+/ && $0 ~ ENVIRON["PAT"] {print f ": " substr($0,2,100)}' "$TMP/prov.diff")
   fi
   if [ -n "$bad" ]; then fail provenance; echo "    code with another browser project's copyright or license (D-S10):"; echo "$bad" | indent | indent; else ok provenance; fi
+fi
+
+# --- security: known-dangerous patterns, workflows and dependencies ---------
+# Four deterministic parts, each on what this change adds:
+#   (1) Rust `unsafe` blocks and impls need a `// SAFETY:` comment just above
+#       them, saying why the invariants hold;
+#   (2) risky patterns: TLS verification turned off, a download piped into a
+#       shell, world-writable permissions;
+#   (3) GitHub workflows pass zizmor (unpinned actions, credential
+#       persistence, cache poisoning, template injection);
+#   (4) a changed Cargo.lock has no known advisory (cargo-deny, RustSec).
+if ! skipped security; then
+  sec_bad=""
+  rs=$(files_matching '\.rs$' | grep -v '/third_party/' || true)
+  if [ -n "$rs" ]; then
+    printf '%s\n' "$rs" | tr '\n' '\0' > "$TMP/sec_rs"
+    if [ "$MODE" = staged ]; then xargs -0 git diff --cached -U3 -- < "$TMP/sec_rs" > "$TMP/sec_rs.diff"
+    else xargs -0 git diff -U3 "$BASE" "$HEAD" -- < "$TMP/sec_rs" > "$TMP/sec_rs.diff"; fi
+    # Added lines with `unsafe {` or `unsafe impl`, with no SAFETY: comment
+    # in the three lines before them (added or context).
+    unsafe_hits=$(awk '
+      /^\+\+\+ / {f=substr($0,7); n=0; next}
+      /^@@/ {n=0; next}
+      /^[ +]/ {
+        line=substr($0,2)
+        if ($0 ~ /^\+/ && line ~ /unsafe[ \t]*(\{|impl)/ && line !~ /^[ \t]*\/\//) {
+          ok=0; for (i=1;i<=3;i++) if (prev[i] ~ /SAFETY:/) ok=1
+          if (line ~ /SAFETY:/) ok=1
+          if (!ok) print f ": unsafe without a SAFETY: comment: " substr(line,1,80)
+        }
+        prev[3]=prev[2]; prev[2]=prev[1]; prev[1]=line
+      }' "$TMP/sec_rs.diff")
+    [ -n "$unsafe_hits" ] && sec_bad="$sec_bad
+$unsafe_hits"
+  fi
+  risky_files=$(files_matching '\.(rs|cc|cpp|h|py|sh|bash|ya?ml|toml|js|ts|bat|ps1)$|^\.githooks/' | grep -v '/third_party/' | grep -v '^tools/checks\.sh$' || true)
+  if [ -n "$risky_files" ]; then
+    printf '%s\n' "$risky_files" | tr '\n' '\0' > "$TMP/sec_risky"
+    if [ "$MODE" = staged ]; then xargs -0 git diff --cached -U0 -- < "$TMP/sec_risky" > "$TMP/sec_risky.diff"
+    else xargs -0 git diff -U0 "$BASE" "$HEAD" -- < "$TMP/sec_risky" > "$TMP/sec_risky.diff"; fi
+    # The [x] brackets keep this file from matching its own patterns.
+    # Passed through the environment, not awk -v: -v would process the
+    # backslash escapes and silently change the pattern. POSIX awk has no \b.
+    rpat='d[a]nger_accept_invalid_(certs|hostnames)|d[a]ngerous_configuration|I[n]secureSkipVerify|v[e]rify *= *False|N[O]DE_TLS_REJECT_UNAUTHORIZED *= *0|G[I]T_SSL_NO_VERIFY|(c[u]rl|w[g]et)[^|#]*[|] *(sudo +)?(ba|z)?sh( |;|$)|(ba|z)?s[h] +<[(] *(c[u]rl|w[g]et)|c[h]mod +(-R +)?(0?777|a[+]w)|--[i]nsecure( |$)'
+    risky_hits=$(RPAT="$rpat" awk '/^\+\+\+ / {f=substr($0,7); next} /^\+/ && $0 ~ ENVIRON["RPAT"] {print f ": risky pattern: " substr($0,2,90)}' "$TMP/sec_risky.diff")
+    [ -n "$risky_hits" ] && sec_bad="$sec_bad
+$risky_hits"
+  fi
+  sec_warn=""
+  wf=$(files_matching '^\.github/workflows/.*\.ya?ml$' || true)
+  if [ -n "$wf" ]; then
+    if command -v zizmor >/dev/null; then
+      while IFS= read -r f; do
+        content "$f" > "$TMP/zz.yml"
+        zout=$(zizmor --offline --min-severity medium --no-progress --format plain "$TMP/zz.yml" 2>&1) || sec_bad="$sec_bad
+== zizmor: $f
+$(printf '%s\n' "$zout" | grep -E '^(error|warning)\[|^ *--> |\^' | sed "s|$TMP/zz.yml|$f|" | head -20)"
+      done <<< "$wf"
+    else sec_warn="$sec_warn zizmor"; fi
+  fi
+  locks=$(files_matching '(^|/)Cargo\.lock$' | grep -v '/third_party/' || true)
+  if [ -n "$locks" ]; then
+    if command -v cargo-deny >/dev/null; then
+      while IFS= read -r lock; do
+        dir=$(dirname "$lock")
+        # --config goes before `check`: cargo-deny 0.20 rejects it after
+        # (exit 2, "unexpected argument"), whatever `check --help` suggests.
+        if ! dout=$(cd "$dir" && cargo-deny --log-level error --config "$CHECKS_DIR/deny.toml" check advisories 2>&1); then
+          if printf '%s' "$dout" | grep -qiE 'failed to (fetch|open)|network|could not resolve|unable to (fetch|load)'; then
+            sec_warn="$sec_warn cargo-deny(no advisory database: offline?)"
+          else
+            sec_bad="$sec_bad
+== cargo-deny advisories: $lock
+$(printf '%s\n' "$dout" | grep -E '^(error|warning)\[|ID:|Crate:|Title:|^ +[a-z_-]+ [0-9.]+' | head -20)"
+          fi
+        fi
+      done <<< "$locks"
+    else sec_warn="$sec_warn cargo-deny"; fi
+  fi
+  if [ -n "$sec_bad" ]; then
+    fail security; echo "$sec_bad" | sed '/^$/d' | indent
+    echo "    fix it, or skip with IZCAL_HOOKS_SKIP=security and say why in the commit body" | indent
+  else ok security; fi
+  [ -n "$sec_warn" ] && warn "security: not checked (tool missing or offline):$sec_warn"
 fi
 
 # --- review: AI code review of the diff (code only) ---------------------------
@@ -274,7 +359,7 @@ if [ "$REVIEW" = 1 ] && ! skipped review; then
     head -n "$max" "$TMP/diff" > "$TMP/diff.cut"
     note=""; [ "$total" -gt "$max" ] && note="The diff was cut to its first $max of $total lines; say so if that hides context you need."
     schema='{"type":"object","properties":{"verdict":{"enum":["pass","warn","block"]},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"enum":["high","medium","low"]},"file":{"type":"string"},"line":{"type":"integer"},"issue":{"type":"string"}},"required":["severity","file","issue"]}}},"required":["verdict","findings"]}'
-    prompt="You are reviewing a staged change to Izcal, a Rust browser engine on V8 (a rusty_v8 fork). The unified diff is on stdin. Report only real defects: correctness bugs, memory or thread safety (unsafe, cppgc/GC rules, write barriers), security, broken builds or CI, violations of the project's written rules, and code that appears copied, ported or translated from another browser engine (Servo, Chromium/Blink, WebKit, Gecko/Firefox, Ladybird), which is forbidden by Stage 1 design D-S10 and is always high severity. You may read files in the repository for context: CONTRIBUTING.md, the specs in reports/ (HGBA-2 targets such as S-4c/S-4e/S-4f, the Stage 1 design's crate rules G1-G8). Do not report style or formatting (other checks cover those) or speculation. Severity high = would ship a bug or break the build; medium = likely bug; low = minor. verdict: block if any high finding, warn if any medium, else pass. Keep each issue to one or two sentences. $note"
+    prompt="You are reviewing a staged change to Izcal, a Rust browser engine on V8 (a rusty_v8 fork). The unified diff is on stdin. Report only real defects: correctness bugs, memory or thread safety (unsafe, cppgc/GC rules, write barriers), security, broken builds or CI, security defects (for Izcal: unvalidated data crossing a process or IPC boundary, a capability or handle passed further than needed, ambient authority in a sandboxed process, untrusted input parsed in a privileged process, cross-site data reaching one process (HGBA-2 P1, I-1, I-2), secrets or credentials logged or exported, missing consent or origin checks on inspection, automation or agent surfaces (B9, B10), weak or hand-rolled cryptography, unsafe Rust whose SAFETY argument does not hold, injection into shells, SQL or HTML), violations of the project's written rules, and code that appears copied, ported or translated from another browser engine (Servo, Chromium/Blink, WebKit, Gecko/Firefox, Ladybird), which is forbidden by Stage 1 design D-S10 and is always high severity. You may read files in the repository for context: CONTRIBUTING.md, the specs in reports/ (HGBA-2 targets such as S-4c/S-4e/S-4f, the Stage 1 design's crate rules G1-G8). Do not report style or formatting (other checks cover those) or speculation. Severity high = would ship a bug or break the build; medium = likely bug; low = minor. verdict: block if any high finding, warn if any medium, else pass. Keep each issue to one or two sentences. $note"
     start=$(date +%s)
     if command -v timeout >/dev/null; then TO="timeout 300"; elif command -v gtimeout >/dev/null; then TO="gtimeout 300"; else TO=""; fi
     # shellcheck disable=SC2086 # TO is a command prefix
