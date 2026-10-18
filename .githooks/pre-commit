@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Izcal pre-commit: branch rule, then tools/checks.sh on the staged files,
+# including the AI code review. See CONTRIBUTING.md.
+set -u
+HOOKS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+. "$HOOKS_DIR/lib.sh"
+
+branch=$(git symbolic-ref --short -q HEAD || echo "")
+if is_protected "$branch" && [ "${IZCAL_ALLOW_PROTECTED:-}" != 1 ]; then
+  echo "pre-commit: '$branch' is protected; commit on a feature branch:" >&2
+  echo "  git switch -c <type>/<topic>     (CONTRIBUTING.md, Branches)" >&2
+  exit 1
+fi
+
+# Remember skipped checks so commit-msg can record them in the message.
+printf '%s' "${IZCAL_HOOKS_SKIP:-}" > "$(git rev-parse --git-dir)/IZCAL_HOOKS_SKIPPED"
+exec bash "$(checks_script)" --staged --review

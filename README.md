@@ -31,9 +31,12 @@ Reviews that fed the specs are also in `reports/`; the evidence behind every rep
 
 ```
 git clone --recurse-submodules https://github.com/Rorqualx/izcal.git
+cd izcal && tools/setup-hooks.sh
 ```
 
-Both repositories are private. The V8 archives built in M0 are not in git (see `.gitignore`); their checksums are in `m0/archives/SHA256SUMS` and `m0/linux/SHA256SUMS`.
+Branches, worktrees, commits, checks, code review, merging and pushing are covered in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Both repositories are public. The V8 archives built in M0 are not in git (see `.gitignore`); their checksums are in `m0/archives/SHA256SUMS` and `m0/linux/SHA256SUMS`.
 
 ## License
 

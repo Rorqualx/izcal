@@ -4,7 +4,8 @@
 # rust-toolchain.toml; Python on PATH), then runs the rendered jobs in order.
 PY="/c/Users/joe's pc/AppData/Local/Programs/Python/Python312"
 export PATH="$PY:$PY/Scripts:$HOME/.cargo/bin:$PATH"
-export PYTHON="$(cygpath -w "$PY/python.exe")"
+PYTHON="$(cygpath -w "$PY/python.exe")"
+export PYTHON
 # Laptop-specific: VS Build Tools live under Program Files (x86).
 export vs2022_install='C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools'
 for j in "$@"; do

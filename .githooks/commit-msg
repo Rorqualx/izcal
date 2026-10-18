@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Izcal commit-msg: subject format, and a Hooks-Skipped trailer when checks
+# were skipped. See CONTRIBUTING.md, "Commit messages".
+set -u
+msg_file=$1
+subject=$(grep -v '^#' "$msg_file" | head -1)
+second=$(grep -v '^#' "$msg_file" | sed -n 2p)
+
+case "$subject" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
+esac
+
+err=""
+[ -n "$subject" ] || err="empty subject"
+[ ${#subject} -le 72 ] || err="subject is ${#subject} characters (max 72)"
+case "$subject" in *.) err="subject ends with a period" ;; esac
+echo "$subject" | grep -qE '^[a-z0-9][a-z0-9/_.-]*: [^ ]' || err="subject must be '<area>: <summary>' with a lowercase area (e.g. 'ci: cache submodule state')"
+[ -z "$second" ] || err="leave a blank line after the subject"
+if [ -n "$err" ]; then
+  echo "commit-msg: $err" >&2
+  echo "  subject: $subject" >&2
+  exit 1
+fi
+
+skip_file="$(git rev-parse --git-dir)/IZCAL_HOOKS_SKIPPED"
+skipped=$(cat "$skip_file" 2>/dev/null || true)
+rm -f "$skip_file"
+if [ -n "$skipped" ] && ! grep -q '^Hooks-Skipped:' "$msg_file"; then
+  git interpret-trailers --in-place --trailer "Hooks-Skipped: $skipped" "$msg_file"
+fi
+exit 0

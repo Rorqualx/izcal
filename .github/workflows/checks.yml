@@ -1,0 +1,43 @@
+# Runs tools/checks.sh on every pull request and push to main: the same
+# checks as the git hooks, so a commit made with --no-verify is still
+# caught. Branch protection requires this job ("checks"). The AI review runs
+# only in the pre-commit hook (it needs the Claude Code CLI and an account).
+
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # shellcheck, python3 and rustfmt (stable) come with the runner image.
+      - name: Install gitleaks and actionlint
+        run: |
+          bin="$RUNNER_TEMP/bin"; mkdir -p "$bin"
+          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            | tar -xz -C "$bin" gitleaks
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$bin"
+          echo "$bin" >> "$GITHUB_PATH"
+          "$bin/gitleaks" version; "$bin/actionlint" -version | head -1; shellcheck --version | sed -n 2p; rustfmt --version
+
+      - name: Checks
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          base=$PR_BASE
+          [ "$EVENT" = pull_request ] || base=$PUSH_BEFORE
+          tools/checks.sh --range "$base" "$GITHUB_SHA"
