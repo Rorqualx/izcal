@@ -36,7 +36,7 @@ cd izcal && tools/setup-hooks.sh
 
 Branches, worktrees, commits, checks, code review, merging and pushing are covered in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Both repositories are private. The V8 archives built in M0 are not in git (see `.gitignore`); their checksums are in `m0/archives/SHA256SUMS` and `m0/linux/SHA256SUMS`.
+Both repositories are public. The V8 archives built in M0 are not in git (see `.gitignore`); their checksums are in `m0/archives/SHA256SUMS` and `m0/linux/SHA256SUMS`.
 
 ## License
 
