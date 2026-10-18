@@ -1,0 +1,175 @@
+== rig check (round 1 off): rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.96 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:58:14-06:00 exit=0
+== html5ever round=1 build=off
+html tokenizing lipsum.html
+                        time:   [4.1715 µs 4.1737 µs 4.1759 µs]
+html tokenizing lipsum-zh.html
+                        time:   [2.7264 µs 2.7271 µs 2.7279 µs]
+html tokenizing medium-fragment.html
+                        time:   [66.172 µs 66.182 µs 66.193 µs]
+html tokenizing small-fragment.html
+                        time:   [5.8431 µs 5.8449 µs 5.8469 µs]
+html tokenizing tiny-fragment.html
+                        time:   [625.55 ns 625.67 ns 625.80 ns]
+html tokenizing strong.html
+                        time:   [44.322 µs 44.326 µs 44.331 µs]
+== url round=1 build=off
+test fragment         ... bench:         533 ns/iter (+/- 0) = 97 MB/s
+test hyphen           ... bench:         502 ns/iter (+/- 0) = 61 MB/s
+test leading_digit    ... bench:         515 ns/iter (+/- 1) = 42 MB/s
+test long             ... bench:         482 ns/iter (+/- 0) = 89 MB/s
+test plain            ... bench:         343 ns/iter (+/- 1) = 58 MB/s
+test port             ... bench:         503 ns/iter (+/- 3) = 47 MB/s
+test punycode_ltr     ... bench:       1,320 ns/iter (+/- 1) = 25 MB/s
+test punycode_mixed   ... bench:         938 ns/iter (+/- 10) = 29 MB/s
+test punycode_rtl     ... bench:       1,310 ns/iter (+/- 3) = 25 MB/s
+test short            ... bench:         383 ns/iter (+/- 0) = 65 MB/s
+test unicode_ltr      ... bench:       1,431 ns/iter (+/- 9) = 23 MB/s
+test unicode_mixed    ... bench:       1,091 ns/iter (+/- 7) = 22 MB/s
+test unicode_rtl      ... bench:       1,388 ns/iter (+/- 7) = 20 MB/s
+test url_to_file_path ... bench:         387 ns/iter (+/- 0)
+== rig check (round 1 on): rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (1.00 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:59:50-06:00 exit=0
+== html5ever round=1 build=on
+html tokenizing lipsum.html
+                        time:   [4.2981 µs 4.3062 µs 4.3153 µs]
+html tokenizing lipsum-zh.html
+                        time:   [2.7721 µs 2.7733 µs 2.7748 µs]
+html tokenizing medium-fragment.html
+                        time:   [76.067 µs 76.111 µs 76.163 µs]
+html tokenizing small-fragment.html
+                        time:   [6.7943 µs 6.7988 µs 6.8038 µs]
+html tokenizing tiny-fragment.html
+                        time:   [709.24 ns 710.84 ns 712.45 ns]
+html tokenizing strong.html
+                        time:   [47.127 µs 47.130 µs 47.133 µs]
+== url round=1 build=on
+test fragment         ... bench:         561 ns/iter (+/- 1) = 92 MB/s
+test hyphen           ... bench:         522 ns/iter (+/- 0) = 59 MB/s
+test leading_digit    ... bench:         549 ns/iter (+/- 0) = 40 MB/s
+test long             ... bench:         492 ns/iter (+/- 0) = 87 MB/s
+test plain            ... bench:         352 ns/iter (+/- 1) = 56 MB/s
+test port             ... bench:         506 ns/iter (+/- 1) = 47 MB/s
+test punycode_ltr     ... bench:       1,288 ns/iter (+/- 7) = 26 MB/s
+test punycode_mixed   ... bench:         961 ns/iter (+/- 5) = 29 MB/s
+test punycode_rtl     ... bench:       1,314 ns/iter (+/- 7) = 25 MB/s
+test short            ... bench:         393 ns/iter (+/- 1) = 63 MB/s
+test unicode_ltr      ... bench:       1,493 ns/iter (+/- 22) = 22 MB/s
+test unicode_mixed    ... bench:       1,216 ns/iter (+/- 17) = 20 MB/s
+test unicode_rtl      ... bench:       1,487 ns/iter (+/- 24) = 18 MB/s
+test url_to_file_path ... bench:         389 ns/iter (+/- 1)
+== rig check (round 2 on): rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (1.02 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T14:01:27-06:00 exit=0
+== html5ever round=2 build=on
+html tokenizing lipsum.html
+                        time:   [4.3101 µs 4.3235 µs 4.3361 µs]
+html tokenizing lipsum-zh.html
+                        time:   [2.7866 µs 2.7888 µs 2.7909 µs]
+html tokenizing medium-fragment.html
+                        time:   [75.117 µs 75.136 µs 75.154 µs]
+html tokenizing small-fragment.html
+                        time:   [6.6980 µs 6.7008 µs 6.7035 µs]
+html tokenizing tiny-fragment.html
+                        time:   [672.01 ns 672.29 ns 672.57 ns]
+html tokenizing strong.html
+                        time:   [47.131 µs 47.142 µs 47.164 µs]
+== url round=2 build=on
+test fragment         ... bench:         541 ns/iter (+/- 0) = 96 MB/s
+test hyphen           ... bench:         543 ns/iter (+/- 0) = 57 MB/s
+test leading_digit    ... bench:         549 ns/iter (+/- 0) = 40 MB/s
+test long             ... bench:         492 ns/iter (+/- 1) = 87 MB/s
+test plain            ... bench:         353 ns/iter (+/- 0) = 56 MB/s
+test port             ... bench:         507 ns/iter (+/- 3) = 47 MB/s
+test punycode_ltr     ... bench:       1,287 ns/iter (+/- 2) = 26 MB/s
+test punycode_mixed   ... bench:         986 ns/iter (+/- 2) = 28 MB/s
+test punycode_rtl     ... bench:       1,317 ns/iter (+/- 8) = 25 MB/s
+test short            ... bench:         393 ns/iter (+/- 1) = 63 MB/s
+test unicode_ltr      ... bench:       1,487 ns/iter (+/- 26) = 22 MB/s
+test unicode_mixed    ... bench:       1,207 ns/iter (+/- 40) = 20 MB/s
+test unicode_rtl      ... bench:       1,472 ns/iter (+/- 28) = 19 MB/s
+test url_to_file_path ... bench:         388 ns/iter (+/- 2)
+== rig check (round 2 off): rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (1.00 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T14:02:53-06:00 exit=0
+== html5ever round=2 build=off
+html tokenizing lipsum.html
+                        time:   [4.1680 µs 4.1706 µs 4.1734 µs]
+html tokenizing lipsum-zh.html
+                        time:   [2.7246 µs 2.7249 µs 2.7252 µs]
+html tokenizing medium-fragment.html
+                        time:   [68.957 µs 68.984 µs 69.024 µs]
+html tokenizing small-fragment.html
+                        time:   [6.2343 µs 6.2370 µs 6.2396 µs]
+html tokenizing tiny-fragment.html
+                        time:   [640.34 ns 640.47 ns 640.62 ns]
+html tokenizing strong.html
+                        time:   [42.684 µs 42.687 µs 42.691 µs]
+== url round=2 build=off
+test fragment         ... bench:         532 ns/iter (+/- 0) = 97 MB/s
+test hyphen           ... bench:         501 ns/iter (+/- 1) = 61 MB/s
+test leading_digit    ... bench:         516 ns/iter (+/- 0) = 42 MB/s
+test long             ... bench:         481 ns/iter (+/- 1) = 89 MB/s
+test plain            ... bench:         343 ns/iter (+/- 0) = 58 MB/s
+test port             ... bench:         504 ns/iter (+/- 9) = 47 MB/s
+test punycode_ltr     ... bench:       1,323 ns/iter (+/- 4) = 25 MB/s
+test punycode_mixed   ... bench:         961 ns/iter (+/- 7) = 29 MB/s
+test punycode_rtl     ... bench:       1,311 ns/iter (+/- 3) = 25 MB/s
+test short            ... bench:         383 ns/iter (+/- 0) = 65 MB/s
+test unicode_ltr      ... bench:       1,436 ns/iter (+/- 11) = 23 MB/s
+test unicode_mixed    ... bench:       1,087 ns/iter (+/- 6) = 22 MB/s
+test unicode_rtl      ... bench:       1,387 ns/iter (+/- 4) = 20 MB/s
+test url_to_file_path ... bench:         403 ns/iter (+/- 1)
+== rig check (round 3 off): rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (1.04 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T14:04:23-06:00 exit=0
+== html5ever round=3 build=off
+html tokenizing lipsum.html
+                        time:   [4.1756 µs 4.1792 µs 4.1836 µs]
+html tokenizing lipsum-zh.html
+                        time:   [2.7278 µs 2.7287 µs 2.7298 µs]
+html tokenizing medium-fragment.html
+                        time:   [66.195 µs 66.205 µs 66.216 µs]
+html tokenizing small-fragment.html
+                        time:   [5.7618 µs 5.7650 µs 5.7686 µs]
+html tokenizing tiny-fragment.html
+                        time:   [626.20 ns 626.36 ns 626.51 ns]
+html tokenizing strong.html
+                        time:   [44.322 µs 44.324 µs 44.327 µs]
+== url round=3 build=off
+test fragment         ... bench:         531 ns/iter (+/- 1) = 97 MB/s
+test hyphen           ... bench:         502 ns/iter (+/- 0) = 61 MB/s
+test leading_digit    ... bench:         515 ns/iter (+/- 0) = 42 MB/s
+test long             ... bench:         481 ns/iter (+/- 0) = 89 MB/s
+test plain            ... bench:         341 ns/iter (+/- 0) = 58 MB/s
+test port             ... bench:         504 ns/iter (+/- 3) = 47 MB/s
+test punycode_ltr     ... bench:       1,324 ns/iter (+/- 4) = 25 MB/s
+test punycode_mixed   ... bench:         942 ns/iter (+/- 10) = 29 MB/s
+test punycode_rtl     ... bench:       1,310 ns/iter (+/- 4) = 25 MB/s
+test short            ... bench:         383 ns/iter (+/- 0) = 65 MB/s
+test unicode_ltr      ... bench:       1,458 ns/iter (+/- 7) = 23 MB/s
+test unicode_mixed    ... bench:       1,080 ns/iter (+/- 11) = 23 MB/s
+test unicode_rtl      ... bench:       1,391 ns/iter (+/- 4) = 20 MB/s
+test url_to_file_path ... bench:         395 ns/iter (+/- 5)
+== rig check (round 3 on): rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (1.01 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T14:05:50-06:00 exit=0
+== html5ever round=3 build=on
+html tokenizing lipsum.html
+                        time:   [4.2880 µs 4.2993 µs 4.3118 µs]
+html tokenizing lipsum-zh.html
+                        time:   [2.7852 µs 2.7869 µs 2.7885 µs]
+html tokenizing medium-fragment.html
+                        time:   [76.450 µs 76.487 µs 76.524 µs]
+html tokenizing small-fragment.html
+                        time:   [6.8583 µs 6.8607 µs 6.8629 µs]
+html tokenizing tiny-fragment.html
+                        time:   [672.14 ns 672.38 ns 672.64 ns]
+html tokenizing strong.html
+                        time:   [47.143 µs 47.145 µs 47.148 µs]
+== url round=3 build=on
+test fragment         ... bench:         631 ns/iter (+/- 3) = 82 MB/s
+test hyphen           ... bench:         568 ns/iter (+/- 88) = 54 MB/s
+test leading_digit    ... bench:         549 ns/iter (+/- 2) = 40 MB/s
+test long             ... bench:         492 ns/iter (+/- 2) = 87 MB/s
+test plain            ... bench:         352 ns/iter (+/- 0) = 56 MB/s
+test port             ... bench:         506 ns/iter (+/- 0) = 47 MB/s
+test punycode_ltr     ... bench:       1,287 ns/iter (+/- 10) = 26 MB/s
+test punycode_mixed   ... bench:         961 ns/iter (+/- 5) = 29 MB/s
+test punycode_rtl     ... bench:       1,316 ns/iter (+/- 6) = 25 MB/s
+test short            ... bench:         392 ns/iter (+/- 0) = 63 MB/s
+test unicode_ltr      ... bench:       1,504 ns/iter (+/- 23) = 22 MB/s
+test unicode_mixed    ... bench:       1,245 ns/iter (+/- 25) = 20 MB/s
+test unicode_rtl      ... bench:       1,500 ns/iter (+/- 27) = 18 MB/s
+test url_to_file_path ... bench:         388 ns/iter (+/- 2)
+OWN DONE
