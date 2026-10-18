@@ -9,8 +9,12 @@ git -C "$ROOT" config core.hooksPath .githooks
 echo "project: core.hooksPath=.githooks"
 
 # The fork is its own repository; point it at the project's hooks by
-# absolute path (its worktrees share this setting).
-if git -C "$ROOT/m0/rusty_v8" rev-parse --git-dir >/dev/null 2>&1; then
+# absolute path (its worktrees share this setting). Test for the
+# submodule's own .git: in a project worktree without the fork checked
+# out, git -C m0/rusty_v8 falls through to the project repository, and
+# writing an absolute worktree path into the shared project config would
+# leave every other checkout without hooks once that worktree is removed.
+if [ -e "$ROOT/m0/rusty_v8/.git" ]; then
   git -C "$ROOT/m0/rusty_v8" config core.hooksPath "$ROOT/.githooks"
   echo "fork:    core.hooksPath=$ROOT/.githooks"
 else
