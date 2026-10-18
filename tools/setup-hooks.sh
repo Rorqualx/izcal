@@ -18,12 +18,12 @@ else
 fi
 
 missing=""
-for t in gitleaks shellcheck actionlint rustfmt python3 claude; do
+for t in gitleaks shellcheck actionlint zizmor cargo-deny rustfmt python3 claude; do
   command -v "$t" >/dev/null || missing="$missing $t"
 done
 if [ -n "$missing" ]; then
   echo "missing tools:$missing"
-  echo "  macOS: brew install gitleaks shellcheck actionlint; rustfmt comes with rustup;"
+  echo "  macOS: brew install gitleaks shellcheck actionlint zizmor cargo-deny; rustfmt comes with rustup;"
   echo "  claude is the Claude Code CLI (used by the review check)"
 else
   echo "all check tools present"

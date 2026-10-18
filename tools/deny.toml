@@ -1,0 +1,11 @@
+# cargo-deny policy for the `security` check (tools/checks.sh), shared by
+# every crate in both repositories. Known vulnerabilities fail; notices that
+# a crate is unmaintained do not, because they are maintenance signals, not
+# defects. Run `cargo deny check advisories` without this policy to list them.
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+unmaintained = "none"
+yanked = "warn"
