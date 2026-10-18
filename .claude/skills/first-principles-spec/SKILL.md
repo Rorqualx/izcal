@@ -56,10 +56,13 @@ Make a table with columns **project → what happened → the lesson → how Izc
 
 Describe the architecture and the user experience. Where there are real alternatives, present them with a recommendation, what it costs, and what evidence would reverse it. Integrate with Izcal's existing design: crate layers and rules G1–G9, process model, capability IPC, security and privacy principles, AI-off by default (HGBA-3 B10) and the agent principal (B9). Name new crates `hg-*`.
 
+Check every design claim against what Izcal has **measured**, not only what its specs intend. The M0 results (`m0/M0_SUMMARY.md`, `m0/determinism_crossplatform.md`) and the process model are where designs most often break. For example, V8 is deterministic only under the fork's predictable platform, renderer processes are per site and not per tab, and isolation (HGBA-2 P1, I-1) forbids putting two sites' data in one process. When a design needs something that has not been measured, mark it as a risk and make measuring it a milestone.
+
 ### 7. The spec
 
 Write it with the structure in `references/spec-template.md`. The parts that make it a spec rather than an essay:
 - **falsifiable targets**, each with an ID, a metric, a threshold, how it is measured and what happens if it fails. Mark thresholds you set from first principles with †, and never invent a number and present it as measured;
+- **inline links to primary sources** for every claim a decision or target depends on. The research notes are the evidence trail, but a reader should be able to check a key claim without opening a note;
 - an **M-1 compliance** section: which dependencies are used, unmodified; what is built new; which specifications or protocol definitions each part is anchored to;
 - **open questions** and **flagged claims**: anything single-source, unverified or conflicting, marked as such.
 
@@ -76,7 +79,7 @@ Fix what they find, then record the result in the spec's header.
 
 The research is too broad for one context. Split phases 2 and 3 into **strands** (for example: history and postmortems, protocols and standards, invisible data and gaps, visualization and UX, integrations), and give each strand to its own researcher in parallel. Each researcher writes one file under `research_notes/<Report title>/<strand>.md`, using the format below. A synthesis author then reads every note plus the existing specs, and writes phases 4–7 into `reports/<Report title>.md`. A fact-checker and a design critic, who did not write the spec, then do phase 8 independently.
 
-Brief every agent with this skill's path, so the method travels with the work.
+Brief every agent with this skill's path, so the method travels with the work. Researchers share a limited web-search budget, so tell them to research their most important questions first. When the budget runs out, they read known primary pages directly and grade anything left unchecked as Medium or Low.
 
 ## Research note format
 
