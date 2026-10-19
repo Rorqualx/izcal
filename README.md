@@ -12,8 +12,8 @@ The documents cite each other by ID. This table maps the IDs to files.
 | HGBA-3 (direction: oracles, data plane, determinism; B-, DET-, AG-) | `reports/Future software browser engine.md` | 3.2.0, frozen |
 | Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S11) | `reports/HGBA Stage 1 architecture design.md` | draft 0.11 |
 | DevTools spec (native inspection protocol, `hg-devtools`, adapters; targets DT-) | `reports/Izcal DevTools spec.md` | draft 0.3 |
-| JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.2 |
-| Resource footprint spec (memory, wakeups, energy, disk and GPU budgets; targets FP-) | `reports/Izcal resource footprint.md` | draft 0.2 |
+| JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.3, decisions accepted |
+| Resource footprint spec (memory, wakeups, energy, disk and GPU budgets; targets FP-) | `reports/Izcal resource footprint.md` | draft 0.3, decisions accepted |
 | Shell UI design | `reports/HGBA shell UI design.md` | draft 0.3 |
 
 Reviews that fed the specs are also in `reports/`; the evidence behind every report is in `research_notes/<report name>/`.
