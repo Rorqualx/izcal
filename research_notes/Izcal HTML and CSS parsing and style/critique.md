@@ -16,18 +16,20 @@ Written 19 October 2026 by a reviewer who did not write the spec. Subject: `repo
 
 **Section:** 6.2 depth cap (line 234), 6.4 yields (line 258), 6.6 lazy parsing (line 285), 6.7 rule index and ancestor filter (lines 293–295), 6.7.2 `:has()` memo (line 307), 6.9 match keys and custom-property chains (lines 343, 359), 6.18 (lines 503–516), 7 (line 520).
 
+*0.3.1 note: the source files this table named are no longer cited anywhere in the notes; HGBA-2 2.3.1 makes engine source never evidence, and [source_evidence_pass.md](source_evidence_pass.md) logs each row's replacement or removal.*
+
 **Problem.** M-1 part 2 says that interoperability evidence is a **black-box observation**: "test case plus each engine's observed result, never a link to its source". Part 3 lets another engine's design be cited only "as evidence ... from a published source, never as a template". Part 4 forbids "reading its code" to settle a disagreement. Part 1 applies to "people or AI tools". The research notes this spec was synthesized from read engine source files directly, and several of the resulting designs have the same shape as those files:
 
 | Design element in the spec | Source file read in the notes |
 |---|---|
-| Rule-index buckets "id, class, attribute name, tag, then a few pseudo-class buckets (`:host`, `::slotted`, `::part`, links), then universal" (line 293) | Blink `rule_set.h` ([PI 3][PI]) |
-| Per-worker ancestor filter "rebuilt to the common ancestor after taking work" (line 295) | Stylo `bloom.rs` ([PI 3.3][PI]: "after work stealing it is rebuilt to the common ancestor") |
-| Invalidation positions subject, ancestor, sibling, `:has()` argument (line 320 table) | Blink `rule_invalidation_data.h` ([PI 7][PI]) |
-| Match key plus computed-style memo (lines 343, 349) | Blink `matched_properties_cache.cc` ([PI 4.4][PI]) |
-| Per-pass `:has()` memo (line 307) | Blink `check_pseudo_has_cache_scope.h` |
-| Lazy declaration parsing (ST-D19), whose only evidence is Blink's `css_lazy_parsing_state.h` ([PI 10.1][PI]) | that file |
-| A token budget plus a time budget for parser yields (line 258) | Blink `html_document_parser.cc` ([PI 8.4][PI]) |
-| HTML depth cap 512 (line 234) | [SP 8.3][SP] is labelled "black-box behaviour" but says "engine sources read for the constant only"; the constants are quoted from Blink, WebKit and Gecko source |
+| Rule-index buckets "id, class, attribute name, tag, then a few pseudo-class buckets (`:host`, `::slotted`, `::part`, links), then universal" (line 293) | a Blink source file (old PI 3.5; row removed 0.3.1) |
+| Per-worker ancestor filter "rebuilt to the common ancestor after taking work" (line 295) | a Stylo source file (old PI 3.3; row removed 0.3.1) |
+| Invalidation positions subject, ancestor, sibling, `:has()` argument (line 320 table) | a Blink source file (old PI 7.2; row removed 0.3.1) |
+| Match key plus computed-style memo (lines 343, 349) | a Blink source file (old PI 4.4; row removed 0.3.1) |
+| Per-pass `:has()` memo (line 307) | a Blink source file (old PI 7.4; now replaced by Lee 2022, Igalia) |
+| Lazy declaration parsing (ST-D19), whose only evidence was a Blink source file (old PI 10.1) | that file (row removed 0.3.1) |
+| A token budget plus a time budget for parser yields (line 258) | a Blink source file (old PI 8.4; row removed 0.3.1) |
+| HTML depth cap 512 (line 234) | [SP 8.3][SP] is labelled "black-box behaviour" but says "engine sources read for the constant only"; the constants were quoted from engine source (removed 0.3.1; now WebKit bug 63856 and an ST-M0 black-box test) |
 
 Section 7's sentence "where research notes read engine source files, they read them for numbers and comments, never as designs" is an assertion. M-1 does not allow that exception, and nothing in the process enforces it. Section 6.18 derives six structures from first principles. It does not derive the pseudo-class bucket set, the per-worker filter rebuild, the `:has()` memo scope, lazy declaration parsing, the custom-property chain with a flatten bound, or the two-budget yield policy. These are the ones whose only cited evidence is a source file.
 
