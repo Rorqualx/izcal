@@ -123,6 +123,14 @@ Izcal is a new engine, not a derivative of another browser. The rule is HGBA-2's
 - **Internal design comes from first principles.** For anything no specification governs (data layout, scheduling, IPC, caching), the design record derives the choice from Izcal's principles and measurements. Another engine's design may be cited as evidence that an approach works, never as a template.
 - **Enforcement.** The `provenance` check fails on code that carries another browser project's copyright or license header. The AI review blocks code that looks copied or translated from another engine.
 
+## Coding standard
+
+Izcal's own Rust code follows [the coding standard](reports/Izcal%20coding%20standard.md). Read its one-page summary before writing code; `cargo xtask tier <crate>` lists the rules for a crate's tier.
+
+- **Trailers go in the pull request body**, not in commits: `Spec:`, `Test:`, `Perf:`, `Binary-Size:` and `Fixes:` (CS-GA-3). The repository squashes with "pull request title and description", so the body becomes the commit message and the trailers stay in history.
+- **Suppressions** are `#[expect(..., reason = "...")]`, or a `// cs-allow(<rule>): <reason>` marker on the line an `ast-grep` check matches. The reason states a fact a reviewer can check; CI lists every new one in the PR summary.
+- **Agents** read the summary and their tier's rules first, and run `tools/checks.sh --range` before pushing. An agent never edits a gate file, adds a quarantine, inventory, allowlist or bypass entry, weakens or deletes a test, or relaxes a tier unless the task says so and the PR names the file and why. An agent that cannot state a checkable reason stops and reports instead of suppressing (CS-GA-2; the full rules are generated into `tools/coding-standard/agent-rules.md`).
+
 ## License
 
 - Contributions are licensed under MIT, the project's license ([LICENSE](LICENSE)); no separate agreement is needed.
