@@ -15,7 +15,7 @@ The documents cite each other by ID. This table maps the IDs to files.
 | JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.3.1, decisions accepted |
 | Resource footprint spec (memory, wakeups, energy, disk and GPU budgets; targets FP-) | `reports/Izcal resource footprint.md` | draft 0.3.1, decisions accepted |
 | HTML and CSS parsing and style spec (HTML, XML and CSS parsers, selectors, cascade, invalidation; targets ST-) | `reports/Izcal HTML and CSS parsing and style.md` | draft 0.3.1 |
-| Fonts and text spec (font parsing, shaping, Unicode, rasterization, text input; targets TX-) | `reports/Izcal fonts and text.md` | draft 0.3.1 |
+| Fonts and text spec (font parsing, shaping, Unicode, rasterization, text input; targets TX-) | `reports/Izcal fonts and text.md` | draft 0.3.2 |
 | Networking spec (HTTP/1.1, HTTP/2, HTTP/3 and QUIC, DNS, Fetch, cookies, HTTP cache; targets NW-) | `reports/Izcal networking.md` | draft 0.3.1 |
 | Shell UI design | `reports/HGBA shell UI design.md` | draft 0.3 |
 

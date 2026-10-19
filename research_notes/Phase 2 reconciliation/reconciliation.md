@@ -278,3 +278,5 @@ A bare "yes" means the recommendation.
 [FP]: ../../reports/Izcal%20resource%20footprint.md
 [H2]: ../../reports/HGBA%202%20browser%20architecture%20spec.md
 [S1]: ../../reports/HGBA%20Stage%201%20architecture%20design.md
+
+**Addendum (19 October 2026, TX-D14).** The owner decided that Izcal builds its own linguistic data and asks no one to relicense. The fonts and text spec (0.3.2) adds a language-data track of 4–6†, so TX becomes 33–44† and the combined full-strength total for the five specs becomes **173–224†**.
