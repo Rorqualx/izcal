@@ -37,6 +37,7 @@ disallowed-methods = [
   { path = "v8::Object::set_prototype", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
   { path = "v8::Object::get_property_attributes", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
   { path = "v8::Object::get_own_property_descriptor", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
+  { path = "v8::Object::get_real_named_property_attributes", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
   { path = "v8::Object::get_real_named_property", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
   { path = "v8::Object::set_integrity_level", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
   { path = "v8::Value::to_string", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
@@ -63,5 +64,6 @@ disallowed-methods = [
   { path = "v8::MicrotaskQueue::perform_checkpoint", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
   { path = "v8::Platform::pump_message_loop", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
   { path = "v8::inspector::V8InspectorSession::dispatch_protocol_message", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
+  { path = "token_cell::enter", reason = "CS-D3 (1): only event_loop::EventLoop mints the outermost ScriptToken" },
   { path = "v8::PinnedRef::stack_trace", reason = "CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)" },
 ]

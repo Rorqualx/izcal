@@ -10,8 +10,9 @@ use v8::{Function, FunctionCallbackArguments, Local, Object, PinScope, ReturnVal
 
 /// Criterion (1): the token is derivable only here (top of a task, from a
 /// mutable handle scope) or from [`prologue`] (a callback, from the scope V8
-/// passes in, and only while the outer token is lent).
-pub fn enter<'s, 'i, R>(
+/// passes in, and only while the outer token is lent). Crate-private: the
+/// event loop is the only caller (`EventLoop::run_task`).
+pub(crate) fn enter<'s, 'i, R>(
     scope: &mut PinScope<'s, 'i>,
     f: impl for<'t> FnOnce(&mut PinScope<'s, 'i>, &'t mut ScriptToken) -> R,
 ) -> R {

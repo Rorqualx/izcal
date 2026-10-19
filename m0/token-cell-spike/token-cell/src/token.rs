@@ -71,9 +71,9 @@ fn state() -> State {
 
 /// Top-of-task entry: mint the thread's token. Panics if one already exists.
 ///
-/// In the real design this is `pub(crate)` in `hg-script` and only reachable
-/// through `hg_script::enter(&mut PinScope, ..)`; it is `pub` here so the
-/// V8-free tests can drive it.
+/// Only the event loop may call this (criterion 1). It is `pub` so the V8-free
+/// tests can drive it; everywhere else clippy `disallowed-methods` rejects it,
+/// and the V8 crate reaches it only through `event_loop::EventLoop::run_task`.
 #[inline]
 pub fn enter<R>(f: impl for<'t> FnOnce(&'t mut ScriptToken) -> R) -> R {
     let prev = state();

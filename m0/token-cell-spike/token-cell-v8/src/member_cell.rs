@@ -8,80 +8,74 @@
 //! `SetRawAtomic` + `AssigningWriteBarrier`) and never lends a reference into
 //! itself: `get` returns a stack pointer to the pointee.
 //!
-//! Gap found: the fork's `Member::set` takes `&mut self`, so `MemberCell::set`
-//! has to form a `&mut Member` that the marker may read concurrently. The
-//! bytes are only touched by C++ atomics, but in Rust's model it is a `&mut`
-//! aliased by another thread. M2 should add a fork API that assigns through a
-//! raw pointer (or `&self`), e.g. `Member::assign_shared(&self, ..)`.
+//! Fork fix (was the gap found by the spike): the fork's `Member::set` took
+//! `&mut self`, so `set` formed a `&mut Member` the marker may read, and
+//! `clear` was a plain store. Both were data races in Rust's model. The fork
+//! branch `izcal/member-shared-assign` keeps the slot bytes in an `UnsafeCell`
+//! and adds `Member::assign_shared(&self, ..)` and `clear_shared(&self)`, which
+//! go through C++ `operator=(T*)`: an atomic store plus the write barrier.
 //!
-//! Generator rule (not built here): a `#[gc]` struct's `TokenCell<T>` fields
-//! must have `T: NoTraced` (no `Member`, `WeakMember`, `TracedReference`, GC
-//! handles); traced fields must be `MemberCell` and appear in `trace`.
+//! Generator rule (spike form in [`crate::gc`]): a `#[gc]` struct's
+//! `TokenCell<T>` fields must have `T: NoTraced` (no `Member`, `WeakMember`,
+//! `TracedReference`, GC handles); traced fields must be `MemberCell` and
+//! appear in `trace`.
 
-use std::cell::UnsafeCell;
-use token_cell::TokenCell;
 use token_cell::dom::NodeData;
 use v8::cppgc::{GarbageCollected, GetRustObj, Member, Traced, UnsafePtr, Visitor};
 
-pub struct MemberCell<T: GarbageCollected>(UnsafeCell<Member<T>>);
+/// `!Sync` (the fork's `Member` holds an `UnsafeCell`), so only the mutator
+/// thread writes it; the marker reads it through C++ atomics.
+pub struct MemberCell<T: GarbageCollected>(Member<T>);
 
 impl<T: GarbageCollected> MemberCell<T> {
     pub fn empty() -> Self {
-        MemberCell(UnsafeCell::new(Member::empty()))
+        MemberCell(Member::empty())
     }
 
     /// No token needed: no reference into the slot ever escapes.
     pub fn set(&self, v: &impl GetRustObj<T>) {
-        // SAFETY: single mutator thread (`MemberCell` is `!Sync`); no `&Member`
-        // from this slot is alive (none is ever handed out). See the module
-        // comment for the concurrent-marker caveat.
-        unsafe { (*self.0.get()).set(v) }
+        // SAFETY: `get` never lends a `&T` (only a stack `UnsafePtr`), and
+        // `MemberCell` is `!Sync`, so this runs on the mutator thread.
+        unsafe { self.0.assign_shared(v) }
     }
 
     pub fn clear(&self) {
         // SAFETY: as in `set`.
-        unsafe { *self.0.get() = Member::empty() }
+        unsafe { self.0.clear_shared() }
     }
 
     /// A stack pointer to the pointee (`UnsafePtr` must stay on the stack).
     pub fn get(&self) -> Option<UnsafePtr<T>> {
         // SAFETY: the slot is traced by its owner (`DomNode::trace`), so a
-        // non-null pointer refers to a live object; the `&Member` is
-        // temporary and dropped before return.
-        unsafe { UnsafePtr::new(&*self.0.get()) }
+        // non-null pointer refers to a live object.
+        unsafe { UnsafePtr::new(&self.0) }
     }
 }
 
 impl<T: GarbageCollected> Traced for MemberCell<T> {
     fn trace(&self, v: &mut Visitor) {
-        // SAFETY: called by the GC; reads the slot through the C++ visitor.
-        v.trace(unsafe { &*self.0.get() })
+        v.trace(&self.0)
     }
 }
 
-/// A cppgc DOM node: links traced and outside TokenCell; script-reachable
-/// state in TokenCell and not traced.
-pub struct DomNode {
-    pub parent: MemberCell<DomNode>,
-    pub first_child: MemberCell<DomNode>,
-    pub next_sibling: MemberCell<DomNode>,
-    pub prev_sibling: MemberCell<DomNode>,
-    pub data: TokenCell<NodeData>,
-    pub drops: &'static std::sync::atomic::AtomicUsize,
-}
-
-// SAFETY: every `Member` reachable from `DomNode` is in a `MemberCell` field
-// and traced below; `data` holds no GC pointer.
-unsafe impl GarbageCollected for DomNode {
-    fn trace(&self, v: &mut Visitor) {
-        v.trace(&self.parent);
-        v.trace(&self.first_child);
-        v.trace(&self.next_sibling);
-        v.trace(&self.prev_sibling);
+crate::gc_object! {
+    /// A cppgc DOM node: links traced and outside TokenCell; script-reachable
+    /// state in TokenCell and not traced.
+    pub struct DomNode {
+        traced {
+            pub parent: DomNode,
+            pub first_child: DomNode,
+            pub next_sibling: DomNode,
+            pub prev_sibling: DomNode,
+        }
+        cells {
+            pub data: NodeData,
+        }
+        plain {
+            pub drops: &'static std::sync::atomic::AtomicUsize,
+        }
     }
-    fn get_name(&self) -> &'static std::ffi::CStr {
-        c"DomNode"
-    }
+    name = c"DomNode";
 }
 
 impl Drop for DomNode {

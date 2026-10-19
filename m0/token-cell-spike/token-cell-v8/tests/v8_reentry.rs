@@ -1,6 +1,6 @@
 //! Criteria (1), (3), (4) against the real fork V8: JS observers that re-enter
-//! native DOM bindings, the runtime refusal of an unwrapped script call, the
-//! scope-as-token / GcCell holes, and MemberCell links under cppgc GC.
+//! native DOM bindings, the runtime refusal of an unwrapped script call, and
+//! MemberCell links under cppgc GC. The holes are in `holes_compile.rs`.
 #![allow(clippy::disallowed_methods)] // tests call raw V8 on purpose (marked)
 
 use std::cell::RefCell;
@@ -9,8 +9,9 @@ use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use token_cell::dom::{Document, MutationRecord, NodeId};
 use token_cell::{ScriptToken, TokenCell};
+use token_cell_v8::binding;
+use token_cell_v8::event_loop::EventLoop;
 use token_cell_v8::hg_script;
-use token_cell_v8::{binding, holes};
 use v8::{FunctionCallbackArguments, Local, PinScope, ReturnValue, Value};
 
 static PLATFORM: OnceLock<v8::SharedRef<v8::Platform>> = OnceLock::new();
@@ -138,7 +139,7 @@ macro_rules! with_context {
 #[test]
 fn js_observer_reenters_native_dom() {
     with_context!(|scope| {
-        hg_script::enter(scope, |scope, tok| {
+        EventLoop::new().run_task(scope, |scope, tok| {
             let (root, a, b, x) = setup_dom(tok);
             install_bindings(tok, scope);
             hg_script::run(
@@ -163,7 +164,7 @@ fn js_observer_nested_insert_before() {
     // Rust insertBefore -> JS observer -> native insertBefore -> JS observer
     // -> native setText: lend/reenter two levels deep through V8.
     with_context!(|scope| {
-        hg_script::enter(scope, |scope, tok| {
+        EventLoop::new().run_task(scope, |scope, tok| {
             let (root, a, b, x) = setup_dom(tok);
             let y = DOC.with(|d| d.create_node("y", tok));
             install_bindings(tok, scope);
@@ -187,7 +188,7 @@ fn js_observer_nested_insert_before() {
 #[test]
 fn microtask_reentry_through_checkpoint_wrapper() {
     with_context!(|scope| {
-        hg_script::enter(scope, |scope, tok| {
+        EventLoop::new().run_task(scope, |scope, tok| {
             let (_root, a, _b, _x) = setup_dom(tok);
             install_bindings(tok, scope);
             // Explicit policy, so the job runs in the checkpoint wrapper and
@@ -207,7 +208,7 @@ fn microtask_reentry_through_checkpoint_wrapper() {
 #[test]
 fn unwrapped_script_call_is_refused() {
     with_context!(|scope| {
-        hg_script::enter(scope, |scope, tok| {
+        EventLoop::new().run_task(scope, |scope, tok| {
             let (_root, a, _b, _x) = setup_dom(tok);
             install_bindings(tok, scope);
             let f = hg_script::run(
@@ -247,27 +248,6 @@ fn callback_outside_any_task_is_refused() {
             .expect("expected an exception")
             .to_rust_string_lossy(tc);
         assert!(msg.contains("callback outside any task"), "{msg}");
-    });
-}
-
-// ---- holes: why the scope / isolate cannot be the token ----------------------
-
-#[test]
-fn scope_as_token_lets_callback_mutate_under_live_borrow() {
-    with_context!(|scope| {
-        let f = v8::Function::new(scope, holes::scope_cell_callback).unwrap();
-        let (before, after) = holes::scope_cell_borrow_across_call(scope, f);
-        // The outer `&u64` was alive across the call and changed under it.
-        assert_eq!((before, after), (1, 42));
-    });
-}
-
-#[test]
-fn upstream_gc_cell_has_the_same_hole() {
-    with_context!(|scope| {
-        let f = v8::Function::new(scope, holes::gc_cell_callback).unwrap();
-        let (before, after) = holes::gc_cell_borrow_across_call(scope, f);
-        assert_eq!((before, after), (1, 42));
     });
 }
 

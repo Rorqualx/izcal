@@ -33,6 +33,10 @@ pub fn script_run(scope: &PinScope<'_, '_>, s: Local<v8::Script>) {
     let _ = s.run(scope);
 }
 
+pub fn task_outside_event_loop() {
+    token_cell::enter(|_tok| ()); // only event_loop::EventLoop may mint a token
+}
+
 /// The hg_script wrapper: not flagged.
 pub fn via_wrapper(
     tok: &mut token_cell::ScriptToken,

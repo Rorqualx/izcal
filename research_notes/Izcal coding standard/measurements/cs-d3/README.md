@@ -1,9 +1,10 @@
 # CS-D3 early spike: TokenCell / ScriptToken (18 October 2026)
 
 **Code:** `m0/token-cell-spike/` (builds against the fork archives; `run_all.sh` reruns everything)
-- `token-cell/` is V8-free and Miri-able: `src/token.rs` (ScriptToken, `enter`/`lend`/`reenter`), `src/cell.rs` (TokenCell, `borrow_mut_2/3`), `src/dom.rs` (DOM model, `insert_before`), `src/bin/bench.rs`, and `tests/ui/` (12 compile-fail tests).
-- `token-cell-v8/` builds against the fork: `src/hg_script.rs` (token-taking wrappers, callback prologue, `binding!`), `src/member_cell.rs` (criterion 3 sketch), `src/holes.rs`, `src/misuse.rs`, `clippy.toml` (59 disallowed methods), `tests/v8_reentry.rs`, and `tests/ui/` (3 compile-fail tests).
-- `audit/` holds the entry-point audit scripts and outputs. `logs/` holds every run log. `run_all.sh core|miri|v8|clippy|bench` reruns everything.
+- `token-cell/` is V8-free and Miri-able: `src/token.rs` (ScriptToken, `enter`/`lend`/`reenter`), `src/cell.rs` (TokenCell, `borrow_mut_2/3`), `src/traced.rs` (`NoTraced`, `no_traced!`), `src/dom.rs` (DOM model, `insert_before`), `src/bin/bench.rs`, and `tests/ui/` (13 compile-fail tests).
+- `token-cell-v8/` builds against the fork: `src/hg_script.rs` (token-taking wrappers, callback prologue, `binding!`), `src/event_loop.rs` (the only way to mint the outermost token), `src/member_cell.rs` and `src/gc.rs` (criterion 3: `MemberCell`, `gc_object!`), `src/holes.rs` (feature `holes` only), `src/misuse.rs`, `clippy.toml` (61 disallowed methods), `tests/v8_reentry.rs`, `tests/holes_compile.rs`, and `tests/ui/` (8 compile-fail tests).
+- It needs `m0/rusty_v8` on the fork branch `izcal/member-shared-assign` (local commit `130ed9a`, not yet pushed or merged into `hgba`).
+- `audit/` holds the mechanical entry-point audit (`audit.py`, `fns.yml`, `impls.yml`, `reviewed.toml`) and its outputs. `logs/` holds every run log. `run_all.sh core|miri|v8|clippy|audit|bench` reruns everything.
 
 **Environment:** fork rusty_v8 152.2.0 (`hgba`) linked from the prebuilt sandbox release archive (`scripts/consume-release.sh`), so V8 was not compiled. rustc 1.99.1 stable; nightly 1.101.0 (2026-10-17) for Miri; Apple M6, macOS 27.0.1. Rig `local` was booked as heavy (b-bad408, 15:21–15:24) and released after the benchmark.
 
@@ -11,9 +12,9 @@
 
 **The scope cannot be the token. This is shown, not argued.** In the fork, every method that runs script takes `&PinScope`, which is a *shared* borrow (`Function::call`, `Script::run`, `Object::get` and the rest). Every V8 callback also receives a *fresh* `&mut PinScope`, which the trampoline builds from `CallbackScope::new(info)` (`function.rs:520`).
 
-Suppose a cell's borrows were tied to the scope. A `&T` would then survive a `call(&scope)`, and the callback could take `&mut T` of the same cell. Both of these compile, and the test `scope_as_token_lets_callback_mutate_under_live_borrow` passes: the outer `&u64` reads 1 before the call and 42 after it.
+Suppose a cell's borrows were tied to the scope. A `&T` would then survive a `call(&scope)`, and the callback could take `&mut T` of the same cell. Both of these compile in safe Rust (`src/holes.rs`, checked by `tests/holes_compile.rs` with `--features holes`). The first run of the spike also executed them and saw the outer `&u64` read 1 before the call and 42 after, but that read is itself undefined behaviour, so the runtime result is not evidence and the test no longer runs them; that the code compiles is the finding.
 
-**Side finding: upstream rusty_v8 `cppgc::GcCell` has the same hole.** It ties `get` to `&Isolate` and `get_mut` to `&mut Isolate`, and both scopes deref to the isolate. Safe code mutates a value under a live shared borrow (test `upstream_gc_cell_has_the_same_hole`: (1, 42)). DOM crates should disallow `GcCell` (`disallowed-types`). It is worth reporting upstream.
+**Side finding: upstream rusty_v8 `cppgc::GcCell` has the same hole.** It ties `get` to `&Isolate` and `get_mut` to `&mut Isolate`, and both scopes deref to the isolate. Safe code can mutate a value under a live shared borrow (`holes::gc_cell_borrow_across_call`, compile-only like the above). DOM crates should disallow `GcCell` (`disallowed-types`). It is worth reporting upstream.
 
 **Chosen design:** `ScriptToken` is a ZST with a private field, `!Send`, `!Sync` and not `Clone`. It is unique per thread through a three-state thread-local: `Idle`, then `Held`, then `Lent`. It is only ever handed out as a higher-ranked `&'t mut ScriptToken` inside a closure, so no guard exists that `Box::leak` could keep alive.
 
@@ -48,7 +49,7 @@ The inner frame cannot be proven at compile time. The link from `lend` to the ca
 - V8: `unwrapped_script_call_is_refused`. A raw `Function::call` without `lend` makes the binding throw `re-entrancy violation: script ran without a lent ScriptToken`, and the DOM is unchanged.
 - V8: `callback_outside_any_task_is_refused`.
 
-**Caveat:** "derivable only from `&mut HandleScope`" is weaker than it sounds, because every callback also has a `&mut PinScope`. A binding body could call `hg_script::enter(scope, ..)`, which compiles and is refused only at runtime (panic, which aborts inside a callback). To make that a compile error, `enter` must be visible only to the event-loop crate. This spike did not build that.
+**Caveat, now closed:** "derivable only from `&mut HandleScope`" is weaker than it sounds, because every callback also has a `&mut PinScope`, so a binding body could call `hg_script::enter(scope, ..)` and be refused only at runtime. After acceptance, `hg_script::enter` became crate-private and `event_loop::EventLoop::run_task` (one `EventLoop` per thread, `!Send`) is the only caller: `v1_enter_outside_event_loop` fails with E0603, and the V8-free `token_cell::enter` is in `disallowed-methods` (flagged in `logs/clippy_misuse.log`).
 
 ### (2) Every script-capable entry point behind token wrappers via `disallowed-methods` — PASS for the mechanism; the list needs an M2 review
 
@@ -85,8 +86,10 @@ The inner frame cannot be proven at compile time. The link from `lend` to the ca
 
 The call through the `hg_script` wrapper was not flagged, and the clean build has 0 warnings. Clippy does report unresolvable config paths: a bogus probe entry gave "does not refer to a reachable function". All 59 real entries therefore resolve.
 
+**Made mechanical after acceptance.** `audit/audit.py` replaces `v8scopes.py` and `map.py`. It regenerates the V8 list from `api.cc`, maps it to rusty_v8 with ast-grep (with impl types, so it yields clippy paths), follows same-type and same-file callers to a fixpoint, and fails if a public entry is neither in `disallowed-methods` nor in `audit/reviewed.toml` with a reason, if a listed path no longer exists, or if a path is in both. The first mechanical run found one entry the hand list had missed, `Object::get_real_named_property_attributes` (a proxy in the prototype chain runs a trap), now disallowed, and the 20 Tier B entries below now each carry a checked reason in `reviewed.toml`. Result (`logs/audit.log`): 74 script-running V8 functions, 70 public rusty_v8 entries, 61 disallowed, 20 reviewed as safe, 10 listed by hand (the four runners outside `api.cc`, and six the matcher does not reach: trait-impl and renamed bindings). `tools/checks.sh` runs it as the `v8-audit` check whenever the fork's gitlink, the audit or the list changes, from the fork checkout or by fetching the gitlink commit and its `api.cc`; CI installs a pinned ast-grep for it.
+
 **Limits:**
-- Clippy cannot see calls made inside rusty_v8 itself, so the audit has to be transitive and repeated on every fork bump. A generated diff against `api.cc` would do it.
+- Clippy cannot see calls made inside rusty_v8 itself, so the audit has to be transitive; it is, but only through same-type and same-file calls, so the hand list stays and is reviewed.
 - The api.cc regex may miss functions with unusual signatures. The `api-natives`/`api-arguments` files were not scanned.
 - `V8::GetSharedMemoryStatistics` was a regex false positive.
 - Every other callback kind (accessors, interceptors, host hooks such as import, prepareStackTrace and promise-reject, interrupt callbacks) needs the same generated prologue.
@@ -99,9 +102,11 @@ The call through the `hg_script` wrapper was not flagged, and the clean build ha
 
 **Test.** `member_cell_links_keep_nodes_alive_under_gc` runs on the fork's cppgc with a detached heap. Linked nodes survive GC (0 drops). After `next_sibling.clear()` the unlinked node is collected (1 drop), and the rest go once the root is dropped (3 drops). The TokenCell data was readable with a token after GC.
 
-**Gap for M2.** The fork's `Member::set` takes `&mut self`, so `MemberCell::set` forms a `&mut Member` that the concurrent marker may read from another thread. The actual accesses are C++ atomics, but in Rust's model it is a `&mut` aliased by another thread. Add a fork API that assigns through a raw pointer or `&self`.
+**Gap, fixed in the fork after acceptance.** The fork's `Member::set` took `&mut self`, so `MemberCell::set` formed a `&mut Member` that the concurrent marker may read from another thread, and `clear` was a plain store: data races in Rust's model. The fork branch `izcal/member-shared-assign` (`130ed9a`) keeps the slot bytes in an `UnsafeCell` and adds `unsafe fn assign_shared(&self, ..)` and `clear_shared(&self)`, both through the existing `cppgc__Member__Assign`, whose `operator=(T*)` is `SetRawAtomic` plus `AssigningWriteBarrier` (`member.h`). No C++ change, so no archive rebuild. `MemberCell` now wraps a plain `Member` and uses them; the GC test passes unchanged.
 
-**Not built:** the generator check that rejects `TokenCell<T>` when `T` contains a `Member`. A `NoTraced` marker or a derive is the obvious route. This test also did not exercise concurrent marking.
+**Generator check, spike form.** `gc_object!` (`src/gc.rs`) declares a GC object with `traced`, `cells` and `plain` fields. It emits each traced field as `MemberCell<T>` and traces it, so no link can be left out of `trace` or put in a `TokenCell`, and it requires `NoTraced` for every `cells` and `plain` type. `NoTraced` (`token-cell/src/traced.rs`) is an `unsafe` marker implemented for std types whose contents are `NoTraced` and, through `no_traced!`, for structs whose every field is. Compile-fail: `v3_member_in_token_cell`, `v3_weak_member_nested_in_token_cell` (inside `Vec<Option<..>>`), `v3_traced_reference_untraced`, `v3_struct_hiding_member_in_token_cell` and the core `c3_no_traced_rejects_unmarked_field`, all E0277. The real check belongs in `hg-webidl-codegen`.
+
+**Still not exercised:** concurrent marking itself (the fix is by construction; no test forces the marker to run during an assign).
 
 ### (4) Multi-node mutation pattern — PASS
 
@@ -193,9 +198,10 @@ The spike also settled the two-token question: the scope cannot be the token. Th
 
 The runtime prologue check (a TypeError instead of a second token) turns a missed path into a contained error, not unsoundness — provided the generator never gives GC-time callbacks a minting prologue. At M2 the list should be regenerated from `api.cc` mechanically and the allocation/GC question decided.
 
-## Review notes (added when committing)
+## Review notes (added when committing; updated after acceptance)
 
-- The two "hole" tests (`scope_as_token_lets_callback_mutate_under_live_borrow`, `upstream_gc_cell_has_the_same_hole`) demonstrate the hole by observing a write through `&mut` from a live `&u64`. That observation is itself undefined behaviour, so it is only reliable in debug builds; an optimised build may legally return the cached value. The tests show that the code compiles in safe Rust, which is the finding; their runtime assertion is not evidence.
-- `MemberCell::set` forms a `&mut Member`, and `MemberCell::clear` does a plain non-atomic store, while the concurrent marker may read the slot. Both are data races; the SAFETY argument covers the mutator thread only, and the GC test that exercises `set` is not evidence of soundness. This is the fork gap recorded for criterion (3) (`Member::set` needs a `&self` or raw-pointer assign) and must be fixed before M2 code relies on it.
-- The intentionally unsound `ScopeCell` used by the hole tests is exported from `token-cell-v8` unconditionally; it is spike code and must never be copied into an Izcal crate.
-- `token-cell-v8` patches `v8` to `../../rusty_v8`, the `m0/rusty_v8` submodule; it builds only in a checkout where that submodule is initialised.
+- **Resolved:** the two hole tests used to assert on a read through a `&u64` after a `&mut u64` wrote the same place, which is undefined behaviour, so the assertion was not evidence. They are now compile-only (`tests/holes_compile.rs`).
+- **Resolved:** `MemberCell::set` formed a `&mut Member` and `clear` was a plain store while the marker may read the slot. Both now go through the fork's `assign_shared`/`clear_shared` (criterion 3 above). The fork commit must land on `hgba` before M2 code relies on it.
+- **Resolved:** the intentionally unsound `ScopeCell` is behind the non-default `holes` feature; it is spike code and must never be copied into an Izcal crate.
+- `token-cell-v8` patches `v8` to `../../rusty_v8`, the `m0/rusty_v8` submodule; it builds only in a checkout where that submodule is initialised and on the fork branch above.
+- The benchmark was not re-run after these changes: `bench.rs` and the cell code it measures did not change, and it needs an exclusive booking.

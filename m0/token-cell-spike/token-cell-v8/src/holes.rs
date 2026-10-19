@@ -9,7 +9,10 @@
 //! safe code. Upstream `cppgc::GcCell` (borrows tied to `&Isolate` /
 //! `&mut Isolate`) has the same hole, because both scopes deref to the isolate.
 //!
-//! Everything in this module compiles; that is the finding.
+//! Everything in this module compiles; that is the finding. It is behind the
+//! `holes` feature and never run: running it would read through a `&u64`
+//! after a `&mut u64` wrote the same place, which is undefined behaviour, so a
+//! runtime result would prove nothing (`tests/holes_compile.rs`).
 #![allow(clippy::disallowed_methods)]
 
 use std::cell::UnsafeCell;

@@ -1,42 +1,5 @@
-    Checking stable_deref_trait v1.2.1
-    Checking writeable v0.6.4
-    Checking litemap v0.8.3
-   Compiling glob v0.3.4
-   Compiling serde v1.0.229
-   Compiling serde_core v1.0.229
-    Checking libm v0.2.16
-   Compiling memchr v2.8.3
-    Checking zerotrie v0.2.5
-    Checking zerofrom v0.1.8
-    Checking icu_locale_fallback_data v2.3.0
-    Checking icu_calendar_data v2.3.0
-    Checking num-traits v0.2.19
-    Checking ixdtf v0.6.6
-    Checking yoke v0.8.3
-    Checking diplomat-runtime v0.16.0
-    Checking bitflags v2.13.2
-    Checking zerovec v0.11.8
     Checking token-cell v0.0.0 (/Users/joederas/Documents/Cline/code/browser/m0/token-cell-spike/token-cell)
-   Compiling clang-sys v1.9.1
-   Compiling nom v7.1.3
-    Checking core_maths v0.1.1
-   Compiling bindgen v0.72.1
-    Checking calendrical_calculations v0.2.4
-    Checking tinystr v0.8.4
-    Checking potential_utf v0.1.6
-    Checking icu_locale_core v2.3.0
-   Compiling cexpr v0.6.0
-    Checking resb v0.1.2
-    Checking icu_provider v2.3.1
-    Checking zoneinfo64 v0.3.0
-    Checking timezone_provider v0.2.6
-    Checking icu_locale_fallback v2.3.0
-    Checking icu_calendar v2.3.0
-   Compiling diplomat_core v0.16.1
-    Checking temporal_rs v0.2.6
-   Compiling diplomat v0.16.1
-    Checking temporal_capi v0.2.6
-   Compiling v8 v152.2.0 (/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8)
+    Checking v8 v152.2.0 (/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8)
 warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
     --> /Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/src/isolate.rs:2346:8
      |
@@ -52,4 +15,4 @@ help: replace the use of the deprecated method
 
 warning: `v8` (lib) generated 1 warning (run `cargo clippy --fix --lib -p v8 -- ` to apply 1 suggestion)
     Checking token-cell-v8 v0.0.0 (/Users/joederas/Documents/Cline/code/browser/m0/token-cell-spike/token-cell-v8)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.70s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.46s

@@ -25,14 +25,16 @@ use std::rc::Rc;
 
 pub type NodeId = u32;
 
-#[derive(Default, Debug, Clone)]
-pub struct NodeData {
-    pub child_count: u32,
-    pub tree_version: u64,
-    pub text: String,
-    pub connected: bool,
-    /// Cached index among siblings, invalidated on mutation.
-    pub index_hint: Option<u32>,
+crate::no_traced! {
+    #[derive(Default, Debug, Clone)]
+    pub struct NodeData {
+        pub child_count: u32,
+        pub tree_version: u64,
+        pub text: String,
+        pub connected: bool,
+        /// Cached index among siblings, invalidated on mutation.
+        pub index_hint: Option<u32>,
+    }
 }
 
 pub struct Node {

@@ -1,70 +1,70 @@
-date.rs:16	pub 	new	<- Date::New
-function.rs:1035	pub 	call	<- Function::Call
-function.rs:1053	pub 	call_with_context	<- Function::Call
-json.rs:24	pub 	parse	<- JSON::Parse
-json.rs:37	pub 	stringify	<- JSON::Stringify
-module.rs:412	pub 	evaluate_for_import_defer	<- Module::EvaluateForImportDefer
-module.rs:431	pub 	instantiate_module	<- Module::InstantiateModule
-module.rs:454	pub 	instantiate_module2	<- Module::InstantiateModule
-module.rs:479	pub 	evaluate	<- Module::Evaluate
-object.rs:372	pub 	set	<- Object::Set
-object.rs:387	pub 	set_with_receiver	<- Object::Set
-object.rs:409	pub 	set_index	<- Object::Set
-object.rs:449	pub 	create_data_property	<- Object::CreateDataProperty
-object.rs:473	pub 	define_own_property	<- Object::DefineOwnProperty
-object.rs:493	pub 	define_property	<- Object::DefineProperty
-object.rs:511	pub 	get	<- Object::Get
-object.rs:523	pub 	get_with_receiver	<- Object::Get
-object.rs:542	pub 	get_index	<- Object::Get
-object.rs:557	pub 	get_prototype	<- Object::GetPrototype
-object.rs:713	pub 	get_property_names	<- Object::GetPropertyNames
-object.rs:743	pub 	has	<- Object::Has
-object.rs:753	pub 	has_index	<- Object::Has
-object.rs:764	pub 	has_own_property	<- Object::HasOwnProperty
-object.rs:776	pub 	delete	<- Object::Delete
-object.rs:786	pub 	delete_index	<- Object::Delete
-object.rs:906	pub 	set_integrity_level	<- Object::SetIntegrityLevel
-object.rs:1010	pub 	get_property_attributes	<- Object::GetPropertyAttributes
-object.rs:1030	pub 	get_own_property_descriptor	<- Object::GetOwnPropertyDescriptor
-object.rs:1073	pub 	get_real_named_property	<- Object::GetRealNamedProperty
-object.rs:1105	pub 	get_real_named_property_attributes	<- Object::GetRealNamedPropertyAttributes
-object.rs:1148	pub 	call_as_function	<- Object::CallAsFunction
-object.rs:1174	pub 	call_as_function_with_context	<- Object::CallAsFunction
-object.rs:1206	pub 	call_as_constructor	<- Object::CallAsConstructor
-object.rs:1230	pub 	call_as_constructor_with_context	<- Object::CallAsConstructor
-object.rs:1273	pub 	new	<- Array::New
-object.rs:1327	pub 	get	<- Map::Get
-object.rs:1338	pub 	set	<- Map::Set
-object.rs:1352	pub 	has	<- Map::Has
-object.rs:1361	pub 	delete	<- Map::Delete
-object.rs:1396	pub 	add	<- Set::Add
-object.rs:1407	pub 	has	<- Set::Has
-object.rs:1416	pub 	delete	<- Set::Delete
-promise.rs:100	pub 	catch	<- Promise::Catch
-promise.rs:116	pub 	then	<- Promise::Then
-proxy.rs:22	pub 	new	<- Proxy::New
-regexp.rs:41	pub 	new	<- RegExp::New
-regexp.rs:54	pub 	exec	<- RegExp::Exec
-scope.rs:1336	pub 	stack_trace	<- TryCatch::StackTrace
-script.rs:101	pub 	run	<- Script::Run
-script_compiler.rs:255	pub 	compile_module2	<- ScriptCompiler::CompileModule
-script_compiler.rs:274	pub 	compile	<- ScriptCompiler::Compile
-script_compiler.rs:293	pub 	compile_function	<- ScriptCompiler::CompileFunction
-template.rs:805	pub 	get_function	<- FunctionTemplate::GetFunction
-template.rs:923	pub 	new_instance	<- ObjectTemplate::NewInstance
-value.rs:544	pub 	to_big_int	<- Value::ToBigInt
-value.rs:555	pub 	to_number	<- Value::ToNumber
-value.rs:566	pub 	to_string	<- Value::ToString
-value.rs:600	pub 	to_object	<- Value::ToObject
-value.rs:611	pub 	to_integer	<- Value::ToInteger
-value.rs:622	pub 	to_uint32	<- Value::ToUint32
-value.rs:633	pub 	to_int32	<- Value::ToInt32
-value.rs:653	pub 	instance_of	<- Value::InstanceOf
-value.rs:671	pub 	number_value	<- Value::NumberValue
-value.rs:680	pub 	integer_value	<- Value::IntegerValue
-value.rs:689	pub 	uint32_value	<- Value::Uint32Value
-value.rs:698	pub 	int32_value	<- Value::Int32Value
-value_deserializer.rs:295	priv	read_value	<- ValueDeserializer::ReadValue
-value_serializer.rs:398	priv	write_value	<- ValueSerializer::WriteValue
-wasm.rs:492	pub 	trampoline	<- WasmStreaming::Unpack
-wasm.rs:502	priv	c_fn	<- WasmStreaming::Unpack
+src/object.rs:1273	v8::Array::new	<- Array::New
+src/object.rs:1283	v8::Array::new_with_elements	<- via v8::Array::new
+src/date.rs:16	v8::Date::new	<- Date::New
+src/function.rs:1035	v8::Function::call	<- Function::Call
+src/function.rs:1053	v8::Function::call_with_context	<- Function::Call
+src/function.rs:1080	v8::Function::new_instance	<- Function::NewInstanceWithSideEffectType
+src/template.rs:805	v8::FunctionTemplate::get_function	<- FunctionTemplate::GetFunction
+src/object.rs:1361	v8::Map::delete	<- Map::Delete
+src/object.rs:1327	v8::Map::get	<- Map::Get
+src/object.rs:1352	v8::Map::has	<- Map::Has
+src/object.rs:1338	v8::Map::set	<- Map::Set
+src/module.rs:479	v8::Module::evaluate	<- Module::Evaluate
+src/module.rs:412	v8::Module::evaluate_for_import_defer	<- Module::EvaluateForImportDefer
+src/module.rs:431	v8::Module::instantiate_module	<- Module::InstantiateModule
+src/module.rs:454	v8::Module::instantiate_module2	<- Module::InstantiateModule
+src/object.rs:1206	v8::Object::call_as_constructor	<- Object::CallAsConstructor
+src/object.rs:1230	v8::Object::call_as_constructor_with_context	<- Object::CallAsConstructor
+src/object.rs:1148	v8::Object::call_as_function	<- Object::CallAsFunction
+src/object.rs:1174	v8::Object::call_as_function_with_context	<- Object::CallAsFunction
+src/object.rs:449	v8::Object::create_data_property	<- Object::CreateDataProperty
+src/object.rs:473	v8::Object::define_own_property	<- Object::DefineOwnProperty
+src/object.rs:493	v8::Object::define_property	<- Object::DefineProperty
+src/object.rs:776	v8::Object::delete	<- Object::Delete
+src/object.rs:786	v8::Object::delete_index	<- Object::Delete
+src/object.rs:511	v8::Object::get	<- Object::Get
+src/object.rs:542	v8::Object::get_index	<- Object::Get
+src/object.rs:1030	v8::Object::get_own_property_descriptor	<- Object::GetOwnPropertyDescriptor
+src/object.rs:1010	v8::Object::get_property_attributes	<- Object::GetPropertyAttributes
+src/object.rs:713	v8::Object::get_property_names	<- Object::GetPropertyNames
+src/object.rs:557	v8::Object::get_prototype	<- Object::GetPrototype
+src/object.rs:1073	v8::Object::get_real_named_property	<- Object::GetRealNamedProperty
+src/object.rs:1105	v8::Object::get_real_named_property_attributes	<- Object::GetRealNamedPropertyAttributes
+src/object.rs:523	v8::Object::get_with_receiver	<- Object::Get
+src/object.rs:743	v8::Object::has	<- Object::Has
+src/object.rs:753	v8::Object::has_index	<- Object::Has
+src/object.rs:764	v8::Object::has_own_property	<- Object::HasOwnProperty
+src/object.rs:372	v8::Object::set	<- Object::Set
+src/object.rs:409	v8::Object::set_index	<- Object::Set
+src/object.rs:906	v8::Object::set_integrity_level	<- Object::SetIntegrityLevel
+src/object.rs:387	v8::Object::set_with_receiver	<- Object::Set
+src/template.rs:923	v8::ObjectTemplate::new_instance	<- ObjectTemplate::NewInstance
+src/scope.rs:1336	v8::PinnedRef::stack_trace	<- TryCatch::StackTrace
+src/promise.rs:100	v8::Promise::catch	<- Promise::Catch
+src/promise.rs:116	v8::Promise::then	<- Promise::Then
+src/proxy.rs:22	v8::Proxy::new	<- Proxy::New
+src/regexp.rs:54	v8::RegExp::exec	<- RegExp::Exec
+src/regexp.rs:41	v8::RegExp::new	<- RegExp::New
+src/script.rs:101	v8::Script::run	<- Script::Run
+src/object.rs:1396	v8::Set::add	<- Set::Add
+src/object.rs:1416	v8::Set::delete	<- Set::Delete
+src/object.rs:1407	v8::Set::has	<- Set::Has
+src/value.rs:653	v8::Value::instance_of	<- Value::InstanceOf
+src/value.rs:698	v8::Value::int32_value	<- Value::Int32Value
+src/value.rs:680	v8::Value::integer_value	<- Value::IntegerValue
+src/value.rs:671	v8::Value::number_value	<- Value::NumberValue
+src/value.rs:544	v8::Value::to_big_int	<- Value::ToBigInt
+src/value.rs:633	v8::Value::to_int32	<- Value::ToInt32
+src/value.rs:611	v8::Value::to_integer	<- Value::ToInteger
+src/value.rs:555	v8::Value::to_number	<- Value::ToNumber
+src/value.rs:600	v8::Value::to_object	<- Value::ToObject
+src/value.rs:578	v8::Value::to_rust_string_lossy	<- via v8::Value::to_string
+src/value.rs:566	v8::Value::to_string	<- Value::ToString
+src/value.rs:622	v8::Value::to_uint32	<- Value::ToUint32
+src/value.rs:689	v8::Value::uint32_value	<- Value::Uint32Value
+src/json.rs:24	v8::json::parse	<- JSON::Parse
+src/json.rs:37	v8::json::stringify	<- JSON::Stringify
+src/script_compiler.rs:274	v8::script_compiler::compile	<- ScriptCompiler::Compile
+src/script_compiler.rs:293	v8::script_compiler::compile_function	<- ScriptCompiler::CompileFunction
+src/script_compiler.rs:241	v8::script_compiler::compile_module	<- via v8::script_compiler::compile_module2
+src/script_compiler.rs:255	v8::script_compiler::compile_module2	<- ScriptCompiler::CompileModule

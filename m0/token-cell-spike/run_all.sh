@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # CS-D3 token-cell spike: run every check and write logs to logs/.
-# Needs a heavy booking on the rig (see ~/.rigs/README.md). No V8 build: the
-# V8 half links the fork's prebuilt sandbox release archive.
+# Needs a heavy booking on the rig (see ~/.rigs/README.md); `bench` needs an
+# exclusive one. No V8 build: the V8 half links the fork's prebuilt sandbox
+# release archive, with m0/rusty_v8 on branch izcal/member-shared-assign.
 set -u
 SPIKE="$(cd "$(dirname "$0")" && pwd)"
 LOGS="$SPIKE/logs"
@@ -25,7 +26,15 @@ if [[ $step == all || $step == v8 ]]; then
   # shellcheck source=/dev/null
   source "$SPIKE/../scripts/consume-release.sh"
   cd "$SPIKE/token-cell-v8" || exit 1
-  cargo test 2>&1 | tee "$LOGS"/v8_test.log | tail -40
+  # `holes` builds the scope-as-token demonstration (compile-only test).
+  cargo test --features holes 2>&1 | tee "$LOGS"/v8_test.log | tail -40
+fi
+
+if [[ $step == all || $step == audit ]]; then
+  # Criterion (2): regenerate the script-entry list and check clippy.toml.
+  M0="$SPIKE/.."
+  python3 -I "$SPIKE/audit/audit.py" "$M0/rusty_v8" "$M0/rusty_v8/v8/src/api/api.cc" \
+    "$SPIKE/token-cell-v8/clippy.toml" "$SPIKE/audit/reviewed.toml" "$SPIKE/audit" 2>&1 | tee "$LOGS"/audit.log
 fi
 
 if [[ $step == all || $step == clippy ]]; then

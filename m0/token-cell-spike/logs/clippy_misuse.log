@@ -77,6 +77,15 @@ warning: use of a disallowed method `v8::Script::run`
    = note: CS-TY-10: can run script; use hg_script (takes &mut ScriptToken)
    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
 
+warning: use of a disallowed method `token_cell::enter`
+  --> src/misuse.rs:37:5
+   |
+37 |     token_cell::enter(|_tok| ()); // only event_loop::EventLoop may mint a token
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = note: CS-D3 (1): only event_loop::EventLoop mints the outermost ScriptToken
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#disallowed_methods
+
 warning: direct cast of function item into an integer
   --> src/misuse.rs:17:7
    |
@@ -89,5 +98,5 @@ help: first cast to a pointer `as *const ()`
 17 |     p as *const () as usize
    |       ++++++++++++
 
-warning: `token-cell-v8` (lib) generated 8 warnings (run `cargo clippy --fix --lib -p token-cell-v8 -- ` to apply 1 suggestion)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s
+warning: `token-cell-v8` (lib) generated 9 warnings (run `cargo clippy --fix --lib -p token-cell-v8 -- ` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s

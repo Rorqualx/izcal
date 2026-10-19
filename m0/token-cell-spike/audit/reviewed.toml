@@ -1,0 +1,65 @@
+# CS-D3 criterion (2): rusty_v8 entries the audit finds that are reviewed as
+# unable to reach user JS. Each needs a reason a reviewer can check.
+# Checked against api.cc at the fork's V8 (c4ca1ecc). Re-check each entry when
+# the fork bumps V8; the audit fails if one disappears.
+
+[[allow]]
+path = "v8::Array::new"
+reason = "Array::New(length): allocates; can throw RangeError but calls no user JS"
+[[allow]]
+path = "v8::Array::new_with_elements"
+reason = "Array::New(elements): allocates and fills; no setters or user JS"
+[[allow]]
+path = "v8::Date::new"
+reason = "Date::New(time): allocates a Date from a number; calls no user JS"
+[[allow]]
+path = "v8::Proxy::new"
+reason = "Proxy::New(target, handler): creates the proxy; runs no trap"
+[[allow]]
+path = "v8::RegExp::new"
+reason = "RegExp::New: compiles the pattern; can throw SyntaxError but runs no user JS"
+[[allow]]
+path = "v8::FunctionTemplate::get_function"
+reason = "instantiates a template from native descriptions; runs no user JS"
+[[allow]]
+path = "v8::ObjectTemplate::new_instance"
+reason = "instantiates a template from native descriptions; runs no user JS"
+[[allow]]
+path = "v8::Map::get"
+reason = "Execution::CallBuiltin(map_get): the initial builtin, which script cannot replace; SameValueZero keys call no JS"
+[[allow]]
+path = "v8::Map::set"
+reason = "Execution::CallBuiltin(map_set): as Map::get"
+[[allow]]
+path = "v8::Map::has"
+reason = "Execution::CallBuiltin(map_has): as Map::get"
+[[allow]]
+path = "v8::Map::delete"
+reason = "Execution::CallBuiltin(map_delete): as Map::get"
+[[allow]]
+path = "v8::Set::add"
+reason = "Execution::CallBuiltin(set_add): as Map::get"
+[[allow]]
+path = "v8::Set::has"
+reason = "Execution::CallBuiltin(set_has): as Map::get"
+[[allow]]
+path = "v8::Set::delete"
+reason = "Execution::CallBuiltin(set_delete): as Map::get"
+[[allow]]
+path = "v8::Value::to_object"
+reason = "ToObject wraps a primitive or throws TypeError; it never calls valueOf or toString"
+[[allow]]
+path = "v8::json::parse"
+reason = "JSON::Parse has no reviver and defines properties without setters; runs no user JS"
+[[allow]]
+path = "v8::script_compiler::compile"
+reason = "compiles without running; top-level code runs only through Script::run"
+[[allow]]
+path = "v8::script_compiler::compile_function"
+reason = "compiles without running; the function runs only through Function::call"
+[[allow]]
+path = "v8::script_compiler::compile_module"
+reason = "compiles without running; evaluation is Module::evaluate"
+[[allow]]
+path = "v8::script_compiler::compile_module2"
+reason = "compiles without running; evaluation is Module::evaluate"

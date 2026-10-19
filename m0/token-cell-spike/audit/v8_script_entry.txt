@@ -49,7 +49,6 @@ SCRIPT Object::CallAsConstructor EnterV8Scope
 SCRIPT Function::NewInstanceWithSideEffectType EnterV8Scope
 SCRIPT Function::Call EnterV8Scope
 SCRIPT Function::FunctionProtoToString PrepareForExecutionScope
-SCRIPT V8::GetSharedMemoryStatistics EnterV8Scope
 SCRIPT ObjectTemplate::NewInstance PrepareForExecutionScope
 SCRIPT FunctionTemplate::GetFunction PrepareForExecutionScope
 SCRIPT Date::New PrepareForExecutionScope
