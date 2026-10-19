@@ -1,6 +1,6 @@
 # Izcal coding standard
 
-*Mandatory coding standard for Izcal's own Rust code, for engineers and AI agents. Date: 18 October 2026. Status: draft 0.3. Research notes: `research_notes/Izcal coding standard/` (`errors_types.md`, `async_structure.md`, `testing_performance.md`, plus `factcheck.md` and `critique.md`). Relates to: HGBA-2 M-1, P1, P2, P6, Section 4.8, S-4c, S-4e, I-1, I-2; HGBA-3 B1, B2, B3, DET-1, DET-2, VER-1, EQ-1, DST-1, ORC-1, INC-3; Stage 1 design Sections 1, 2.2 (G1–G9), 3, 4, 5.2, 5.3, 7.1–7.7, 8, 13.3 (RES-3, RES-4), D-S4, D-S10; DevTools spec G12; security scope draft 0.2: IPC-R1 to IPC-R17, FFI-R1 to FFI-R4, NET-R3, SH-R5, SEC-3, SEC-6, SEC-7, SEC-11, SEC-12, SEC-14, SEC-27, SEC-28, SEC-34, SEC-35; `CONTRIBUTING.md`; `tools/checks.sh`; `tools/deny.toml`.*
+*Mandatory coding standard for Izcal's own Rust code, for engineers and AI agents. Date: 18 October 2026. Status: draft 0.3. Research notes: `research_notes/Izcal coding standard/` (`errors_types.md`, `async_structure.md`, `testing_performance.md`, plus `factcheck.md` and `critique.md`). Relates to: HGBA-2 M-1, P1, P2, P6, Section 4.8, S-4c, S-4e, I-1, I-2; HGBA-3 B1, B2, B3, DET-1, DET-2, VER-1, EQ-1, DST-1, ORC-1, INC-3; Stage 1 design Sections 1, 2.2 (G1–G9), 3, 4, 5.2, 5.3, 7.1–7.7, 8, 13.3 (RES-3, RES-4), D-S4, D-S10; DevTools spec G12; security scope draft 0.3: IPC-R1 to IPC-R17, FFI-R1 to FFI-R4, NET-R3, SH-R5, SEC-3, SEC-6, SEC-7, SEC-11, SEC-12, SEC-14, SEC-27, SEC-28, SEC-34, SEC-35; `CONTRIBUTING.md`; `tools/checks.sh`; `tools/deny.toml`.*
 
 *Revision 0.1 (18 October 2026): first draft.*
 
@@ -318,7 +318,7 @@ This standard supplies mechanisms for these and does not restate them. 0.1 IDs t
 
 ### 6.13 Integrations: where this standard is the mechanism for other targets
 
-| Target (security scope draft 0.2 unless noted) | What it requires | Mechanism here |
+| Target (security scope draft 0.3 unless noted) | What it requires | Mechanism here |
 |---|---|---|
 | IPC-R2, SEC-3 (a) | Identity from bound endpoints; `CallerIdentity` constructible only in `hg-ipc` | CS-TY-5, gen |
 | IPC-R3, IPC-R4 | Closed type universe; valid by construction | CS-TY-3, CS-TY-4, CS-ER-6 |
