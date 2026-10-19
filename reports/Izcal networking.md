@@ -1,0 +1,929 @@
+# Izcal networking
+
+*First-principles specification of Izcal's own network stack: HTTP/1.1, HTTP/2, HTTP/3 and QUIC, HPACK and QPACK, TLS integration, DNS, connection establishment and pooling, the WHATWG Fetch algorithm and the web security layer around it, cookies, the HTTP cache, proxies and routes, WebSockets and WebTransport, and the network service's process placement and capability IPC. Date: 19 October 2026. Status: draft 0.2. Research notes: `research_notes/Izcal networking/` (`frame.md`, `history_postmortems.md`, `protocols_rfcs.md`, `fetch_privacy_partitioning.md`, `performance_transport.md`, `security_robustness.md`, `gaps_opportunities.md`; phase 8: `factcheck.md`, `critique.md`). Relates to: HGBA-2 2.3.0 [M-1, P1–P6, I-1, I-2, I-6, Sections 4.6, 4.7 (neqo superseded)][H2]; HGBA-3 [B1, B2, B9, B10, DET-1, DET-2, DST-1, AG-0][H3]; Stage 1 design [Sections 1, 2, 3.1–3.4, 4.1, 6, 7.4–7.6, 8.1, 8.3, 13.2][S1]; security scope 0.3 (in review, PR #8) [NET-R1 to NET-R7, IPC-R1 to IPC-R17, SEC-8, SEC-28, SEC-31, SEC-34, SEC-D13, Q-SEC-5, Sections 6.7, 6.10a, 6.11][SS]; coding standard 0.3.1 (in review, PR #9) [tier P, CS-D1, CS-D8, CS-AS-1, CS-AS-4, CS-ER-9, CS-ER-13, CS-T11, Q-CS-2][CS]; JavaScript engine spec 0.3 [JS-D15, Section 6.9][JS]; resource-footprint spec 0.3 [FP-1, FP-17, FP-18, FP-26, FP-D8, FP-D9, FP-D16, Sections 6.8, 6.18.1, 8.2][FP]; DevTools spec 0.3 [DT-D5, DT-18, DT-21, `hg-net-observe`, `hg-export`][DT]. Links to the two in-review documents resolve once they merge.*
+
+*Revision 0.2 (19 October 2026): phase 8 applied. The independent fact-check checked 94 claims (61 correct, 16 partly correct, 5 wrong, 12 not checked) and 82 external links (none dead) and listed 5 must-fix and 19 recommended items; all are applied. The independent design critique raised 29 findings (9 High, 13 Medium, 7 Low); every one is applied, five in a different form than proposed, none rejected (Appendix A). What changed: **network services are per (top-level site, container)**, with a per-container service for unpartitioned cookies and encrypted-DNS transport, built so from NW-M0 (NW-D3, critique C8); the **socket broker checks broker-issued Local Network Access tickets** and accepts DNS and proxy destinations only from configuration it read itself (C3); OS calls that consume network data (resolver fallback, SSPI and GSSAPI, client-key signing) move from the broker to a sandboxed **OS-adapter process**, and ambient authentication needs an allowlist (C4, NW-D20); the HTTP cache is bound to a **broker-issued security epoch** and keeps FP-D16's crash-discard rule (C5); the `document.cookie` region is keyed by **host** under origin keying and has an ordering rule (C6); a **WebRTC transport** section with Izcal's own ICE, DTLS, SRTP and SCTP (C7); a recording runs in a **dedicated, fresh partition service** with typed per-datagram QUIC records and crypto-drawn identifiers recorded as values (C1, C2); Clear-Site-Data stays inside one container (C9); partition budgets are per top-level site and recorded as a bounded channel (C10); NW-19 and NW-20 become statistical tests with a positive control (C11); stale trust data degrades instead of failing closed (C12); Izcal builds its own certificate path builder, rustls-webpki becoming a test oracle (C13, NW-D19); the fingerprint is decided by measurement (C14); content blocking, downloads, HTTP authentication, client certificates, Web Push and enterprise policy get sections (C20, C21); staffing is re-derived with the missing tracks and a corrected ramp (C18). Fact-check: rustls already randomizes extension order and declined RFC 8701 GREASE in 2022 (FC-M1); ECH's outer SNI carries the public name, so NW-24 is restated (FC-M2); coalescing is anchored to RFC 9110 §4.3.3 (FC-M5).*
+
+*Revision 0.1 (19 October 2026): first draft, written from the six research notes and the frame note by the synthesis author.*
+
+HGBA-2 2.3.0 drops neqo, and the owner's direction excludes every library that does browser networking (hyper, h2, h3, quinn, quiche, reqwest, hickory-dns and the network stacks of other browsers). Izcal therefore writes its own HTTP/1.1, HTTP/2, HTTP/3, QUIC, HPACK, QPACK, DNS, Fetch, cookie store, HTTP cache, WebSocket and WebTransport code from the RFCs and the WHATWG standards, and uses rustls and its crypto provider for TLS. The record says three things about browser networking. **Features fail when they depend on the other side behaving**: pipelining, TLS False Start, TCP Fast Open, OCSP Must-Staple and HPKP all died on middleboxes or operators, and HTTP/2's priority tree and server push died because the party sending the signal did not have the information ([HP 1, 2, 6][HP]). **Retrofitting a sandbox onto a network stack is the hard part**: Chromium's network service is still unsandboxed by default on Android, Windows and Linux in October 2026 (a Windows field trial exists), and Firefox's general socket process has been open since December 2016 ([SR 6.1][SR], [HP 4.4–4.5][HP]). **Most network-stack vulnerabilities that survive a memory-safe language are disagreements**: two parsers reading one message differently (request smuggling, client-side desync, URL and cookie confusion), or peer input reaching an unchecked assumption, an `unwrap`, an overflow or a state misuse (every Rust QUIC panic on record) ([SR 1.8–1.9, 2.1–2.7][SR]). **The central idea: one state machine per protocol, written once, sans-IO, driven only by the substrate, with every peer-supplied size charged to a budget and every piece of state keyed by its partition.** The same code then runs on real sockets, under the deterministic simulator and inside fuzzers, cannot panic on input, and cannot leak across (site, container). The decisions that matter most: (1) **network services per (top-level site, container)**, the network-side analogue of site isolation, so a hostile page reaches only its own top-level site's network state (NW-D3); (2) **sockets minted by the broker** against Local Network Access tickets the broker itself issued, so routes, local-network grants and bad ports are enforced outside the processes that parse network bytes, and those processes hold no socket rights (NW-D4); (3) **Izcal's own certificate verifier and path builder**, with Mozilla's root store and Izcal-generated revocation data as data, CT enforced and degradation instead of lock-out when data is stale, replacing Stage 1's platform-verifier-first rule (NW-D5, NW-D19); (4) **recording at the decryption boundary in a fresh, dedicated partition service**, so a recorded session replays every layer above TLS and QUIC packet protection bit-identically without ever recording a key (NW-D2); (5) **the strictest partition key any browser ships**, including the frame site and the container route (NW-D7). Networking is the second-largest component after the JavaScript engine: about **46–61 engineers†** at full strength, WebRTC transport and content blocking included, reached through a hiring ramp, for **4–5 years†** to performance parity, about **160–255 engineer-years†** (Section 9).
+
+Note sources are cited as **HP** ([history and postmortems][HP]), **PR** ([protocols, standards and conformance][PR]), **PP** ([Fetch, privacy and partitioning][PP]), **PT** ([performance and transport][PT]), **SR** ([security and robustness][SR]), **GO** ([gaps and opportunities][GO]) and **FR** ([frame][FR]), with the row number. Primary sources are linked inline for the claims a decision or target depends on.
+
+## 1. The problem and who has it
+
+| User | Task, in their words | What fails today |
+|---|---|---|
+| **People browsing** | "Pages load fast on any network, my sessions stay mine, and nobody follows me from site to site" | Every engine leaves some network state global: Chrome left HSTS, proxy and PAC DNS, the certificate verifier and DoH unpartitioned, and **no engine fixes the shared socket cap**, which lets one site time another's requests ([PP 1.8, 1.12][PP]; [xsleaks: connection pool](https://xsleaks.dev/docs/attacks/timing-attacks/connection-pool/)) |
+| **People on hard networks** | "It works behind the hotel portal, the corporate proxy, on IPv6-only mobile and on a bad train" | 4.4% of clients could not use UDP in Google's 2016 data, mostly enterprise firewalls ([Langley et al., SIGCOMM 2017 §7.2](https://dl.acm.org/doi/10.1145/3098822.3098842)); a failed load says "network error" and nothing more, because Fetch's network error has no reason field ([GO 1.1, 1.9][GO]) |
+| **Web developers** | "Why did this fail, wait, miss the cache, use HTTP/2 instead of 3, get blocked by CORS?" | DevTools throttling is request-level, cannot simulate loss, and ignores TCP slow start, DNS and TLS ([3perf](https://3perf.com/blog/chrome-throttling/), [GO 4.1–4.3][GO]); HAR cannot represent streams, HTTP/3, partition keys, cache verdicts or service-worker hops ([GO 1.5][GO]) |
+| **Site operators and CDNs** | "Behave like a browser and follow the RFCs" | New engines are blocked by bot management: Cloudflare Turnstile kept Ladybird off "a lot of sites" until May 2026 ([Ladybird, May 2026](https://ladybird.org/newsletter/2026-05-31/), [PP 4.4][PP]) |
+| **Izcal's engineers and agents** | "Reproduce this exactly; prove the parser never panics" | Rust QUIC stacks keep shipping remote panics: three pre-authentication panics in quinn-proto from 2023 to 2026, one an `unwrap()` on a peer varint ([SR 1.8][SR]); external record/replay is off by 12–37% median page-load time because it must guess at a non-deterministic page ([Mahimahi, USENIX ATC 2015](https://www.cs.princeton.edu/~ravian/publications/mahimahi_atc.pdf), [GO 3.2][GO]) |
+
+**What Izcal's specs already decide** (full list with IDs in [FR 2][FR]):
+
+- **[M-1][H2] (2.3.0).** Izcal builds its own HTTP/1.1, HTTP/2, HTTP/3 and QUIC; neqo is dropped; allowed dependencies are generic infrastructure, TLS and cryptography (rustls and its providers), and OS interfaces. Every algorithm carries a `// spec:` anchor at a pinned revision; other stacks are black-box signals only.
+- **[I-1 (b)][H2].** The network service partitions **all** its state by (top-level site, container), extending Fetch's network partition key. **FP-D8**: origin keying of renderers is always on.
+- **[I-2][H2] and [Stage 1 G7][S1].** Renderers hold no sockets; renderer crates never depend on `hg-net`.
+- **[HGBA-2 4.6][H2].** Persistent storage uses crash-consistent embedded stores, never custom persistence layers; io_uring is excluded from renderer and network-service designs. **FP-D16** (accepted) defines a regenerable-cache class that this spec extends to the HTTP cache (Section 6.10).
+- **[HGBA-2 4.7][H2].** No kernel bypass; CPU crypto and UDP GSO/GRO inside the service; X25519MLKEM768 hybrid by default; crypto agility.
+- **[B1, DET-1, DET-2][H3] and [JS-D15][JS].** No engine code touches sockets, clocks, threads or randomness except through the substrate; timing-dependent decisions are recorded inputs; production never waits for determinism.
+- **[Stage 1 Section 6][S1].** CHIPS-style partitioned third-party cookies by default; GPC sent by default; per-container user-supplied routes (WireGuard, SOCKS, Arti) labelled honestly; content blocking in the network service; no raw TCP or UDP for web content. **Stage 1 13.2**: Chrome-compatible UA with Izcal's own token; platform verifier first, CT enforced, CRLs pushed (amended by NW-D5).
+- **Security scope 0.3.** NET-R1 to NET-R7 (context from the endpoint, ORB before delivery, no panic reachable from network input, differential fuzzing, PKI, Local Network Access); **SEC-D13**: network sandbox required at M8 on Linux and macOS; SEC-34: cookies at rest under an OS-bound key.
+- **Coding standard 0.3.1.** Network crates are **tier P**: abort on panic (CS-D1 (a)), no panic reachable from input, fallible capped allocation (CS-ER-9), one Fetch network error for every failure (CS-ER-13, CS-T11), no `tokio`, `async` only on an allowlist (CS-D8), and **Q-CS-2 decided: Izcal writes its own sans-IO HTTP/2 codec**.
+- **[Footprint spec][FP].** Network service ≤ 8 MiB† idle inside the 64 MiB† baseline (FP-1); hidden pages get 0 wakeups (FP-17); a static visible page leaves the whole browser at ≤ 1 wakeup/s† (FP-18); HTTP cache 256 MiB† visible budget (FP-26); telemetry opt-in only (FP-D9).
+- **[DevTools spec][DT].** `hg-net-observe` emits DNS, connection-decision, TLS and QUIC events (DT-D5), and the views must equal what the stack did (DT-18). Its "qlog from neqo" becomes "qlog from Izcal's QUIC" (Section 9.5).
+
+**Success** is measured by Section 8: every protocol through its conformance oracles, most of which Izcal must build because no client-side suite exists for HTTP/1.1, HTTP/2, DNS or proxies ([PR 10.3][PR]); zero panics reachable from network or IPC input; no observable difference across partitions on any listed axis; HTTP/3 at least as fast as Izcal's own HTTP/2 on a 1 Gbps link with a low-end CPU, where every shipping browser loses ([PT 1.3][PT]); the network service quiet when the user is idle; and bit-identical replay of recorded network input.
+
+## 2. History: what came before and why it was built that way
+
+### 2.1 Chronology
+
+| Year | Project | What it did | Why that way | Fate and why |
+|---|---|---|---|---|
+| 1995–2015 | **WinInet in Internet Explorer** | The OS HTTP library shared with other Windows applications; cache and cookies were OS-wide | One OS, one HTTP client, no site isolation | Retired with IE; shared OS-wide state is the opposite of partitioning ([HP 4.9][HP], Low) |
+| 1999–2017 | **HTTP/1.1 pipelining** | Several requests on one connection, responses in order | Connections were expensive and HTTP/1.1 had no framing for multiplexing ([RFC 2616 §8.1.2.2](https://www.rfc-editor.org/rfc/rfc2616#section-8.1.2.2)) | Removed: head-of-line blocking by design, broken servers and transparent proxies, "known crashing bugs" ([Chromium](https://www.chromium.org/developers/design-documents/network-stack/http-pipelining/)); Firefox 54 removed it as "a maintenance burden with minimal value" ([bug 1340655](https://bugzilla.mozilla.org/show_bug.cgi?id=1340655)) |
+| 2008 | **Chromium `net/`** | Own cross-platform stack, single-threaded and callback-driven | "Greater control than would be available with higher-level system networking libraries", avoiding OS-library bugs ([Chromium design doc](https://www.chromium.org/developers/design-documents/network-stack/)) | Survived; became the Network Service |
+| 2009–2016 | **SPDY** | Multiplexing, prioritization and header compression over TLS | Cut page-load time without changing networks or content: 27–60% faster in the lab, benefit gone above 2.5% loss ([SPDY whitepaper](https://www.chromium.org/spdy/spdy-whitepaper/)) | Became HTTP/2; removed with NPN in Chrome 51 ([Chromium blog](https://blog.chromium.org/2015/02/hello-http2-goodbye-spdy.html)) |
+| 2010–2012 | **TLS False Start** | Send application data before the handshake finished (~30% faster) | Latency | Restricted to NPN sites after 18 months on a blacklist: a few SSL terminators failed, some nondeterministically ([Langley](https://www.imperialviolet.org/2012/04/11/falsestart.html)) |
+| 2012–2021 | **gQUIC → IETF QUIC** | Transport in user space over UDP, with encrypted headers | Kernel TCP changes took "upwards of a decade"; UDP traverses middleboxes; encryption stops ossification ([SIGCOMM 2017](https://dl.acm.org/doi/10.1145/3098822.3098842)) | RFC 9000 (May 2021); search latency −8.0% desktop, −3.6% mobile; server CPU 3.5× TCP at first, then 2× ([HP 3.1–3.6][HP]) |
+| 2015–2022 | **HTTP/2 priority tree and server push** | Dependency tree with weights; server-initiated responses | The server should know what the client needs | The tree "was not successful" ([RFC 9113 §5.3](https://www.rfc-editor.org/rfc/rfc9113.html#section-5.3)); push was used by 1.25% of HTTP/2 sites, then 0.7%, with no clear gain, and Chrome 106 disabled it by default ([Chrome](https://developer.chrome.com/blog/removing-push)) |
+| 2016 | **Sans-IO** | Protocol libraries that only consume and produce bytes | Reuse across sync and async I/O models ([sans-io](https://sans-io.readthedocs.io/)) | The standard way to write testable protocol code; rustls 0.23 added an unbuffered, event-driven API ([release notes](https://github.com/rustls/rustls/releases/tag/v%2F0.23.0)) |
+| 2016–2017 | **SDCH; HPKP** | Shared-dictionary compression; dynamic key pinning | Bytes; defence against misissuance | SDCH unshipped for no adoption, IPR and privacy doubts ([blink-dev](https://groups.google.com/a/chromium.org/g/blink-dev/c/nQl0ORHy7sw/m/HNpR96sqAgAJ)); HPKP removed: 375 of a million sites, self-inflicted outages, hostile pinning ([blink-dev](https://groups.google.com/a/chromium.org/g/blink-dev/c/he9tr7p3rZ8/m/eNMwKPmUBAAJ)) |
+| 2016– | **Firefox socket process** | Move all TCP/UDP out of the parent process | Isolation | Still open after nearly ten years; only WebRTC networking moved ([bug 1322426](https://bugzilla.mozilla.org/show_bug.cgi?id=1322426)) |
+| 2018 | **Apple Network.framework** | Transport stack in the app process, racing addresses and interfaces | Fewer copies and context switches ([WWDC18 715](https://developer.apple.com/videos/play/wwdc2018/715/)) | Underlies URLSession |
+| 2018–2019 | **Chromium Network Service** | Networking in its own process, "oblivious to Chrome's features", with CORS and ORB inside it | Isolation, stability, modularity ([README](https://chromium.googlesource.com/chromium/src/+/HEAD/services/network/README.md)) | Default on desktop; **sandbox still off by default on Android, Windows and Linux in October 2026** (on for macOS and Fuchsia; a Windows field trial exists), blocked on Windows by network-change APIs, LPAC and ARM64 ([features.cc](https://chromium.googlesource.com/chromium/src/+/HEAD/sandbox/policy/features.cc), [SR 6.1–6.2][SR]) |
+| 2020–2022 | **Network-state partitioning** | Chrome 86 cache partitioning; Firefox 85 partitions 16 kinds of state; Chrome M97/98 partitions sockets, DNS, Alt-Svc and resumption | Cross-site tracking and XS-Leaks through shared caches | Cost: Chrome +3.6% cache misses, ~0.3% FCP ([Chrome](https://developer.chrome.com/blog/http-cache-partitioning)); Firefox ≤ 1.32% page load ([Mozilla](https://blog.mozilla.org/security/2021/01/26/supercookie-protections/)) |
+| 2022 | **Chrome Certificate Verifier and Root Store** | One verifier and root store on every desktop and Android | Platform verifiers "resulted in inconsistent user experiences across platforms" ([FAQ](https://chromium.googlesource.com/chromium/src/+/main/net/data/ssl/chrome_root_store/faq.md)) | Default from Chrome 108 (Windows, macOS) to 115 (Android) |
+| 2024 | **curl's hyper backend; Ladybird on libcurl** | A Rust HTTP backend in C curl; a new browser's HTTP on a generic library | Memory safety; speed of development | curl dropped hyper after four years: "no users asking for it" and the C–Rust glue cost too much ([Stenberg](https://daniel.haxx.se/blog/2024/12/21/dropping-hyper/)); Ladybird spent 2026 adding the Fetch rules curl lacks: ports, forbidden methods, URL credentials, final-response headers (adoption: [e483bb70f0](https://github.com/LadybirdBrowser/ladybird/commit/e483bb70f0); a 2026 hardening commit: [88c475c0cc](https://github.com/LadybirdBrowser/ladybird/commit/88c475c0cc); [HP 4.8][HP]) |
+| 2024–2025 | **OCSP's end; Privacy Sandbox's end** | Let's Encrypt turned off OCSP on 2025-08-06 for privacy and cost ([Let's Encrypt](https://letsencrypt.org/2024/12/05/ending-ocsp/)); Google kept third-party cookies and retired Topics, IP Protection and Related Website Sets ([Privacy Sandbox](https://privacysandbox.google.com/blog/update-on-plans-for-privacy-sandbox-technologies)) | Live revocation leaks every visited site; ad-platform redesign | Revocation moves to pushed sets (CRLite, CRLSets); partitioning, not new APIs, is the shipped privacy tool |
+| 2026 | **ECH and TLS 1.3bis as RFCs** | ECH is RFC 9849 with DNS bootstrap RFC 9848 (March); TLS 1.3 is re-issued as RFC 9846 (July) | Encrypt the whole ClientHello | ECH needs HTTPS records and private DNS to protect anything ([PR 5.1, 5.4][PR]) |
+
+### 2.2 Technology mismatches: assumptions that no longer hold
+
+| Assumption baked into older stacks | Why it no longer holds |
+|---|---|
+| The OS owns transport, so the browser takes what the kernel gives | QUIC is in user space by design ([HP 3.1][HP]); the browser owns congestion control, ACK policy and receive cost, and loses on fast links when it gets them wrong ([PT 1.3][PT]) |
+| The network stack is part of the browser process, with ambient access to files, proxy settings and the resolver | A sandbox retrofit then has to broker every one of those dependencies, which is why Chromium's sandbox is still off on three platforms ([SR 6.4][SR]) |
+| One process-wide connection pool and caches are shared state worth sharing | Shared state is a cross-site channel; partitioning costs a few percent ([PP 1.6, 1.14][PP]) |
+| The server knows best (push, the priority tree) | Only the client knows its cache and its render order ([HP 2.4–2.5][HP]) |
+| Revocation is a live query | OCSP is gone at the largest CA; revocation is pushed ([HP 6.6][HP]) |
+| The platform verifier is the trust policy | Platform verifiers differ by OS, do no CT, and do no revocation on Linux ([SR 4.9][SR]) |
+| Request-level throttling and external proxies are good enough to test networking | They cannot see QUIC or ECH without defeating them, and they mis-model packets ([GO 3.7, 4.1][GO]) |
+| A memory-safe language makes the network stack safe | About 60% of curl's CVEs were not C memory mistakes, and every Rust QUIC panic on record came from peer input reaching an unchecked assumption ([SR 2.1–2.2, 1.8–1.9][SR]) |
+| `getaddrinfo` is enough | It returns no HTTPS records, no TTL and blocks; 99% of HTTP/3 page loads in the 2024 crawl were triggered by HTTPS records ([PT 1.7][PT], [PR 6.5][PR]) |
+
+## 3. Today: the landscape and its gaps
+
+**Deployment.** In 2025 Cloudflare saw HTTP/2 on 50% of requests, HTTP/1.x on 29% and HTTP/3 on 21%, nearly unchanged from 2024; post-quantum key exchange rose from 29% to 52% of human traffic during 2025 ([Cloudflare Radar 2025](https://blog.cloudflare.com/radar-2025-year-in-review)). About 20% of Firefox's HTTP traffic uses HTTP/3 ([Inden](https://max-inden.de/post/fast-udp-io-in-firefox/)). HTTP/1.1 stays a first-class protocol.
+
+**The receive side decides HTTP/3's speed.** On a 1 Gbps testbed Chrome's HTTP/3 reached about 478 Mbps against more than 900 for HTTP/2 (−45%), because QUIC delivered 744K UDP packets to the client against TCP's 53–58K (receive offload did not coalesce QUIC's UDP in Chrome) and generating QUIC responses such as ACKs took 2.97 s and frame parsing 3.47 s of the network thread's 8.5 s ([Zhang et al., WWW 2024](https://arxiv.org/html/2310.09423v2)). Of four QUIC stacks measured in 2026, only MsQuic used both GSO and GRO, which brought it to 8.3 Gbit/s, level with its kernel-bypass build; after packet I/O, **crypto and file I/O** become the bottlenecks ([Späth et al., NOMS 2026](https://www.net.in.tum.de/fileadmin/bibtex/publications/papers/spaethj-noms2026.pdf)). Firefox shipped Linux GSO and GRO, but disabled Windows URO and rolled back USO after driver crashes, and macOS has no UDP GSO ([PT 2.3–2.5][PT]).
+
+**What current tools cannot see or do**, with the evidence in [GO][GO] and the DevTools notes:
+
+| Gap | Evidence |
+|---|---|
+| **Why** a request failed. Fetch's network error has no reason; the opacity toward the page is deliberate, but browsers do not tell the user either | [Fetch: network error](https://fetch.spec.whatwg.org/#concept-network-error); [GO 1.1–1.3, 1.9][GO] |
+| The network partition key, cache verdict, reuse or coalescing reason and service-worker hop of a request | HAR has no fields for them and is marked "DO NOT USE"; WebDriver BiDi's timing section ends in "TODO: Add service worker fields" ([GO 1.5–1.6][GO]) |
+| Packet- and protocol-level conditions per tab or per site | Chrome's throttling is request-level; CDP's loss and reordering parameters are WebRTC-only; BiDi standardizes only "offline" ([GO 4.1–4.5][GO]) |
+| Exact replay of a page load | Best external fidelity was 12.4% median error; tools defeat TLS and strip ECH keys to see traffic ([GO 3.2, 3.7][GO]) |
+| Who received what about the user | Privacy UIs count blocks, not flows; the client IP is the flow no browser shows ([GO 5.1–5.5][GO]) |
+| Who is intercepting a request | Neither BiDi nor CDP records who intercepts or tells the user; BiDi interception cannot be scoped to a user context ([GO 8.1–8.4][GO]) |
+| A conformance suite for an HTTP/1.1, HTTP/2, DNS or proxy **client** | h2spec tests servers only and only RFC 7540; no stub-resolver or PAC suite exists ([PR 2.6, 6.6, 8.5][PR]) |
+
+**What Izcal could do that no browser does** (ranked in [GO 9][GO]): typed failure reasons for the user and their own DevTools; exact network replay plus re-simulation under other conditions; protocol-level shaping per tab, origin and container; a published decision schema joined to qlog; a local "who received what" ledger; scoped and audited agent interception; one view of every partitioned store. Each is possible because Izcal owns the stack and the substrate, and each has a privacy constraint stated in Section 6.19.
+
+## 4. First principles
+
+### 4.1 Users' real tasks
+
+| Task | What the stack must provide |
+|---|---|
+| "Load this page fast on this network" | The right protocol per path (HTTP/3 where UDP works and helps, TCP fallback within one connection-attempt delay), batched receive, cheap ACKs, a request scheduler that knows the page's render order |
+| "Keep my identities apart" | Every piece of network state keyed by partition, including state other browsers leave global; containers that are a process boundary; routes that cannot leak |
+| "Tell me what went wrong, in words I understand" | A typed failure reason for every failed fetch, shown to the user and their own tools, never to the page |
+| "Do not drain my battery while I am not looking" | No keepalives for hidden pages, no periodic network work of Izcal's own, timers on the global wake grid |
+| "Let me reproduce and fix this" (developers, Izcal engineers) | Recorded input that replays every layer above decryption; the same state machines under the simulator with faults |
+| "Let my agent or test drive the network safely" | Interception scoped to origins and containers, typed by intent, visible and audited |
+
+### 4.2 Platform primitives
+
+- **Protocols, as normative text.** 43 RFCs in scope, about 1,490 printed pages and 2,336 MUST tokens; RFC 9110, 9000, 9846, 9113, 9114 and 9001 are about 43% of it ([PR 0][PR]). Most RFCs anchor at section granularity.
+- **Fetch as the spine.** WHATWG Fetch has 136 algorithm blocks and about 1,362 steps ([PR 7.1][PR]): every HTTP, DNS and TLS call in Izcal is invoked from a Fetch step, so the network crate's seams mirror Fetch's (fetch params, obtain a connection, HTTP-network fetch).
+- **OS I/O.** Non-blocking sockets per OS (epoll, kqueue, IOCP), UDP GSO and GRO on Linux, USO and URO on Windows (unreliable), no GSO on macOS; ECN on about half of Firefox's QUIC paths ([PT 2.3–2.8][PT]). io_uring is excluded ([H2 4.6][H2]).
+- **TLS.** rustls 0.23.46: aws-lc-rs default provider, X25519MLKEM768 preferred by default, client ECH (`EchMode::Enable`, `Grease`), and a `quic` module that exposes exactly RFC 9001's key interface; certificate policy is left to the application's verifier ([PR 3.3, 5.5–5.6][PR], [SR 5.3–5.4][SR]).
+- **Izcal's own substrate.** `NetTransport` is held only by the network service (Stage 1 3.1); sequences run tasks to completion (CS-D8); the simulator owns a virtual clock and recorded network archives (Stage 1 3.2).
+
+### 4.3 Izcal's principles that bind this design
+
+P1 outranks P4 without exception: no network state is shared across partitions for a cache-hit gain, and no sandbox hole is accepted for convenience. P2 binds through the conformance oracles. P3 means every accelerated path (GSO, GRO, HTTP/3, 0-RTT) has a correct fallback, and every offload has a runtime kill switch. M-1 binds the code (Section 7). B1 binds the structure: the protocol code never touches the OS.
+
+### 4.4 Assumptions kept and broken
+
+| Assumption from existing stacks | Keep or break | Reason |
+|---|---|---|
+| Networking runs in one separate process | **Keep the separation, break the "one"**: one service per (top-level site, container), plus a service per container for unpartitioned cookies and encrypted DNS (NW-D3) | Almost every piece of network state is already keyed by top-level site and container (Section 6.8), so splitting loses almost no sharing, and a compromise or abort reaches one top-level site's state, not every site's |
+| The network process opens its own sockets | **Break** (NW-D4) | Route, Local Network Access and bad-port policy are then enforced by a process that parses no network bytes, against grants it issued itself; the network services need no socket rights in their sandbox |
+| The OS resolver is the source of truth for names | **Break**, keep the OS as the source of configuration (NW-D8) | Only an own stub gets HTTPS records on every OS; OS configuration (servers, split rules) still decides where queries go |
+| The platform verifier is the trust policy | **Break** (NW-D5) | Uniform behaviour on every OS, CT and revocation everywhere, and verification as a pure function the simulator can replay |
+| HTTP/1.1 pipelining, HTTP/2 push and the RFC 7540 tree | **Break**: none of them | Failed in deployment ([HP 1–2][HP]); `SETTINGS_ENABLE_PUSH = 0`, never `MAX_PUSH_ID` |
+| One global socket cap | **Break** | It is an unclosed cross-site channel in every engine ([PP 1.12][PP]); budgets are per partition (Section 6.8) |
+| Some state is safe to keep global (HSTS dynamic state, proxy DNS, DoH, the verifier's caches) | **Break**, except static data (HSTS preload list, root store, CT log list, revocation filters) | Each global piece is a supercookie or a timing channel ([PP 1.8, 1.22][PP]) |
+| Throttling and replay belong outside the browser | **Break** | The network service owns transport and partition key, so both can be per tab and exact (Section 6.18) |
+| `async`/`await` on a runtime is how network code is written | **Break** (NW-D1, CS-D8) | Sans-IO state machines on substrate sequences are deterministic, fuzzable and need no executor |
+| Fetch failure reasons are opaque | **Keep toward the page; break toward the user** | The opacity is a security property ([GO 1.2][GO]) |
+| A new browser should copy Chrome's wire fingerprint | **Break** (NW-D12) | Impersonation is dishonest and brittle; Izcal keeps an honest shape and decides the remaining choices (GREASE, UA) by measuring challenge rates, plus outreach |
+
+## 5. Lessons learned
+
+These are ideas and evidence, never code or templates (M-1).
+
+| Project | What happened | Lesson | How Izcal applies it |
+|---|---|---|---|
+| Pipelining, False Start, TCP Fast Open, Must-Staple | Each depended on every middlebox or server behaving; each was withdrawn ([HP 1, 6][HP]) | A feature that fails when the other side misbehaves will be withdrawn | Prefer end-to-end, encrypted mechanisms with a safe fallback; QUIC always races TCP |
+| HTTP/2 push and priority tree | The signal came from the party without the information ([HP 2.3–2.5][HP]) | Signals flow from whoever has the information | Client-decided mechanisms: Early Hints, RFC 9218 priorities, the request scheduler |
+| Google QUIC | Logging every packet event found a decade-old CUBIC bug; header encryption kept middleboxes out ([HP 3.5–3.6][HP]) | Observability and encryption are survival features | qlog from the first QUIC commit; GREASE and version negotiation from the start |
+| Chromium Network Service sandbox | Out of process since 2019, still unsandboxed by default on Android, Windows and Linux, blocked by ambient OS dependencies ([SR 6.1–6.4][SR]) | Retrofitting a sandbox costs years | Sandboxed from the first commit; every OS dependency a typed request, served by the broker or a sandboxed OS-adapter process; sockets minted by the broker (NW-D4) |
+| Firefox socket process | Open since December 2016 ([HP 4.5][HP]) | Moving code into a process late is the expensive direction | Network code is born in its process and under the simulator |
+| Ladybird RequestServer on libcurl | Ten hardening commits in one month adding Fetch rules to a generic client ([HP 4.8][HP]) | Browser semantics belong inside the network service, not layered over a generic client | Fetch's rules (ports, methods, credentials, redirects) are implemented where connections are made |
+| curl and hyper | The cost was the foreign-language boundary; the gain was stricter parsing ([SR 2.3][SR]) | Strictness is the security win | Strict parsers everywhere; every "MAY accept leniently" resolved to reject unless the corpus shows breakage |
+| quinn, quiche | Pre-authentication panics from `unwrap()` on peer varints and overflow on peer packet numbers ([SR 1.8–1.9][SR]) | Under abort-on-panic, one hostile site would end every site's networking | Checked arithmetic on every peer number, budgets on every peer-driven allocation, Kani proofs on the arithmetic kernels, and a service per (top-level site, container) to bound the blast radius |
+| Request smuggling, client-side desync, URL and cookie confusion | Two parsers disagreed about one message ([SR 2.4–2.7][SR]) | Disagreement is the vulnerability | One URL parser, one header parser, one cookie parser in the whole browser; an HTTP/1.1 framing anomaly makes the connection non-reusable |
+| Chrome Root Store | Platform verifiers gave inconsistent behaviour ([SR 4.1][SR]) | One verifier everywhere | NW-D5; Mozilla's store as data, so Izcal runs no root program |
+| Firefox 85 and Chrome partitioning | Measured cost ≤ 1.32% page load ([PP 1.14][PP]) | Partitioning is cheap enough to be the only mode | Every axis in Section 6.8, including those others left global; the remaining shared limits recorded as bounded channels |
+| Connection-pool XS-Leak | A global socket cap is shared timing state ([PP 1.12][PP]) | Limits are channels too | Separate services per top-level site, budgets per top-level site then per partition, a randomized service capacity; the residual recorded as bounded |
+| Firefox Windows UDP offload | Driver crashes and packet loss forced rollbacks ([PT 2.4][PT]) | Offloads are driver-dependent | Runtime probing and a kill switch per offload, self-detected failure falls back |
+| Mahimahi, WebPageReplay, mitmproxy | External replay guesses and must break TLS ([GO 3.2–3.7][GO]) | Record inside the stack, above decryption | NW-D2 |
+| Chrome DevTools throttling | Request-level, cannot model loss ([GO 4.1][GO]) | Model the network where the packets are | Link and protocol shaping in the service, per partition |
+| Okta HAR breach | Exported logs carried session tokens ([DT 2.1][DT]) | Exports are data flows | Redacted by default through `hg-redact` (DevTools spec) |
+| Privacy Sandbox, SDCH, TFO cookies, DNT | Cross-site state and fingerprintable bits were pulled ([HP 6][HP]) | New state is a privacy design problem first | Every new store joins the partition table before it ships |
+
+## 6. Design
+
+### 6.0 Architecture at a glance
+
+```
+ BROKER (trusted; parses no network bytes and calls no OS API on network data)
+   hg-socket-broker: mints sockets after bad-port, route and LNA-ticket checks (NW-D4)
+   issues LNA tickets per frame and worker; reads OS resolver, proxy and network-change
+   configuration; issues cache security epochs; hands out directory handles
+        |  typed capability IPC (.hgidl), bound endpoints (IPC-R2)
+        v
+ PARTITION SERVICE, one per active (top-level site, container)                 NW-D3
+ +--------------------------------------------------------------------------+
+ | hg-net        Fetch engine: main fetch, HTTP-network-or-cache fetch,     |
+ |               CORS, ORB, CORP, COEP, mixed content, redirects, cookies   |
+ |               (partitioned jar), HSTS, service-worker routing, reasons   |
+ | hg-net-connect   pools, coalescing, HEv3 racing, Alt-Svc, proxy choice   |
+ | hg-dns        stub resolver (Do53 via broker-minted sockets; encrypted   |
+ |               transports through the container service)                  |
+ | hg-http1  hg-http2(+HPACK)  hg-http3(+QPACK, capsules)  hg-ws            |
+ | hg-quic       transport, recovery, congestion control, datagrams         |
+ | hg-tls  hg-pki    rustls (unmodified) + ECH; Izcal's verifier            |
+ | hg-http-cache  hg-compress  hg-content-block (matcher)                   |
+ | hg-net-wire   buffers, varints, budgets, the one header-field parser     |
+ | hg-net-io     drives every state machine from substrate sequences        |
+ +--------------------------------------------------------------------------+
+ CONTAINER SERVICE, one per active container: unpartitioned cookie jars (served per site
+   to partition services by bound endpoint), Storage Access grants, DoH/DoT/DoQ connections
+ SYSTEM SERVICE: Izcal's own traffic (updates, trust data, filter lists); no web content
+ WebRTC transport: in the partition service of the page's top-level site (Section 6.12)
+
+ Renderers: Fetch requests through a bound endpoint per frame/worker; bodies as shared memory;
+            script-visible cookies as a read-only snapshot per (host, partition) (NW-D10). No sockets (I-2).
+ Sandboxed helpers: proxy-resolver utility (PAC, jitless engine); route process (WireGuard);
+            OS-adapter utility per container (OS resolver fallback, SSPI/GSSAPI, client-key signing).
+ Storage service: unpartitioned cookies at rest (SQLite WAL, SEC-34). Under simulation: hg-netsim below NetTransport.
+```
+
+Every protocol crate is a **sans-IO state machine**: it takes bytes, datagrams, timer expiries and the current time as inputs, and returns bytes to send, timer deadlines and events. Only `hg-net-io` connects them to `NetTransport` and the substrate's sequences. The same crates therefore run against real sockets, against `hg-netsim` under the seeded scheduler, inside fuzzers, and in replay.
+
+### 6.1 Process placement, the socket broker and brokered OS access (NW-D3, NW-D4, NW-D20)
+
+**Services per (top-level site, container) (NW-D3).** I-1 makes the container a policy context, and I-1 (b) keys every piece of network state by top-level site and container. Section 6.8's table shows that almost every row contains both T and C: cache, connections, DNS, Alt-Svc, resumption, HSTS, client certificates, CORS preflight, partitioned cookies, reporting, service-worker registrations. A service per (T, C) therefore loses almost no sharing, and it gives the network the property site isolation gives renderers: **a page reaches only its own top-level site's network state**. A hostile site that compromises the service it talks to as a top-level page gets its own partitions, not the user's bank's cookies; a hostile third party embedded by the bank reaches the bank's partitions, which it could already make requests in. The rows that are not keyed by T are served by two other services:
+
+- **Container service** (one per active container): the **unpartitioned first-party cookie jars**, Storage Access grants, and the encrypted-DNS transport connections (DoH, DoT, DoQ) keyed (C, R). A partition service for T receives, from the broker, a bound endpoint that can read and write **only site T's jar**, plus the jar of each site S that holds a Storage Access grant under T (IPC-R2; the container service checks the binding on every call, IPC-R17). All third-party cookies are partitioned by default (Section 6.9), so no other unpartitioned access exists.
+- **System service** (one): Izcal's own traffic (Section 6.13), never web content.
+
+Read-only data (content-blocking automata, root store, CT log list, revocation filters, HSTS preload list, Public Suffix List) are sealed files mapped by every service; clean file-backed pages are not charged (footprint 6.2), so they cost each service only its page tables.
+
+**Lifecycle.** A partition service starts when the broker commits the first navigation or fetch for a new (T, C), from a **spare** (an empty, pre-spawned network-service process that holds no state until the broker binds it, as FP-D1 permits for renderers), so a new top-level site waits for an IPC binding, not a process spawn (NW-47). It exits when no document, worker, download or WebRTC session uses (T, C) and its idle connections have closed. Navigation redirects across sites are issued by the broker's `hg-navigation` to the target site's service hop by hop, which is what Fetch's manual-redirect navigation model already does. Private windows are ephemeral containers with their own services and no disk state.
+
+**Why not one service per container or one in all (NW-D3 options).** One per container (draft 0.1) puts every site of the container in one address space: a compromise or panic reaches every site's sessions, which is what every shipping browser accepts. One per (T, C) costs one more process per open top-level site. The comparison and reversal trigger are in Section 9.4; the cost is bounded by NW-35 and NW-47, and footprint's own precedent (FP-D8) is that isolation is not the lever for a memory target.
+
+**Sockets are minted by the broker (NW-D4).** No network service may create sockets: on Linux each runs with an empty network namespace and seccomp denies `socket`; on macOS its SBPL profile denies network-outbound; on Windows it runs in an AppContainer without `internetClient` (Q-NW-2 measures this at NW-M0). It receives sockets as typed handles (IPC-R1) through one call:
+
+`mint(kind {tcp-connect, udp-connect, udp-bound}, address, port, purpose {fetch, dns, proxy, webrtc}, lna_ticket?)`
+
+The service's identity (T, C, route) is bound to its endpoint, so it is never in the message. The broker checks, against state it owns:
+
+- **Bad ports**: the Fetch list ([Fetch §2.9](https://fetch.spec.whatwg.org/#bad-port)) for `fetch` and `webrtc`.
+- **Route**: a container with a SOCKS or HTTP proxy route can only obtain sockets to that proxy; a WireGuard route only socket pairs into its route process; a direct container direct sockets.
+- **Purpose `dns`**: only to resolver addresses and ports from the OS configuration the broker read itself, or the user's chosen encrypted resolver. **Purpose `proxy`**: only to proxies from the configuration the broker read, or returned by the PAC process **to the broker** (below).
+- **Local Network Access**: a public, local or loopback **address class** ([LNA](https://wicg.github.io/local-network-access/)) for `fetch` and `webrtc` requires an **LNA ticket**. The broker issues a ticket per frame and per worker when it creates that context's `FetchEndpoint`, and reissues it when the user grants or revokes LNA for (site, container); it is an unforgeable token (a broker-held MAC over frame identity, granted address classes and an expiry). The renderer's request carries it as data, the network service forwards it, and the broker accepts a local or loopback mint only with a ticket it issued whose grant covers the address class. A compromised network service can therefore reach local addresses only for frames of its own top-level site that hold a grant, never with another site's grant.
+
+The broker then creates the socket, binds it and (for TCP) starts a non-blocking connect, and passes the handle. A redirect, a DNS change, a QUIC client migration or a server's `preferred_address` that lands on a new address mints a new socket under the same checks, so LNA is applied **to the address actually connected**, every connection, which is also the DNS-rebinding defence NET-R7 asks for ([SR 7.3–7.4][SR]). Bound, unconnected UDP sockets exist only for WebRTC and are constrained differently (Section 6.12). The cost is one IPC round trip per new connection, measured by NW-44; Do53 queries reuse a small per-service pool of broker-minted UDP sockets with random source ports, refreshed on the wake grid, so port randomization does not cost a mint per query.
+
+**PAC goes to the broker too.** The proxy-resolver utility process (Section 6.13) returns its result to the broker as well as to the network service; the broker validates it against the container's proxy policy and admits the returned proxy addresses for `proxy` mints. A PAC script on a hostile network (WPAD) therefore cannot be replaced by a compromised network service's invention, and WPAD is restricted (Section 6.13).
+
+**OS calls on network data run in a sandboxed OS-adapter process, not in the broker.** The broker is unsandboxed and must parse no network bytes (IPC-R15), yet three OS services consume data a server controls: the **OS resolver** fallback (glibc's `getaddrinfo` parses DNS responses in the calling process), **SSPI and GSSAPI** (they parse `WWW-Authenticate: Negotiate` and NTLM challenges), and **client-key signing** (smart cards and OS key stores). Each runs in an **OS-adapter utility process per container**, sandboxed to the one OS service it needs, reached only by the container's services through broker-bound endpoints. Two policies bound what a compromised network service can ask of it (NW-D20):
+
+- **Ambient authentication** (Negotiate, NTLM, Kerberos) only for hosts on an enterprise or user allowlist, per container; the default list is empty, so no public server can make Izcal produce NTLM responses or Kerberos tickets. The broker gives the adapter the allowlist; the adapter refuses other hosts.
+- **Client-key signing** only for a (container, host) pair the user selected through the consent path (security scope CON-R1), with a per-handshake grant the broker issues and the adapter checks; the private key never leaves the OS store and never enters a network service.
+
+User- and enterprise-added trust anchors are read by the broker and passed to `hg-pki` as opaque DER; the broker does not parse them. OS proxy settings, resolver configuration and network-change events are configuration data in formats the OS returns as structured values, read by the broker as today.
+
+**Renderer ↔ network service.** A renderer reaches the partition service of its document's top-level site only through a `FetchEndpoint` bound per frame and per worker (IPC-R2), so initiator, site, container, partition key, frame identity and LNA ticket come from the binding or from the broker (NET-R1). A request carries the Fetch request's fields as typed data (method, URL as a validated `hg-url` type, header list, mode, credentials mode, destination, priority, referrer policy, integrity, keepalive), never a socket address. Bodies cross as read-only shared memory or a data pipe; responses stream back as a data pipe with flow control. ORB filtering happens before any byte reaches the pipe (NET-R2).
+
+### 6.2 The protocol core: sans-IO, budgets and tier P (NW-D1)
+
+**Shape.** Each protocol is a state machine type with three kinds of entry points: `on_bytes`/`on_datagram(now, data, metadata)`, `on_timer(now)`, and application calls (`send_request`, `reset_stream`). Each returns a bounded list of **actions**: bytes or datagrams to transmit, timer deadlines to arm, events for the layer above. There is no `async`, no executor, no callback into the OS and no clock read (time is a parameter). Values that must be unpredictable on the wire (QUIC connection IDs, stateless-reset tokens, PATH_CHALLENGE data, address-validation tokens, TLS randoms) are drawn from **`Entropy::crypto()`**, the OS CSPRNG in production; seeded named streams (`Entropy::stream`) are used only for values with no security or unlinkability requirement. `hg-net-io` runs one sequence per connection group and posts actions to `NetTransport`; that is the only code that touches I/O. This is CS-D8's model, so Q-CS-2's decision extends to every protocol and the CS-AS-4 allowlist needs no network entry.
+
+**Budgets.** Every state machine holds a `Budget` (in `hg-net-wire`), charged **at allocation time** for every byte or object a peer can make it hold or queue: header-block bytes during HPACK and QPACK decoding (never after), CONTINUATION frames, reassembly gaps, ACK ranges, connection IDs, pending PATH_RESPONSE and RETIRE_CONNECTION_ID frames, queued control replies, decompressed bytes. A charge that fails is a typed stream or connection error, never a panic. Per-connection budgets roll up into per-partition and per-service budgets. The concrete limits are named constants in one module (NW-15), each exercised by a test at the limit and at limit + 1 ([SR 8][SR]); they start from the security note's proposals (R3–R15) and are validated against a crawl before freezing (Q-NW-9).
+
+**Tier P discipline.** All network crates are tier P (coding standard): no `unwrap`, `expect`, indexing or unchecked arithmetic on peer-supplied values; varint, packet-number, ACK-range, flow-control and window arithmetic are small checked kernels with **Kani proofs** (bounded) of no overflow and no panic; allocation sized by peer values goes through `try_reserve` with a cap (CS-ER-9). A rustls error closes one connection. Overflow checks in release would turn an overflow into an abort, so the rule is explicit checked arithmetic, not a compiler flag ([SR 1, Implications][SR]).
+
+**One parser per format.** `hg-url` (the browser's one URL parser, owned by the HTML and DOM work), the header-field and Structured Fields parser in `hg-net-wire`, and `hg-cookies`' parser are the only ones in the browser. The renderer's `Headers` object, `document.cookie`'s writer, the service worker, the cache and the network services call the same functions, so no two components can disagree about a message ([SR 2.4–2.7][SR]). Crates linked into both renderers and network services are declared tier P (coding standard tier table).
+
+### 6.3 HTTP/1.1, HTTP/2 and HTTP/3
+
+**HTTP/1.1** ([RFC 9112](https://www.rfc-editor.org/rfc/rfc9112)). Strict response parser: the eight message-body-length rules of §6.3 in order; a response with both `Content-Length` and `Transfer-Encoding`, differing duplicate `Content-Length`, obs-fold, bare CR, NUL or whitespace before the colon is an error ([PR 1.3][PR]). **Any framing anomaly marks the connection non-reusable**, which closes the client-side desync class ([PortSwigger 2022](https://portswigger.net/research/browser-powered-desync-attacks)). No pipelining. No bytes after an `Upgrade` or CONNECT request before the 101/2xx ([RFC 9931](https://www.rfc-editor.org/rfc/rfc9931)). At most 6 connections per (partition, origin, credentials) key, the deployed default ([PT 5.5][PT]).
+
+**HTTP/2** ([RFC 9113](https://www.rfc-editor.org/rfc/rfc9113), [RFC 7541](https://www.rfc-editor.org/rfc/rfc7541)). Izcal's own sans-IO codec (Q-CS-2): frame layer, the seven-state stream machine, two-level flow control, HPACK with the decoded-size budget, extended CONNECT ([RFC 8441](https://www.rfc-editor.org/rfc/rfc8441)) for WebSockets and WebTransport. `SETTINGS_ENABLE_PUSH = 0` and a PUSH_PROMISE is a protocol error; `SETTINGS_NO_RFC7540_PRIORITIES = 1`; priorities by RFC 9218 only. Control-frame floods (PING, SETTINGS, empty frames, WINDOW_UPDATE 0) are counted and answered with GOAWAY ENHANCE_YOUR_CALM ([SR 1.5][SR]). No timer-driven PING; a **liveness PING is sent with a request** that reuses a connection idle for more than 30 s† or after a network change, so a dead connection is detected without a keepalive (Section 6.17).
+
+**HTTP/3 and QPACK** ([RFC 9114](https://www.rfc-editor.org/rfc/rfc9114), [RFC 9204](https://www.rfc-editor.org/rfc/rfc9204)). Control and QPACK streams; the encoder may use a small dynamic table, the decoder implements the full instruction set with `SETTINGS_QPACK_BLOCKED_STREAMS` and table capacity capped; never sends `MAX_PUSH_ID`; `initial_max_streams_bidi = 0` for the server ([SR R14][SR]). HTTP datagrams and capsules ([RFC 9297](https://www.rfc-editor.org/rfc/rfc9297)) and extended CONNECT ([RFC 9220](https://www.rfc-editor.org/rfc/rfc9220)) are part of the crate from the start, because WebTransport and MASQUE need them.
+
+**Priorities and the request scheduler.** Priority is a field on every Fetch request from the loader to the wire. The renderer's loader sets it from destination, render-blocking status, `fetchpriority` and viewport position, and updates it (an image entering the viewport); `hg-net` maps it to RFC 9218 urgency and the incremental flag, sends `PRIORITY_UPDATE` on change, and applies the same order to its own queues: which request gets a connection slot first and which stream's data is decrypted and delivered first. The client side matters: `fetchpriority=high` on Google Flights' LCP image moved LCP from 2.6 to 1.9 s, while in 2019 most servers' HTTP/2 prioritization was broken ([PT 5.1–5.3][PT]). NW-27 measures LCP against an oracle ordering.
+
+**103 Early Hints.** Parsed by every HTTP version; preload and preconnect handled as HTML specifies for navigations ([PR 1.6][PR]), within the navigation's partition.
+
+**Content codings.** gzip, deflate, br, zstd (window ≤ 8 MB, [RFC 9659](https://www.rfc-editor.org/rfc/rfc9659)) and dictionary transport `dcb` and `dcz` ([RFC 9842](https://www.rfc-editor.org/rfc/rfc9842)), decoded in the partition service by `hg-compress` under the decompression budget (output ratio and an absolute cap per destination; at most two stacked codings). Dictionaries are cache entries in the partition that fetched them. Google Search measured 23% smaller HTML and 1.7% better LCP with dictionaries ([Chrome](https://developer.chrome.com/blog/search-compression-dictionaries?hl=en)). Decoding stays in the network service because ORB sniffing, the cache and dictionary matching need decoded bytes; the decoders are Izcal's own tier-P code, shared with the text stack's WOFF2 support (NW-D6).
+
+### 6.4 QUIC
+
+**Transport** ([RFC 9000](https://www.rfc-editor.org/rfc/rfc9000), [RFC 9001](https://www.rfc-editor.org/rfc/rfc9001), [RFC 9002](https://www.rfc-editor.org/rfc/rfc9002)). Izcal writes packets, frames, streams, flow control, connection IDs, path validation, migration, stateless reset, address-validation tokens, loss detection and recovery; rustls's `quic` module supplies the TLS handshake and packet and header protection keys, exactly RFC 9001's interface ([PR 3.3][PR]). Version 1 and v2 with compatible version negotiation ([RFC 9368](https://www.rfc-editor.org/rfc/rfc9368), [RFC 9369](https://www.rfc-editor.org/rfc/rfc9369)), greased QUIC bit ([RFC 9287](https://www.rfc-editor.org/rfc/rfc9287)), DATAGRAM ([RFC 9221](https://www.rfc-editor.org/rfc/rfc9221)). Connection IDs, stateless-reset tokens and PATH_CHALLENGE data come from `Entropy::crypto()`, so migrated paths are unlinkable as RFC 9000 §9.5 requires. An ACK of a packet number never sent is PROTOCOL_VIOLATION; all packet-number and window arithmetic goes through the Kani-proved kernels ([SR 1.9][SR]). The path abstraction and the ACK policy are designed so multipath and ACK frequency can be added without restructuring; under the one gate rule of Section 9.1 they are built against their pinned drafts and enabled after interop ([PR 3.6][PR]).
+
+**Receive path first.** A browser is the receiver, and the receiver is where HTTP/3 loses ([PT 1.3][PT]). The design requirements: batch receive (GRO on Linux; `recvmmsg` where GRO is absent; Windows URO only after self-check), one long-lived receive buffer per service with **in-place decryption**, frame parsing without copies (frame parsing was the largest network-thread cost in the WWW 2024 measurement), and an **ACK policy** that acknowledges every second ack-eliciting packet at low rates but uses a larger ack-eliciting threshold and the maximum ACK delay at high rates within RFC 9000's rules, so ACK generation stops being a large share of receive CPU. Send side: GSO on Linux and Windows USO after self-check, pacing compatible with GSO by pacing per GSO burst ([PT 2.6][PT]).
+
+**Datapath per OS (`hg-net-io`).** Each offload (GSO, GRO, USO, URO, `sendmmsg`/`recvmmsg`, ECN marking and reporting) is **probed at runtime, gated by a self-check** (for example, a missing segment size on a coalesced read disables URO for that socket) **and has a kill switch** in configuration. No offload is assumed. macOS has no UDP GSO and only undocumented batching calls, which Izcal does not use; the macOS receive cost is measured, not hidden (Q-NW-4). ECN is reported from the start: about half of Firefox's QUIC paths support it ([PT 2.8][PT]). Path MTU: 1,200 bytes initial, DPLPMTUD ([RFC 8899](https://www.rfc-editor.org/rfc/rfc8899)) probing upward.
+
+**Congestion control (NW-D9).** A congestion-controller trait with **CUBIC ([RFC 9438](https://www.rfc-editor.org/rfc/rfc9438)), HyStart++ ([RFC 9406](https://www.rfc-editor.org/rfc/rfc9406)) and pacing** as the default; BBRv3 ([draft-ietf-ccwg-bbr](https://datatracker.ietf.org/doc/draft-ietf-ccwg-bbr/)) and NewReno as built alternatives. A browser's congestion controller governs uploads, request bursts and WebTransport, and its ACK policy governs download CPU ([PT 3.5][PT]). HyStart++ halved retransmitted bytes in Microsoft's lab and had been on by default for all Windows TCP for over two years by 2023, unpaced, whereas Izcal's default is the paced variant ([PT 3.3][PT]). The default changes only on measurement (Section 9.4).
+
+**0-RTT and resumption (NW-D14).** Session tickets and QUIC resumption state are keyed by the full connection key (Section 6.8), single-use, capped at 24 h†, and cleared with the partition's cookies and on any route change. 0-RTT carries only safe, idempotent requests without bodies (GET and HEAD), and a 425 Too Early replays after the handshake ([RFC 8470](https://www.rfc-editor.org/rfc/rfc8470)). Most of QUIC's search-latency gain came from 0-RTT ([PT 1.1][PT]).
+
+**Idle.** QUIC connections close after 30 s† idle; no PING keeps an idle connection alive (Section 6.17).
+
+### 6.5 TLS, ECH and the certificate verifier (NW-D5, NW-D19, NW-D21)
+
+**rustls, unmodified**, with the **aws-lc-rs** provider: it is the only **built-in** rustls provider with X25519MLKEM768, which HGBA-2 4.7 requires (ring has no post-quantum algorithms; the seven third-party providers rustls lists were not assessed), and rustls prefers that group by default ([PR 5.6][PR], [SR 5.3][SR]). TLS 1.3 preferred, TLS 1.2 allowed; RFC 9846 is the anchor, not RFC 8446 ([PR 5.1][PR]). ALPN `h2`, `http/1.1`; certificate compression; 0-RTT per Section 6.4. rustls's unbuffered API is driven by `hg-tls` inside the connection's state machine. aws-lc-rs is C and assembly in a tier-P process: it handles key material and primitives, not untrusted structures, and it is pinned, fuzzed through Izcal's handshake fuzzers and tracked under SEC-25's advisory response.
+
+**ECH** ([RFC 9849](https://www.rfc-editor.org/rfc/rfc9849), [RFC 9848](https://www.rfc-editor.org/rfc/rfc9848)). Offered whenever the HTTPS record carries `ech`; GREASE ECH otherwise; `retry_configs` handled with the public name authenticated. Per RFC 9848 §5.1, when SVCB resolution succeeded and every alternative endpoint advertises `ech`, Izcal **never falls back to a connection without ECH**, so the origin's name never appears in a cleartext SNI (the outer SNI carries only the ECH config's public name, RFC 9849 §6.1). ECH protects the name only if the DNS lookup is private, so DNS and ECH are designed as one feature (Section 6.6).
+
+**The verifier (NW-D5) and path builder (NW-D19).** `hg-pki` is Izcal's own verifier, plugged into rustls through its public server-certificate-verifier interface:
+
+- **Path building is Izcal's own** (NW-D19): RFC 5280 validation and RFC 4158-style path building with a signature budget of ≤ 100 checks (the class of RUSTSEC-2023-0053, [SR 4.8][SR]), signatures verified through aws-lc-rs. rustls-webpki, whose design is "strongly influenced by mozilla::pkix" (its README), is not linked; it serves as a **differential test oracle** (M-1 part 4). M-1 part 1 makes an unclear class the owner's decision with "build it" as the default, and path building is the core of a browser verifier.
+- **Roots as data.** Izcal consumes **Mozilla's published root store** through CCADB, with its trust bits and distrust-after dates, delivered by the trust-data channel (UPD-R1), signed and versioned. Izcal runs **no root program of its own**: it cannot staff CA incident policing ([SR 4.11][SR]).
+- **One distrust model.** A distrust constraint is SCT-dated where the certificate carries SCTs and notBefore-dated otherwise; Mozilla's distrust-after dates and any overlay entry are mapped into it.
+- **The overlay is a policy process, not a rule.** An overlay entry may only replicate a distrust decision already announced by Mozilla, Chrome or Apple; each entry is proposed by the security owner (SEC-D2), published with its evidence, and reviewed by the owner. This answers Q-SEC-5's request for a policy process.
+- **OS trust changes are honoured both ways.** Roots a user or enterprise **added** to the OS stores are trusted, marked locally trusted and exempt from CT ([SR 4.2][SR]); roots the user or enterprise **distrusted or removed** in the OS store are distrusted in Izcal as well. Both are shown in the site panel and DevTools.
+- **CT enforced** for publicly trusted certificates, with a log list from the same channel; the SCT-count policy follows the published Chrome and Apple policies ([SR 4.6][SR]).
+- **Revocation pushed** (NW-D21): a CRLite-style filter (the clubcard format, implemented by Izcal from its published description) and a list of revoked intermediates and key-compromise leaves, **generated by Izcal's trust-data pipeline** from CT logs and CA CRLs (Section 6.5.1); no live OCSP; stapled OCSP honoured when present. Stage 1 13.2's plan (CRLs first, filters later) becomes both from NW-M2, because the largest CA has turned OCSP off and browsers do not query it live ([HP 6.6][HP]).
+- **Stale data degrades, it does not lock users out.** When the CT log list or the revocation data is older than 10 weeks†, Izcal keeps the last revocation set, warns in the site panel and on `izcal://network`, and stops **enforcing** CT for public roots, so HTTPS keeps working on a machine that cannot update; a hard failure happens only on a signed kill record from the trust-data channel. P3 (graceful degradation) governs, and a stale set is still better than none.
+- **A pure function.** Verification takes the chain, time and the data versions; it reads nothing ambient, so it replays exactly and runs under the simulator.
+
+Why not the platform verifier first (Stage 1 13.2, NET-R6): it differs per OS, enforces no CT, does no revocation on Linux, and is not replayable ([SR 4.9][SR]); Chrome left platform verification for the same inconsistency ([SR 4.1][SR]).
+
+#### 6.5.1 The trust-data pipeline
+
+`hg-trust-build` (tier T) and an operated pipeline produce, sign and publish: the root store snapshot from CCADB (daily†), the CT log list, the revocation filter and intermediate list (every 6 h†, generated from all usable CT logs' entries and the CRLs those certificates name), and the HSTS preload list. Outputs are signed under UPD-R1's keys, versioned, served as public files (cacheable, nothing per user, Section 6.13), and monitored (freshness, size, a canary of known-revoked certificates). The pipeline is staffed in the TLS and PKI track (Section 9.3); its licence questions are Q-NW-3.
+
+### 6.6 DNS and connection establishment (NW-D8)
+
+**Own stub resolver, OS configuration (NW-D8).** `hg-dns` implements Do53 over UDP and TCP with EDNS(0), DoT ([RFC 7858](https://www.rfc-editor.org/rfc/rfc7858)), DoH ([RFC 8484](https://www.rfc-editor.org/rfc/rfc8484)) and DoQ ([RFC 9250](https://www.rfc-editor.org/rfc/rfc9250)), EDNS padding, ID and port randomization, and SVCB/HTTPS records ([RFC 9460](https://www.rfc-editor.org/rfc/rfc9460)). Where queries go comes from the **OS configuration** the broker reads: configured servers, search domains and split-DNS rules (macOS scoped resolvers, Windows NRPT, systemd-resolved per-link servers), so enterprise and VPN names resolve as the OS would. Names the stub cannot answer by protocol (mDNS `.local`, hosts-file entries, OS-only resolution of some VPN clients) go to the OS resolver API in the **OS-adapter process** (Section 6.1), flagged as unencrypted in the decision log. Encrypted DNS: **same-provider upgrade** by default, when the configured resolver is known to offer DoH or DoT or advertises it through Discovery of Designated Resolvers ([RFC 9462](https://www.rfc-editor.org/rfc/rfc9462)); a user-chosen DoH resolver with a published policy at least as strict as Mozilla's TRR policy ([PP 5.1][PP]) as an option; enterprise policy and the `use-application-dns.net` canary disable an Izcal-chosen resolver, never a user's explicit choice. Encrypted-DNS connections are held by the container service, keyed (C, R); the partition service sends it queries through a bound endpoint and parses the answers itself. A routed container resolves **through its route** (SOCKS remote resolution, the WireGuard peer's resolver, the Tor route's resolver), never the host resolver ([PP 8.3][PP]).
+
+**Queries.** For an HTTPS origin Izcal asks A, AAAA and HTTPS in parallel; for an `http:` URL, an HTTPS record with compatible parameters upgrades the request as RFC 9460 §9.5 describes, in one place with HSTS, HTTPS-First and mixed-content upgrades, in an order Izcal writes down from black-box observations and tests, because no specification defines it (Q-NW-8). The DNS cache, in-flight de-duplication, HTTPS records and ECH configs are keyed by the connection key (Section 6.8); TTLs are honoured and capped at 1 h†. NW-46 measures the query-count cost of keying by frame site.
+
+**Happy Eyeballs v3** ([draft-ietf-happy-happyeyeballs-v3-04](https://www.ietf.org/archive/id/draft-ietf-happy-happyeyeballs-v3-04.html), pinned). One establishment state machine in `hg-net-connect` handles: Resolution Delay 50 ms, Connection Attempt Delay 250 ms (bounded 100 ms–2 s, the draft's recommended range; its hard floor is 10 ms), QUIC preferred over TCP and IPv6 over IPv4, endpoints grouped by ALPN and ECH, waiting for the HTTPS record when ECH is wanted, NAT64 synthesis with prefix discovery ([RFC 7050](https://www.rfc-editor.org/rfc/rfc7050)) for IPv4 literals on IPv6-only networks. Every timer is a substrate timer, so racing is exact under the virtual clock. The winner of a race is a recorded decision (Section 6.16). **Broken HTTP/3** is remembered per (partition, network) with exponential backoff from 5 min†, the deployed shape ([PT 4.4][PT]), and forgotten on network change.
+
+**Pools and coalescing.** A connection is identified by Fetch's key (network partition key, origin, credentials) extended by Izcal's key fields ([Fetch §2.6](https://fetch.spec.whatwg.org/#connections)). HTTP/2 and HTTP/3 connections are **coalesced only within one connection key**, when the certificate covers the new origin and the new origin's resolved addresses include the connection's peer address ([RFC 9110 §4.3.3](https://www.rfc-editor.org/rfc/rfc9110#section-4.3.3)). §4.3.3 lets an ORIGIN frame remove the address check; Izcal deliberately honours ORIGIN only as a restriction, never as a licence to skip the check, because a coalesced connection to an address the user's resolver did not return is a route and partition surprise. Alt-Svc ([RFC 7838](https://www.rfc-editor.org/rfc/rfc7838)) and broken-alternative state are partitioned. Each pool and reuse decision carries a reason code for the decision log.
+
+### 6.7 Fetch in the network service
+
+**Where each part of Fetch runs.** The rule: a step a compromised renderer could skip or forge runs in the network service. The renderer constructs the request from script and documents (Request, Headers, body streams, integrity metadata), runs CSP's pre-request checks (including `<meta>` policies, which only the renderer sees), and exposes the response to script. The partition service runs **main fetch** from the point the request leaves the client: scheme fetch for `http`/`https`, upgrade to HTTPS (HSTS, HTTPS records, HTTPS-First, mixed-content autoupgrade), **bad ports**, **Local Network Access** (with the broker checking the ticket and the connected address), **CORS** including preflight and the preflight cache, **CORP**, **COEP** including `credentialless` (credential stripping happens here), **ORB** before any byte is delivered, **redirects** with every check re-run per hop, credentials stripped on cross-origin redirects and at most 20 hops, **cookies**, the **HTTP cache**, `Sec-Fetch-*` metadata, Referrer Policy, `Origin`, GPC (`Sec-GPC: 1`), the Fetch-defined forbidden methods and request headers, and **content blocking** (Section 6.15). File URLs are never fetched by a network service ([SR 7, Implications][SR]). Each function carries its `// spec:` anchor into the pinned `fetch.bs` (commit `59afe34` at writing, [PR 7.1][PR]).
+
+**CSP's network-side check.** The partition service parses the `Content-Security-Policy` headers of the document responses it delivered (with the one header parser) and enforces their `connect-src`, `script-src`, `frame-src` and related fetch directives for that document's requests, as defence in depth against a compromised renderer of the same site. `<meta>` policies are enforced by the renderer only, and the network-side check cannot cover them; this limit is stated in the renderer's threat model. The broker never parses CSP (IPC-R15).
+
+**ORB.** ORB is still not in the Fetch standard; Izcal anchors to the standalone ORB draft at a pinned commit and treats it as a spec risk ([PP 2.3][PP]). A blocked response becomes a **network error**, indistinguishable to the page from any other, which is ORB's fail-closed form and CS-ER-13's rule.
+
+**HTTPS-First.** Public sites load over HTTPS first, with an interstitial before plain HTTP. The reason is first-principles: plain HTTP exposes every request to on-path observers and modification (P1), and the measured cost is small: in Chrome's experiment warnings appeared on well under 3% of navigations, and Google announced the same default for public sites in Chrome 154 ([Chrome Security, October 2025](https://security.googleblog.com/2025/10/https-by-default.html), for October 2026; Chrome 154 reached stable on 22 September 2026, and whether the default shipped there was not verified), which is evidence that the scope is deployable. Private addresses and single-label hosts are excluded ([PP 6.2][PP]). HSTS preload data comes through the trust-data channel; dynamic HSTS is partitioned and may be set only for the loaded host or its registrable domain ([PP 1.19][PP]).
+
+**Service workers.** A request from a controlled client goes to its partition service, which owns service-worker routing: it looks up the registration in the client's storage key and, when a fetch event must fire, dispatches it to the worker's renderer through a broker-granted endpoint; the worker's response returns through the partition service, which applies the requester's CORS, CORP and ORB rules before delivery. A service worker's own fetches carry the worker's partition key, as Fetch derives it from the worker's environment ([PP 7, Implications][PP]).
+
+**Typed failure reasons.** Every network error carries, inside Izcal and never to the page, a `FailureReason`: the layer (policy, DNS, connect, TLS, PKI, HTTP framing, CORS, ORB, CORP, LNA, mixed content, content blocking, proxy, route, budget, cancelled), the Fetch step anchor, and layer data (the DNS rcode, the TLS alert, the CORS header that failed). It crosses IPC to the shell and to DevTools sessions with read capability on that origin; to the page it is one `TypeError` (CS-T11 tests byte-identical page-visible errors). The shell turns it into a plain-language "why this did not load" page, including the route and resolver in use and what the user can do (Section 6.18). This is [GO 9][GO]'s first opportunity.
+
+### 6.8 Partitioning (NW-D7, NW-D18)
+
+**The key.** Notation from [PP][PP]: T top-level site (schemeful), C container, F frame site, X cross-site-ancestor bit, N cross-site-main-frame-navigation bit, R route identity, n per-navigation nonce (credentialless iframes, fenced frames, recordings), O origin, Cr credentials flag. Every row keyed by T lives in the partition service of (T, C).
+
+| State | Key |
+|---|---|
+| HTTP cache (memory and disk), dictionaries, Early-Hints preloads | (T, C, F, X, N, n) + URL |
+| Connections (H1 sockets, H2 and H3 sessions, WebSocket and WebTransport over them), coalescing eligibility | (T, C, F, X, R, n) + O + Cr |
+| DNS cache, in-flight queries, HTTPS records, ECH configs | (T, C, F, X, R, n) |
+| DoH, DoT and DoQ connections to the resolver | (C, R), in the container service |
+| Alt-Svc, broken-alternative state, HTTP/2-support state, QUIC address tokens | (T, C, F, X, R, n) |
+| TLS tickets, QUIC resumption and 0-RTT state | (T, C, F, X, R, n), single-use, ≤ 24 h†, cleared with the partition's cookies |
+| Dynamic HSTS | (T, C), host or registrable-domain scope only |
+| HSTS preload, root store, CT log list, revocation filters, Public Suffix List | Global, static, read-only data |
+| Fetched intermediates (AIA), stapled responses | (T, C, R) |
+| Client-certificate selection | (T, C) for the remembered choice; signing per Section 6.1 |
+| HTTP authentication cache and credentials entered in a prompt | (T, C, F, X) |
+| CORS-preflight cache | (T, C, F, X) + O |
+| Cookies | First-party jar per site in the container service, read by T's service only for site T and for Storage-Access-granted sites; partitioned third-party cookies (CHIPS and every third-party cookie by default) keyed (T, C, X), X matching CHIPS's cross-site-ancestor bit; Storage Access grants keyed (T, C, embedded site) |
+| Service-worker registrations, Cache Storage | Storage key (T, C, X) + O, as the storage partitioning work defines |
+| Reporting endpoints and queued reports | (T, C, F, X); delivered over a connection of the same key |
+| Speculative connections, prefetch, prerender | The key of the navigation that would use them |
+| WebRTC ICE candidates, TURN allocations, device IDs | (T, C, R) |
+| Resource Timing and connection timing exposed to pages | Coarsened per Fetch's "clamp and coarsen connection timing info"; cross-origin details opaque |
+| Favicons | Fetched for the shell in the page's (T, C) partition, never a global favicon cache |
+| Downloads | The initiator's (T, C, F, X, R) for the request; the file is the user's (Section 6.14) |
+| Proxy and PAC evaluation, proxy-host DNS | (C, R) |
+| Web Push channel | The system service; per subscription's storage key for routing (Section 6.14) |
+
+**Why F and not only X (NW-D7).** Chrome keys its cache by frame site and its sockets by the cross-site bit; Firefox and WebKit double-key by top-level site ([PP 1.9, 1.15][PP]). With only X, two cross-site iframes of different sites under one top-level page share the cache and the pool, so one can probe what the other loaded. P1 outranks the extra misses, which Chrome measured at about 3.6% for its triple key against no partitioning ([PP 1.6][PP]). Izcal keys both the cache and connection-level state by F; the cost is measured on Izcal's corpus at NW-M2 (NW-46), and the reversal trigger in Section 9.4 applies only to connection-level state.
+
+**R in every key.** A route change mid-session must not reuse state learned on the old route, or the user's real address would be linked to the proxied identity ([PP 8, Open risk 8][PP]). Since the route is bound to the container's services (NW-D4), a route change restarts the container's services with fresh state.
+
+**Limits are a bounded channel, not a closed one.** Separate services per top-level site remove the shared pool between top-level sites altogether: an attacker page and a victim page under different top-level sites share no socket pool, stream limit or receive buffer. What remains shared is **the broker's mint queue** (served fair-queued per service), the OS's descriptor and ephemeral-port space (large, and per-process descriptor limits are per service), and CPU (inherent). Inside one service, budgets apply **per top-level page first and per partition inside it**, so a page cannot multiply its share by embedding many cross-site or credentialless frames; the number of live nonce partitions per top-level document is capped at 16†; each service's total capacity is randomized per session within ±25%† of its nominal value. The residual is recorded as **bounded** in footprint 6.18.1 (Section 9.5), and NW-20 tests it statistically. The connection-pool XS-Leak, open in every engine ([PP 1.12, 1.24][PP]), is closed across top-level sites by placement and bounded within one.
+
+**Shared queues inside a service are scheduled per partition.** The receive buffer, the decryption queue and the connection-group sequences of one service serve its partitions round-robin, so one partition's traffic delays another's only within the bound above; they are recorded as bounded channels too.
+
+**Clear-Site-Data under partitioning (NW-D18).** A site's `Clear-Site-Data` clears, **within the current container only**, its own state in every partition where it is the top-level site, plus the state it holds as a third party in the current partition. It never touches another container, because a site-controlled side effect across containers would let the site link the user's identities. The specifications are silent ([PP 7.4][PP]); NW-19's suite includes the cross-container case.
+
+### 6.9 Cookies (NW-D10, NW-D16)
+
+**Store.** `hg-cookies` implements parsing and storage from [6265bis-22](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/) (pinned; not yet an RFC) and the same-site computation from Fetch §3.1.3, which now hosts it ([PP 1.5, 3.1][PP]); prefixes `__Secure-`, `__Host-`; limits from 6265bis (4,096 octets name plus value, 400-day cap, at least 50 per domain and 3,000 total). First-party jars live in the container service, partitioned jars in the partition services; both persist through the storage service (SQLite WAL), encrypted under per-container keys that the broker unwraps from the OS key store (SEC-34). The layered-cookies draft that would move user-agent rules into HTML and Fetch is watched (Q-NW-7).
+
+**Third-party cookies.** Partitioned by (T, C, X) by default (Stage 1 Section 6), which matches Firefox's Total Cookie Protection and is stricter than Chrome's 2026 default ([PP 3.7][PP]). Unpartitioned access only through the **Storage Access API**, with a user prompt; **no heuristic grants** (NW-D16): Firefox's 30-day opener and redirect heuristics re-link partitions without the user asking ([PP 1.16][PP]). Related Website Sets is dead and not implemented ([PP 3.6][PP]). Bounce tracking: storage of a site the user never interacted with as a top-level site is cleared after 7 days†, the WebKit and Firefox class of mitigation ([PP 3.8][PP]).
+
+**`document.cookie` and the Cookie Store API without sync IPC (NW-D10).** For each (host, partition) a renderer hosts, the partition service maintains a **cookie view region**: the script-visible cookies that the host's own requests in that partition could carry (non-HttpOnly; host-only cookies of that host and domain cookies of its parent domains), with a version counter. Keying by **host**, not site, keeps origin keying (FP-D8) intact: a renderer for `a.example.com` never sees `b.example.com`'s host-only cookies, so the region holds nothing the origin's own requests would not carry. The rules:
+
+- **Handle kind.** A new IPC-R1 handle kind, *producer-writable, consumer-read-only shared memory*: on Linux a memfd sealed with `F_SEAL_FUTURE_WRITE` after the producer maps it; on Windows a section duplicated without `FILE_MAP_WRITE`; on macOS a Mach memory entry with read-only protection (Section 9.5).
+- **No double fetch.** The getter copies the region under a sequence lock (retry while the version is odd or changed) into private memory and parses the copy (IPC-R7).
+- **Ordering with responses.** Before delivering a response that set cookies, the partition service publishes the new region version, and the response carries the minimum version the renderer must see; `await fetch('/login'); document.cookie` therefore shows the new cookies.
+- **Writes.** The setter parses the string with `hg-cookies` (the one parser, linked into renderers and declared tier P), applies it to a local overlay for read-your-writes, and sends it asynchronously; the service's verdict (accepted, rejected by prefix rules or limits) comes back and the overlay entry is dropped when the version moves past it or the write is rejected. A rejected write is visible for at most one task turn; the Cookie Store API's change events fire from the service's verdict, never from the overlay.
+- `document.cookie` leaves the sync-IPC allowlist (Stage 1 4.1) once NW-2's WPT cases and this ordering pass (Section 9.5).
+
+### 6.10 The HTTP cache (NW-D11)
+
+The HTTP cache implements [RFC 9111](https://www.rfc-editor.org/rfc/rfc9111) plus stale-while-revalidate, `immutable`, Cache Groups ([RFC 9875](https://www.rfc-editor.org/rfc/rfc9875)) and Fetch's cache modes, keyed per Section 6.8, with `httpwg/cache-tests` and WPT `fetch/http-cache` as oracles ([PR 1.2][PR]).
+
+**Store (NW-D11).** The HTTP cache is a **member of the regenerable-cache class** (FP-D16): it is never the only copy of user data, so it needs no crash-consistent database. Its format is crash-only: a directory per (T, C) (a broker-granted handle), append-only segment files with self-describing records, and an index that is a **derived** structure rebuilt lazily from segments. Lookups never block on disk: the in-memory index answers "maybe present" and a miss proceeds to the network while the read is in flight. Chrome replaced its blockfile cache because a crash corrupted the whole cache and lookups averaged more than 25 ms ([PT 6.3][PT]).
+
+**FP-D16's compromise rules hold.** The class exists because the writer may be compromised, and "encryption does not help, because the writer is the attacker" (footprint 6.9). So:
+
+- **Security epoch.** Every record carries a **security epoch** that the **broker** issues to the service and rotates whenever that service crashes, fails a check, is killed for a bad message, or the browser is updated with a security fix to any crate in the network service's tier-P set (`hg-net*`, `hg-http*`, `hg-quic`, `hg-tls`, `hg-pki`, `hg-compress`, `hg-http-cache`, `hg-cookies`, `hg-content-block`) or to rustls or aws-lc-rs. Records from an old epoch are discarded, never repaired. A per-epoch MAC key held by the service detects corruption, not compromise.
+- **Format and epoch binding.** The store binds to its **format version and security epoch**, not to the engine build: an ordinary update keeps the cache, a security update or a crash drops it. This keeps FP-D16's purpose (no persistence across a fix or a crash) without discarding 256 MiB at every release (Section 9.5).
+- **Residual.** A compromised service can write entries for its own (T, C) until its next crash, check failure or security update; since a partition service holds only one top-level site's partitions, that is the blast radius, recorded in the network-service threat model.
+
+**Budget.** 256 MiB† total (FP-26), shown in settings; each (T, C) capped at 10%† of the budget; eviction least-recently-used within the global budget. Eviction across top-level sites is a bounded channel (one site's fill can evict another's entries), recorded in footprint 6.18.1.
+
+**Decoded copies** stay in the renderer's partition-keyed resource store (footprint 6.4); the HTTP cache keeps encoded bytes only.
+
+### 6.11 WebSockets, WebTransport and deferred fetches
+
+**WebSockets** ([RFC 6455](https://www.rfc-editor.org/rfc/rfc6455), [RFC 7692](https://www.rfc-editor.org/rfc/rfc7692)) over HTTP/1.1, HTTP/2 (RFC 8441) and HTTP/3 (RFC 9220), handshake through Fetch ("obtain a WebSocket connection"), with an accurate `Origin` and SameSite rules applied to the handshake (the browser's part of CSWSH defence, [SR 7.5][SR]); LNA applies from the start, a gap Chrome admitted ([PP 6.1][PP]). Autobahn's 521 client cases are the wire oracle ([PR 7.5][PR]).
+
+**Frozen pages keep their sessions.** A WebSocket or WebTransport session of a frozen page stays open, held by the partition service with no wakeup of its own; incoming messages are buffered up to a budget of 1 MiB† per page and, when a message arrives, it wakes the page only under footprint 6.8's "live exchange" reason; without a declared reason the buffered data waits for resume. Sessions are closed only under memory pressure, through the same path as discard, because closing them changes what the page observes (a `close` event, lost server messages) and would break chat, mail and collaboration apps waiting idle for the server. This is added to FP-17's background compatibility suite (Section 9.5).
+
+**WebTransport (NW-D13).** Over HTTP/3 and HTTP/2, pinned to draft-ietf-webtrans-http3-16 and -http2-15 and the W3C Candidate Recommendation of 30 July 2026 ([PR 4.4][PR]). Built with the HTTP/3 crate and enabled under the gate rule of Section 9.1: the pinned documents are in working-group last call, and the feature is enabled after it passes WPT `webtransport/` and interoperates with at least two independent server implementations; Safari shipped it on 24 March 2026 ([GO 7.1][GO]). LNA applies.
+
+**`fetchLater`, `keepalive`, Background Fetch.** `keepalive` and `fetchLater` requests are owned by the partition service, so they survive the document; they belong to the activity class "a transfer the user started" for wakeups (footprint 6.8). Background Fetch is not implemented (single engine for seven years, [GO 7.8][GO]). **Speculative requests** (preconnect, prefetch, prerender) use the key of the navigation that would consume them and never carry cross-site cookies.
+
+**Network Error Logging (NW-D15)** is not implemented: it reports a user's network failures to a site-chosen endpoint after the fact, and only Chromium ships it. The Reporting API's other report types are implemented, keyed per Section 6.8.
+
+### 6.12 WebRTC transport
+
+The security scope places ICE, DTLS, SRTP and SCTP in the network service, with media in utility processes and no WebRTC parser in the broker (security scope 6.10a), and Stage 1 M7 requires post-quantum key exchange for WebRTC's DTLS. Under M-1 and the owner's direction, a WebRTC transport library is browser networking, and rustls implements TLS, not DTLS, so **Izcal builds all four** (NW-D6):
+
+- **Crates** (tier P, sans-IO like the rest): `hg-ice` (ICE agent, STUN, TURN client, consent freshness, [RFC 8445](https://www.rfc-editor.org/rfc/rfc8445), [RFC 8489](https://www.rfc-editor.org/rfc/rfc8489), [RFC 8656](https://www.rfc-editor.org/rfc/rfc8656), [RFC 7675](https://www.rfc-editor.org/rfc/rfc7675)), `hg-dtls` (DTLS 1.2 and 1.3, [RFC 6347](https://www.rfc-editor.org/rfc/rfc6347), [RFC 9147](https://www.rfc-editor.org/rfc/rfc9147), with X25519MLKEM768 through aws-lc-rs), `hg-srtp` (SRTP keyed by DTLS-SRTP, [RFC 3711](https://www.rfc-editor.org/rfc/rfc3711), [RFC 5764](https://www.rfc-editor.org/rfc/rfc5764)), `hg-sctp` (SCTP over DTLS for data channels, [RFC 8261](https://www.rfc-editor.org/rfc/rfc8261), [RFC 8831](https://www.rfc-editor.org/rfc/rfc8831)). DTLS reuses `hg-tls`'s certificate fingerprint checks; it does not use rustls internals.
+- **Placement.** WebRTC transport runs in the partition service of the page's top-level site; decoded media never enters it.
+- **Sockets.** ICE needs bound, unconnected UDP sockets, which can `sendto` any address, so a per-address check at mint time would enforce nothing afterwards. The broker therefore binds WebRTC sockets **to specific interfaces**: a frame without an LNA ticket gets sockets bound only to the default-route interface, its host candidates are exposed only as mDNS names (security scope 6.10a), and the network service's ICE agent refuses to pair with private or loopback remote candidates without a ticket; a frame with a ticket covering local addresses gets the local interfaces. TURN relay sockets are connected sockets minted with the ordinary checks. Under a non-direct route, only relay candidates through the route exist (NW-21).
+- **Partition.** ICE candidates, TURN allocations and device IDs keyed (T, C, R) (Section 6.8).
+- **Recording.** DTLS application data after decryption follows NW-D2's boundary; SRTP media payloads are **never recorded** by default (they are media plaintext), only their sizes and timing.
+- **Wakeups.** Consent-freshness checks run every few seconds by RFC 7675's design; they run only while the session has live tracks or an open data channel, which is footprint 6.8's "live exchange" declared reason, and are aligned to the wake grid within the RFC's tolerance.
+- **Targets.** ICE and DTLS interop with at least two independent stacks, SEC-30's fuzzers, no host or local candidates without a grant, and the route-leak test (NW-21, NW-42, NW-43).
+
+### 6.13 Proxies, routes, captive portals and Izcal's own traffic
+
+**Proxies.** Per-container configuration: direct, the OS settings (brokered), PAC, HTTP and HTTPS proxies with CONNECT ([RFC 9110 §9.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-9.3.6)), SOCKS5 with remote resolution ([RFC 1928](https://www.rfc-editor.org/rfc/rfc1928)), and MASQUE CONNECT-UDP ([RFC 9298](https://www.rfc-editor.org/rfc/rfc9298)) so HTTP/3 can pass through a proxy that offers it; otherwise a proxy forces TCP. **PAC** is JavaScript, and IPC-R10 forbids an interpreter in a network service, so PAC runs in a **proxy-resolver utility process** with Izcal's jitless engine and no DOM, one per (container, route), at the strictest sandbox tier; its `dnsResolve` and `myIpAddress` calls go to the container's services as typed requests; HTTPS URLs reach `FindProxyForURL` with path and query stripped ([PR 8.1][PR]); its results go to the broker as well (Section 6.1). **WPAD** discovery runs only when the OS is set to auto-detect **and** the OS does not mark the network as public; the PAC source is shown in the site panel, because a PAC script keeps state across calls and sees every `http:` URL and HTTPS host of the container ([PR 8.2][PR]). Because PAC has no specification, Izcal writes its own PAC behaviour page from the Netscape text and black-box observations (M-1 part 2) before implementing it.
+
+**Routes.** A container route is enforced by the broker's socket policy (Section 6.1). **WireGuard** runs in a **route process** per routed container, Izcal's own implementation of the protocol; its primitives (X25519, ChaCha20-Poly1305, BLAKE2s, HKDF over BLAKE2s) come from aws-lc-rs where it exposes them and otherwise from a pinned general-purpose cryptography crate (Q-NW-11); the network services receive socket-pair handles into it, so their traffic has no other path out. **SOCKS** routes are spoken by the network service over sockets that can only reach the proxy. **Tor** routes are SOCKS to a Tor client the user runs (Arti or tor), with per-top-level-site isolation through SOCKS credentials, as Tor Browser does ([PP 8.1][PP]); Izcal does not embed a Tor client (NW-D6), and keeps Stage 1's label: "hides your IP address, not your browser". Under a non-direct route, WebRTC is relay-only through the route, and every request a container's services make (AIA fetches, favicons, speculative connections, DNS) uses the route.
+
+**Captive portals.** Izcal uses the OS's captive-portal state (brokered) and RFC 8908 and RFC 8910 where the network offers them, and infers a portal from TLS failures to many hosts on a new network with HTTPS-First; it runs **no probe endpoint of its own** by default. A detected portal opens in a credential-free, ephemeral container.
+
+**Izcal's own traffic (NW-D17).** Only the system service talks to Izcal's servers. It follows the **OS proxy configuration** (and enterprise policy), never a container's route, because it is not acting for any container. Its endpoints are a published list: updates; the trust-data channel (roots, CT logs, revocation data, HSTS preload); content-blocking filter lists; the security classifiers HGBA-3 B10 allows, if enabled; and, from Stage 2, the Web Push service for subscriptions the user granted (Section 6.14). Requests that carry user-specific data go through an **Oblivious HTTP** ([RFC 9458](https://www.rfc-editor.org/rfc/rfc9458)) relay run by an independent operator (Q-NW-6); downloads of public files (lists, filters, trust data, update payloads) are plain cacheable fetches that reveal nothing per user. AI off means zero AI requests (AG-0). NW-36 checks the list.
+
+### 6.14 Downloads, HTTP authentication, client certificates, Web Push and enterprise policy
+
+- **Downloads.** The request runs in the initiator's partition with its credentials mode; the bytes are written by the partition service into a **broker-granted writable file** (IPC-R1, security scope SH-R9) in the download directory; Mark-of-the-Web and quarantine attributes are applied by the broker at completion (SH-R6). Resumption uses Range requests with a strong validator ([RFC 9110 §14](https://www.rfc-editor.org/rfc/rfc9110#section-14)); a download survives its tab, keeps its partition service alive, and, if that service restarts, resumes from the last validated offset. A failed download shows its `FailureReason`.
+- **HTTP authentication.** Basic and Digest challenges are parsed in the partition service and shown by the prompt renderer through the consent path (security scope CON-R2), with the requesting origin and the top-level site; prompts for **cross-origin subresources are refused** (a phishing vector), only navigations and same-origin subresources prompt. Proxy 407 challenges prompt per container. Entered credentials stay in the (T, C, F, X) authentication cache for the session, and in the password manager only if the user saves them. Negotiate and NTLM follow NW-D20's allowlist (Section 6.1).
+- **Client certificates.** A `CertificateRequest` pauses the handshake; the broker shows the selection through CON-R1, remembers the choice per (T, C, host) if the user asks, and issues the per-handshake signing grant (Section 6.1). Enterprise policy can auto-select per host pattern. The selection is a recorded decision under NW-D2.
+- **Web Push** (Stage 2, Stage 1 13.2). The push client is a long-lived connection in the **system service**, opened only while at least one subscription the user granted exists. It is the one exception to NW-33, NW-34 and NW-36, tied to that grant: one connection, server-initiated traffic, no client keepalive beyond what the push protocol requires on the wake grid, and messages routed to the subscription's storage key.
+- **Enterprise policy surface.** Policies, applied by the broker per container: DoH mode and resolver; QUIC on or off; ECH on or off; proxy configuration and lock; ambient-authentication allowlist (NW-D20); LNA defaults; added trust anchors and client-certificate auto-selection; HTTPS-First exceptions; content-blocking list set; Web Push allowed. Each policy is visible on `izcal://policy`.
+
+### 6.15 Content blocking
+
+HGBA-2 2.3.0 drops the `adblock` crate, footprint 6.11 specifies the matcher's footprint and compilation, and the coding standard lists `hg-content-block` as tier P; this spec owns the **request-matching semantics** and the matcher; list governance and the default list choice stay with the shell and policy work (footprint 6.11).
+
+- **Rule syntax.** Izcal writes a rule-syntax page for the network-request rules it supports, from the public documentation of the common list formats, recorded as black-box observations where documentation is silent (M-1 part 2): URL patterns and anchors, `$third-party`, `$domain`, resource-type options, exceptions, `$important`, `$redirect` to Izcal's built-in neutral resources, and `$removeparam`. Cosmetic rules are compiled separately for renderers (footprint 6.11).
+- **Partition semantics.** "Third-party" means the request's site differs from the **initiating frame's site** (F); `$domain` matches against both the top-level site (T) and the frame site, as the list formats document; the decision log records which rule matched. Lists are chosen per container (Stage 1 Section 6).
+- **Placement and cost.** Lists are compiled in a utility process into a sealed automaton file that every partition service maps read-only (clean, uncharged pages); each service's matcher state is ≤ 256 KiB† charged; matching allocates nothing per request and meets FP-28's p99 ≤ 20 µs†. A blocked request is a network error with `FailureReason::ContentBlocked`, never page-distinguishable from other errors (NW-22).
+
+### 6.16 Determinism and recording (NW-D2)
+
+**Simulation.** Under `hg-substrate-sim`, `hg-netsim` replaces everything below `NetTransport`: simulated links (bandwidth, delay, loss, reordering, duplication, MTU, UDP blocked, NAT rebinding, IPv6-only with NAT64), simulated DNS servers, and **simulated peers built from Izcal's own protocol crates in the server role** plus the adversarial servers of `hg-net-oracle` (Section 6.19). Entropy, including `Entropy::crypto()`, is seeded there, so the whole stack (TLS handshakes included) is a function of the seed. This is what the DST farm runs and what DevTools' what-if runs use (DT-D5). Because simulated peers share Izcal's reading of the RFCs, the performance targets that matter are also run in the lab against real stacks (NW-28, NW-29).
+
+**The recorded unit and start state.** A recording of a tab runs that tab's top-level site in a **dedicated, freshly launched partition service** with a recording nonce in its key (n), so the recording starts from a known empty state, uses fresh connections, and holds no other tab's traffic, as DT-D2 does for renderers by starting at process launch. Reads from state that outlives the recording (the first-party cookie jar in the container service, HSTS, Alt-Svc, the HTTP cache, the authentication cache, Storage Access grants) are recorded as **the values read**, so replay needs no snapshot of those stores; writes to them are re-executed in replay and compared.
+
+**The recording boundary: above decryption.** A production recording logs, per connection:
+
+- **TCP connections:** TLS application-data records after decryption, each with its canonical receive time; the handshake outcome (version, ALPN, certificate chain, verification result and data versions, ECH acceptance).
+- **QUIC, per datagram:** arrival time, ECN codepoint and segment-size metadata, and for each packet in the datagram its unprotected header fields (packet type, packet number, key phase, spin bit, DCID) and either its decrypted payload or a **rejected** outcome with its reason (no keys, AEAD failure, stateless-reset match).
+- **Values drawn from `Entropy::crypto()`** for the wire (connection IDs, stateless-reset tokens, PATH_CHALLENGE data, the initial DCID, tokens), as the values drawn, never a seed; stateless-reset tokens are a sensitive class.
+- **Timer firings and decision points**: race winners, pool and coalescing choices, cache lookups and evictions, DNS answers and their timing, OS network-change events, client-certificate selections, as JS-D15 does for the engine.
+- **Outgoing plaintext** as a hash per send.
+
+**No key, traffic secret or key-derivation input is ever recorded.** Recordings are encrypted at rest under SEC-34's key (security scope REC-R2) because they hold plaintext and sensitive tokens; they are off by default and user-initiated (Stage 1 3.4), with credential placeholders and redaction as the DevTools spec requires.
+
+**Replay.** `hg-net-replay` (tier P) replaces the TLS handshake and packet protection with the recorded outcomes and feeds the recorded inputs into the same state machines; HTTP/2 and HTTP/3 framing, QPACK, QUIC streams, loss recovery, congestion control, the cache logic, cookies and Fetch re-execute. Each outgoing send's plaintext hash is compared, so a divergence is detected at the first differing byte. Network replay runs in the replay host (`hg-replay-main`, which links `hg-net-replay`, not `hg-netsim`) as a **per-(T, C) replay process at the network service's tier**, with no network access; it holds the recorded page's partitions, exactly what that page's partition service held, so it needs no new P1 exception.
+
+**Why this boundary.** Recording ciphertext with the crypto entropy would let a recording decrypt everything it captured and would need a seeded `Entropy::crypto()` in a shipping binary, which Q-CS-1 forbids. Recording only Fetch responses would leave every protocol layer out of replay, where most network bugs live. The decryption boundary is the lowest layer that holds no secret.
+
+**Deterministic by construction.** `hg-net` reads no clock but the substrate's, iterates no hash map in a way that affects output, and orders sequences only through the scheduler. Cache freshness, cookie expiry and HSTS lifetimes use the substrate's wall clock, a recorded input. NW-38 checks byte-identical qlog and decision logs across 1,000 simulated loads; NW-37 checks replay against network checkpoints.
+
+### 6.17 Footprint, wakeups and energy
+
+**Memory, itemized by service kind** (charged memory as footprint 6.2 defines it; sealed shared files are clean file-backed pages and not charged):
+
+| Service kind | Idle charged budget† | Lines |
+|---|---|---|
+| System service | ≤ 4 MiB | Runtime and allocator 1.5, connection state for its few connections 1, receive buffer 0.5, trust-data and update client 1 |
+| Container service | ≤ 2 MiB | Runtime 1, first-party cookie jars in memory 0.5, encrypted-DNS connections 0.5 |
+| Partition service | ≤ 2 MiB | Runtime 1, matcher state ≤ 0.25, receive buffer 0.25 (grows under load and shrinks after), per-partition state created on first use ≤ 0.5 |
+
+With no tabs, only the system service runs, inside FP-1's 8 MiB† network line. Each open top-level site adds one partition service (≤ 2 MiB† idle); each active container adds one container service. The amendment to FP-1 and footprint 8.2 is in Section 9.5. Receive buffers are per service, not per connection ([PT 7.6][PT]). Partition state with no client is dropped lazily, on its next use or when the service next wakes for other work, never by a timer of its own.
+
+**No keepalives for idle connections.** Izcal sends no HTTP/2 PING, QUIC PING or TCP keepalive to keep an idle connection open; idle connections close (QUIC 30 s†, HTTP/1.1 and HTTP/2 60 s†), and their close timers are on the global wake grid (footprint 6.8). A liveness PING is allowed only together with a request (Section 6.3). WebSocket and WebTransport sessions of frozen pages stay open without wakeups (Section 6.11).
+
+**No periodic work of Izcal's own.** Trust-data, filter-list and update checks run on a daily† schedule aligned to the wake grid and are deferred while on battery saver, never polled.
+
+**Attribution.** Bytes, connection setups and CPU per (site, frame, initiator) go to the footprint ledger (footprint 6.13); a partition service's CPU is charged to its (T, C).
+
+**Telemetry.** None by default (FP-D9). Network statistics are local and shown on request.
+
+### 6.18 Observability and user experience
+
+**DevTools** (`hg-net-observe`, DT-D5). The network services emit: **qlog** (main schema -14, QUIC and HTTP/3 events -13, pinned) natively from `hg-quic` and `hg-http3`; Izcal's **decision log** (partition key, cache verdict, reuse or coalescing reason, Alt-Svc state, race outcome, service-worker route, dictionary use, content-blocking rule, speculation fate, `FailureReason`) as a published schema that shares qlog's connection and stream identifiers ([GO 2.8][GO]); TLS and PKI facts (version, group, ALPN, chain, SCTs, revocation source and data age, ECH outcome). HAR 1.2 with `_izcal` fields is an export only. The RFC 9850 key log exists only per session in a non-default container behind an explicit, logged act (DT-D5). DT-18 checks that views equal what the stack did.
+
+**Protocol-level shaping per partition.** Because a partition service owns the transport of one (T, C), DevTools can apply a **live link model** (bandwidth, delay, loss, reordering) and protocol faults (block UDP, fail DNS, drop the ECH config, reset a stream) to one partition, labelled in every view, with write capability on that origin (DT-21). The DevTools spec allows protocol faults only in simulation; Section 9.5 proposes allowing the live link model for a granted partition, because it changes timing only for that partition and the user who asked.
+
+**For people browsing.** The "why this did not load" page from `FailureReason` (Section 6.7); the site panel shows the protocol, whether ECH and encrypted DNS were used, the route, locally trusted or OS-distrusted roots and stale trust data; a per-site, per-container **"who received what" view** lists which parties received requests, cookies (names, partitioned or not), referrer origins and which of the user's addresses (route or direct), built from the decision log, held locally in the storage service under the footprint spec's attribution-history rules (FP-D18: 24 h† detail, cleared with history, memory-only in private windows), never synced, exported or sent ([GO 5, 9][GO]). Certificate and other interstitials follow the shell's warning design (UI-9).
+
+### 6.19 Security, privacy and consent
+
+- **Two attackers** ([SR, Method notes][SR]): the network (hostile servers, on-path attackers, middleboxes) and a compromised renderer (crafted requests). Every IPC message is parsed by the generated, Kani-checked parser; request context comes from the endpoint (NET-R1); a renderer can request only what Fetch lets its document request.
+- **Blast radius.** A compromise of a partition service exposes that (T, C)'s partitions, site T's first-party cookies and the jars of sites holding Storage Access under T, and its cache until the next security epoch; it cannot open sockets the broker would refuse, cannot use another top-level site's LNA grants, cannot obtain NTLM or Kerberos responses for hosts off the allowlist, cannot sign with a client key the user did not select for that host, and never holds cookie-encryption keys at rest (SEC-34). A compromise of a container service exposes that container's first-party jars and its DNS transport.
+- **Fuzzing and verification** (NET-R4, SEC-28): per-frame coverage fuzzers for every parser; stateful connection fuzzers that drive whole connections from the server role and assert budgets (memory and CPU bounds, not only "no crash"); differential fuzzing of HTTP/1.1 framing, URL parsing and certificate path building (rustls-webpki as the oracle) against other implementations as black-box signals; Kani proofs of the arithmetic kernels; RFC-derived state-machine models checked periodically against the implementation by model learning ([SR 3][SR]); the adversarial servers of `hg-net-oracle` (HTTP/1.1, HTTP/2, HTTP/3, DNS, ICE and DTLS) built from the RFCs' MUST lists ([PR 10.3][PR]); and an adversarial **compromised-service harness** (IPC-R17) that drives the broker, the container service and the OS-adapter process with every forgery Section 6.1 rules out (NW-16).
+- **Agent and automation interception.** WebDriver BiDi's `network.addIntercept` and the CDP Fetch domain are adapters over IIP; Izcal's interception is **scoped to an origin set and a container**, **typed by intent** (observe, mock, block, modify), **badged** on affected tabs, and **audited** (principal, request, partition, action), with bodies, cookies and credentials as sensitive classes needing a grant ([GO 8][GO]); AI off means none of this exists for agents (B10). Extensions (Stage 2) get request interception through the same scoped, audited path.
+- **Privacy.** Section 6.8's table; no telemetry; the "who received what" view is local; failure reasons never reach pages; Izcal's own traffic through OHTTP where it carries user-specific requests.
+
+### 6.20 The wire shape (NW-D12)
+
+A browser's TLS ClientHello, HTTP/2 SETTINGS and frame order, and QUIC transport parameters are fingerprinted (JA3, JA4, the Akamai HTTP/2 fingerprint) and used by bot management as stable client identity ([Cloudflare](https://developers.cloudflare.com/bots/concepts/ja3-ja4-fingerprint/), [PP 4.1–4.3][PP]). rustls already randomizes ClientHello extension order (since 0.23.0, February 2024, [PR #1730](https://github.com/rustls/rustls/pull/1730)). It does not send RFC 8701 GREASE values: its maintainers declined the feature in January 2022 ([rustls issue #357](https://github.com/rustls/rustls/issues/357)), and only ECH GREASE is supported. rustls also offers only AEAD cipher suites, while mainstream browsers' ClientHellos carry some legacy suites and extensions rustls lacks (Q-NW-1; not verified against current captures), so Izcal's JA4 will resemble other rustls clients rather than a browser family unless something changes. Copying another browser's bytes is impersonation, which Izcal rejects; adding suites a browser does not need in order to match a fingerprint is the same thing.
+
+The shape is therefore **decided by measurement** (NW-D12): at NW-M1, the lab runs the corpus with Izcal's real handshake under (i) Stage 1 13.2's Chrome-compatible UA and (ii) an honest Izcal UA, and records challenge and block rates per bot-management vendor; a Chrome UA on a non-Chrome handshake is itself a known bot heuristic, so the combination may be worse than either honest choice. The result feeds NW-D12, NW-23 and Stage 1's UA-1. Izcal proposes GREASE upstream with that evidence; if the maintainers decline again, the owner decides between shipping without GREASE and a hook rustls accepts. HTTP/2 settings and pseudo-header order, and QUIC transport parameters, stay within the common browser range, which Izcal's own codecs control. The owner plans **early outreach to the major bot-management vendors**, since Ladybird's case shows the vendor side is part of the fix ([PP 4.4][PP]). M-1 forbids forking rustls.
+
+### 6.21 Crate layout and rules
+
+| Layer | Crate | Role | Tier |
+|---|---|---|---|
+| L5 | `hg-net` | Fetch engine in the partition service: main fetch and its steps, policy checks, cookies glue, CSP network check, service-worker routing, failure reasons, downloads, HTTP authentication | P |
+| L5 | `hg-net-connect` | Connection keys, pools, coalescing, Happy Eyeballs v3, Alt-Svc, proxy and route selection | P |
+| L5 | `hg-net-io` | Drives the state machines from substrate sequences; per-OS datapath probing and offloads (through `NetTransport`) | P |
+| L5 | `hg-net-replay` | Recorded-transport mode for replay (Section 6.16); linked by `hg-replay-main` | P |
+| L5 | `hg-dns` | Stub resolver, encrypted transports, HTTPS/SVCB | P |
+| L5 | `hg-http1`, `hg-http2`, `hg-http3`, `hg-ws` | Sans-IO codecs: HTTP/1.1; HTTP/2 + HPACK; HTTP/3 + QPACK + capsules + WebTransport sessions; WebSocket framing + permessage-deflate | P |
+| L5 | `hg-quic` | Sans-IO QUIC transport, recovery, congestion controllers, datagrams | P |
+| L5 | `hg-ice`, `hg-dtls`, `hg-srtp`, `hg-sctp` | WebRTC transport (Section 6.12) | P |
+| L5 | `hg-tls` | rustls integration, ECH, resumption store | P |
+| L5 | `hg-pki` | Verifier, own path builder, CT, revocation filters, trust-data formats | P |
+| L5 | `hg-http-cache` | Cache semantics and the regenerable store with security epochs | P |
+| L5 | `hg-cookies`, `hg-psl` | Cookie store and parser (also linked by renderers); Public Suffix List (data) | P |
+| L5 | `hg-content-block` | Request matcher and rule semantics | P |
+| L2 | `hg-net-wire` | Buffers, varints, budgets, checked kernels, header and Structured Fields parser | P |
+| L2 | `hg-compress` | deflate, gzip, Brotli, zstd decoders and dictionary support; also linked by renderers for WOFF decoding (fonts and text spec, Q-TX-11) | P |
+| L5 | `hg-socket-broker` | In the broker: socket minting, LNA tickets, route and purpose policy, security epochs | P |
+| L5 | `hg-os-adapter` | OS resolver fallback, SSPI and GSSAPI, client-key signing, in the OS-adapter process | P |
+| L5 | `hg-pac-host` | PAC host in the proxy-resolver utility process | R |
+| L5 | `hg-route-wg` | WireGuard in the route process | P |
+| L6 | `hg-net-main`, `hg-route-main`, `hg-os-adapter-main` | Binaries (the network-service binary serves the system, container and partition roles) | P |
+| tools | `hg-netsim` | Simulated links, DNS, peers, middleboxes, under `hg-substrate-sim` | T (linked by the simulation binary only, Q-CS-1) |
+| tools | `hg-net-oracle` | Adversarial HTTP/1.1, HTTP/2, HTTP/3, DNS, ICE and DTLS servers from the RFCs' MUST lists; RFC state-machine models; the compromised-service harness | T |
+| tools | `hg-net-fuzz` | Frame, connection and differential fuzz targets | T |
+| tools | `hg-trust-build` | CCADB, CT logs and CRLs → sealed trust-data files (Section 6.5.1) | T |
+
+**Rules**, numbered with this spec's prefix to avoid collisions with rules other component specs add at the same time (renumbered into G-numbers when merged):
+
+| Rule | Statement | Why |
+|---|---|---|
+| **NW-G1** | Protocol crates (`hg-http1`, `hg-http2`, `hg-http3`, `hg-ws`, `hg-quic`, `hg-dns`, `hg-tls`, `hg-ice`, `hg-dtls`, `hg-srtp`, `hg-sctp`) depend on no substrate implementation, no IPC crate and no `hg-net`; they take time and entropy as parameters and return actions | Sans-IO (NW-D1); the same code runs in the simulator, fuzzers and replay |
+| **NW-G2** | Only `hg-net-wire` defines header-field, Structured Fields and varint parsing; only `hg-url` parses URLs; only `hg-cookies` parses cookies; an `ast-grep` check rejects other implementations | One parser per format |
+| **NW-G3** | No `async`, no executor and no `std::net` in any network crate (CS-AS-1, CS-AS-4 with no allowlist entry); every timer is a substrate timer | CS-D8; exact timers under the virtual clock |
+| **NW-G4** | Every peer-sized allocation in network crates goes through `Budget` and `try_reserve`; an `ast-grep` rule flags `Vec::with_capacity`, `reserve`, `resize` and `extend` on peer-derived lengths outside `hg-net-wire`'s audited helpers | Section 6.2 |
+| **NW-G5** | `hg-socket-broker` depends on no protocol crate, parses no network bytes and calls no OS API on network data | IPC-R15; policy outside the parsing processes |
+| **NW-G6** | Wire identifiers (connection IDs, reset tokens, path-challenge data, tokens) are drawn only from `Entropy::crypto()`; a lint flags a seeded stream feeding a wire identifier | RFC 9000 §§5.1, 9.5 unlinkability |
+
+### 6.22 Alternatives, and interfaces for later stages
+
+Each decision's options, cost and reversal trigger are in Section 9.4. Rejected outright: an embedded generic HTTP, QUIC or WebRTC library (M-1 and the owner's direction); the platform's networking stack (URLSession, WinHTTP), which would give up partitioning, determinism and owned observability; kernel bypass (HGBA-2 4.7); io_uring (HGBA-2 4.6).
+
+Interfaces that later stages need, designed now: **extensions** (Stage 2, Wasmtime) intercept requests only through the scoped, audited IIP path of Section 6.19; **Android** (S-8) needs socket passing into isolated processes, per-network binding, Doze-aware wake alignment and Private DNS as OS configuration, all behind `NetTransport` and the broker's configuration reader; **IPv6-only** networks are handled by NAT64 prefix discovery and synthesis (Section 6.6).
+
+## 7. M-1 compliance
+
+**Dependencies used, unmodified:**
+
+| Dependency | Class under M-1 part 1 | Where | Note |
+|---|---|---|---|
+| `rustls` | TLS (named as allowed) | `hg-tls`, `hg-quic` (its `quic` key interface) | Pinned 0.23.x; the 0.24 explicit-provider change is tracked ([PR 5.7][PR]); capability gaps are proposed upstream, never forked (Q-NW-1) |
+| `aws-lc-rs` (AWS-LC) | Cryptography provider | `hg-tls`, `hg-dtls`, `hg-pki` signatures, `hg-route-wg` where it exposes the primitive | Only built-in provider with X25519MLKEM768; C and assembly in a tier-P process, primitives only |
+| A general-purpose cryptography crate for primitives aws-lc-rs lacks (BLAKE2s for WireGuard, if needed) | Cryptography | `hg-route-wg` | Named and pinned at NW-M0 (Q-NW-11) |
+| Generic crates | Data structures, serialization, error handling, test tooling | Throughout | Through the coding standard's dependency rules |
+| OS interfaces | epoll, kqueue, IOCP; UDP offload socket options; OS resolver configuration, proxy settings and network-change APIs (broker); OS resolver, SSPI, GSSAPI and key stores (OS-adapter process); Keychain, DPAPI, Secret Service (SEC-34) | `hg-substrate-os`, broker, `hg-os-adapter` | Used through the substrate, the broker and the adapter only |
+
+**Data used as data:** Mozilla's root store through CCADB, CT log lists and log entries, CA CRLs, the HSTS preload list, the Public Suffix List, content-blocking lists, IANA registries (ports, ALPN IDs, QUIC and HTTP/3 codepoints).
+
+**Test oracles, never linked** (M-1 part 4): rustls-webpki (differential path building, NW-D19), WPT, `httpwg/cache-tests`, `httpwg/structured-field-tests`, the HPACK and QPACK interop files, the QUIC Interop Runner, Autobahn, and other stacks as black-box peers.
+
+**Not used** (owner direction and M-1): neqo, quiche, quinn, s2n-quic, msquic, hyper, h2, h3, reqwest, curl, hickory-dns, webrtc-rs and any WebRTC library, `adblock`, rustls-webpki as a linked dependency, `webpki-roots`, `rustls-platform-verifier`, upki, any compression crate in the network services (NW-D6), any embedded Tor client, any browser's network code. Their designs and advisories are cited as evidence only.
+
+**Built new by Izcal:** every crate in Section 6.21, the per-OS datapaths, the socket broker and LNA tickets, the OS-adapter process, the trust-data pipeline, the simulator's network, the adversarial servers, models and harnesses, the PAC behaviour page, the content-blocking rule-syntax page and the decision-log schema.
+
+**Anchors** (G9, ANC-1):
+
+| Part | Anchored to (pinned) |
+|---|---|
+| `hg-net` | WHATWG Fetch (`fetch.bs` commit pinned at NW-M0; `59afe34` on 19 October 2026); ORB draft (pinned commit); Mixed Content; Referrer Policy; Fetch Metadata; CSP (fetch directives); HTML (COOP, COEP, Early Hints processing, navigation hooks); Service Workers; Storage Partitioning; Clear-Site-Data; Reporting; Local Network Access (WICG draft of 2026-08-07); Storage Access API |
+| `hg-http1`, `hg-http2`, `hg-http3`, `hg-ws` | RFC 9110, 9111, 9112, 9931, 9651, 8297, 9113, 7541, 8441, 9218, 9114, 9204, 9297, 9220, 6455, 7692; WebTransport drafts -16 and -15; WHATWG WebSockets |
+| `hg-quic` | RFC 8999, 9000, 9001, 9002, 9221, 9287, 9368, 9369, 9438, 9406, 8899; qlog drafts -14 and -13 for events |
+| `hg-ice`, `hg-dtls`, `hg-srtp`, `hg-sctp` | RFC 8445, 8489, 8656, 7675, 6347, 9147, 3711, 5764, 8261, 8831; WebRTC and JSEP as the W3C and IETF documents pin them |
+| `hg-tls`, `hg-pki` | RFC 9846, 7301, 8879, 8470, 9849, 9848, 5280, 4158, 6962 and 9162 (CT); Mozilla and Chrome root and CT policies as data |
+| `hg-dns`, `hg-net-connect` | RFC 1034, 1035, 6891, 7830, 8467, 7858, 8484, 9250, 9460, 9462, 7050, 8305 and the Happy Eyeballs v3 draft -04, 7838 |
+| `hg-cookies` | draft-ietf-httpbis-rfc6265bis-22; Fetch §3.1.3; CHIPS as specified where it lands (Q-NW-7) |
+| `hg-compress` | RFC 1950, 1951, 1952, 7932, 8878, 9659, 9842 |
+| `hg-content-block` | Izcal's rule-syntax page (public list documentation plus black-box observations, M-1 part 2) |
+| Proxies | RFC 9110 §9.3.6, RFC 1928, 1929, 9298, 8908, 8910; Izcal's PAC behaviour page (black-box observations, M-1 part 2) |
+
+**Oracles** (M-1 part 4): WPT (`fetch/`, `cors/`, `cookies/`, `websockets/`, `webtransport/`, `webrtc/`, `mixed-content/`, `referrer-policy/`, `xhr/`, `service-workers/` and others, [PR 7.6][PR]); `httpwg/cache-tests`; `httpwg/structured-field-tests`; HPACK and QPACK interop test files; the QUIC Interop Runner in both roles; Autobahn; rustls-webpki for path building; Izcal's own `hg-net-oracle` where no suite exists (HTTP/1.1 client, HTTP/2 client, HTTP/3 beyond GET, priorities, DNS and Happy Eyeballs, ECH, proxies, congestion control, ICE and DTLS; [PR 10.3][PR]). Other browsers are black-box differential signals only.
+
+## 8. Targets
+
+† marks thresholds this spec sets from first principles; none is measured on Izcal yet. "Corpus" is Stage 1's recorded corpus (Section 3.2) run under the simulator unless a row says "lab" (the performance lab's real network and devices, Stage 1 7.6). Statistical privacy targets use n = 1,000† trials per condition and pass when a trained classifier's accuracy is within 50% ± 2%† at 95% power for that ε; the **unpartitioned build is the positive control and must fail** the same test, or the test itself is broken.
+
+### 8.1 Correctness
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **NW-1** | Fetch conformance | WPT `fetch/`, `cors/`, `xhr/`, `mixed-content/`, `referrer-policy/`, `service-workers/` (network parts): per-directory floors set at NW-M2 and non-decreasing (C-1's rule); ≥ 95%† of subtests at Stage 1 exit | `hg-wpt` in T1 | Directory owner fixes; floor never lowered |
+| **NW-2** | Cookies | WPT `cookies/` ≥ 95%†; Izcal's 6265bis parsing corpus 100%; read-after-fetch, rejected-write and Cookie Store event cases 100% | T1 | Ship blocker for cookie changes |
+| **NW-3** | HTTP caching | `httpwg/cache-tests` browser-mode results ≥ the best shipping browser's on the same run†; WPT `fetch/http-cache` 100%† | T1 | Fix before NW-M2 exit |
+| **NW-4** | QUIC and HTTP/3 interop | QUIC Interop Runner: every run test case (21) passes against ≥ 5† independent server stacks, as client | Weekly CI against the runner's images | Interop bug triaged against the RFC |
+| **NW-5** | HTTP/1.1, HTTP/2 and HTTP/3 client conformance | 100% of `hg-net-oracle`'s RFC-derived cases (each MUST that binds a client, by section) | T1 | Ship blocker for the protocol |
+| **NW-6** | HPACK, QPACK, Structured Fields | 100% of the public interop test files and fixtures | T0 | Ship blocker |
+| **NW-7** | WebSockets | Autobahn client cases: 100% "OK" or "NON-STRICT"†; WPT `websockets/` ≥ 95%† | T1 | Fix |
+| **NW-8** | DNS and Happy Eyeballs | 100% of `hg-net-oracle`'s scenario suite (HTTPS-record follow, alias chains, ECH grouping, NAT64 and RFC 7050, split DNS, TC fallback, DoH errors) | T1 under the simulator | Fix |
+| **NW-9** | No timer outside the substrate | 0 timers in network crates other than substrate timers; 0 clock reads (lint, NW-G3) | T0 `ast-grep` | PR fails |
+| **NW-10** | Spec anchors | 100% of algorithm functions in `hg-net`, `hg-cookies`, `hg-http-cache`, `hg-content-block` carry anchors; anchor coverage ≥ 90%† of Fetch's 136 algorithm blocks at Stage 1 exit | `hg-anchor` (ANC-1) | Coverage report fails the PR |
+
+### 8.2 Security and robustness
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **NW-11** | No panic from input | 0 panics reachable from network or IPC input in T2 fuzzing open > 14 days (SEC-28); 0 `unwrap`, `expect`, indexing or unchecked arithmetic on peer values in network crates (lint) | T2 fuzzing; clippy tier P table | Ship blocker |
+| **NW-12** | Arithmetic kernels proved | 100% of varint, packet-number, ACK-range, flow-control and window kernels have Kani harnesses (no overflow, no panic, bounded) | T1 | Ship blocker for the kernel |
+| **NW-13** | Budgets hold | Stateful fuzzers from the server role: per-connection memory never exceeds its budget and CPU per received byte stays within 4×† of the corpus median, for 100% of the flood classes in [SR 1][SR] (CONTINUATION, HPACK and QPACK bombs, PING, SETTINGS, empty frames, CRYPTO gaps, ACK ranges, NEW_CONNECTION_ID, PATH_CHALLENGE, decompression) | T2 | Ship blocker |
+| **NW-14** | Strict framing | 0 accepted responses with CL+TE, conflicting CL, obs-fold, bare CR or NUL; 100% of framing anomalies mark the connection non-reusable; client-side desync corpus 0 successes | T1 hostile-server corpus | Ship blocker |
+| **NW-15** | Limits are named and tested | 100% of limits in one module, each tested at limit and limit+1; values reviewed against a corpus crawl before Stage 1 exit (Q-NW-9) | T0 | Fix |
+| **NW-16** | Policy outside the parsers | 100% of sockets minted by the broker; the network services' sandboxes deny socket creation on every OS (probe); the compromised-service harness's forgeries (LNA without a ticket, another site's ticket, `dns` or `proxy` to an unconfigured address, an invented PAC result, unconnected UDP to a local address without a ticket, NTLM to an unlisted host, signing without a grant, another site's first-party jar) succeed 0 times | SEC-31 suite; sandbox probe; `hg-net-oracle` harness | Ship blocker |
+| **NW-17** | Certificate policy | 100% of a published PKI suite (CT missing or insufficient, revoked leaf and intermediate, SCT-dated and notBefore-dated distrust, OS-distrusted root, local anchor, name constraints, path-building bomb); stale data: degraded mode entered at 10 weeks† with CT unenforced and the last revocation set kept, and a signed kill record fails closed | T1 | Ship blocker |
+| **NW-18** | One parser per format | 0 other URL, header or cookie parsers in the tree (`ast-grep`); differential fuzzing of `hg-url`, `hg-net-wire` and `hg-pki`'s path builder against other implementations, every disagreement triaged against the spec | T0; T2 | Fix |
+| **NW-45** | Cache does not carry a compromise | After a crash, a check failure, a bad-message kill or a security update of a listed crate, 0 entries from the old security epoch are served; after a harness `kill -9` of an uncompromised service, ≥ 99%† of committed entries of the current epoch are readable and no full-cache wipe occurs | T1 crash and epoch suite | Ship blocker |
+
+### 8.3 Privacy
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **NW-19** | Partitions do not leak | For every row of Section 6.8's table, a two-condition test ("another partition visited X" against "did not"), attacker-observable timing, presence and sizes, passes the statistical rule above; the cross-container Clear-Site-Data case leaves every byte of the other container's state unchanged | T1 privacy suite in the simulator, repeated in the lab | Ship blocker for the axis |
+| **NW-20** | Limits leak within the bound | An attacker page with up to 16† partitions and a victim under another top-level site: classifier at chance (rule above); the published connection-pool attack ([xsleaks](https://xsleaks.dev/docs/attacks/timing-attacks/connection-pool/)) and its stream-limit variant fail; within one top-level site, the bounded residual is measured and published | T1 | Ship blocker across top-level sites; residual recorded within one |
+| **NW-21** | Routes do not leak | Under a non-direct route, 0 packets from a container's services (DNS, WebRTC, AIA, favicons, speculative connections) leave by another path; after a route change, 0 reused state | Simulator with packet capture; lab with a capture host | Ship blocker |
+| **NW-22** | Failures are opaque to pages | Byte-identical page-visible errors for DNS, TLS, connect, CORS, ORB, LNA, mixed-content and content-blocking failures (CS-T11) | Generated privacy suite | Ship blocker |
+| **NW-23** | Wire shape is measured and stable | Izcal's JA4 and HTTP/2 fingerprint are documented and stable across releases; at NW-M1 and every release, corpus challenge and block rates per bot-management vendor are measured under the Chrome-compatible and the honest UA; no field is unique to Izcal beyond what its TLS library's shape implies | Lab capture and corpus run | NW-D12 revisited with the data; vendor outreach |
+| **NW-24** | ECH never silently off | When SVCB resolution succeeded and every alternative endpoint advertises `ech`, 0 connections send a ClientHello whose cleartext SNI is anything other than the ECH config's `public_name` (RFC 9848 §5.1; RFC 9849 §6.1) | T1 | Ship blocker |
+
+### 8.4 Performance and energy
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **NW-25** | HTTP/3 does not lose on fast links | HTTP/3 download goodput ≥ 90%† of Izcal's own HTTP/2 on a 1 Gbps, 1 ms link on the lowest-end reference device, on Linux, Windows and macOS separately | Lab | Receive-path work; never by disabling HTTP/3 on an OS without an owner decision |
+| **NW-26** | Receive CPU | Network-service CPU per GB received over HTTP/3 at 500 Mbps ≤ 1.3×† HTTP/2's; packet I/O ≤ 25%† of samples on Linux with GRO | Lab profile | Datapath work |
+| **NW-27** | Priorities pay | LCP on the recorded slow-network corpus within 5%† of an oracle ordering | Simulator corpus, repeated in the lab against real servers | Scheduler fix |
+| **NW-28** | First-visit HTTP/3 | ≥ 95%† of loads to origins with an `h3` HTTPS record use HTTP/3 where UDP is open | Simulator and lab against real stacks | Resolver and race fix |
+| **NW-29** | UDP blocked costs little | Page load ≤ 300 ms† slower than a TCP-only client on a UDP-drop network | Simulator and lab | Race tuning |
+| **NW-30** | Parity | Page-load and goodput medians on the corpus ≤ 1.1×† the best shipping browser's on the same lab device at Stage 1 exit; ≤ 1.0× by Stage 3 | Lab | At the Stage 1 exit review, an owner decision orders the performance work against feature work, with the measured gap; never a design change that weakens P1 |
+| **NW-31** | Cache survives clean crashes | Merged into NW-45 (second clause) | — | — |
+| **NW-32** | Cache never blocks | 0 blocking disk reads on the request path; p95 lookup-to-request-start ≤ 1 ms† | Lab trace | Store fix |
+| **NW-33** | Idle means idle | With only hidden, frozen pages, the network services make 0 wakeups per minute after 60 s† (Web Push's single connection excepted when the user granted a subscription); a visible static page's network contribution keeps FP-18 (≤ 1 wakeup/s† whole browser) | Simulator wakeup counter; lab | Ship blocker (FP-17) |
+| **NW-34** | No keepalive traffic | 0 packets sent solely to keep an idle connection open (Web Push excepted as above; WebRTC consent checks only under a live session) | Simulator capture | Fix |
+| **NW-35** | Footprint | System service ≤ 4 MiB†, container service ≤ 2 MiB†, partition service ≤ 2 MiB† idle charged; with no tabs, the network line ≤ FP-1's 8 MiB†; HTTP cache within FP-26 | Footprint ledger (FP-M) | Footprint work first; NW-D3's reversal trigger applies only on DC-4 devices and below |
+| **NW-36** | Quiet browser | With default settings, no tabs and AI off, the browser's only network traffic is to the published endpoint list (updates, trust data, filter lists; security classifiers only if enabled), on the published schedule; 0 requests to any other endpoint in 24 h | Lab capture (AG-0's harness) | Ship blocker |
+| **NW-44** | Minting is cheap | Socket mint latency p50 / p95 / p99 ≤ 50 / 200 / 1,000 µs† per OS; mints per corpus page load reported; broker CPU for minting ≤ 1%† of a core at the corpus's p95 load | Lab trace | NW-D4's reversal trigger |
+| **NW-46** | Partition-key cost | Cost of NW-D7 (a) against (b) on the corpus: p75 page-load time, connections opened and DNS queries per load, reported at NW-M2 | Simulator and lab | NW-D7's reversal trigger |
+| **NW-47** | New top-level site is not slower | Added latency from binding a spare partition service for a new top-level site ≤ 5 ms† p95; spare refill never on the navigation's critical path | Lab trace | Spare policy fix; NW-D3's reversal trigger |
+
+### 8.5 Determinism and observability
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **NW-37** | Replay above decryption | A production recording replays with 0 outgoing-plaintext hash mismatches and identical network checkpoints (digest of the decision log, per-connection stream and recovery state, and the cookie, cache and HSTS writes, at each flush) in 1,000 of 1,000 replays, including a planted session with loss, reordering, ECN-CE marks, a key update, a NAT rebinding and a stateless reset; recording adds ≤ 2%† network-service CPU and ≤ 1.2×† the decrypted bytes on disk | Replay farm on recorded corpus; lab profile | Determinism bug, fixed at the first mismatch; overhead work |
+| **NW-38** | Simulation is deterministic | Same seed and corpus ⇒ byte-identical qlog and decision log in 1,000 of 1,000 simulated loads | DST farm | Determinism bug |
+| **NW-39** | No secrets in recordings | 0 keys, traffic secrets or key-derivation inputs in any recording (scanner over the format, plus a planted-key test); recordings encrypted at rest | T1 | Ship blocker |
+| **NW-40** | Every failure has a reason | 100% of network errors in the corpus and fault suites carry a `FailureReason` with layer and anchor | T1 | Fix |
+| **NW-41** | Views are true | DT-18 for the decision log; qlog validates against the pinned schema | T1 | View hidden until fixed |
+
+### 8.6 WebRTC transport
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **NW-42** | ICE and DTLS interoperate | Calls and data channels complete with ≥ 2† independent WebRTC stacks across host, server-reflexive and relay paths; DTLS 1.2 and 1.3, with X25519MLKEM768 when the peer offers it; WPT `webrtc/` transport tests at floors set at NW-M4 | Lab interop matrix; T1 | Fix |
+| **NW-43** | No local exposure without a grant | 0 host candidates with raw local addresses and 0 pairs with private or loopback remote candidates for frames without an LNA ticket; SEC-30's fuzzers green | T1 privacy suite; T2 | Ship blocker |
+
+
+## 9. Milestones and staffing
+
+### 9.1 What is ordered or held, and why
+
+Staging is allowed only for correctness, security or measurement. Every item that is ordered or held:
+
+| Item | Reason | Kind |
+|---|---|---|
+| `hg-net-wire` (budgets, checked kernels, the parsers), the sans-IO conventions, `hg-netsim` and the first `hg-net-oracle` servers come before any protocol crate | Oracles before code (ORC-1); budgets and kernels cannot be retrofitted | Correctness, security |
+| The multi-service placement (system, container and partition services, spares), the socket broker with LNA tickets, the OS-adapter process and the sandboxes come with the first connection | Moving code into a process late is the expensive direction (Firefox socket process, Chromium's sandbox) | Security (an ordering, not a delay) |
+| The recording boundary, recorded unit and decision-point log are designed at NW-M0 | They shape every state machine's interface | Correctness |
+| **One gate rule for protocol extensions** (WebTransport, multipath QUIC, ACK frequency): built against the pinned document once its wire format is in working-group last call or later, enabled after interop with two independent implementations and the relevant WPT or interop suite | Their wire formats have changed between drafts | Correctness gate |
+| BBRv3 as default only on measurement | Default changes need simulator and lab evidence | Measurement |
+| Each OS offload enabled only after its self-check passes on that machine | Driver bugs ([PT 2.4][PT]) | Robustness (runtime gate) |
+| `document.cookie` leaves the sync allowlist after NW-2's ordering cases pass | The ordering rule must be shown correct first | Correctness gate |
+
+Every other track (HTTP/2, QUIC, HTTP/3, WebRTC transport, content blocking, the trust-data pipeline) is designed at NW-M0 and built in parallel by its own staffed track.
+
+### 9.2 Milestones
+
+| ID | Milestone | Exit criterion (demo plus measurement) | Needed by |
+|---|---|---|---|
+| **NW-M0** | Foundations, the whole stack designed | `hg-net-wire` with budgets and Kani-proved kernels; sans-IO conventions; `hg-netsim` with links and DNS; first hostile servers and the compromised-service harness; the recording boundary, recorded unit and decision-log schema; system, container and partition services with spares, the socket broker with LNA tickets and the OS-adapter process, sandboxed on Linux and macOS with a probe; design review fixing every state machine's interface (HTTP/1–3, QUIC, DNS, HEv3, ICE, DTLS, cache, cookies, matcher) and the partition key type. Spikes measured: Izcal's JA4 with rustls's default shape and the upstream GREASE discussion (Q-NW-1); Windows socket passing into an AppContainer without `internetClient` (Q-NW-2); GRO and in-place decryption receive cost on Linux; WireGuard primitives (Q-NW-11) | Stage 1 M1 |
+| **NW-M1** | Browsing over HTTP/1.1 and TLS | HTTP/1.1 client, TLS via rustls, `hg-pki` with its own path builder, Mozilla roots and local anchors (enough for WPT's test CA as an added anchor), stub resolver with OS configuration and hosts mapping, Fetch core (main fetch, CORS, redirects, bad ports, cookies in memory, no cache), renderer endpoint and body pipes, typed failure reasons; `wptserve` reachable for `hg-net` and oracle tests; first fingerprint and challenge-rate measurement (NW-23) | Stage 1 M2 for the network-service skeleton; WPT runs once JS-M1 can run testharness |
+| **NW-M2** | Full HTTP/2 web | HTTP/2 + HPACK, HTTP cache with security epochs (NW-D11), cookies at rest and the cookie view region, partition table complete (NW-19, NW-20, NW-46), ORB, CORP, COEP, LNA tickets, HTTPS-First, HSTS, CT and pushed revocation from the trust-data pipeline, DoH/DoT, HTTPS records, HEv3 over TCP, WebSockets over HTTP/1.1 and HTTP/2, PAC process, `hg-net-observe` events and qlog schema; NW-1 floors set | Stage 1 M5 |
+| **NW-M3** | QUIC and HTTP/3 through their gates | QUIC v1 and v2, HTTP/3 + QPACK, HEv3 racing QUIC, 0-RTT, ECH, MASQUE through proxies, WebSockets over HTTP/3; Interop Runner green (NW-4); Linux GSO and GRO; Windows sandbox per Q-NW-2; NW-25 measured on all three OSes | Stage 1 M5 |
+| **NW-M4** | Breadth | WebRTC transport (NW-42, NW-43); content blocking; downloads, HTTP authentication and client certificates; WireGuard routes; WebTransport and dictionaries through their gates | Stage 1 M7 |
+| **NW-M5** | Stage 1 exit | Agent interception scoping; the "who received what" view; NW-11 to NW-24, NW-33 to NW-47 met; NW-30 at its Stage 1 threshold | Stage 1 M8 |
+| **NW-M6** | Parity | NW-30 Stage 3 threshold; multipath and ACK frequency through the gate rule; BBRv3 decided on measurement; L4S/Prague evaluated; Web Push client (Stage 2) | Stage 3 |
+
+**Critical path.** Networking is not on the WPT critical path: WPT's testharness needs the JS engine and DOM (JS-M1 at 15–21 months), while NW-M1 lands at 9–12. NW-M1 is needed earlier only for `hg-net`'s own unit and oracle work and for the process skeleton Stage 1 M1 and M2 start. The networking path to Stage 1 exit runs NW-M0 → NW-M3 → NW-M5, in parallel with the engine.
+
+### 9.3 Staffing and duration
+
+No primary source gives the size of a browser networking team; Stage 1's 2-engineer "Network and security" track assumed neqo, hickory-dns, the `adblock` crate and a platform verifier. Each row below is a first-principles estimate† from its deliverables, with the visible size driver; every estimate is replaced from measured velocity (oracle cases passing per engineer-month, WPT subtests per engineer-month, goodput ratio per quarter) at the NW-M1 review, as Stage 1 8.3 does.
+
+| Track | Scope | Size driver | Engineers† |
+|---|---|---|---|
+| Wire, HTTP/1.1, HTTP/2, priorities | `hg-net-wire`, `hg-http1`, `hg-http2`, scheduler | RFC 9110, 9111, 9112, 9113, 7541, 9218, 9651: about 660 MUST tokens; no client suite exists, so the hostile servers are built too | 4–5 |
+| QUIC | Transport, recovery, congestion control, datapath per OS, offload self-checks | RFC 9000, 9001, 9002 and extensions: about 500 MUST tokens; three OS datapaths; the 1 Gbps receive target | 6–7 |
+| HTTP/3 and sessions | `hg-http3`, QPACK, capsules, datagrams, WebTransport, `hg-ws` | RFC 9114, 9204, 9297, 9220, 6455, 7692, WebTransport drafts: about 560 MUST tokens | 3–4 |
+| TLS and PKI | rustls integration, ECH, resumption, `hg-pki` with own path builder, the trust-data pipeline and its operation | RFC 5280 path building, CT, revocation generation every 6 h†, a PKI test suite | 4–5 |
+| DNS and connection establishment | `hg-dns`, HEv3, pools, coalescing, Alt-Svc, OS configuration reading | About 190 MUST tokens plus HEv3 and per-OS configuration formats | 3–4 |
+| Fetch and web security | Main fetch, CORS, ORB, CORP, COEP, LNA, mixed content, HTTPS-First, referrer, metadata, CSP network check, service-worker routing, failure reasons, cache semantics | Fetch's 136 algorithms and about 1,362 steps, plus the W3C documents around it; WPT floors | 5–6 |
+| Compression | `hg-compress`: deflate, Brotli, zstd, dictionaries; shared with the text stack | Three decoders to tier P, differential-fuzzed against reference implementations | 1–2 |
+| Cookies and partitioning | `hg-cookies`, `hg-psl`, the cookie view region, Storage Access, Clear-Site-Data, the statistical privacy suite | 6265bis, Fetch cookie infrastructure; NW-19 and NW-20 | 2–3 |
+| Platform | Socket broker and LNA tickets, sandboxes per OS, OS-adapter process, spares, proxies and PAC host, WireGuard route process, captive portals, downloads, HTTP authentication, client certificates, enterprise policy | Three OSes, each with its own socket, sandbox and OS-service interfaces | 4–5 |
+| WebRTC transport | `hg-ice`, `hg-dtls`, `hg-srtp`, `hg-sctp` | Ten RFCs, a second TLS-class protocol (DTLS 1.2 and 1.3), interop with other stacks | 4–6 |
+| Content blocking | `hg-content-block` matcher, rule-syntax page, automaton compiler | List formats' network rules; FP-28's p99 ≤ 20 µs† | 2–3 |
+| Verification | `hg-netsim`, `hg-net-oracle`, the compromised-service harness, fuzzers, Kani, model learning, the replay check; takes over the security scope's 5 engineer-months of network fuzzing, caps and LNA suite (Section 9.5) | Every protocol's MUST list as cases; every forgery of Section 6.1 | 4–5 |
+| Performance and observability | Lab scenarios, CPU accounting, qlog, decision log, `hg-net-observe` support (takes over DevTools' 8 engineer-months in this area) | NW-25 to NW-30 on three OSes | 2–3 |
+| Network security response | Advisory triage (rustls, aws-lc-rs), fuzz-crash fixing within SEC-28's 14 days, this area's share of the security scope's on-call rotation | SEC-25 response times | 2–3 |
+| **Total at full strength** | | | **46–61†** |
+
+**Hiring ramp†.** Start at NW-M0 with **18–22** engineers (the leads of every track, verification and platform included), about **35** by month 12, full strength by month 24.
+
+**Duration†** (planning placeholders, replaced from measured velocity at each review): NW-M0 at 6–9 months, NW-M1 at 9–12, NW-M2 at 18–24, NW-M3 at 24–30, NW-M4 at 30–36, NW-M5 (Stage 1 exit) at 36–48, aligned with the JS engine's 39–51-month Stage 1 exit, and NW-M6 (parity) at 4–5 years. Engineer-years to parity: about 28 in year one (a linear ramp from 18–22 to 35) and 43 in year two (35 to full strength), then 46–61 a year, so 28 + 43 + 2 × 46 ≈ **163** over four years and 28 + 43 + 3 × 61 ≈ **254** over five, about **160–255 engineer-years†**.
+
+**Effect on Stage 1's plan** (planning facts, not reasons to change the design): Stage 1 8.3's "Network and security, 2" row becomes this spec's 46–61†, with per-platform renderer sandboxing staying in the security track; DevTools' 8 engineer-months for `hg-net-observe` and qlog and the security scope's 5 engineer-months of network fuzzing, caps and LNA suite move into this spec's tracks; D-S8 (funding) must cover the ramp before NW-M0.
+
+### 9.4 Decisions for the owner
+
+A bare "yes" means the recommendation. Build-versus-reuse is not on this list: the standing answer is to build Izcal's own (M-1, D-S10). **The owner most needs to see NW-D3, NW-D4, NW-D5, NW-D6, NW-D7 and NW-D19**: they change other specs or reserve an M-1 classification.
+
+| ID | Decision | Options | Recommendation | Cost | Reversal trigger |
+|---|---|---|---|---|---|
+| **NW-D1** | Protocol code structure | (a) sans-IO state machines for every protocol, driven by substrate sequences; (b) `async` protocol drivers in an allowlisted crate (CS-AS-4); (c) blocking I/O per connection thread | **(a)**: deterministic, fuzzable, no executor; Q-CS-2's ruling extended to all protocols | Explicit state machines are more code than `async` | None foreseen; (b) only if a protocol cannot be written sans-IO, put to the owner as a CS-D8 allowlist entry |
+| **NW-D2** | Production recording | (a) above decryption, in a dedicated fresh partition service with a recording nonce; typed per-datagram QUIC records; crypto-drawn wire values recorded as values; reads of long-lived stores recorded as values; outgoing plaintext hashes; no secrets; encrypted at rest; (b) Fetch responses only; (c) ciphertext plus crypto entropy | **(a)** (Section 6.16) | A recorded-transport crate (`hg-net-replay`); a service per recording; plaintext recordings are sensitive (as page content already is) | NW-37's overhead clause fails: compress or sample timing, never move the boundary below decryption |
+| **NW-D3** | Network-service placement | (a) a partition service per (top-level site, container), a container service per container (first-party cookies, encrypted DNS), a system service, spares; (b) one service per container; (c) one service (Stage 1 Section 1) | **(a)**: a page reaches only its own top-level site's network state, at almost no loss of sharing (Section 6.8's keys); built so from NW-M0 | One process per open top-level site (≤ 2 MiB† idle, NW-35); spares; cross-service calls for first-party cookies and DNS | Measured NW-35 or NW-47 failure that footprint and spare work cannot fix on DC-4 devices and below: (b) there, as a documented reduced mode, as I-1 does for renderers |
+| **NW-D4** | Who opens sockets | (a) the broker mints them after bad-port, route, purpose and LNA-ticket checks; the network services have no socket rights; (b) the network services open sockets under an OS policy | **(a)** | One IPC round trip per new connection (NW-44); ticket issuance; broker code that handles typed addresses only | NW-44 missed on an OS, or a platform that cannot pass sockets into the sandbox: (b) on that OS with the ticket and address checks moved to connect time in the service, recorded as a reduced mode |
+| **NW-D5** | Certificate verification (amends Stage 1 13.2 and NET-R6; answers Q-SEC-5) | (a) Izcal's verifier; Mozilla's root store as data; a replicate-only distrust overlay run as a published policy process; added OS anchors trusted and OS distrust honoured; CT enforced; pushed revocation; stale data degrades; (b) platform verifier first (Stage 1 13.2); (c) an Izcal root program | **(a)**: uniform on every OS, CT and revocation everywhere, replayable, no root program to staff, no lock-out | The trust-data pipeline and its operation; the overlay policy process | Enterprise breakage on the managed-environment corpus that OS-anchor and OS-distrust handling cannot fix: consult the platform verifier for those hosts only, recorded per host |
+| **NW-D6** | M-1 classifications (reserved for the owner by M-1 part 1) | (a) rustls and aws-lc-rs are TLS and cryptography (allowed); compression decoders, the CRLite filter format, DTLS, ICE, SRTP, SCTP, WireGuard, DNS and the content-blocking matcher are built by Izcal; no embedded Tor client; (b) as (a), but pure-Rust generic compression crates are allowed in the network services; (c) as (a), plus Arti embedded as a route provider | **(a)**: decoders run on hostile input in tier-P processes and must meet tier P's no-panic rule, which a third-party crate does not promise; `hg-compress` serves the text stack (WOFF2) too; a WebRTC library is browser networking; embedding Tor would put an anonymity-network client under Izcal's maintenance | Own decoders and WebRTC transport (Section 9.3 rows); users install a Tor client themselves | A generic decoder crate adopts and proves a no-panic, bounded-allocation contract: reconsider (b) |
+| **NW-D7** | Partition key | (a) Section 6.8: frame site and cross-site bit in both the cache key and connection-level keys, route in every connection-level key; (b) frame site for the cache, cross-site bit only for connections; (c) top-level site and container only | **(a)**: the strictest; closes iframe-to-iframe probing under one top-level site | More cache misses, connections and DNS queries for third parties embedded by several sites under one top level (NW-46) | NW-46: if (a) costs > 2%† p75 page-load time over (b), use (b) for connection-level state only, never for the cache |
+| **NW-D8** | DNS | (a) own stub with OS configuration, same-provider encrypted upgrade (including RFC 9462), user-chosen DoH option, OS resolver fallback in the OS-adapter process, resolution through routes; (b) OS resolver primary, own stub only for HTTPS records; (c) DoH to an Izcal-chosen provider by default | **(a)**: HTTPS records on every OS (HTTP/3 and ECH need them), enterprise names still work, no central resolver by default | A resolver and configuration reading on three OSes | Split-DNS or VPN breakage on the managed-environment corpus that configuration reading cannot fix: OS resolver for the affected suffixes |
+| **NW-D9** | Default congestion controller | (a) CUBIC + HyStart++ + pacing, BBRv3 and NewReno built; (b) BBRv3 default | **(a)**: measured-safe; BBR's complexity has produced panics elsewhere ([PT 3.2][PT]) | — | BBRv3 beats (a) on upload completion time and fairness in the simulator's corpus and in the lab on all three OSes |
+| **NW-D10** | `document.cookie` and Cookie Store | (a) a producer-writable, consumer-read-only region per (host, partition), seqlock copy, version published before the response, async writes with a local overlay; (b) sync IPC per access (Stage 1 4.1 allowlist) | **(a)**: removes a sync call; read-your-writes and read-after-fetch kept; origin keying kept | A new IPC-R1 handle kind; regions per hosted (host, partition) | A WPT or corpus case shows an observable ordering that (a) cannot meet: (b) for that case |
+| **NW-D11** | HTTP cache store (amends FP-D16) | (a) a regenerable-cache class member: crash-only segment store, bound to its format version and a broker-issued security epoch that rotates on crash, check failure, bad-message kill and security updates; (b) SQLite (HGBA-2 4.6); (c) as (a) but bound to the engine build | **(a)**: keeps FP-D16's purpose (no persistence across a crash or a security fix) without discarding the cache at every release | Own store; epoch issuance in the broker; FP-D16 amended | NW-32 or NW-45 missed after redesign: (b) |
+| **NW-D12** | Wire shape | (a) honest: rustls's shape (randomized extension order), Izcal's own HTTP/2 and QUIC parameters in the common range, GREASE if rustls accepts it, UA decided by the NW-M1 challenge-rate measurement, vendor outreach; (b) byte-for-byte impersonation of a mainstream browser; (c) add legacy suites and extensions to match a browser's JA4 | **(a)** | Upstream discussion in rustls, which declined GREASE once (2022); outreach; possibly a UA change in Stage 1 13.2 | The measurement shows challenge rates that outreach does not fix: put a shape or UA change (never impersonation) to the owner with the data |
+| **NW-D13** | Protocol extensions (WebTransport, multipath QUIC, ACK frequency) | (a) one gate rule: build at working-group last call, enable after two-implementation interop and the suite; (b) wait for the RFC | **(a)** | Tracking draft changes | The working group changes the wire after enabling: update within one release |
+| **NW-D14** | 0-RTT and resumption | (a) partitioned, single-use tickets ≤ 24 h†, 0-RTT for safe requests, cleared with cookies and on route change; (b) no 0-RTT | **(a)** | — | A replay incident class appears in the field that RFC 8470 handling does not cover |
+| **NW-D15** | Network Error Logging | (a) not implemented; (b) implemented | **(a)** (Section 6.11) | Sites lack failure reports from Izcal users | A second engine ships it, or corpus breakage depends on it |
+| **NW-D16** | Storage Access heuristics | (a) Storage Access API with a prompt only; (b) Firefox-style automatic 30-day grants | **(a)**: no silent re-linking (P1) | Some login flows prompt more | Corpus SSO breakage > 1%† of sites that a prompt cannot fix: put a narrow heuristic to the owner with its privacy cost |
+| **NW-D17** | Izcal's own traffic | (a) system service only, OS proxy configuration, a published endpoint list, OHTTP through an independent relay for user-specific requests, public files fetched plainly; (b) direct to Izcal's servers | **(a)** | A relay operator contract (Q-NW-6) | No independent relay operator available: (b) with a published logging policy |
+| **NW-D18** | Clear-Site-Data under partitioning | (a) within the current container: the site's own state in every partition where it is top-level, plus its third-party state in the current partition; (b) current partition only; (c) every container | **(a)**; (c) is rejected because a site-controlled side effect across containers links the user's identities | — | The specification settles the semantics within a container: follow it, never across containers |
+| **NW-D19** | Certificate path building (M-1 classification) | (a) Izcal's own RFC 5280 path builder in `hg-pki`, with rustls-webpki as a differential oracle; (b) rustls-webpki linked as TLS infrastructure, all policy in `hg-pki` | **(a)**: M-1 part 1 makes an unclear class the owner's decision with "build it" as the default; path building is the core of a browser verifier, and rustls-webpki's design is "strongly influenced by mozilla::pkix" | A few thousand lines plus the PKI suite NW-17 already needs | The owner classifies rustls-webpki as TLS infrastructure: (b) |
+| **NW-D20** | Ambient authentication (Negotiate, NTLM, Kerberos) | (a) only for hosts on an enterprise or user allowlist per container, default empty, run in the OS-adapter process; (b) intranet heuristics (single-label or private-address hosts) | **(a)**: no public server can obtain NTLM responses or Kerberos tickets | Enterprises configure the allowlist (one policy) | None foreseen; managed-environment breakage is fixed by policy, not by widening the default |
+| **NW-D21** | Revocation data source | (a) Izcal's pipeline generates the filter and intermediate list from CT logs and CA CRLs; (b) consume Mozilla's published CRLite data | **(a)**: no dependency on another browser's infrastructure or its publication terms, same cadence for every Izcal user | Pipeline operation (Section 6.5.1, TLS and PKI track) | The pipeline cannot meet its 6 h† cadence for two quarters: (b) where licensing allows (Q-NW-3) |
+
+### 9.5 Amendments this spec proposes to other documents (not applied)
+
+| Document | Section or ID | Amendment | From |
+|---|---|---|---|
+| HGBA-2 | 4.7 (superseded neqo text) | Rewrite from this spec: own QUIC, HTTP/3, HTTP/2 and WebRTC transport including DTLS with hybrid key exchange; rustls with aws-lc-rs; GSO/GRO probing; services per (top-level site, container) with broker-minted sockets | NW-D3, NW-D4, critique C7 |
+| HGBA-2 | I-1 (b) | Add F, R and n to the key; name the static global exceptions; state that shared limits are bounded, not closed, channels | NW-D7, C10 |
+| Stage 1 design | Section 1 (process map) | Network service row becomes: system service (1), container service (1 per active container), partition service (1 per active (top-level site, container), plus spares); add the proxy-resolver utility, the route process and the OS-adapter process | NW-D3, C4 |
+| Stage 1 design | Section 2 | Add the crates of Section 6.21 and rules NW-G1 to NW-G6 (renumbered into G-numbers at merge) | 6.21 |
+| Stage 1 design | 3.1 | `NetTransport::connect` becomes "request a socket from the broker"; wire identifiers come from `Entropy::crypto()`, never a named seeded stream | NW-D4, C2 |
+| Stage 1 design | 3.2, 3.4 | `hg-netsim` with links, DNS and Izcal's protocol crates as simulated peers; network recordings per NW-D2 (fresh partition service, typed datagram records, values read, encrypted) | NW-D2, C1, C2 |
+| Stage 1 design | 4.1 | Remove `document.cookie` from the sync allowlist once NW-2's ordering cases pass | NW-D10, C6 |
+| Stage 1 design | 8.1, 8.2, 8.3 | M5's network criterion becomes NW-M2 and NW-M3, M7 gains NW-M4; networking is not on the WPT critical path; "Network and security, 2" becomes Section 9.3's 46–61† | 9.2, 9.3, C18 |
+| Stage 1 design | 13.2 | TLS, HTTP and DNS row: no neqo, quinn, h3 or hickory-dns; certificates per NW-D5 and NW-D19; UA row cross-referenced to the NW-M1 challenge-rate measurement (NW-D12) | NW-D5, NW-D12, NW-D19 |
+| Security scope 0.3 | 6.3 assets, 6.3a index, 6.5 network-service threat model | Network services per (top-level site, container): a compromise yields that top-level site's partitions, its first-party cookies and Storage-Access-granted jars; container and system services as their own rows; entry points without neqo and hickory-dns; residuals: cache poisoning until the next security epoch, use of that site's own LNA grants | NW-D3, C3, C5, C8 |
+| Security scope 0.3 | 6.6 IPC-R1, IPC-R2 | New handle kinds: connected TCP socket, connecting TCP socket, connected UDP socket, interface-bound UDP socket (WebRTC), producer-writable consumer-read-only shared memory; broker-issued LNA tickets as the one sanctioned way for a frame's grant to reach a broker check through a service | NW-D4, NW-D10, C3, C6 |
+| Security scope 0.3 | 6.3, 6.7 | OS-adapter utility process (resolver fallback, SSPI and GSSAPI, client-key signing) with its sandbox row; the broker does none of these. Network-service rows: no socket creation, sockets as handles, no certificate-store access | C4, NW-D4 |
+| Security scope 0.3 | 6.10a | Point to Section 6.12 (Izcal's own ICE, DTLS, SRTP, SCTP; interface-bound sockets; no local candidates without a ticket) | C7 |
+| Security scope 0.3 | 6.11 NET-R5, NET-R6, NET-R7; Q-SEC-5; SEC-D13 | NET-R5's list becomes rustls and aws-lc-rs; NET-R6 per NW-D5 with degrade-not-lock-out and the published overlay process (Q-SEC-5 answered); NET-R7 enforced at the broker with tickets; SEC-D13's Windows question answered by Q-NW-2's spike | NW-D5, C12, C3 |
+| Security scope 0.3 | 9.2 costs | The 5 engineer-months of network protocol fuzzing, resource caps and LNA suite move into this spec's verification track; the on-call rotation is shared, with this area's share in Section 9.3 | C18 |
+| Coding standard 0.3.1 | Tier table, `tools/tiers.toml`; CS-AS-1 | Add the crates of Section 6.21 (tier P), `hg-cookies` as linked by renderers, `hg-net-replay` in the replay binary; NW-G3 confirms no CS-AS-4 allowlist entry; NW-G6's lint on wire identifiers | 6.21, C2, C6, C28 |
+| Footprint spec | FP-1, 8.2 | Network line itemized: system service ≤ 4 MiB†, container service ≤ 2 MiB†, partition service ≤ 2 MiB† idle; with no tabs only the system service runs within 8 MiB† | 6.17, C15 |
+| Footprint spec | 6.11 | The matcher's 8 MiB† line becomes a sealed automaton file (clean, uncharged) plus ≤ 256 KiB† charged state per partition service | 6.15, C15 |
+| Footprint spec | FP-D16 | Add the HTTP cache as a member bound to its format version and a broker-issued security epoch; the crash-discard rule kept | NW-D11, C5 |
+| Footprint spec | 6.8 | WebSocket and WebTransport sessions of frozen pages stay open without wakeups, closed only under memory pressure; a liveness PING only with a request; WebRTC consent checks only under a live session; Web Push's one connection under a user grant; all added to FP-17's background suite | 6.11, 6.17, C16 |
+| Footprint spec | 6.18.1 | Rows: connection pools and socket budgets (closed across top-level sites by placement, bounded within one); the broker's mint queue (bounded, fair-queued); a service's receive buffer and decryption queue (bounded, per-partition scheduling); HTTP-cache eviction across top-level sites (bounded) | 6.8, C10, C11 |
+| DevTools spec | DT-D2, DT-D5, M5 row, Q-DT-5 | Network recording unit and start state per NW-D2, consistent with DT-D2; "qlog from neqo" becomes "qlog from `hg-quic`"; Q-DT-5 answered; allow a live link model for a granted partition (Section 6.18); 8 engineer-months move to this spec's observability track | NW-D2, C1 |
+| JavaScript engine spec | 9.5 | The proxy-resolver process is a new jitless embedder with no DOM | 6.13 |
+| Fonts and text spec | Q-TX-11 | Answered: Izcal builds its own Brotli and zlib decoders in `hg-compress` (NW-D6), tier P, linked by the network services and by renderers for WOFF 1.0 and 2.0 decoding | NW-D6, C18 |
+
+## 10. Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| Hiring QUIC, TLS-integration, DTLS and congestion-control specialists | High | Milestones slip | Ramp from leads; the verification track builds oracles that let generalists work safely |
+| HTTP/3 loses to HTTP/2 on fast links on some OS (macOS lacks GSO) | Medium | NW-25 missed on that OS | Receive-path design first; measured per OS; owner decision before any per-OS disablement |
+| New-engine blocking by bot management | High | Users see challenges | NW-M1 measurement under both UAs (NW-D12, NW-23); outreach |
+| rustls lacks a capability: RFC 8701 GREASE (declined upstream in 2022); ECH detail | High (GREASE); Medium (ECH) | Wire shape or ECH gap | Upstream proposal with evidence; owner decision if declined (Q-NW-1); M-1 forbids forking |
+| Partition services cost more memory or latency than budgeted | Medium | NW-35 or NW-47 missed | Lean services, spares, lazy state; NW-D3's reversal trigger on small devices only |
+| Windows cannot pass sockets into an AppContainer without `internetClient` as planned | Medium | NW-D4 weaker on Windows | NW-M0 spike (Q-NW-2); reduced mode visible |
+| Trust-data pipeline (roots, CT logs, revocation) fails or goes stale | Medium | Protection degrades | Degraded mode at 10 weeks†, never a lock-out; monitoring of the publication side; NW-D21's fallback |
+| Specifications in flux: ORB, cookies (6265bis blocked, layered cookies), WebTransport, HEv3, qlog, LNA | High | Rework | Pin and anchor; snapshot-drift bot; track working groups |
+| aws-lc-rs advisory in a tier-P process | Low | The services that link it | SEC-25 response times; per-(T, C) services limit the reach of a protocol bug, not of a shared library |
+| Enterprise environments (split DNS, PAC, Kerberos, client certificates) break | Medium | Adoption in workplaces | Configuration reading, the OS-adapter process, the policy surface; a managed-environment corpus in the lab; NW-D8 and NW-D20's paths |
+| WebRTC interop gaps with deployed stacks | Medium | Calls fail on some services | Interop matrix from NW-M0's design review; NW-42 |
+
+## 11. Open questions and flagged claims
+
+### 11.1 Open questions
+
+- **Q-NW-1.** rustls randomizes extension order but declined RFC 8701 GREASE in 2022 ([issue #357](https://github.com/rustls/rustls/issues/357)). Will its maintainers accept GREASE, or a hook that lets the application add GREASE values, given the fingerprinting evidence in [PP 4.1–4.3][PP]? If not, is a ClientHello without GREASE acceptable for NW-23? Does rustls's AEAD-only suite list and extension set differ from mainstream browsers' current captures as the critique expects? (NW-M0: the spike measures Izcal's JA4 with rustls's default shape and opens the upstream discussion.)
+- **Q-NW-2.** On Windows, can the broker pass connected TCP and bound UDP sockets into an AppContainer or LPAC process that lacks `internetClient`, with overlapped I/O and USO/URO working? Chromium's Windows blockers were network-change APIs and LPAC ([SR 6.2][SR]). (NW-M0 spike; answers SEC-D13's Windows question.)
+- **Q-NW-3.** What licence terms apply to redistributing Mozilla's CCADB root data, and to the CT log list and CRL data the pipeline consumes? If NW-D21 ever falls back to Mozilla's CRLite data, under what terms?
+- **Q-NW-4.** macOS receive cost without GSO and with no supported batching API: is NW-25 reachable, or does macOS need a different send and receive design?
+- **Q-NW-5.** The second element of Fetch's network partition key is unsettled (Fetch issue #1035); if the standard settles on a different shape, NW-D7 follows it unless it is weaker.
+- **Q-NW-6.** Who operates the OHTTP relay for NW-D17?
+- **Q-NW-7.** Where does CHIPS's `Partitioned` attribute, and its ancestor bit, live once layered cookies replaces 6265bis?
+- **Q-NW-8.** What order of HSTS, HTTPS records' upgrade, HTTPS-First and mixed-content autoupgrade does the deployed web expect? No specification defines it ([PR 9.5][PR]); Izcal records black-box observations and files a spec issue.
+- **Q-NW-9.** Do the limits proposed in [SR R3–R15][SR] hold on a crawl of real sites (header sizes, CONTINUATION counts, QPACK table sizes)?
+- **Q-NW-10.** How many partition services does a heavy user's session reach (distinct top-level sites with open tabs), and does the spare policy keep NW-47 at that count?
+- **Q-NW-11.** Which WireGuard primitives does aws-lc-rs expose (BLAKE2s in particular), and which pinned general-purpose cryptography crate supplies the rest?
+
+### 11.2 Claims that are single-source, unverified or conflicting
+
+- The 4.4% UDP-blocking figure is from November 2016 ([PT 4.5][PT]); no newer public figure exists.
+- Chrome's default client congestion controller in 2026 was not confirmed ([PT 3.1][PT]).
+- The WWW 2024 paper is internally inconsistent about the throughput threshold where HTTP/3 falls behind ([PT 1.3][PT]).
+- Chromium's network sandbox state comes from source flags and Chromium's own table; whether the Windows field trial reaches all of Stable is unverified ([SR 6.1][SR]).
+- Whether Chrome 154's HTTPS-by-default for public sites shipped on its 22 September 2026 stable date was not verified (fact-check FC-M4).
+- The quiche 2025 and OpenSSL QUIC 2026 CVE details come from aggregators ([SR 1.9–1.10][SR]).
+- The Entrust distrust wording comes from a secondary source quoting Chrome ([SR 4.7][SR]).
+- The HPACK-bomb CVEs and the Netflix 2019 HTTP/2 CVE list are from the researcher's prior knowledge ([SR 1.5–1.6][SR]). (RFC 9659's 8 MB zstd window and RFC 9462 were verified in phase 8; RFC 9659 is Informational and updates RFC 8878.)
+- ORB's shipping status in Firefox and Safari in 2026 is unknown ([PP 2.5][PP]).
+- Safari's partitioning of connections and DNS is undocumented ([PP 1.18][PP]).
+- Ladybird's bot-management case does not isolate the network fingerprint as a cause ([PP 4.4][PP]).
+- Mahimahi's fidelity numbers are from 2015 networks ([GO 3.2][GO]).
+- The h2spec and structured-field test counts are from memory ([PR 1.5, 2.6][PR]).
+- Added in 0.2 and **not independently fact-checked** (the synthesis author confirmed only that the WebRTC RFCs of Section 6.12 and RFC 7050 exist with the cited subjects on rfc-editor.org): that rustls offers no DTLS and no CBC suites (critique C7, C14); glibc `getaddrinfo`'s in-process DNS parsing and CVE-2015-7547 (critique C4); the IPC-R1 per-OS handle mechanisms for the cookie view region (`F_SEAL_FUTURE_WRITE`, section duplication without `FILE_MAP_WRITE`, read-only Mach entries).
+
+## Appendix A. Review disposition (revision 0.2)
+
+Sources: the fact-check ([factcheck.md][FC], 94 claims, 5 must-fix, 19 recommended) and the design critique ([critique.md][CR], 29 findings). IDs: **FC-M** fact-check must-fix; **FC-R** fact-check recommended; **C** critique finding. Dispositions: **Applied**; **Applied differently** (why); **Rejected** (why). No finding is rejected.
+
+**Fact-check, must-fix**
+
+| ID | Finding | Disposition | Where |
+|---|---|---|---|
+| FC-M1 | rustls randomizes extension order; GREASE declined in 2022 | Applied; Q-NW-1, NW-D12 cost and the risk row restated; NW-M0 spike redefined | 6.20, Q-NW-1, NW-D12, 10, NW-M0 |
+| FC-M2 | ECH's outer SNI is cleartext; RFC 9848 §5.1 is about no fallback | Applied; NW-24 restated | 6.5, NW-24 |
+| FC-M3 | "Only provider" → only built-in provider | Applied | 6.5, 7 |
+| FC-M4 | Chrome 154 HTTPS-by-default stated as shipped | Applied, and the reason is now first-principles (C27) | 6.7, 11.2 |
+| FC-M5 | Coalescing anchor is RFC 9110 §4.3.3; ORIGIN rule is a deliberate deviation | Applied | 6.6 |
+
+**Fact-check, recommended**
+
+| ID | Finding | Disposition | Where |
+|---|---|---|---|
+| FC-R1 | Chromium sandbox wording | Applied | Summary, 2.1, 5 |
+| FC-R2 | Firefox 85: 16 kinds of state | Applied | 2.1 |
+| FC-R3 | ACK generation vs frame parsing | Applied | 3, 6.4 |
+| FC-R4 | Crypto and file I/O after packet I/O | Applied | 3 |
+| FC-R5 | HyStart++ on Windows by 2023, unpaced | Applied | 6.4 |
+| FC-R6 | `fetchpriority` alone moved Flights' LCP | Applied | 6.3 |
+| FC-R7 | "OCSP is already gone" overstated | Applied | 6.5 |
+| FC-R8 | curl's 60% are "not C memory mistakes"; the quinn state misuse | Applied | Summary, 2.2 |
+| FC-R9 | Six RFCs are about 43% | Applied | 4.2 |
+| FC-R10 | Chrome 106 "disabled by default" | Applied | 2.1 |
+| FC-R11 | Ladybird commit links | Applied | 2.1 |
+| FC-R12 | RFC 9875 link | Applied | 6.10 |
+| FC-R13 | RFC 9462 and RFC 9659 verified | Applied; both cited and removed from 11.2 | 6.6, 7, 11.2 |
+| FC-R14 | Section 6.17 → 6.16 reference; NW-37 CPU clause | Applied; section numbers changed again in 0.2 and were re-checked | 6.16, NW-37 |
+| FC-R15 | Year-one engineer-years | Applied with the new ramp (28 in year one) | 9.3 |
+| FC-R16 | "Nearly ten years" | Applied | 2.1, 5 |
+| FC-R17 | HEv3 bounds are the draft's recommended range | Applied | 6.6 |
+| FC-R18 | Header counts six notes plus the frame note | Applied | Header |
+| FC-R19 | Note fixes (PP 3.2 cites -21; PR 1.2 vs 7.6 file counts) | Applied in the notes | `fetch_privacy_partitioning.md` 3.2; `protocols_rfcs.md` 1.2 |
+
+**Design critique**
+
+| ID | Sev. | Finding | Disposition | Where |
+|---|---|---|---|---|
+| C1 | High | Recording has no start state or recorded unit | Applied: dedicated fresh partition service with a recording nonce; long-lived stores recorded as values read; network checkpoints in NW-37; per-(T, C) replay process | 6.16, NW-D2, NW-37 |
+| C2 | High | QUIC inputs missing; connection IDs from a seeded stream | Applied: typed per-datagram records; crypto-drawn wire values recorded as values; NW-G6; Stage 1 3.1 amendment replaced | 6.2, 6.4, 6.16, NW-G6, NW-37, 9.5 |
+| C3 | High | Broker policy uses identity from the message | Applied: broker-issued LNA tickets; `dns` and `proxy` purposes restricted to broker-read configuration; PAC results to the broker; WebRTC interface-bound sockets; migration as new mints; compromised-service harness in NW-16 | 6.1, 6.12, 6.13, NW-16 |
+| C4 | High | Brokered OS calls parse network bytes in the broker | Applied: OS-adapter process per container; ambient-authentication allowlist (NW-D20); per-handshake signing grants; anchors as opaque DER | 6.1, 6.14, NW-D20 |
+| C5 | High | HTTP cache breaks FP-D16's compromise rules | **Applied differently**: stronger than proposed, with format-version **and** broker-issued security epoch binding; NW-31 folded into NW-45 | 6.10, NW-D11, NW-45, 9.5 |
+| C6 | High | Cookie region breaks origin keying, IPC-R1 and IPC-R7 | Applied: per-(host, partition) region, new handle kind, seqlock copy, version before response, `hg-cookies` linked into renderers, Cookie Store events | 6.9, NW-D10, NW-2, 9.5 |
+| C7 | High | WebRTC transport missing | Applied: Section 6.12, crates, socket model, partition row, recording rule, wakeups, targets NW-42 and NW-43, staffing row 4–6†, milestone NW-M4 | 6.12, 6.21, 8.6, 9.2, 9.3 |
+| C8 | High | NW-D3 stops at the container; deferred to NW-M4 | **Applied differently**: rather than only analysing per-(T, C) services, the spec adopts them, with a container service for first-party cookies and encrypted DNS, spares and itemized budgets, built from NW-M0; per-container becomes the small-device fallback | 6.1, 6.17, NW-D3, NW-35, NW-47, 9.1 |
+| C9 | High | Clear-Site-Data crosses containers | Applied: current container only; cross-container case in NW-19 | 6.8, NW-D18, NW-19 |
+| C10 | Medium | Budgets do not close the pool channel | **Applied differently**: per-(T, C) services close it across top-level sites by placement; within one, per-page then per-partition budgets, nonce cap, randomized capacity; recorded as bounded; NW-20 statistical | 6.8, NW-20, 9.5 |
+| C11 | Medium | NW-19 not falsifiable; rows missing | Applied: statistical rule with a positive control; rows for WebRTC, timing, favicons, downloads, auth credentials, push; CHIPS ancestor bit; shared queues as bounded | 8 preamble, 6.8, NW-19 |
+| C12 | Medium | Stale trust data, distrust semantics, overlay process, OS distrust, pipeline | Applied: degrade not lock out; one distrust model; overlay as a published policy process; OS distrust honoured; Section 6.5.1 pipeline, staffed; NW-D21 | 6.5, 6.5.1, NW-17, NW-D5, NW-D21 |
+| C13 | Medium | rustls-webpki classification asserted | **Applied differently**: put to the owner as NW-D19 with the lineage evidence, recommending Izcal's own path builder (M-1's build default), rustls-webpki as an oracle | 6.5, 7, NW-D19 |
+| C14 | Medium | NW-23 unachievable; UA/handshake mismatch | Applied: shape and UA decided by an NW-M1 challenge-rate measurement; NW-23 rewritten | 6.20, NW-23, NW-D12 |
+| C15 | Medium | Footprint arithmetic | Applied: itemized per service kind; matcher as a clean mapped file; NW-35 aligned with NW-D3; lazy partition expiry | 6.15, 6.17, NW-35, 9.5 |
+| C16 | Medium | Closing at freeze and no PING change web behaviour | Applied: sessions of frozen pages stay open without wakeups; liveness PING with a request; FP-17 suite amended | 6.3, 6.11, 6.17, 9.5 |
+| C17 | Medium | Reversal triggers without measurements | Applied: NW-37 overhead, NW-44 mint latency, NW-46 partition-key cost, NW-47 navigation latency | 8, 9.4 |
+| C18 | Medium | Staffing not derived; omissions; overlap; arithmetic; critical path | Applied: size drivers per track; WebRTC, content blocking, compression, trust pipeline rows; security-scope and DevTools months moved in; ramp recomputed; critical path corrected | 9.2, 9.3, 9.5 |
+| C19 | Medium | System service, routes and NW-36 contradict | Applied: system service follows OS proxy; "trust data" removed from NW-21; NW-36 lists endpoints | 6.13, NW-21, NW-36 |
+| C20 | Medium | Content blocking unowned | Applied: Section 6.15 owns the request-matching semantics and the matcher; staffing row | 6.15, 9.3 |
+| C21 | Medium | Missing surfaces | Applied: Section 6.14 (downloads, HTTP authentication, client certificates, Web Push, enterprise policy); CSP network-side rule in 6.7; later-stage interfaces in 6.22 | 6.7, 6.14, 6.22 |
+| C22 | Medium | Targets that cannot fail | Applied: NW-9 becomes a lint; NW-27 to NW-29 in the lab against real stacks; NW-30 gets an owner-decision consequence | NW-9, NW-27–NW-30 |
+| C23 | Low | Inconsistent extension gates | Applied: one gate rule (NW-D13) | 6.4, 6.11, 9.1, NW-D13 |
+| C24 | Low | WireGuard primitives | Applied: primitives listed; crate named at NW-M0 (Q-NW-11) | 6.13, 7 |
+| C25 | Low | DNS keyed by F multiplies queries | Applied: in NW-46 | 6.6, NW-46 |
+| C26 | Low | PAC sees every URL | Applied: WPAD only on auto-detect and non-public networks; PAC source shown | 6.13 |
+| C27 | Low | "Matching Chrome" as a reason | Applied: first-principles reason, Chrome as evidence | 6.7 |
+| C28 | Low | Replay crate unnamed | Applied: `hg-net-replay` | 6.16, 6.21 |
+| C29 | Low | Amendment list incomplete | **Applied differently**: Section 9.5 is rebuilt from the critique's reconciliation list and this revision's changes, with a "From" column, rather than copied | 9.5 |
+
+Five findings are applied differently: C5 (format version and security epoch rather than epoch alone; NW-31 folded into NW-45), C8 (per-(T, C) services adopted rather than only analysed), C10 (placement closes the channel across top-level sites, which the proposed per-T budget only bounded), C13 (an owner decision recommending Izcal's own path builder) and C29 (Section 9.5 rebuilt).
+
+[HP]: ../research_notes/Izcal%20networking/history_postmortems.md
+[PR]: ../research_notes/Izcal%20networking/protocols_rfcs.md
+[PP]: ../research_notes/Izcal%20networking/fetch_privacy_partitioning.md
+[PT]: ../research_notes/Izcal%20networking/performance_transport.md
+[SR]: ../research_notes/Izcal%20networking/security_robustness.md
+[GO]: ../research_notes/Izcal%20networking/gaps_opportunities.md
+[FR]: ../research_notes/Izcal%20networking/frame.md
+[FC]: ../research_notes/Izcal%20networking/factcheck.md
+[CR]: ../research_notes/Izcal%20networking/critique.md
+[H2]: HGBA%202%20browser%20architecture%20spec.md
+[H3]: Future%20software%20browser%20engine.md
+[S1]: HGBA%20Stage%201%20architecture%20design.md
+[DT]: Izcal%20DevTools%20spec.md
+[SS]: Izcal%20security%20scope.md
+[CS]: Izcal%20coding%20standard.md
+[JS]: Izcal%20JavaScript%20engine.md
+[FP]: Izcal%20resource%20footprint.md
