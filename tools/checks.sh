@@ -265,7 +265,9 @@ fi
 #       shell, world-writable permissions;
 #   (3) GitHub workflows pass zizmor (unpinned actions, credential
 #       persistence, cache poisoning, template injection);
-#   (4) a changed Cargo.lock has no known advisory (cargo-deny, RustSec).
+#   (4) a changed Cargo.lock has no known advisory (cargo-deny, RustSec),
+#       and outside the V8-era history crates every shipped crate is
+#       available under MIT (cargo-deny licenses, HGBA-2 M-1 part 1).
 if ! skipped security; then
   sec_bad=""
   rs=$(files_matching '\.rs$' | grep -v '/third_party/' || true)
@@ -330,6 +332,14 @@ $(printf '%s\n' "$zout" | grep -E '^(error|warning)\[|^ *--> |\^' | sed "s|$TMP/
 == cargo-deny advisories: $lock
 $(printf '%s\n' "$dout" | grep -E '^(error|warning)\[|ID:|Crate:|Title:|^ +[a-z_-]+ [0-9.]+' | head -20)"
           fi
+        fi
+        # The V8-era spikes are history (HGBA-2 2.3.0) and keep their
+        # dependencies until they are archived.
+        case "$dir" in m0|m0/*|cppgc-spike|cppgc-spike/*|v8-cppgc-ext|v8-cppgc-ext/*) continue ;; esac
+        if ! lout=$(cd "$dir" && cargo-deny --log-level error --config "$CHECKS_DIR/deny.toml" check licenses 2>&1); then
+          sec_bad="$sec_bad
+== cargo-deny licenses (MIT only): $lock
+$(printf '%s\n' "$lout" | grep -E '^[0-9]+ │ license = |^ +├ [A-Za-z0-9_-]+ v[0-9]' | sed -e 's/^[0-9]* │ /    /' -e 's/^ *├ /    crate: /' | head -20)"
         fi
       done <<< "$locks"
     else sec_warn="$sec_warn cargo-deny"; fi

@@ -4,8 +4,22 @@
 # defects. Run `cargo deny check advisories` without this policy to list them.
 [graph]
 all-features = true
+# Test-only crates may carry any licence (owner decision, 19 October 2026),
+# so dev-dependencies are left out of the licence check.
+exclude-dev = true
 
 [advisories]
 version = 2
 unmaintained = "none"
 yanked = "warn"
+
+# MIT only (HGBA-2 M-1 part 1, owner decision 19 October 2026): every crate
+# that ships must be available under MIT, alone or as one choice of a dual
+# licence such as "MIT OR Apache-2.0". Anything else Izcal builds itself.
+# Unicode data under the Unicode licence is the one shipped exception.
+[licenses]
+version = 2
+allow = ["MIT", "Unicode-3.0"]
+confidence-threshold = 0.93
+# Izcal's own unpublished crates.
+private = { ignore = true }
