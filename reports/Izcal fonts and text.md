@@ -1,0 +1,924 @@
+# Izcal fonts and text
+
+*First-principles specification of Izcal's own font and text stack: font file parsing, web-font validation, font matching and fallback, Unicode algorithms, text shaping, glyph rasterization and hinting, glyph caches, the text measurement interface for layout, and system font access. Date: 19 October 2026. Status: draft 0.2, phase 8 applied. Research notes: `research_notes/Izcal fonts and text/` (`frame.md`, `history_postmortems.md`, `formats_specs.md`, `shaping_scripts.md`, `rasterization_caches.md`, `security_robustness.md`, `gaps_opportunities.md`; phase 8: `factcheck.md`, `critique.md`). Relates to: HGBA-2 2.3.0 [M-1, P1–P6, I-1, I-2, I-6, D1, Section 4.4 (superseded), Section 4.8][H2]; HGBA-3 [B1, B4, B5, B8, B9, B10, DET-1, VER-1, PRIV-2][H3]; Stage 1 design [Sections 1, 2 (G1–G9), 3.3, 5.6, 5.7, 7.5, 8.1, 8.3, 13.2 "Text and input", D-S1][S1]; JavaScript engine spec draft 0.3 [JS-D12, JS-D15, G6, G13, G18, Sections 6.9, 6.13, 6.15][JS]; resource footprint spec draft 0.3 [FP-D11, FP-D13, FP-D14, FP-D19, FP-2, FP-5, FP-14, FP-25, FP-36, Sections 6.3, 6.4, 6.6, 6.12, 6.18.1][FP]; DevTools spec 0.3 [DT-D1, DT-D4, IIP][DT]; HTML and CSS parsing and style spec draft 0.1 [font-relative units, `@font-face`][ST]; networking spec draft 0.1 [NW-D6, `hg-compress`][NW]; security scope 0.3 (in review, PR #8: Sections 6.3, 6.5, 6.7, 6.10, IPC-R7, IPC-R15, IPC-R17, SEC-12, Q-SEC-13) and coding standard 0.3.1 (in review, PR #9: tiers, CS-TY-12), cited by ID because they are not on this branch.*
+
+*Revision 0.2 (19 October 2026): phase 8 applied. The independent fact-check checked 100 claims (73 correct, 22 partly correct, 3 wrong, 2 unverifiable) and 267 external links (1 dead, replaced) and listed 3 must-fix and 24 recommended items; all are applied. The independent design critique raised 37 findings (7 High, 24 Medium, 6 Low) and a 25-item reconciliation list; all are applied, four in a different form than proposed, none rejected (Appendix A). What changed: **the OS font tier is per OS family, not per version**, and named core families resolve to Izcal's metric-compatible faces on every OS by default (TX-D1, new TX-D19), so cross-OS identity covers the common case; **renderers map only immutable font bytes** (sealed copies of anything user-writable); **the Izcal part of the session image is built at build time** and the per-session step only hashes OS files against manifests, read through a proved reader (new TX-D22); **every renderer-side text cache is partition-keyed**, raster and instance caches included; the shaper's flags and caches get Izcal's own names; **text input and editing services** get an owner and a section (6.8a, new TX-D23); **no page-controlled string reaches an OS text API in the broker**; the font-file residency channel gets a bound and a decision (new TX-D21); the emoji default becomes a decision (new TX-D20); case mapping, find-in-page matching, `local()`, the Han default, the style metrics query, PDF fonts and a CSS text feature coverage table (6.18) are added; `word-break: auto-phrase` and avar2 are no longer held; quantization is in the drawing context's local units; caches are footprint class (a); the GPU path gets a tolerance; staffing is derived from a component inventory and text is on Stage 1's critical path at M4 and M8; the colour-format evidence, the exploit tally (2 interpreter rows, not 4), Tor's model and the opcode count (219) are corrected.*
+
+*Revision 0.1 (19 October 2026): first draft, written from the six research notes by the synthesis author.*
+
+HGBA-2 2.3.0 excludes by name HarfBuzz and its ports, Fontations and Parley, and by its general rule every other library doing this work (FreeType, swash, cosmic-text, ICU4X's segmenters, OTS), so Izcal builds its own text stack from the specifications. The record says three things. **First, font parsing is where the exploits were, and they were one kind of bug:** every font exploit with a detailed published root cause trusted a number from the file (a size, a count, an index, a VM stack slot) before bounding it; of the ten font rows in Project Zero's in-the-wild sheet, two are in glyph-program interpreters (a Type 1 CharString and a TrueType instruction) and two in legacy Type 1 dictionary parsing ([SE 1][SE], [P0 RCA CVE-2020-15999](https://googleprojectzero.github.io/0days-in-the-wild/0day-RCAs/2020/CVE-2020-15999.html), [Kaspersky on CVE-2023-41990](https://securelist.com/operation-triangulation-the-last-hardware-mystery/111669/)). **Second, shaping has no normative specification:** OpenType defines tables, not reordering, and the only independent shaper that did not end as a HarfBuzz port (Allsorts) was built beside a written shaping specification ([HP 3][HP]). **Third, nobody produces the same text on every OS:** metrics, fallback and rasterization differ by platform, and the tools' answer is "test where the baseline was made" ([Playwright](https://playwright.dev/docs/test-snapshots), [GO 7][GO]). **The central idea: one description per format, per script and per Unicode algorithm, from which the parser, the validator, the shaper's script engines, the fuzzers and the test oracles are all generated; integer arithmetic everywhere layout or pixels can observe; and a font set that is the same in every installation, so that identical font bytes and text give identical glyphs, metrics and coverage on every OS and ISA.** The decisions that matter most: (1) the web sees web fonts, an Izcal-bundled pan-script font set, and by name only the OS base fonts common to every supported release of that OS family, never user-installed or on-demand fonts; generic families and the common core families (Arial, Times New Roman and the like) resolve to the bundled set on every OS, at a disk cost of an estimated 200–350 MiB† (TX-D1, TX-D19); (2) the parser is generated from Izcal's own format descriptions with proofs of bounds, and it is the validator: there is no sanitize-and-reserialize step (TX-D3); (3) web fonts are parsed and rasterized in the site's renderer, over immutable bytes only, never in the broker or GPU service, which receive only coverage masks and bounded paths (TX-D2); (4) layout-observable text values are device-independent integers, so `measureText` needs no noise (TX-D4); (5) Izcal writes and publishes its own shaping specification, compiled into its script engines (TX-D8). The stack needs about **28–37 engineers†** at full strength (derived from a component inventory in Section 9.3), is on Stage 1's critical path at M4 and M8, reached through a ramp, about **4–5 years†** to parity and about 105–160 engineer-years† (Section 9).
+
+Note sources are cited as **HP** ([history and postmortems][HP]), **FS** ([formats and specifications][FS]), **SH** ([shaping and scripts][SH]), **RC** ([rasterization and caches][RC]), **SE** ([security and robustness][SE]) and **GO** ([gaps, opportunities and cost][GO]), with the row number. Primary sources are linked inline for the claims a decision or target depends on.
+
+## 1. The problem and who has it
+
+| User | Task, in their words | What fails today |
+|---|---|---|
+| **People reading** | "Show my language correctly and crisply, and don't let a font hack me or track me" | Arabic marks and Nastaliq still mis-render in a shipping engine (WebKitGTK bug [255972](https://bugs.webkit.org/show_bug.cgi?id=255972), open since 2023, [SH 7.1][SH]); a string alone crashed CoreText (CVE-2018-4124, [SE 1.11, 3.5][SE]); font metrics alone made 34% of 1,016 browsers unique ([Fifield and Egelman](https://www.bamsoftware.com/papers/fontfp.pdf), [SE 4.3][SE]) |
+| **Web developers** | "Which font drew this?", "why did the layout jump when the font loaded?", "why does it look different on Windows?" | Tools stop at the font family ([Firefox Fonts panel](https://firefox-source-docs.mozilla.org/devtools-user/page_inspector/how_to/edit_fonts/index.html), [GO 4][GO]); developers hand-compute `size-adjust` and metric overrides in build tools, and Mac and Windows pick different vertical metrics for about 10% of Google Fonts ([Chrome](https://developer.chrome.com/blog/font-fallbacks), [GO 3.1][GO]) |
+| **Layout, canvas, SVG, MathML, the semantic plane** | "Give me shaped runs, break opportunities and metrics I can trust and cache" | No shipping engine has one deterministic interface; word caches can change output for contextual fonts ([Malkin, www-style](https://lists.w3.org/Archives/Public/www-style/2012Jul/0377.html), [SH 5.3][SH]) |
+| **Izcal's own UI** (shell, prompts, DevTools) | "Render any page title in any script without crashing" | iOS crashed on a Telugu string in 2018 and on a mixed-script string in 2015 ([Goregaokar](https://manishearth.github.io/blog/2018/02/15/picking-apart-the-crashing-ios-string/), [SE 3.5][SE]) |
+| **Izcal's engineers and agents** | "Replay this page bit-identically on CI", "prove a font cannot escape" | Text output differs per OS even with the same fonts ([GO 7][GO]); the hinting VM is itself a scriptless side-channel primitive ([Trampert and Schwarz](https://ojs.ub.rub.de/index.php/uASC/article/view/12015), [RC 2.8][RC]) |
+
+**What Izcal's specs already decide** ([frame][FR]):
+
+- **[M-1][H2] (2.3.0).** "Fonts and text shaping" and "renderer and rasterizer" are named as Izcal's own. HarfBuzz and its ports, Parley, Fontations and every library doing this work are excluded. Standards data (the UCD) is data, not code. Other engines are black-box differential signals only.
+- **[HGBA-3][H3].** B1 (DET-1: 1,000 of 1,000 bit-identical replays), B5 (a from-scratch reference path for every incremental result), B8 (semantic plane), B9 and B10 (agents, AI off by default), Tier 1 verified parsers, which HGBA-3 aligns with VER-1 and which list "image, font and media container headers", PRIV-2 (cross-site linkability ≤1%†; residual entropy of discrete surfaces such as font enumeration).
+- **[Stage 1][S1].** The utility process does "font parsing" (Section 1). D-S1 puts **`measureText`-class metrics** under seeded readback noise and normalizes font enumeration. 13.2 requires **all scripts to render in Stage 1**; its Parley plan is superseded by 2.3.0. Phase purity (3.3): parallel layout workers must not produce results that depend on interleaving.
+- **[JS engine spec 0.3][JS].** `hg-ucd` holds Unicode tables "shared with the text stack"; `hg-intl` implements UAX 29 and UAX 15 for ECMA-402; Unicode, CLDR and tz versions are build inputs, recorded. JS-D15: timing-dependent decisions are recorded B1 inputs and production never waits on a background thread. JS-D12: one implementation of each math function on every ISA, no FMA contraction. Rewritten G6 forbids crates outside L2e from depending on L2e crates other than the embedding surface.
+- **[Footprint spec 0.3][FP].** FP-D13 (a): every locale, hyphenation dictionary and codec ships in every build, identical everywhere, never fetched because a page asked. FP-D14 (a): one glyph atlas per (site, container, partition), 256 KiB† growing to ≤ 2 MiB†. FP-D19: canonical heap and buffer limits identical on every device, because a device-dependent limit is a fingerprint; this spec applies the same rule to fuel and caps. The session image (system font list and fallback tables) is built by a strictest-tier utility process, sealed and immutable for the session, with a PRIV-2-filtered per-page view (6.3). No font parsing at site-process start-up. FP-36 probes every closed shared-resource channel.
+- **Security scope 0.3 (in review).** Renderers link no OS UI or font libraries (6.7); no web-format parsing in the broker (IPC-R15); utility outputs are normalized before crossing (bitmaps, glyph outlines) (6.5, utility threat model); Rust decoders for fonts (6.10). Q-SEC-13 recommends "unmodified non-browser crates where they exist" for fonts, which 2.3.0 now excludes (Section 9.5).
+- **Coding standard 0.3.1 (in review).** Tier P (shared processes, including the GPU service) never panics on any input; tier R (per-site processes, utility processes) may panic only on broken invariants; CS-TY-12 checked arithmetic.
+
+**Success** is measured by Section 8: Unicode's own conformance files at 100%; WPT text directories at or above the best shipping browser; a per-script shaping corpus with zero unexplained divergences; no memory-unsafe code and proved bounds in every parser of font data; canonical resource bounds on every font-supplied program; bit-identical shaping, metrics and coverage across macOS, Linux, Windows, x86-64 and AArch64; no font-derived fingerprint beyond the build and OS family; and text facts no browser exposes today.
+
+## 2. History: what came before and why it was built that way
+
+### 2.1 Chronology
+
+| Year | Project | What it did | Why that way | Fate and why |
+|---|---|---|---|---|
+| 1984–85 | **Adobe Type 1** | Cubic outlines with declarative hints; the rasterizer decides the fit | Proprietary rasterizer as the business | Adobe ended authoring support in 2023; Microsoft advised disabling its Type 1 parser after the 2020 in-the-wild exploits ([ADV200006](https://msrc.microsoft.com/update-guide/vulnerability/ADV200006), [HP 1.6][HP]) |
+| 1991 | **TrueType** (Apple) | Quadratic outlines; hinting as **bytecode for a stack VM** in the font | 1-bit output on 72–96 dpi CRTs needed designer-authored per-size programs ([FreeType v40](https://freetype.org/freetype2/docs/hinting/subpixel-hinting.html)) | Survives as `glyf`; the VM is still in every rasterizer and was the 2023 zero-click entry point (undocumented `ADJUST`, [SE 1.8][SE]) |
+| 1994–2016 | **Apple GX/AAT**, **SIL Graphite** | State machines and rule programs in the font (`morx`, Graphite) | Put script logic where the script expert is | AAT lives on in macOS system fonts ([SH 3.2][SH]); Graphite ships only in Firefox, in an RLBox sandbox since 2020 ([Mozilla](https://hacks.mozilla.org/2020/02/securing-firefox-with-webassembly/), [SH 3.4][SH]) |
+| 1997 | **OpenType** (Microsoft, Adobe) | One container for TrueType or CFF outlines plus layout tables | Ended the "font wars" by cross-licensing ([Microsoft](https://learn.microsoft.com/en-us/typography/opentype/)) | The container survived; reordering was left to per-script engine documents, not the format ([FS 1.9][FS]) |
+| 1998 | **CSS2 `@font-face`**, EOT, TrueDoc | Web-only font formats | Licensing fears | Web fonts disappeared for a decade; they returned only when browsers accepted ordinary OpenType ([Lie](https://alistapart.com/article/cssatten/), [HP 6.1][HP]) |
+| 1999–2009 | **Uniscribe → DirectWrite** | Per-script shaping engines; then layered layout, shaping and rendering with **sub-pixel positioning "in ideal resolution space"** | Resolution-independent layout; independence from GDI ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/directwrite/introducing-directwrite)) | Current on Windows; Microsoft recommends grayscale AA since Windows 8 ([HP 4.1][HP]) |
+| 2005–2014 | **HarfBuzz**, ICU LayoutEngine | Portable shaper; rewrite usable around 2012, complete enough by 2013 | Shaping was specification-by-implementation: matching Microsoft script by script, which only a shared engine could amortize ([text2024](https://behdad.org/text2024/)) | HarfBuzz won; ICU LayoutEngine was deprecated in ICU 54 because it was "no longer actively developed" ([JEP 258](https://openjdk.org/jeps/258), [HP 2.7][HP]) |
+| 2009 | **OTS** | Parse, validate and **re-serialize** web fonts before the OS rasterizer sees them | OS rasterizers were "a closed-source blob running with high privilege" ([OTS](https://github.com/khaledhosny/ots)) | Still in Chrome and Firefox; every new table needed an OTS update before it worked, and rasterizer bugs passed through it (DirectWrite CVE-2021-24093, [SE 2.3–2.4][SE]) |
+| 2014 | **Universal Shaping Engine** | One table-driven engine for every Brahmic-derived and South-East Asian script without its own engine | Per-script engines did not scale ([Microsoft USE](https://learn.microsoft.com/en-us/typography/script-development/use)) | Covers 91 script tags at Unicode 18.0 (October 2026); "no new shapers have been needed" since ([SH 1.4][SH], [GO 8.2][GO]) |
+| 2015–16 | **Windows 10 font host** | Font parsing moved from the kernel to `fontdrvhost.exe` in an AppContainer | 16 kernel font bugs in one Project Zero year ([P0](https://projectzero.google/2016/06/a-year-of-windows-kernel-font-fuzzing-1_27.html)) | The same Type 1 bug (CVE-2020-0938) was exploited in the kernel against Windows 7 (ATMFD runs in the kernel through 8.1) and was not exploited on Windows 10 ([P0 RCA](https://googleprojectzero.github.io/0days-in-the-wild//0day-RCAs/2020/CVE-2020-0938.html), [SE 1.7][SE]) |
+| 2016 | **OpenType 1.8 variations**; **FreeType v40** | Variable fonts; a TrueType interpreter that **ignores all horizontal hinting** | Advance widths must not change; stem darkening conflicts with x-hinting ([FreeType](https://freetype.org/freetype2/docs/hinting/subpixel-hinting.html)) | 39–41% of sites use variable fonts in 2025 ([Web Almanac](https://almanac.httparchive.org/en/2025/fonts)); "slight" vertical-only hinting became the recommended mode ([RC 2.2][RC]) |
+| 2016–17 | **font-rs**, **Pathfinder** | Dense accumulation rasterizer; GPU rasterizer | Speed by avoiding sorting; GPU compute | font-rs idle since 2020; Pathfinder "no longer under active development" and never became Firefox's glyph rasterizer ([HP 4.5–4.6][HP]) |
+| 2012–2022 | **Colour font split**: sbix, CBDT, COLR, SVG; then **COLRv1** | Four formats from four vendors; then vector gradients and compositing | Each platform shipped its own | All four are live on the web, on 0.04–0.05% of sites (by colour-font site share SVG 53%, COLRv0 28%, sbix 13%, COLRv1 8%, but SVG falls to about 5% and COLRv0 leads at 25% once fonts with few colour glyphs are excluded, [Web Almanac 2024](https://almanac.httparchive.org/en/2024/fonts), [GO 1.6][GO]); Chrome refused OT-SVG "for architectural reasons" ([text2024](https://behdad.org/text2024/), [HP 7.2][HP]) |
+| 2018 | **macOS Mojave** | Subpixel (LCD) AA off by default | Needs pixel geometry and background colour at raster time; multiplies caches (unofficial insider account, [HP 4.4][HP]) | Off since |
+| 2020–2026 | **rustybuzz → HarfRust** | Rust ports of HarfBuzz's shaping | Memory safety | rustybuzz: ~17 KLOC hand-written, 2,221 of 2,252 HarfBuzz tests, 1.5–2× slower, archived 26 July 2026 ([rustybuzz](https://github.com/harfbuzz/rustybuzz)); HarfRust "less than 25% slower" ([HarfRust](https://github.com/harfbuzz/harfrust)) |
+| 2024 | **Ladybird** | Replaced its own shaper with HarfBuzz (13 August 2024) | Coverage | The switch is commit [0d63269cb7](https://github.com/LadybirdBrowser/ladybird/commit/0d63269cb7); a later shape-result cache "saves multiple seconds" on the ECMAScript specification, with shaping falling from about 11% to 1.8% of the profile, while the cache "currently grows unbounded" (commit [66601f7d59](https://github.com/LadybirdBrowser/ladybird/commit/66601f7d59), 2025-09-19) |
+| 2024–2026 | **Fontations/Skrifa in Chrome** | Rust font reader, "much of" it "generated automatically" ([Fontations README](https://github.com/googlefonts/fontations)); FreeType removed from Blink in Chrome 145 | FreeType fuzz upkeep cost "at least 0.25 full time software engineers"; a high-severity COLRv1 bug took more than 10 months to find ([Chrome](https://developer.chrome.com/blog/memory-safety-fonts)) | 39 fuzzer bugs, none security-critical; about 3 years from repository to default ([HP 5.4–5.5][HP], [GO 8.4][GO]) |
+| 2026 | **Unicode 18.0**, **IFT CRD**, **ISO/IEC 14496-22:2026** | 172,808 characters; incremental font transfer; avar2 in the ISO edition only | Annual Unicode cadence; CJK web fonts too large | UAX 14 and UAX 29 changed rules or data in every release from 15.1 to 18.0 ([FS 5.2–5.3][FS]); IFT has no implementation report yet ([FS 4.9][FS]) |
+
+### 2.2 Technology mismatches: assumptions that no longer hold
+
+| Assumption | Where it came from | Why it no longer holds | Evidence |
+|---|---|---|---|
+| Fonts are passive data | WOFF2's security appendix ("no active code") | TrueType bytecode, CharStrings, AAT state machines, COLRv1 paint graphs and OT-SVG all run font-supplied logic; Fontemon is a game in an `.otf` and llama.ttf ran an LLM through a font | [WOFF2](https://www.w3.org/TR/WOFF2/); [Fontemon](https://www.coderelay.io/fontemon.html); [llama.ttf](https://github.com/fuglede/llama.ttf); [HP 6.3][HP], [SH 4.7][SH] |
+| A sanitizer in front of the parser makes parsing safe | OTS (2009) protecting closed OS rasterizers | When the parser is Izcal's own and memory-safe, a second validator only lags new tables; OTS did not stop rasterizer bugs | [SE 2.3–2.4][SE]; [HP 5.3][HP] |
+| Hinting is needed for legible text | 1-bit CRTs (1991) | x-hinting is ignored by FreeType v40, macOS does not hint, Microsoft recommends grayscale for Store apps; but 75% of Steam's primary displays are still 1080p or 1440p, so vertical snapping and gamma still matter | [RC 2.1–2.9, 3.5][RC] |
+| LCD subpixel AA is the quality option | ClearType (1998–2001) | Conflicts with GPU compositing (unknown background), multiplies atlases, and is a fingerprint source; macOS dropped it | [HP 4.4][HP]; [RC 3.3–3.6][RC] |
+| Layout may use hinted, device-rounded advances | GDI-compatible measuring | Makes layout depend on resolution and OS; DirectWrite, FreeType v40 and Skia all moved to linear advances for layout | [RC 2.4–2.6][RC] |
+| The OS font set is the web's font set | Desktop browsers 1995–2018 | Font lists were among the top three fingerprinting attributes; Safari (2018), Tor and Firefox restrict them; Windows and macOS install fonts on demand mid-session | [SE 4.1–4.8][SE]; [GO 5.1–5.3][GO] |
+| Ask the OS which font covers a character | Platform fallback APIs | Slow (Firefox stalls of 0.13 s to over 1 s), nondeterministic, and a fingerprint | [GO 6.1–6.2][GO] |
+| Text rendering differs by platform, and tests must accept it | OS rasterizers and metrics | Only true if the browser delegates to the OS; an owned parser, shaper and integer rasterizer can be identical everywhere | [GO 7][GO] |
+| GPU rasterization of glyphs is the future | Pathfinder, Slug | GPU float evaluation is not bit-exact across vendors (WGSL leaves accuracy, reassociation and fusion to the implementation); CPU raster into an atlas won in browsers | [WGSL §15.7](https://www.w3.org/TR/WGSL/#floating-point-evaluation); [HP 4.6][HP] |
+| Shaping is HarfBuzz's job, and HarfBuzz's behaviour is the specification | 2012–2026 consolidation | M-1 forbids the port route; Microsoft's script documents are informative and of uneven age (2018 to October 2026) | [FS 1.9–1.10][FS]; [HP 3][HP] |
+
+## 3. Today: the landscape and its gaps
+
+**Three implementations matter**: DirectWrite, Core Text, and FreeType or Skrifa plus HarfBuzz ([text2024](https://behdad.org/text2024/)). Chrome and Firefox use HarfBuzz everywhere; Safari uses Core Text ([HP 2.4][HP]). The open stack is held up by about three maintainers ([GO 8.1][GO]).
+
+**Conformance is unfinished everywhere.** On 18 October 2026 no browser reaches 100% in any WPT text directory: `css/css-text` (1,980 files) scores 84.9% in Chrome and about 78.5% in Firefox and Safari; `css/css-fonts` 87.9 / 89.1 / 83.5%; `css/css-inline` 78.0 / 79.9 / 49.4% ([FS 6.1][FS], computed from wpt.fyi). Shaping has **no official test suite**; the largest public corpus is HarfBuzz's ~2,250 cases, and Unicode's text-rendering-tests compare SVG paths within one font unit ([SH 7.3–7.4][SH]).
+
+**The web's text is mostly drawn with fallback fonts.** 88% of sites use web fonts in 2025 (87% in 2024), but only about 0.4% of web fonts cover Han ([Web Almanac 2025](https://almanac.httparchive.org/en/2025/fonts)); Chinese web-font use "remains near-zero … most likely a matter of file size" ([Web Almanac 2024](https://almanac.httparchive.org/en/2024/fonts), [GO 2.2][GO]). CJK web fonts that do exist arrive as 100–124 `unicode-range` slices per family (measured: Noto Sans JP, 124 slices, 2.8 MiB, [GO 2.4][GO]). So the system and fallback path decides how most CJK, Indic, Arabic and Thai pages look.
+
+**Security is decided in parsers and glyph programs.** 10 of the 412 CVE rows in Project Zero's sheet (August 2014 to October 2026) are font parsers: 2 in glyph-program interpreters (CVE-2020-27930, Type 1 CharStrings; CVE-2023-41990, TrueType `ADJUST`), 2 in Type 1 Multiple Master dictionary parsing (CVE-2020-0938, CVE-2020-1020), 3 table parsing, 1 PNG inside a font, 2 the ATMFD driver interface; no row names a shaper ([SE 1.1–1.2][SE], [P0 RCA CVE-2020-0938](https://googleprojectzero.github.io/0days-in-the-wild//0day-RCAs/2020/CVE-2020-0938.html)). Specifications mandate almost no resource limits: COLRv1 "must" be acyclic but has no depth limit; hinting time, composite depth and lookup nesting have none ([COLR](https://learn.microsoft.com/en-us/typography/opentype/spec/colr), [SE 3][SE]). Verified generated parsers already run on hostile input at scale: EverParse checks every Hyper-V vSwitch packet with under 2% overhead ([IETF 123 slides](https://datatracker.ietf.org/meeting/123/materials/slides-123-ufmrg-eerprse-00), [SE 6.2][SE]).
+
+**What is invisible today** ([GO 10][GO]):
+
+| Gap | Evidence | What an owned stack can do |
+|---|---|---|
+| Which font drew which glyph, and why that fallback | Tools list fonts per element, not per glyph; OS fallback APIs return a font, not a reason ([GO 4, 5.2][GO]) | Per-glyph provenance with the CSS Fonts 4 §5 matching step that chose it |
+| Metric overrides that would remove the layout shift of a font swap | Next.js, Nuxt and Fontaine recompute metrics at build time ([GO 3.2][GO]) | The measured shift and the exact `size-adjust` and overrides that cancel it |
+| When each face blocked, swapped or failed | `swap` on ~50% of pages, `block` on ~25% ([GO 1.8][GO]) | Font-load events on B1's clock, joined to the relayout each caused (B4) |
+| Why a line broke here, and in which bidi order | No tool shows it ([GO 4.4][GO]) | The UAX 14 rule, dictionary word or `text-wrap` decision per break; bidi levels and runs |
+| Which OpenType lookups shaped a run | No tool documents it ([GO 4.2][GO]) | A per-run trace of engine, features and lookups, anchored to Izcal's shaping specification |
+| Why text differs on another OS | Vendors advise one environment ([GO 7.1][GO]) | No difference unless the font set differs, and the font set is shown |
+
+## 4. First principles
+
+### 4.1 Users' real tasks
+
+| ID | Task | Who | What the text stack must provide |
+|---|---|---|---|
+| U1 | Read any script correctly | People reading | Every script Unicode encodes, shaped as its users expect; correct bidi, line breaking, emoji; a font for every character |
+| U2 | Read crisply and quickly | People reading, low-DPI majority | Good grayscale coverage, gamma and darkening; fast first text; no layout jumps |
+| U3 | Stay safe and untracked | People reading | No memory-unsafe font code; bounded font programs; no font-derived fingerprint beyond what the UA already says |
+| U4 | Load web fonts predictably | Web developers | CSS Fonts and Font Loading exactly; `font-display` on a deterministic clock; metrics and overrides as data |
+| U5 | Know what the engine did | Web developers, agents | Which font, which fallback step, which lookups, which break rule, with spec anchors |
+| U6 | Get identical results everywhere | Developers, Izcal CI, replay | The same output on every OS and ISA for the same font set; recordings that replay text exactly |
+| U7 | Lay out, measure and select text | Layout, canvas, editing, semantic plane | Shaped runs with cluster maps, break and concat safety, metrics, carets and hit testing from one contract |
+| U8 | Track Unicode, OpenType and CSS every year | Izcal engineers | Data-driven algorithms regenerated from pinned UCD, CLDR and spec texts; anchors and oracles |
+
+### 4.2 Platform primitives
+
+- **OpenType 1.9.1** (Microsoft, May 2024) and **ISO/IEC 14496-22:2026** (5th edition; publication date not verified, as iso.org refuses automated access; the only home of avar version 2) define **50 distinct tables**, 17 layout lookup types and three glyph programs: the TrueType instruction set (219 opcode values in 122 instruction entries, about 18,000 words), Type 2/CFF2 CharStrings, and the COLRv1 paint graph (32 paint formats) ([FS 1–3][FS]). **No official machine-readable description exists** ([FS 1.8][FS]).
+- **Shaping behaviour** is described only by Microsoft's roughly 24 informative script-development pages and the Universal Shaping Engine document with its two override data files, written "for font developers" and outside ISO ([FS 1.9–1.10][FS], [SH 1][SH]); UAX 53 (Arabic mark rendering) and UTS 51 (emoji) are normative Unicode texts ([SH 1.7, 1.15][SH]).
+- **Unicode 18.0.0** (16 September 2026): UAX 9, 14, 15, 29, 50, 51, 53 and UTS 39, with about **628,000 lines of conformance data** ([FS 5][FS]). UAX 14 and UAX 29 change every year.
+- **Web specifications**: CSS Fonts 4 (WD, 16 October 2026; §5 font matching), CSS Fonts 5, CSS Font Loading 3, CSS Text 3 (CRD) and 4, CSS Writing Modes 3 and 4, CSS Inline 3, the HTML canvas text preparation algorithm and `TextMetrics` (12 attributes), WOFF 1.0, WOFF 2.0 (Recommendation of 8 August 2024), IFT (CRD, 13 October 2026), MathML Core §5 (OpenType MATH) ([FS 4][FS]). Most are drafts, so pins are dated snapshots.
+- **Data**: the UCD, CLDR 48, emoji data, Microsoft's USE override files, ICU's word lists for Thai, Lao, Khmer, Burmese and Chinese/Japanese (BSD-style and Unicode-3.0 licences), TeX hyph-utf8 patterns (88 languages, mixed licences) ([FS 7][FS]).
+- **Hardware and OS**: integer SIMD with identical semantics on x86-64 and AArch64; no OS font API is needed to read font files, which are bytes on disk ([GO 5][GO]).
+- **Izcal's own architecture**: a renderer per (site, container) (I-1); a seeded substrate (B1); a sealed session image built outside the broker (FP 6.3); partitioned atlases in the GPU service (FP-D14); typed IPC with shared memory; a decoder process per (site, container) for images (FP-D11 (b)).
+
+### 4.3 Izcal's principles that bind this design
+
+P1 outranks P4: a bounded, verified glyph program is preferred to a faster unbounded one, and privacy is not traded for native look without the user's choice. P2: one engine and one set of rules on every OS; a faster wrong shaping is a regression. P3: every accelerated path (GPU glyph rendering, caches) has a correct CPU path, and every font failure degrades to a defined fallback, never to a crash. P4: real-page text latency, low-DPI legibility and memory are targets. P6: no number here is presented as measured unless it was. M-1: everything is built; specifications, Unicode's data and conformance files and Izcal's own corpora are the oracles.
+
+### 4.4 Assumptions kept and broken
+
+| Assumption | Keep or break | Why |
+|---|---|---|
+| The sfnt/OpenType container, as the web's one font format family | **Keep** | It ended the format wars and every tool reads it ([HP 10][HP]) |
+| A sanitizer re-serializes fonts before the parser sees them | **Break** | The parser is Izcal's own; one generated reader whose acceptance set *is* the validation policy removes the lag OTS imposed (TX-D3) |
+| Memory safety depends on validating first | **Break** | Every accessor checks bounds on every read, whatever validation concluded, so a validator bug cannot become a memory error (the H-2 idea of the JS spec, applied to font bytes); and renderers map only immutable bytes, so a file cannot change or shrink underneath them (6.1) |
+| Glyph programs may run unbounded because fonts are trusted | **Break** | Canonical fuel on every interpreter, with a specified result on exhaustion (TX-D10) |
+| Shaping behaviour is whatever the dominant shaper does | **Break** | Izcal writes the shaping specification it implements, anchored to Microsoft's pages and the UCD, and files gaps upstream (TX-D8) |
+| One script engine per script family, table-driven where possible | **Keep** | USE showed table-driven engines scale ([SH 1.4][SH]); Izcal goes further: every engine's grammar and reordering are data |
+| Shaping results are cached per word | **Keep, constrained** | A measured large win ([HP 3.6][HP]); reuse only where joining does not change shaping (`join_reshapes` unset), partition-keyed, and output must be identical with the cache off (TX-D16) |
+| Layout uses hinted or device-rounded advances | **Break** | Linear advances in integers; hinting is raster-only (TX-D4, TX-D5) |
+| The OS rasterizer, shaper or fallback API is used for system fonts | **Break** | They differ per OS and version and are attack surface in a privileged library; Izcal reads font files as bytes (TX-D15) |
+| The page sees every installed font | **Break** | A top fingerprinting surface; three browsers restrict it ([SE 4.5–4.8][SE]) (TX-D1) |
+| TrueType bytecode hinting is applied to every hinted font | **Break** | Vertical-only snapping by Izcal's own autohinter; the VM runs only where outlines need it (TX-D5) |
+| LCD subpixel AA | **Break** | Grayscale only (TX-D6) |
+| GPU glyph rasterization replaces the CPU | **Break** | CPU integer raster is the reference and the default for text sizes; a GPU outline path is optional for large glyphs and verified against it (TX-D13) |
+| Fonts are parsed in a privileged or shared process | **Keep broken** | Never in the broker or GPU service; web fonts only in their site's renderer (TX-D2) |
+| Unicode algorithms are hand-coded per version | **Break** | Rule tables and grammars generated from the pinned UCD and the UAX rule lists; Unicode upgrades are data changes (TX-D11) |
+| Dictionaries and models for South-East Asian line breaking may use floating point (LSTM) | **Break** | Dictionaries with integer scoring are deterministic across ISAs; learned float models are not without JS-D12-style work (TX-D12) |
+| Text metrics need readback noise | **Break** | Metrics that are identical for every user of a build carry no entropy to hide (TX-D4, Section 9.5) |
+
+## 5. Lessons learned
+
+Lessons are ideas and evidence, never code or templates (M-1).
+
+| Project | What happened | Lesson | How Izcal applies it |
+|---|---|---|---|
+| Windows kernel fonts → `fontdrvhost` | 16 kernel font bugs in a year; the same Type 1 bug was exploited in the kernel on Windows 7 and was not exploited on Windows 10, where it ran in user mode ([SE 1.7, 2.1–2.2][SE]) | Placement contains what parsing cannot prevent | Font parsing only in the site's renderer or a strictest-tier utility process; never broker or GPU service (TX-D2) |
+| OTS | Re-serializing sanitizer; new tables broken until taught; rasterizer bugs passed through ([SE 2.3–2.4][SE]) | A second validator lags and does not cover the interpreters | One generated reader is the validator (TX-D3); interpreters get their own bounds (TX-D10) |
+| Fontations/Skrifa | Reader "much of" which is "generated automatically" ([README](https://github.com/googlefonts/fontations)); 39 fuzzer bugs, none security-critical; validated against FreeType at every step ([Chrome](https://developer.chrome.com/blog/memory-safety-fonts)) | Generation plus differential testing gives a safe parser in about three years | `.hgfont` descriptions generate the reader, fuzz grammars and proofs; other engines as black-box differentials only (TX-D9) |
+| EverParse, Wuffs | Proved parsers at under 2% cost; compile-time bounds faster than C ([SE 6.2–6.3][SE]) | Proof is affordable for binary formats | Kani proofs of every generated accessor (TX-11) |
+| CVE-2020-15999, CVE-2025-27363, CVE-2020-0938 | 16-bit truncation, signed-to-unsigned wrap, unbounded count ([SE 1][SE]) | Every exploited font bug with a detailed public root cause trusted a number from the file (the `ADJUST` bug's details are unpublished) | Checked arithmetic on every font-derived value, enforced by lint (G-TX3) |
+| CVE-2023-41990 (`ADJUST`) | An undocumented 1990s opcode was the zero-click entry ([Kaspersky](https://securelist.com/operation-triangulation-the-last-hardware-mystery/111669/)) | Undocumented behaviour is attack surface with no oracle | Only documented opcodes and tables; anything else is an error with a defined fallback |
+| HarfBuzz work limits | 64 ops per character raised to 1024 in 2020 because a real Duployan font hit it; HarfBuzz's current default is 4,096 per character (minimum 65,536) with nesting depth 64 ([SH 4.6][SH]) | Limits are necessary, and must come from real fonts | Canonical fuel set from the largest real fonts, identical everywhere (TX-D10) |
+| CVE-2023-25193 | O(n²) mark search ([SE 3.2][SE]) | Algorithms, not only limits, must be linear | Linear-time shaping and segmentation as a design rule, tested with 10⁴-mark inputs (TX-14) |
+| Telugu crash (CVE-2018-4124) | A string, no bad font, desynchronized buffers ([SE 3.5][SE]) | Shaping state machines need proofs of their invariants, and UI renderers see hostile text | Panic-freedom of shaping and segmentation for every input string with the bundled fonts (TX-12) |
+| ICU LayoutEngine, Pango | Died or nearly died without maintainers ([HP 2.7, 2.9][HP]) | Text stacks die from staffing, not design | A sustained team with a ramp (Section 9.3) |
+| Allsorts | The one independent shaper, built with a written shaping specification ([HP 3.3][HP]) | Without a reference implementation, write the specification | The Izcal shaping specification (TX-D8) |
+| USE | One table-driven engine replaced per-script code ([SH 1.4][SH]) | Generate behaviour from Unicode properties | Every script engine's grammar and reordering as data (TX-D8) |
+| FreeType v40, macOS, DirectWrite | Moved to x-unhinted, linear advances, grayscale ([RC 2][RC]) | Device-independent layout is the industry's own conclusion | Layout never sees hinting (TX-D4); vertical-only snapping (TX-D5) |
+| Mowery and Shacham | 44 distinct renderings among 294 samples of the same web-font bytes ([canvas.pdf](https://hovav.net/ucsd/dist/canvas.pdf)) | Rendering variety is a fingerprint | One integer rasterizer, pinned gamma and darkening tables (TX-D6) |
+| Safari, Tor, Firefox, Brave | Restricted or randomized font visibility; randomization broke sites ([SE 4.5–4.8][SE]) | Restrict to a fixed set; do not randomize | TX-D1 |
+| Firefox font-list stalls | 0.13 s to over 1 s enumerating fonts at run time ([GO 6.1–6.2][GO]) | Enumerate once, off the critical path | Sealed session image (FP 6.3, TX-D15) |
+| Chrome OT-SVG refusal | An SVG renderer in the glyph path did not fit Chrome's architecture ([HP 7.2][HP]) | The cost is architectural, not inherent | Izcal's renderer already holds its own SVG engine; OT-SVG is supported in a restricted glyph mode (TX-D7) |
+| Chromium "simple text" path | A fast path without kernings and ligatures had to be deleted ([Chromium](https://www.chromium.org/teams/layout-team/eliminating-simple-text/)) | Two text paths diverge | One shaping path for every run; the cache, not a second path, provides speed |
+| Mozilla word cache | Shaping words separately broke contextual fonts ([SH 5.3][SH]) | Cache boundaries are a correctness question | The `join_reshapes` flag decides reuse (TX-D16) |
+| Pathfinder | GPU rasterizer never displaced CPU raster in a browser (Firefox detail Low, [HP 4.6][HP]) | The atlas path wins for text sizes | CPU integer raster to atlas; GPU path only for large glyphs (TX-D13) |
+| Hyphenation per browser | Platform-dependent `hyphens: auto` (Low, [HP 8.4][HP]) | Data that varies by install is web-observable variance | Every dictionary in every build (FP-D13), licence-checked (TX-D14) |
+
+## 6. Design
+
+### 6.0 Architecture at a glance
+
+The stack has one rule for every part: **a description, then a generator, then code**. Font tables are described in `.hgfont`, script engines in `.hgscript`, Unicode algorithms in the UAX rule lists plus the pinned UCD; generators emit the Rust, the proofs' harnesses, the fuzz grammars and the spec anchors. Every value that layout, script or pixels can observe is computed in integers.
+
+```
+ BUILD TIME   .hgfont table descriptions --hg-fontgen--> hg-fontfmt (reader = validator), Kani harnesses, fuzz grammars
+              .hgscript engine grammars + UCD/USE data --hg-scriptgen--> hg-shape script engines, test vectors
+              UCD, CLDR, emoji, dictionaries, patterns --hg-unicode-build--> hg-ucd tables, segmentation data (engine image)
+              bundled font set + per-OS-family manifests --font step----> install image + prebuilt session-image part
+
+ BROKER        lists font directories and config files (metadata only), opens read-only handles; parses nothing
+                  | handles                                      ^ sealed session image handle
+                  v                                              |
+ FONT SERVICE  (utility, strictest tier, once per session)  hg-font-service: hashes OS font files against the per-family
+               manifests, copies non-immutable files into sealed regions, assembles the session image from prebuilt entries
+                                                                 |
+ RENDERER (one per (site, container))                            v  per-page filtered view + read-only font mappings
+   hg-font-load (CSS Font Loading, font-display on the substrate clock, WOFF/WOFF2/IFT decode)
+   hg-fontfmt (generated reader)   hg-font-vm (TrueType VM, CharStrings, COLRv1, AAT, all fuel-bounded)
+   hg-font-match (CSS Fonts 4 §5 matching, fallback, synthesis)
+   hg-unicode (bidi, line break, segmentation, normalization, emoji, vertical orientation)   hg-hyphen
+   hg-shape (OpenType Layout + AAT interpreters, generated script engines)
+   hg-text (itemization, shaping cache, measurement and line-breaking interface, canvas text, MATH access)
+   hg-glyph-raster (integer coverage rasterizer, autohinter, raster cache)  --coverage masks-->  GPU SERVICE
+   layout, paint, canvas, SVG, MathML, semantic plane consume hg-text                            hg-glyph-atlas: one atlas per
+                                                                                                 (site, container, partition)
+                                                                    + bounded paths for large glyphs (graphics spec)
+ DECODER PROCESS per (site, container) (FP-D11 (b)): PNG/JPEG/TIFF from sbix and CBDT  -> pixels back to the renderer
+```
+
+### 6.1 Processes and placement (TX-D2)
+
+| Work | Where | Why |
+|---|---|---|
+| Parsing, validating, interpreting and rasterizing **web fonts** | The renderer of the (site, container) that loaded them, tier R, over bytes in its private memory | The renderer already runs that site's hostile script, so a font bug inside it gains no authority the page lacks; shaping needs the layout tables in the process that lays out; moving parsing to another process would put IPC on layout's synchronous path |
+| Building the **session image** | The Izcal-set part at build time (tier T); per session, `hg-font-service`, a utility process at the strictest tier, hashes OS files against the manifests and copies non-immutable files into sealed regions; it parses no font bytes (TX-D22) | Installed fonts are attacker-reachable (a user may install a hostile font, and OS fonts were the 2023 zero-click target); the broker parses nothing (IPC-R15); the strictest tier has no filesystem, so the broker passes it handles; one image is read by every renderer, so it is built from verified inputs and read through a proved reader |
+| Shaping and rasterizing **bundled and OS fonts** for a page | That page's renderer, over read-only mappings of **immutable** bytes only: integrity-protected system files, the installed Izcal set, or sealed copies (6.4) | Same reader, same fuel; no OS font library in any renderer (security scope 6.7); a file that could shrink or change underneath would turn a bounds-checked read into a SIGBUS or a nondeterministic acceptance |
+| Decoding PNG, JPEG or TIFF glyph images (`sbix`, `CBDT`) | The decoder process per (site, container) (FP-D11 (b)) | CVE-2020-15999 was PNG inside a font ([SE 1.5][SE]); images go where images go |
+| OT-SVG glyph documents | Izcal's SVG engine in the renderer, restricted glyph mode (6.3) | It is the renderer's own SVG engine; no second process |
+| Atlas allocation and upload | GPU service (tier P), receiving **coverage masks**: width, height and format (A8 or premultiplied RGBA8) travel in the copied IPC message; the bytes are written into a region the GPU service allocated at exactly that size, so it never reads a dimension from shared memory (security scope IPC-R7); a per-partition upload budget per frame (256 KiB†) bounds the work one partition can cause | The GPU service never sees font bytes, tables or glyph programs |
+| Large glyphs, large colour glyphs and transformed text | Sent as paths in the graphics spec's **bounded path format** (segment count, nesting and coordinate range limits, Section 9.5) | Paths are already a display-list item type; the text stack produces them in integers; these are the only web-font-derived outlines the GPU service sees |
+
+**What a compromise reaches.** A renderer compromised through a font has what that site's script could already get after a renderer exploit: that (site, container)'s data (I-1). The font service holds no site data and no network, and per session it parses no font bytes, only hashes files and copies bytes, so it is hard to compromise through a font; if it were, it could poison the session image, which is why every renderer reads the image as untrusted input through a proved reader, checks each font file's hash against the manifest entry, and re-validates each face with the same reader when it first maps it. Neither the broker nor the GPU service runs any font code (TX-15). **OS text stacks in the broker**: on macOS and Windows the broker links the OS UI frameworks that own native windows, and those load Core Text or DirectWrite. The rule is that **no page-controlled string reaches an OS text API in the broker**: native window titles, Dock and taskbar menus, jump lists and OS notifications show broker-generated strings (for example the site's registrable domain) or text pre-rendered by the shell renderer, so a Telugu-class string never meets an OS shaper in a trusted process (TX-16).
+
+### 6.2 Font formats: one generated reader that is also the validator (TX-D3)
+
+**`.hgfont`** is an Izcal-authored description language for binary tables, written from the OpenType 1.9.1 prose, the ISO 5th edition (for avar2), Apple's TrueType Reference Manual (AAT) and the WOFF and IFT recommendations. Each field carries a spec anchor. No official machine-readable OpenType description exists, and the community ones are partial or another project's artifact, so Izcal writes its own ([FS 1.8][FS]). From each description `hg-fontgen` emits:
+
+- a **zero-copy reader** in safe Rust: every access is a bounds-checked slice with widened, checked arithmetic on offsets and counts; nothing is copied or allocated except where a table's semantics need it; there is **no `unsafe` at all** (byte-order reads need none);
+- a **Kani harness per accessor** proving it cannot panic, overflow or read outside its table for any bytes up to a bounded size (TX-11);
+- a **structure-aware fuzz grammar**, because random mutation "rarely produce[s] partially valid structures" ([Chrome](https://developer.chrome.com/blog/memory-safety-fonts));
+- **anchors** into `hg-anchor`'s index, so a test failure names the field's spec section.
+
+**Memory safety never depends on validation.** Accessors check bounds on every read, always. Validation decides only **acceptance**, which is a web-observable outcome and must be deterministic:
+
+1. **At load (eager), structural.** The sfnt directory, table checksums' presence (not their values, which the web ignores), and every table the engine will read for layout and matching (`head`, `hhea`, `maxp`, `OS/2`, `name`, `cmap`, `hmtx`, `post`, `GDEF`, `GSUB`, `GPOS`, `kern`, `fvar`, `avar`, `STAT`, `HVAR`, `MVAR`, `vhea`, `vmtx`, `VORG`, `BASE`, `MATH`, `COLR`/`CPAL` headers, `CBLC`/`sbix` indexes, `morx`/`kerx` headers) are checked against their descriptions. Failure is a CSS **font load failure** for that face, so the next source or family is used (CSS Fonts 4 §4.3). Unknown tables are **ignored, never stripped**: nothing re-serializes the font, so a new table costs nothing until Izcal reads it.
+2. **Per glyph (lazy).** Outlines, glyph programs, colour glyph graphs and bitmaps are validated when first used. Failure is local and specified: the glyph falls back to its plain outline, then to an empty glyph with the font's advance (Section 6.3's table), and a diagnostic event is emitted.
+3. **Versions.** A table whose version Izcal does not implement is treated as absent, with the same fallback as a missing table.
+
+**Containers.** WOFF 1.0 (zlib) and WOFF 2.0 (Brotli plus the `glyf`/`loca` and `hmtx` transforms) decode to sfnt bytes in the renderer before the reader sees them; the declared total size is checked before allocation and the decoder stops at it ([SE 3.4][SE]). The transforms are written from the WOFF 2.0 Recommendation. The Brotli and zlib decoders are the networking spec's `hg-compress` (built by Izcal under NW-D6 (a), shared with WOFF2), used here under its decompression budget: the declared size, an output-ratio cap and an absolute cap of 128 MiB† per font. TrueType Collections are supported. **IFT** patches (table-keyed and glyph-keyed) are applied by `hg-font-load` with the specification's caps (at most 100 invalidating and 2,000 total patches per extension, [HP 6.4][HP]); the loader is designed for patches from TX-M0 and ships IFT when its WPT suite passes (Section 9.1). **Not supported, by decision:** Type 1, EOT, legacy Mac `FOND`/resource-fork fonts, `mort` (pre-`morx` AAT) (TX-D7).
+
+**Variations** (`fvar`, `avar` 1 and 2, `gvar`, `cvar`, `HVAR`, `VVAR`, `MVAR`, CFF2 `blend`, COLRv1 variable paints) are computed in the specification's own fixed-point types: normalized coordinates in F2Dot14 (CSS values converted with round-half-to-even), deltas accumulated across tuples in 16.16 font units and rounded once (half to even) before scaling, interpolation of untouched points (IUP) in the same font-unit space; advances from `gvar` phantom points when `HVAR` is absent follow the same rule, and differences from other engines are recorded as black-box observations. One instance is keyed by (partition, face, normalized coordinates), so every consumer in a partition shares its outlines and metrics, and nothing about an instance is shared across partitions (6.8).
+
+### 6.3 Glyph programs and canonical fuel (TX-D10)
+
+Fonts carry programs. Izcal runs six kinds, each in `hg-font-vm` or `hg-shape`, each written from its specification as a small interpreter with a bounded stack and **canonical fuel**: a budget in abstract operations, identical on every platform and every device, so whether a font exhausts it is a function of the font and the text only (B1, FP-D19's rule). No interpreter implements an undocumented instruction.
+
+| Program | Specification | Fuel and bounds (all †, set from the largest real fonts at TX-M1) | On exhaustion or error (specified, deterministic) |
+|---|---|---|---|
+| **TrueType instructions** (`fpgm`, `prep`, glyph programs) | OpenType TrueType instruction set (219 opcode values) and graphics state | ≤ 1,000,000† instructions per `fpgm`/`prep` run and ≤ 100,000† per glyph; call depth ≤ 64†; stack ≤ min(`maxp.maxStackElements`, 4,096†); `LOOPCALL` and jump counts charged per iteration | Glyph rendered from its unhinted outline; the face is marked "programs failed" so later glyphs skip the VM |
+| **CFF / CFF2 CharStrings** | Adobe TN #5176, #5177; OpenType CFF2 | Subroutine nesting ≤ 10 (CFF's own limit); argument stack per the format (48 for Type 2, 513 for CFF2); ≤ 65,536† operators per glyph | Empty glyph with the font's advance |
+| **Composite glyphs** | `glyf` composite description | Depth ≤ 16†; ≤ 4,096† total components per glyph; cycles detected | Components beyond the bound are dropped |
+| **COLRv1 paint graph** | OpenType `COLR` (32 paint formats); the graph "must be acyclic" ([COLR](https://learn.microsoft.com/en-us/typography/opentype/spec/colr)) | Cycle detection per path as the specification describes; depth ≤ 64†; ≤ 65,536† paint nodes visited per glyph | The colour glyph is ignored and the plain outline (or COLRv0 layers, then the base glyph) is drawn, as the specification permits |
+| **OpenType Layout** (GSUB/GPOS contextual and chained lookups) | GSUB, GPOS, common formats | ≤ 4,096† lookup applications per input code point; buffer ≤ 64† × input length; nested lookup depth ≤ 64† (the first and last equal HarfBuzz's current defaults; they are placeholders until TX-M1 sets them from real fonts) | Remaining lookups for that run are skipped; the run keeps its current buffer and a diagnostic is emitted |
+| **AAT `morx`/`kerx`** state machines | Apple TrueType Reference Manual | ≤ 4,096† state transitions per input glyph; insertion output ≤ 64† × input | As OpenType Layout |
+| **OT-SVG glyph documents** | OpenType `SVG ` table (SVG 1.1 subset with `currentColor`) | Document ≤ 1 MiB† decompressed; ≤ 10,000† elements; no script, no external resources, no animation, no `foreignObject`; rendering under the SVG engine's own fuel | The glyph's outline from `glyf`/`CFF` is drawn |
+
+Every interpreter is also a **side-channel surface**: hinting programs alone can run Prime+Probe cache attacks and fingerprint websites without script ([Trampert and Schwarz](https://ojs.ub.rub.de/index.php/uASC/article/view/12015), read as an abstract only, Medium). **Placement does not mitigate cross-process microarchitectural attacks**, since they measure other processes through shared hardware state. The mitigations are: the TrueType VM off by default (TX-D5); a **per-document fuel budget per frame** across all glyph programs (OpenType Layout, AAT, COLRv1, SVG glyphs, the VM if enabled) of 10⁷† abstract operations, beyond which further glyph programs in that frame use their specified fallback; and no glyph program can read a clock or observe time. GSUB/GPOS chaining (Fontemon runs in GSUB), AAT state machines and COLRv1 graphs remain scriptless compute even with script disabled, bounded by these budgets.
+
+**Algorithms are linear, not only bounded.** CVE-2023-25193 was O(n²) work over long mark sequences within HarfBuzz's limits ([SE 3.2][SE]). Every shaping and segmentation pass is designed to be linear in run length (backward searches for a base are bounded by a cluster limit and indexed), and a test feeds 10⁴ combining marks on one base (TX-14).
+
+### 6.4 The font set, matching and fallback (TX-D1, TX-D15, TX-D17, TX-D19, TX-D20)
+
+**What the web may see (TX-D1).** For a page, the set of fonts that exist is:
+
+1. **Web fonts** the page loaded (`@font-face`, `FontFace`).
+2. **The Izcal font set**, bundled with the build and identical in every installation: open-licensed faces covering every script Unicode 18.0 encodes that has an open font, for every CSS generic family (`serif`, `sans-serif`, `monospace`, `cursive`, `fantasy`, `system-ui` on Linux, `ui-serif`, `ui-sans-serif`, `ui-monospace`, `ui-rounded`, `math`, `emoji`, `fangsong`) and every Han region (SC, TC, HK, JP, KR); **metric-compatible aliases** for the core web families (Arial, Helvetica, Times New Roman, Times, Courier New, Courier and similar); a math font with a `MATH` table for MathML Core; a COLRv1 emoji font; and a last-resort face. It is part of the FP-D13 web-observable data set: installed with every installation, never fetched because a page asked.
+3. **The OS tier, by name only**: faces that exist, with identical metrics on the TX-20 probe set, in **every release Izcal supports of that OS family** (macOS, Windows). Their identity is (family, style), not a file hash, so the tier reveals the OS family, which the UA already states, and not the release or patch level. The tier is defined by an Izcal-published **manifest per OS family**, delivered through the signed update channel; a face whose files change metrics between supported releases is dropped from the tier. Fonts the OS installs on demand (Windows Features on Demand, macOS downloadable assets, [GO 5.1, 5.3][GO]) and user-installed fonts are **never visible to web content**. On Linux, where no base set exists across distributions, the OS tier is empty.
+
+**Name resolution precedence (TX-D19).** A family name resolves, in order, to: web fonts → **Izcal aliases** for the core families → the OS tier → generics. Because aliases come before the OS tier, a page naming Arial gets Izcal's metric-compatible face on Windows, macOS and Linux alike, so the most common named families render identically everywhere. Names with no alias (`"Segoe UI"`, `"Hiragino Sans"`, `"Microsoft YaHei"`) resolve to the OS tier where it has them and otherwise fall through. `system-ui` and the `ui-*` generics map to the OS's UI faces on macOS and Windows (San Francisco may be used only in place, never bundled, [GO 5.4][GO]) and to the Izcal set's UI face on Linux; they, and names found only in the OS tier, are **OS-dependent output by design**, and TX-30 states its scope accordingly. The user setting **"use the system's fonts for default and named families"** puts the OS tier before the aliases and maps generics and fallback to OS fonts; it is recorded as engine configuration (B1), and the settings page states its cost in identifiability. User-installed fonts become visible only per site, by an explicit user grant from site settings (for example a designer's local fonts on their own sites), never by a page prompt (TX-D17).
+
+**Generic families and character fallback** resolve to the Izcal set in a fixed, published order per script and language, so a page whose resolved faces are web fonts or the Izcal set lays out and renders identically on macOS, Linux and Windows. **Unlabelled Han text** takes its regional forms from the element's language, then the document's language, then the user's first matching language preference, then a fixed default (SC); the preference used is part of the session image's recorded configuration. **The `emoji` generic** and emoji fallback use the Izcal COLRv1 emoji face by default, identical everywhere (TX-D20); the "use the system's fonts" setting switches to the OS emoji font.
+
+**`local()` in `@font-face`** resolves only against the page's visible set (the Izcal set by its own full and PostScript names, the OS tier, per-site granted fonts), matching full and PostScript names per CSS Fonts 4 §4.3; aliases never match `local()`. It can therefore not probe for fonts the page cannot otherwise see.
+
+**Matching** (`hg-font-match`) implements CSS Fonts 4 §5 step by step, anchored: family name matching (case-insensitive ASCII, with localized family names from `name` matched as the specification allows), `font-stretch`, `font-style`, `font-weight` and optical size selection, `unicode-range` per face with families of 100+ faces as a normal case ([GO 2.4][GO]), `font-synthesis` (weight, style, small-caps, position), `size-adjust` and the metric overrides of CSS Fonts 5, `font-language-override`, `font-variant-emoji` as a matching input, and `@font-feature-values` and `@font-palette-values` with the `font-palette` property. Faces are matched per **cluster** (a grapheme cluster, extended to whole emoji sequences under UTS 51), never splitting one. A character no face covers is drawn with the Izcal set's last-resort face, which shows the code point's hexadecimal value while exposing the code point itself to the semantic plane, so `.notdef` boxes appear only for unassigned code points.
+
+**Vertical metrics are one rule everywhere.** Mac and Windows choose different ascent and descent sources for about 10% of Google Fonts ([GO 3.1][GO]). Izcal uses one rule on every OS: `OS/2` typographic metrics when `USE_TYPO_METRICS` is set, otherwise `hhea`, with the `win` metrics never used; this is recorded as a black-box observation where it differs from other engines (M-1 part 2) and filed with the CSS working group as a request to specify it.
+
+**System font access (TX-D15, TX-D22).** No OS font API is called anywhere. The session image has two parts. The **Izcal-set part is built at build time** by `hg-unicode-build`'s font step (tier T), signed and listed in the footprint spec's image inventory (FP 6.3, SEC-16), so no bundled font is parsed per session. The **OS part is derived from the manifests**: per session the broker lists font directories and, on Windows, the font registry keys, as file metadata, and passes read-only handles to `hg-font-service`, which only **hashes** each file and selects the matching prebuilt manifest entry (faces, names, coverage summaries, fallback rows, all computed when Izcal built the manifest). A file whose hash is in no manifest is never parsed. Hashes are cached in the profile keyed by (file ID, size, modification time), so a warm session hashes nothing new. On Linux the broker opens `/etc/fonts/fonts.conf` and passes the handle; the font service parses that XML and returns the further paths it needs, which the broker opens without parsing; fontconfig's aliases are used only to pick the shell's own UI face, never for web content. The session image is **untrusted input** to every reader (security scope IPC-R17): its format is described in `.hgfont` and read only through a generated, Kani-proved reader. Renderers map font files read-only only when they are **immutable**: files on an integrity-protected system volume (the macOS sealed system volume; `%WINDIR%\Fonts`, writable only by TrustedInstaller) are mapped directly after their hash is checked; every other file, including per-site granted user fonts, is copied once by the font service into a sealed shared region (sealed memfd, read-only section handle, read-only Mach memory entry) and only that region is granted. A font installed mid-session produces a new image for new processes only (FP 6.3); in a recording, the session image's identity and the manifest versions are recorded inputs.
+
+### 6.5 Web font loading
+
+`hg-font-load` implements CSS Font Loading 3 (`FontFace`, `FontFaceSet`, `document.fonts`) and the `font-display` timeline of CSS Fonts 4 (block, swap, failure periods). Fetches go through the network service in CORS mode as CSS Fonts requires; the HTTP cache keys them by partition. Decoding and validation run on the renderer's worker pool and the parsed face is **installed at a task boundary as an input the scheduler orders**, so a slow parse never blocks the main thread and the installation point is replayable (the JS-D15 rule). `font-display` periods read the substrate clock (G3), so a recorded session replays the same swaps at the same points. A `FontFace` built from an `ArrayBuffer` follows the same path. Parsed web fonts are shared among documents of the same (site, container, partition) in a process, keyed by (partition, URL, response hash), never across partitions (FP 6.4).
+
+### 6.6 Unicode algorithms (TX-D11, TX-D12, TX-D14)
+
+**One implementation, shared with Intl.** `hg-ucd` (tables) and `hg-unicode` (algorithms) serve layout, editing, the semantic plane, the shell's URL display and ECMA-402 alike. Today the JS spec places `hg-ucd` and UAX 29/15 inside L2e, behind G6; this spec proposes moving them to a shared **L2u Unicode layer** below L2e that both the engine and the text stack depend on (Section 9.5). One Unicode version is pinned per build, and recorded.
+
+| Algorithm | Specification (Unicode 18.0) | How it is built | Oracle |
+|---|---|---|---|
+| Bidi | UAX 9 | Rules as data; paragraph and line reordering; isolates; CSS `unicode-bidi` and `direction` mapping | BidiTest.txt (490,846 test lines, each covering one to three paragraph directions), BidiCharacterTest.txt (91,707) at 100% |
+| Line breaking | UAX 14 rev 57 (45 rules), CSS Text 3/4 tailoring (`line-break`, `word-break`, `overflow-wrap`, `white-space`, `hyphens`) | Rule table generated from the rule list; CSS strictness levels as tailorings of class CJ and others; SA scripts by dictionary | LineBreakTest.txt (19,346) at 100% untailored; WPT `css/css-text` |
+| Grapheme, word, sentence segmentation | UAX 29 rev 49 (with GB9c), CLDR segment suppressions | Generated state machines | GraphemeBreakTest, WordBreakTest, SentenceBreakTest at 100% |
+| Normalization | UAX 15 | Generated tables; stream-safe handling | NormalizationTest.txt (20,177) at 100% |
+| Emoji | UTS 51 v18.0 | Sequence recognizer (ZWJ, modifiers, tags, keycaps, flags, VS15/VS16) used by itemization and fallback | emoji-test.txt (3,963 fully qualified) |
+| Vertical orientation | UAX 50 | `Vertical_Orientation` table; CSS `text-orientation` | WPT `css/css-writing-modes` |
+| Arabic mark rendering | UAX 53 | Display-only mark reordering before shaping; CGJ respected | Izcal shaping corpus |
+| Confusables, mixed script | UTS 39 | Data for the shell's IDN display and DevTools; policy is the shell's | UTS 39 test data |
+| Case mapping and folding | UCD SpecialCasing and CaseFolding; CSS Text 3 §2.1 (`text-transform` with language-sensitive rules: Turkish dotted i, Greek accent removal, Dutch IJ; `full-width`, `full-size-kana`) | Generated tables in L2u, shared with ECMA-262's `toUpperCase` and ECMA-402's locale variants | UCD-derived property tests; WPT `css/css-text/text-transform` |
+| Text search (find in page, `window.find`) | Default caseless matching plus canonical equivalence (Unicode core specification §3.13) | One matcher over the rendered text order | WPT; corpus |
+| Script itemization | UAX 24 (Script, Script_Extensions) | Common and Inherited resolved to neighbours | Izcal corpus |
+
+Collation (UTS 10) stays in `hg-intl`; the text stack does not use it.
+
+**South-East Asian and CJ word breaking (TX-D12).** Thai, Lao, Khmer, Myanmar and Tai Tham need word segmentation for line breaking (UAX 14 class SA) ([SH 1.10][SH]). Izcal compiles word lists into compact tries in the engine image and segments with an integer-scored maximal-matching algorithm written from first principles and published in the shaping specification's companion text, so results are identical on every ISA. The ICU word lists are BSD-style or Unicode-3.0-licensed data ([FS 7.2][FS]); their use as data needs the owner's classification (TX-D9). LSTM models are not used (floating point across ISAs, and CPU cost) ([HP 8.2][HP]). **`word-break: auto-phrase`** (CSS Text 4) is built by the same method: an integer-scored phrase dictionary for Japanese first, then the other languages CSS Text 4 names, gated by native-reader review (the TX-3 method) and WPT, shipped when its gate passes.
+
+**Hyphenation (TX-D14).** `hg-hyphen` applies Liang-style patterns with exception lists from every language's data in every build (FP-D13). Of the 88 hyph-utf8 pattern sets, about 22 are LPPL-, GPL- or LGPL-only, about 7 more are dual LPPL or MIT and can ship under MIT, and one MPL set and about 9 custom licences need review ([FS 7.3][FS], [factcheck][FC] FC-R12); the licence is a field in the data manifest, and TX-D14 decides what ships for the non-permissive ones.
+
+### 6.7 Shaping (TX-D8)
+
+**The Izcal shaping specification.** No normative specification of shaping exists ([FS 1.9][FS]). Izcal writes one: a precise, testable text that states, for every script engine, its character classes (from UCD properties and Microsoft's USE override files), its cluster grammar, its feature order, its reordering and its fallbacks, with each rule anchored to the Microsoft page, the Unicode chapter or UAX it comes from, and a **black-box observation** (M-1 part 2) where those are silent or contradicted by the deployed web. It is published, and gaps are filed with Microsoft's typography team and the OpenType specification list. The script engines are generated from its machine-readable part (`.hgscript`): grammars become automata over UCD-derived classes; reordering rules become declarative moves; feature stages become tables. A Unicode or Microsoft update is a data change, re-checked by the corpus.
+
+**Engines** (each with its grammar, feature stages and fallbacks, each anchored to a Microsoft script page where one exists: Standard, Arabic, Hebrew, the nine Indic pages, Khmer, Lao, Myanmar, Thai, Hangul, USE; rules no Microsoft or Unicode text states are recorded as black-box observations in `compat/observations/`): default (Latin, Greek, Cyrillic and every simple script); Arabic-type joining (Arabic, Syriac with `fin2 fin3 med2`, N'Ko, Mongolian with FVS1–4, Adlam, and the rest by `Joining_Type`) with UAX 53; Hebrew; Indic for nine scripts in both the original and the "v2" tag generations; Khmer; Myanmar; Thai and Lao; Hangul (jamo composition); and the **Universal Shaping Engine** for the 91 script tags Microsoft lists at Unicode 18.0 ([SH 1, 2][SH]). The **routing table** from script to engine is explicit, versioned data; where Microsoft and other implementations differ (for example Mongolian, N'Ko and Tibetan, [SH 1.5][SH]), the choice is a recorded decision checked by the corpus.
+
+**Interpreters**: OpenType Layout (all 8 GSUB and 9 GPOS lookup types, GDEF classes and mark filtering sets, feature variations, `cmap` format 14 variation sequences, legacy `kern`) and AAT (`morx`, `kerx`, `trak`), both under the fuel of Section 6.3. AAT is needed because Apple's own Arabic UI font needed `morx` fixes as recently as macOS 15 ([SH 3.2][SH]). **Not run:** Graphite (TX-D7) and font-embedded Wasm (never: unbounded code, I-2).
+
+**Normalization inside shaping**: compose or decompose by what the font's `cmap` covers, reorder by combining class, decompose split vowels, respect CGJ. **Fallbacks**: mark positioning by combining class when `GPOS` lacks mark data; Arabic presentation-form fallback; dotted-circle insertion by the Microsoft rules; default-ignorables invisible.
+
+**CSS rules applied in the shaping call** (CSS Fonts 4 and CSS Text 3): default features (`rlig liga clig calt kern mark mkmk locl ccmp`, plus `vert` or `vrt2` in vertical text, never both); `font-variant-*` and `font-feature-settings` precedence; BCP 47 to OpenType script and language tags with `dflt` fallback (generated from the registries); no optional ligatures under `letter-spacing` unless forced; no spacing inside cursive joins; shaping continuous across inline boxes unless margin, border or padding intervenes; kashida only at points the shaper marks safe ([SH 6][SH]).
+
+**Output contract**, derived from what CSS Text requires a line breaker to know (where a break or a join changes shaping): per glyph, the glyph ID, advance and offset in font units of the instance, the **source cluster** (an index into the logical text at character granularity, monotone within a run), and three flags in Izcal's terms: **`break_reshapes`** (breaking before this cluster changes the shaping of either side), **`join_reshapes`** (joining separately shaped text at this point changes it) and **`kashida_point`** (cursive elongation may be inserted here); per run, a **provenance record** (engine, features, lookups applied, fuel used), produced only when an observer asks (Section 6.14).
+
+**Verification**: the Izcal per-script corpus (real-language text in Noto, SIL and system fonts, Unicode's text-rendering-tests, Microsoft's USE data and invalid-cluster list) at zero unexplained divergences; a **split-and-compare mode** in CI that reshapes every line and every cache hit from scratch and compares (the B5 reference path); and black-box differentials against HarfBuzz, Core Text and DirectWrite on the same fonts, if TX-D9 classifies them as oracles, with every divergence triaged against the Izcal shaping specification and never resolved by matching an engine.
+
+### 6.8 Text runs, measurement and the layout interface (TX-D4, TX-D16)
+
+`hg-text` is what layout, canvas, SVG text, MathML and the semantic plane call. Inline layout itself (line boxes, inline formatting contexts, floats around text) belongs to the layout spec; this stack supplies everything below it.
+
+**Pipeline per paragraph** (CSS Text 3 §4 and §7, UAX 9, UAX 14, CSS Fonts 4 §5): white-space processing and `text-transform` (anchored to CSS Text) → bidi levels → itemization into runs of one bidi level, one script (UAX 24 with Common and Inherited resolved), one style and one font face (matched per cluster) → shaping per run → break opportunities (UAX 14 with CSS tailoring, dictionaries for SA scripts, hyphenation) → justification opportunities (CSS Text 3 §6.4, including kashida points) → handed to layout as **shaped segments**.
+
+**The numeric contract (TX-D4).** Every value layout, script or a coverage mask can observe is an integer computed by a specified integer formula:
+- **Font size** is quantized in the **local coordinate space of the text's drawing context** (CSS px for HTML text, user units for SVG text under `viewBox`, canvas units under `ctx.scale()`) to the finer of 1/64 of a unit and 2⁻¹⁶ em, with round-half-to-even, so scaled SVG and canvas text keep their size. **Advances, offsets and metrics** are scaled from font units as `round_half_even(value_fu × size_q / unitsPerEm)` in 64-bit integers, once per value; positions accumulate as integers in the same quantum. Every CSS-to-fixed conversion (fractional weights, `font-variation-settings`, `font-stretch` percentages) uses round-half-to-even. The layout spec maps these values to its layout unit; the quantization is a used-value rule, never a computed-value one. No floating point is used on any path whose result layout or script observes (G-TX4).
+- **Advances are linear** (unhinted) and independent of device pixel ratio, zoom, transforms, hinting and OS. Hinting and pixel snapping exist only in rasterization (6.9). This is the industry's own conclusion for device-independent layout ([RC 2.1, 2.4–2.6][RC]); Izcal makes it exact.
+- **Variations** use the specification's fixed-point types (6.2).
+- Values handed to script (`TextMetrics`, and through layout `getBoundingClientRect`) are these integers converted to doubles exactly.
+
+Consequences: canvas `measureText` and layout widths are a function of (font bytes, instance, text, style) only. Under TX-D1 and TX-D19 the font bytes are identical for every user of a build except for OS-tier faces named explicitly by a page, which are identical across every supported release of an OS family, so **text metrics carry no entropy beyond the build and the OS family**, and the seeded noise that Stage 1 D-S1 puts on `measureText`-class metrics is unnecessary: noise on `measureText` could not hide what element widths reveal anyway. Section 9.5 proposes the amendment.
+
+**Line breaking with shaping.** The shaper marks where breaking or joining would change the result (6.7). The line-breaking helper finds the last break opportunity that fits, slices the paragraph's shaped run there, and **reshapes only an edge marked `break_reshapes`**, as CSS Text requires for ligatures and cursive joins across a break. In CI, every line is also reshaped from scratch and compared (B5).
+
+**Other services**: grapheme-cluster carets, selection and hit testing from the cluster map; visual-to-logical maps for bidi; vertical text (UAX 50 orientation, `vmtx`/`VORG`/`vhea`, `vert`/`vrt2`, synthesized vertical metrics when a font lacks them); `font-synthesis` (oblique at CSS Fonts 4's default 14 degrees; emboldening by a specified integer outline offset, whose effect on advances is recorded as a black-box observation and filed for specification); the `MATH` table for MathML Core §5 (constants, glyph variants, assemblies); `TextMetrics` per the HTML canvas text preparation algorithm (12 attributes); `text-box-trim` edges from the same metrics; per-character bounds and word boundaries per run for the semantic plane (6.14).
+
+### 6.8a Text input and editing services (TX-D23)
+
+Stage 1 13.2 relied on Parley for IME composition; this spec takes ownership of the text side, and TX-D23 settles placement.
+- **Composition rendering**: the composition string and its attribute ranges (converted, target, unconverted) are shaped and drawn by `hg-text` like any text, with underline styles from CSS Text Decoration; composition events follow UI Events and the Input Events specification (the editing owner's anchors).
+- **Caret and selection movement**: by grapheme cluster (UAX 29 with GB9c), with script tailoring where readers expect it: backspace deletes one code point in Indic, Thai and other scripts whose clusters are built from separately typed marks, recorded as black-box observations where no specification states it; word movement and double-click selection use UAX 29 words plus the SA and CJ dictionaries (6.6); visual movement across bidi runs uses the bidi maps.
+- **IME placement**: the OS input method frameworks (TSF on Windows, `NSTextInputClient` on macOS, the Wayland text-input protocol with IBus or Fcitx on Linux) attach to native windows, which the broker owns; the broker relays key events and composition state to the focused renderer as typed IPC and receives caret rectangles back. **No IME component is loaded into a renderer.** TSF loads third-party IME DLLs into the process that owns the focused window, so the broker's threat model records them as inventoried third-party code (Section 9.5).
+- **Spellcheck** (Stage 2): the OS spelling service runs in a utility process, receives text ranges, returns ranges; results are painted as `::spelling-error` highlights and are never visible to page script.
+- `contenteditable` and form controls use these services through the editing spec, which owns the editing commands themselves.
+
+**Metrics for style.** `hg-font-match` and `hg-text` answer the style system's **metrics query** for (font list, size, style, language): the first available font's metrics that `ex`, `ch`, `ic`, `cap`, `lh` and `font-size-adjust` need (CSS Values 4, CSS Fonts 5), as B1 inputs; a web-font installation that changes a result is a mutation-log entry for the elements that used it (B4), as the HTML and CSS spec expects ([ST][ST]).
+
+**Caches (TX-D16).** Every content-derived cache in the text stack is keyed by **partition** (FP 6.4): shaped segments (keyed by partition, face instance, features, script, language, direction, CSS spacing inputs and text), raster entries (6.9), variation instances (6.2) and the per-glyph "validated" state of lazy validation (6.2), so a glyph's drawing time in one partition reveals nothing about another. A cached segment is reused only at boundaries where the shaper did not set `join_reshapes`, so reuse is exact by construction. Caches are **observationally transparent**: output with every cache disabled is bit-identical, checked in CI on the corpus (TX-31). They are derived data of the footprint spec's **class (a)** (own-arena, released under pressure through the safepoint handshake, FP 6.4), and their bytes are excluded from canonical bytes and reported on their own ledger line, so cache insertions by parallel layout workers, whose order may differ between runs under phase purity (Stage 1 3.3), never change results or canonical accounting.
+
+### 6.9 Rasterization, hinting and anti-aliasing (TX-D5, TX-D6, TX-D13)
+
+**One rasterizer, in integers (TX-D13).** `hg-glyph-raster` computes exact area coverage of the outline (non-zero winding) by signed-area accumulation, in fixed point on device-space coordinates in 26.6, with one implementation whose scalar and SIMD paths are specified to give identical bits on x86-64 and AArch64 (integer SIMD only). It is the B1 reference and the default for text sizes. The design space was measured by others: dense accumulation (font-rs) and sparse strips (Vello's 4×4 tiles) both fit integer arithmetic, and strips double as a compact cache format, whose vertical re-phasing is an open problem worth solving ([RC 1.1–1.2][RC]). The choice between them is made by measurement at TX-M1. A GPU outline path (Slug-style analytic coverage, its patent dedicated to the public domain on 17 March 2026, [RC 1.3][RC]) is permitted only for glyphs above a size threshold (64 device px†) or under non-axis-aligned transforms, through the graphics spec's path pipeline, verified against the CPU reference within a tolerance of at most 1/16† coverage difference per pixel on at most 1%† of a glyph's pixels (TX-33), and never used where a pixel hash is compared (DST, canvas readback). Canvas 2D text is composited on the CPU path in the renderer.
+
+**Raster keys.** A raster key is (partition, face instance, size in 1/64 device px, horizontal subpixel phase, hinting mode, darkening table), with **4† horizontal subpixel phases** (vertical phases in vertical text) chosen by measurement at TX-M1. Renderers keep a small raster cache of masks they produced (≤ 1 MiB† per process, class (a) derived data, partition-keyed) so a mask evicted from the GPU atlas can be re-uploaded without re-rasterizing.
+
+**Hinting (TX-D5).** Izcal's **own vertical-only autohinter**, designed from first principles (alignment zones for baseline, x-height and cap height; horizontal stem detection; snapping in y only, so advances never change), applies at small device ppem on every OS identically. It needs no font program. The TrueType instruction VM is **built and measured, not shipped by default**, which is a measurement and security gate, not a schedule cut: its benefit is unmeasured and its cost (attack and side-channel surface, [RC 2.8][RC]) is known. Two of its modes are defined here in Izcal's own terms, not borrowed: **y-only execution** runs the instruction set as the OpenType text specifies, except that the projection and freedom vectors are constrained so that no point moves in x and advance phantom points are never moved, with every resulting deviation from the instruction text recorded as a black-box observation; a font **needs instructions** when its unhinted outlines at a probe size (16 ppem) contain self-intersecting or degenerate contours that its instructed outlines do not, a measurable property, never a name list. At TX-M2 a pre-registered legibility comparison at device pixel ratio 1 (TX-D5) compares the autohinter with y-only execution of the fonts' own instructions over the corpus's 50 most-used fonts. If the fonts' instructions win and the security review accepts the VM's fuzz and proof record (TX-11, TX-12), the VM ships in y-only mode under Section 6.3's fuel; otherwise it runs only for fonts that need instructions (web fonts of that kind run it under fuel; OS faces of that kind are dropped from the OS tier). Either way, hinting is a pinned function of the font and the device ppem, never of the OS.
+
+**Anti-aliasing (TX-D6).** **Grayscale only.** Stem darkening and the contrast curve are applied **in the renderer, in integer arithmetic, as part of the mask** (pinned tables; the published Adobe control points, [RC 2.3][RC], are the starting evidence; Izcal's tables are set by the TX-M2 measurement), so a mask is bit-identical everywhere; the colour space in which the compositor blends masks with text colour is the graphics spec's decision (Section 9.5). LCD subpixel AA is not built: it needs an opaque known background at raster time, triples horizontal raster variants, adds per-display geometry and is a fingerprint source ([RC 3.3–3.6][RC], [HP 4.4][HP]); its cost is legibility at device pixel ratio 1, which an insider conceded is better with LCD AA, and TX-D5's comparison measures it. The majority of desktop displays are still low density (Steam, September 2026: 1920×1080 at 47.91%, [RC 3.5][RC]), which is why the autohinter and darkening matter.
+
+**Colour glyphs.** COLRv0/v1 paint graphs are evaluated (fuel-bounded) into a small list of fills, gradients, clips and blends in integer coordinates, then rasterized to premultiplied RGBA masks at text sizes, or sent as vector content above the size threshold. `sbix` and `CBDT` images are decoded in the decoder process and scaled with a pinned filter. OT-SVG glyphs are rendered by the SVG engine's CPU path into RGBA masks. Variation instances key every cache.
+
+### 6.10 Glyph caches and atlases (FP-D14)
+
+The GPU service holds **one atlas per (site, container, partition)** for all fonts, web or not, as FP-D14 (a) decided: an A8 pool for coverage masks and an RGBA8 pool for colour glyphs, with a shelf allocator (glyph-sized items of similar height). Masks arrive as 6.1 describes, with dimensions in the copied message and bytes in a region of exactly that size (≤ 256† × 256† device px for A8 and ≤ 96† × 96† for RGBA; larger glyphs, including large emoji, go as paths and never enter the atlas). Eviction is least-recently-used per partition, by frame. Hidden tabs' atlases are released with their tiles (FP 6.6).
+
+**CJK and emoji sizing are the open numbers.** A 2 MiB A8 pool holds roughly 6,000 glyphs at 16 CSS px and DPR 1, but only about 1,800 at DPR 2 (with one pixel of padding); a CJK page can need thousands of distinct glyphs at first paint ([RC 7.1][RC]). An RGBA emoji at 64 device px costs about 16 KiB, so 2 MiB holds about 128 of them, fewer than one screen of a chat page. TX-52 measures the re-rasterization rate on the CJK part and the emoji-dense part of the corpus at TX-M2; Section 9.5 asks the footprint spec to state the A8 and RGBA pools as separate lines now and to size them from TX-52, without making a cap device-dependent in any web-observable way (FP-D19's rule).
+
+### 6.11 Determinism by construction (B1)
+
+**The rule: identical font bytes, text, style and settings give identical glyphs, positions, metrics and coverage masks on every OS and ISA. What may differ between machines is only which fonts exist, and that is a recorded input.**
+
+| Source of variation | How it is pinned |
+|---|---|
+| Which fonts exist | TX-D1: web fonts are network inputs (recorded); the Izcal set is part of the build (build ID recorded); OS-tier faces are identified by manifest entry and file hash; the session image's identity and the manifest versions are recorded inputs |
+| Unlabelled Han region, emoji default | Fixed rules (6.4); the language preference used is recorded configuration |
+| Font load timing, `font-display` periods | Network completion is a recorded input; periods use the substrate clock; installation at task boundaries ordered by the scheduler (JS-D15's rule) |
+| Off-thread parsing and shaping | Workers read immutable inputs and write disjoint outputs (phase purity); results never depend on which worker ran |
+| Caches (shaping, raster, instances, parsed fonts) | Partition-keyed, transparent by construction and tested with caches off (TX-31); eviction changes speed, never results; their bytes are outside canonical accounting |
+| Floating point | None on observable paths (G-TX4); no FMA, no platform libm |
+| Rasterization | Integer coverage, darkening and contrast, one implementation per ISA with identical bits; GPU outline path never used where a hash is compared |
+| Mapped font files | Only immutable bytes are mapped (6.4), so a file cannot change between validation and use |
+| Hinting and AA | Pinned autohinter, darkening and contrast tables; a function of font and device ppem only |
+| Device pixel ratio, zoom | Inputs; they change pixels by design, never layout metrics |
+| Resource exhaustion | Canonical fuel (6.3), identical everywhere; exhaustion has a specified result |
+| Unicode, CLDR, dictionaries, patterns | Versions pinned in the build and recorded, shared with Intl |
+| OS font installs mid-session | New session image for new processes only; the image identity is recorded |
+| User settings ("use system fonts", per-site local fonts) | Engine configuration, recorded |
+
+**Recordings and replay (TX-D18).** A recording carries web fonts as network bytes, the Izcal set by build ID, and OS-tier faces by manifest entry and hash. **OS font files are never embedded**: vendors' licences forbid redistributing them, and a notice would not make that lawful. Replay on a host that lacks a referenced OS face **fails loudly** with the list of missing faces; it never substitutes silently. The user may instead choose a replay **marked "not exact"**, in which OS faces are replaced by the Izcal set's closest faces. CI and DST use only the Izcal set and web fonts, so their replays are exact on every OS.
+
+### 6.12 Security
+
+| Threat (security scope ATK-1, ATK-3) | Mechanism | Shown closed by |
+|---|---|---|
+| Memory corruption from a font field (sizes, counts, offsets, VM stacks) | Generated reader with no `unsafe`; checked arithmetic on every font-derived value (G18 extended, G-TX3); accessors proved panic-free and in bounds (Kani) | TX-10, TX-11; the CVE-class corpus (TX-13) |
+| A font file truncated or rewritten while mapped (SIGBUS, double reads) | Renderers map only immutable bytes; everything else is a sealed copy (6.4) | TX-13 truncation case |
+| A poisoned session image reaching every renderer and the shell | Built from build-time entries and hashes only; read through a generated, proved reader as untrusted input (IPC-R17) | TX-11, TX-13 malformed-image cases |
+| Hostile strings reaching OS shapers in the broker | No page-controlled string reaches an OS text API in the broker (6.1) | TX-16 |
+| Glyph-program attacks (VM bugs, undocumented opcodes) and scriptless microarchitectural attacks | Interpreters from the specifications only; bounded stacks; canonical fuel per glyph and per document per frame; no access to time; TrueType VM off by default (TX-D5) | TX-12, TX-14 |
+| Resource exhaustion (lookup loops, composite depth, paint cycles, decompression bombs, Zalgo text) | Fuel (6.3); linear algorithms; declared-size checks; per-font size cap of 128 MiB† | TX-14 |
+| Shaping state desynchronization (Telugu-class) | Engine invariants stated in the shaping specification and checked in debug builds; panic-freedom for any string with every face the shell can use | TX-12, TX-12a |
+| Privilege escalation through font code | No font code in the broker, GPU service or network service (G-TX2); web fonts only in their site's renderer; the font service at the strictest tier | TX-15 |
+| Embedded foreign formats (PNG, JPEG, TIFF, SVG) | Images in the decoder process; SVG glyphs in a restricted mode with its own fuel | TX-13 |
+| Cross-site data through shared caches | Partitioned atlases, shaping caches and parsed-font sharing; FP-36 probes | TX-21 |
+| Bidi and confusable spoofing in Izcal's own UI | `hg-unicode` provides UAX 9 and UTS 39 data; the shell shows bidi controls in URLs and code views | Shell spec; TX-1 for the data |
+
+**Shared-resource channels added by text** (for the footprint spec's table, 6.18.1):
+
+| Shared resource | What it could reveal | Status | Mechanism |
+|---|---|---|---|
+| Glyph atlas | Which glyphs other sites drew | **Closed** | FP-D14 partitioning |
+| Shaping cache, parsed web fonts, raster cache, variation instances, lazy per-glyph validation state | What the same site showed under another top-level site | **Closed** | Keyed by partition (6.8) |
+| Session image | Installed fonts beyond the page's view | **Closed** | Filtered per-page view (TX-D1) |
+| **Page-cache residency of shared font files** (Izcal set, OS tier) | Whether some process recently drew characters stored on a given page of a large font file (CJK fonts are tens of MiB), which leaks text content across sites | **Bounded, with a decision** (TX-D21) | The first renderer to map a font file pre-faults the whole file, so residency reveals only "some process used this font"; page granularity covers many glyphs; residency queries are denied by the sandbox where the OS allows; under memory pressure the OS evicts by recency and the residual channel is measured against TX-21's bound and recorded in the renderer threat model beside the footprint spec's engine-image residency channel |
+| Fuel exhaustion | Nothing | No channel | Deterministic and identical on every device |
+| `unicode-range` and ligature exfiltration | An element's characters, to a font host the page's CSS names | By specification | A CSS-injection consequence, not a parser bug; fetches are partitioned and shown in DevTools ([SE 4.10][SE]) |
+
+### 6.13 Privacy
+
+- **The font set is not a fingerprint** beyond the build and the OS family (TX-D1). `local()` cannot probe beyond the visible set (6.4). Text metrics and text pixels are deterministic, so metric probing and canvas text rendering, which made 34% of browsers unique by metrics and produced 44 renderings of one web font across machines ([SE 4.3][SE], [RC 3.6][RC]), return the same answer for every user of a build on an OS family with default settings, before D-S1's canvas readback noise is applied. PRIV-2 gains a font-metrics, pre-noise canvas text and `local()` probe (TX-20), reported per UI locale and for each non-default setting.
+- **Local Font Access is not implemented** (TX-D17). It is shipped by one engine and returns raw font bytes; its own documentation says the permission "appears to provide a highly fingerprintable surface" and suggests that anonymity-focused browsers return a fixed set ([GO 6.6][GO]); WebKit lists privacy concerns ([WebKit #506](https://github.com/WebKit/standards-positions/issues/506)). Per-site grants of local fonts from site settings serve the designer case without a page-initiated prompt.
+- **IFT and `unicode-range`** reveal which characters a page needs to the font's host, by design; fetches are partitioned like any subresource and visible in DevTools.
+- **Attribution and DevTools** show the full font list only to the local DevTools user; page-visible APIs see the per-page view.
+
+### 6.14 Observability, user experience and integrations
+
+`hg-text` emits a typed, versioned **text event stream and query interface**, declared in `.hgidl` and served through IIP (DT-D1). With no observer it costs a branch per run (TX-60).
+
+| Fact | Content | Anchored to |
+|---|---|---|
+| **Glyph provenance** | For any text range: the face per glyph, the matching step that chose it (author family, `unicode-range` slice, language rule, generic, Izcal fallback order, last resort), and the faces rejected with reasons | CSS Fonts 4 §5 steps |
+| **Font timeline** | Per face: request, bytes, decode, validation result, block, swap and failure periods, installation point, and the relayout and shift it caused (B4 mutation log) | CSS Fonts 4 `font-display`; CSS Font Loading 3 |
+| **Metrics as data** | Ascent, descent, line gap, x-height, average width used, and the `size-adjust` and overrides that would make a fallback match a web font | CSS Fonts 5 |
+| **Break and bidi explanation** | Per break opportunity: the UAX 14 rule or CSS tailoring, dictionary word, hyphenation pattern, or `text-wrap` choice; bidi levels and runs | UAX 14 rule IDs, UAX 9 rules, CSS Text |
+| **Shaping trace** | Engine, cluster grammar match, features, lookups applied per glyph, fuel used | Izcal shaping specification |
+| **Font validation report** | Why a font failed to load, with the table and field | `.hgfont` anchors |
+
+**For people reading**: `izcal://fonts` lists the font set the web sees and why, the "use the system's fonts for default families" setting with its stated identifiability cost, and per-site local-font grants. **For developers**: DevTools shows provenance as an overlay on the page, the font timeline beside the network view, and a "fix this shift" action that writes the measured overrides into the style sheet being edited. Explanations are deterministic and anchored, never model-generated (DT-D4; DevTools 4.4, "Explanations come from AI: Break"). **For agents (B9, AI on only)**: the same facts through the tool registry, with page-derived strings marked untrusted. **For the semantic plane (B8)**: logical text, the glyph-to-character map, per-character bounds and word boundaries per run (which platform text APIs need), language and direction runs, so assistive technology and agents read what was drawn in logical order; the last-resort hex glyph exposes the code point itself; under forced colors, colour glyphs follow the CSS Color Adjust rules (COLR and `CPAL` colours overridden where they apply).
+
+**Integrations.**
+
+| With | Through | Notes |
+|---|---|---|
+| Layout (`hg-layout`) | `hg-text` shaped segments, break and justification opportunities, metrics | Inline layout is the layout spec's; this contract is fixed at TX-M0 |
+| Style (`hg-style`) | Computed font properties, `@font-face` descriptors (parsed by style) and `@font-feature-values` rules; the **metrics query** for font-relative units as B1 inputs; font installs as mutation-log entries (6.8) | Interface fixed at TX-M0 with the HTML and CSS spec ([ST][ST]) |
+| Canvas, SVG text, MathML | `hg-text`; `MATH` access | The same numeric contract |
+| Paint and the GPU service | Glyph runs (face handle, glyph IDs, positions) in display lists; masks uploaded per partition; paths for large glyphs | The graphics spec owns compositing and the GPU path |
+| Network service | Font fetches in CORS mode, partitioned, destination `font`; IFT patch fetches as partitioned subresources; `hg-compress` for WOFF2 (NW-D6) | Networking spec ([NW][NW]) |
+| Editing, input | Composition rendering, caret and selection rules (6.8a) | Broker owns IME frameworks (TX-D23) |
+| PDF viewer, printing | The PDF utility process links `hg-fontfmt`, `hg-font-vm` and `hg-glyph-raster`; print-to-PDF subsets fonts honouring `OS/2.fsType` (6.18) | Stage 1 Section 6 PDF viewer; Stage 2 printing |
+| JS engine | `hg-ucd` and `hg-unicode` in the shared L2u layer; `Intl.Segmenter` uses `hg-unicode` | Section 9.5 |
+| Footprint | Ledger tags on parsed fonts, caches and atlases; class (b) derived data; the font set in FP-D13's data set | FP-25, FP-14 |
+| DevTools (IIP) | `text.*` domain | DevTools spec |
+
+### 6.15 Crate layout and rules
+
+| Layer | Crate | Role | Coding-standard tier |
+|---|---|---|---|
+| L2u (new, shared) | `hg-ucd` | Unicode, emoji and USE data tables, generated; moved from L2e (Section 9.5) | R; URL display is drawn by the shell renderer, so no tier-P binary links it |
+| L2u | `hg-unicode` | UAX 9, 14, 15, 24, 29, 50, 51, 53, UTS 39; SA dictionaries | R |
+| L2t (new) | `hg-fontfmt` (generated) | Reader for every table; WOFF, WOFF2 and IFT decoding; validation | R |
+| L2t | `hg-font-vm` | TrueType VM (measurement build unless TX-D5 ships it), CharStrings, COLRv1 evaluation, composite expansion, variations | R |
+| L2t | `hg-shape` (engines generated) | OpenType Layout and AAT interpreters, script engines, routing table, fallbacks | R |
+| L2t | `hg-font-match` | CSS Fonts 4 §5 matching, fallback order, synthesis | R |
+| L2t | `hg-font-load` | Font Loading API backing, `font-display`, decode and install | R |
+| L2t | `hg-hyphen` | Patterns and exceptions | R |
+| L2t | `hg-text` | Itemization, measurement contract, line-breaking helper, shaping cache, canvas text, `MATH` access, observability | R |
+| L2t | `hg-glyph-raster` | Integer rasterizer, autohinter, darkening, raster cache, colour glyph rendering | R |
+| L5 | `hg-font-service` (+ `hg-font-service-main` in L6) | Session image builder | R (strictest sandbox tier) |
+| L5 | `hg-glyph-atlas` (in the GPU service) | Per-partition atlas allocation and upload; no font code | **P** |
+| tools | `hg-fontgen` | `.hgfont` → reader, Kani harnesses, fuzz grammars, anchors | T (output held to R) |
+| tools | `hg-scriptgen` | `.hgscript` + UCD + USE data → script engines and test vectors | T |
+| tools | `hg-unicode-build` | UCD, CLDR, emoji, word lists, patterns → engine-image data (shared with `hg-cldr-build`) | T |
+| tools | `hg-font-fuzz`, `hg-shape-corpus`, `hg-text-oracle` | Structure-aware fuzzing; per-script corpus; black-box differential harness (TX-D9) | T |
+
+**Rules.** The JS spec numbered its rules G13 to G18 after the DevTools spec's G10 to G12; two sibling specs are being written at the same time, so this spec names its rules **G-TX1 to G-TX5** and the Stage 1 owner assigns numbers when they merge.
+
+| Rule | Statement | Why |
+|---|---|---|
+| **G-TX1** | Only `hg-fontfmt` reads font bytes; every other crate reaches font data through its generated API | One reader, one validator, one set of proofs (TX-D3) |
+| **G-TX2** | No binary of the broker, GPU service, network service or storage service has `hg-fontfmt`, `hg-font-vm` or `hg-shape` in its **loaded-library closure**; no Izcal crate calls an OS font or text API (DirectWrite, Core Text, fontconfig, FreeType, HarfBuzz); the OS UI frameworks the broker links for native windows are inventoried, and no page-controlled string reaches their text APIs (6.1) | Placement (TX-D2, TX-D15) enforced by what a process can map, as G14 does for the JIT |
+| **G-TX3** | All text crates are `#![forbid(unsafe_code)]` with no inventory entry; and the JS spec's **G18** (checked arithmetic on untrusted sizes, no wrapping in release builds) extends its scope to every value derived from font bytes or the session image, with no `as` narrowing (an `ast-grep` rule over L2t and L2u) | Every exploited font bug with a known root cause was an unbounded number (Section 5) |
+| **G-TX4** | No `f32` or `f64` in any function whose result layout, script or a coverage mask can observe, in `hg-fontfmt`, `hg-font-vm`, `hg-shape`, `hg-text`, `hg-glyph-raster` and `hg-unicode` | Cross-OS and cross-ISA identity (TX-D4) |
+| **G-TX5** | `hg-fontfmt` and the script engines are produced only by `hg-fontgen` and `hg-scriptgen` from checked-in descriptions, with a freshness check; hand edits fail CI | One source of truth (the G16 idea) |
+
+### 6.16 Footprint
+
+| Item | Design | Budget |
+|---|---|---|
+| Site-process start-up | No font parsed, no table built, no cache allocated until the first text run (FP-2) | 0 bytes |
+| Parsed fonts | Zero-copy over the font bytes (web fonts in private memory; the Izcal set and immutable OS files mapped clean, shared as file pages; sealed copies of other files charged to the font service); per-face working state only | ≤ 32 KiB† per face plus its instance outlines in use |
+| Text stack per median corpus page, excluding font bytes and atlases | Faces, shaping cache, raster cache, segmentation state | ≤ 2 MiB† within FP-5 |
+| Shaping cache | Class (a) derived data, per process, partition-keyed | ≤ 512 KiB† |
+| Raster cache (renderer) | Class (a), partition-keyed | ≤ 1 MiB† |
+| Session image ready | Built from prebuilt entries and cached hashes | TX-43 |
+| Atlases | FP-D14 | FP-14 (≤ 2 MiB† per partition), with the CJK question of 6.10 |
+| Izcal font set on disk | FP-D13 data set, mapped clean; untouched faces cost disk only; installed with every installation, either in the installer or as a separate signed data package installed with it (TX-D1) | Estimated 200–350 MiB† installed, unmeasured: Noto Sans CJK's zipped per-region static subsets are 25–48 MiB each and Noto Serif's 35–66 MiB, and the all-region variable archives are 247–264 MiB (download sizes, not installed, [GO 2.5][GO], [FC][FC] FC-R14); a bill of materials per (generic, script or region) with measured sizes is a TX-M0 deliverable (TX-51) |
+| Dictionaries, patterns, Unicode data | Engine image, mapped clean | Within FP-25's web-observable data line |
+
+### 6.17 Alternatives
+
+Each row is decided in Section 9.4 with options, cost and reversal trigger; this table is the summary.
+
+| Area | Recommendation | Main alternative | What it costs | Reversal trigger |
+|---|---|---|---|---|
+| Font visibility (TX-D1) | Web fonts + Izcal set + OS-family tier by name; generics and core families to the Izcal set (TX-D19) | All installed fonts; OS base fonts only (Safari); Izcal set only (Tor on Linux) | 200–350 MiB† disk; Izcal-set look for generic text by default | Corpus breakage or a user study shows the default look harms reading |
+| Placement (TX-D2) | Web fonts in the site's renderer; session image in the font service | A per-site font utility process | None beyond existing processes | Any `unsafe` needed in font code, or an exploited Izcal font bug |
+| Validation (TX-D3) | Generated reader is the validator; no re-serialization | An OTS-style sanitizer in front | Building `.hgfont` and its generator first | A validation-only bug class found that the reader cannot express |
+| Metrics (TX-D4) | Integer, linear, device-independent | Float metrics as other engines use | Exactness work; quantized font size | Measured web-compatibility failures traced to 1/64 px quantization |
+| Hinting (TX-D5) | Own vertical-only autohinter; VM built and measured | Run fonts' y-instructions (FreeType v40-like) | An autohinter to design; a VM to build for the measurement | The TX-M2 legibility comparison |
+| AA (TX-D6) | Grayscale only | LCD as a user setting | Legibility at DPR 1 (unmeasured) | TX-D5's comparison shows a deficit grayscale cannot close |
+| Formats (TX-D7) | COLRv0/v1, sbix, CBDT, OT-SVG, AAT, avar2, IFT; Type 1 and Type 3 for PDF only; no Graphite, EOT | Chrome's set (no OT-SVG) | SVG glyph mode; AAT interpreter; Type 1 in the PDF process | A script whose readers' main font needs Graphite (per script) |
+| Shaping (TX-D8) | Izcal shaping specification compiled into engines | Hand-written engines | Writing and maintaining a specification | — |
+| Raster (TX-D13) | CPU integer raster to partitioned atlases; GPU path for large glyphs | GPU raster for all text | CPU time in renderers | Raster time measured as the cause of a missed TX-41 |
+| Caches (TX-D16) | Transparent, `join_reshapes`-aware, partition-keyed | No cross-run cache, incremental reshaping only | Flags; per-partition duplication | — |
+| Core family names (TX-D19) | Izcal aliases before the OS tier | OS files first where they exist | Arial on Windows is the alias, not Microsoft's file | Corpus breakage traced to aliases |
+| Session image (TX-D22) | Build-time Izcal part; per-session hashing only | Parse every font per session | Manifest maintenance per OS family | — |
+
+### 6.18 Coverage of text features, and what is out of scope
+
+| Feature | Owner | What this stack supplies |
+|---|---|---|
+| `text-decoration` (position, thickness, `text-decoration-skip-ink`), `text-emphasis`, highlight painting (`::selection`, `::highlight`, `::spelling-error`) | Layout and paint | Underline position and thickness from `post` and `OS/2`; glyph outlines for skip-ink intersection; emphasis-mark glyphs |
+| Ruby, `text-combine-upright`, `initial-letter` | Layout | Shaped segments, metrics, cap height and baselines (`BASE`) |
+| `text-spacing-trim`, `text-autospace` (CSS Text 4) | This stack | Feature selection (`halt`, `chws`) and spacing inputs in the shaping call |
+| `text-wrap: balance` and `pretty`, `hanging-punctuation`, `text-overflow: ellipsis` | Layout | Break opportunities with costs; the ellipsis glyph shaped in the line's font |
+| `font-palette`, `@font-palette-values`, `font-variant-emoji`, colour fonts in canvas | This stack | Palette selection in COLR and CPAL evaluation; emoji presentation as a matching input; canvas text through the same raster path |
+| `-webkit-text-stroke`, SVG text on a path | Paint, SVG | Outlines in integers |
+| Forced colors with colour fonts | Style and paint | Colour glyphs drawn per CSS Color Adjust |
+| User minimum font size, zoom | Style | None beyond the numeric contract |
+| **PDF viewer and printing** | Stage 1 PDF utility process; Stage 2 printing | The PDF process links `hg-fontfmt`, `hg-font-vm` and `hg-glyph-raster`; PDFs embed Type 1, bare and CID-keyed CFF, Type 3 and hinted TrueType fonts, so Type 1 and Type 3 are supported **for PDF only, in that process**, under fuel; print-to-PDF embeds subsets and honours `OS/2.fsType` embedding permissions |
+| Text input, IME, caret, spellcheck | This stack (text side) and the broker (6.8a) | Composition rendering, movement rules |
+| Collation, number and date formatting | ECMA-402 (`hg-intl`) | Not used by the text stack |
+
+## 7. M-1 compliance
+
+**Built new, by Izcal, from the specifications.** Everything in Section 6.15: the `.hgfont` language and its generator, the reader and validator for every table, WOFF and WOFF2 decoding and the IFT patch applier, the TrueType instruction VM, the CFF and CFF2 CharString interpreters, COLRv1 evaluation, the AAT interpreter, the OpenType Layout interpreter, every script engine and the `.hgscript` generator, the Izcal shaping specification itself, every Unicode algorithm and its table generator, SA word segmentation, hyphenation, CSS font matching, font loading, the session-image builder, the integer rasterizer, the autohinter, darkening and contrast tables, colour-glyph rendering, the shaping and raster caches and the atlas allocator. No code, design template or internal API shape is taken from HarfBuzz, rustybuzz, HarfRust, Allsorts, FreeType, Fontations, Skia, OTS, ICU or ICU4X, Parley, swash, cosmic-text, DirectWrite, Core Text, Pango, fontconfig or any browser. They appear here only as published evidence (M-1 part 3).
+
+**M-1 part 3, checked where the design resembles existing systems.** Several choices match what others converged on: linear advances for layout, vertical-only snapping, grayscale AA, a per-word shaping cache with break-safety flags, table-driven script engines. Each is derived here from Izcal's own requirements (B1 determinism, P1, the footprint budgets) and cited as evidence that it works, not copied: the numeric contract is integer where every engine uses floats; the cache is transparent by construction where others accept contextual breakage; script engines are compiled from a published specification where others encode behaviour in code; the shaper's output contract is derived from what CSS Text requires a line breaker to know, and its flags (`break_reshapes`, `join_reshapes`, `kashida_point`) and the raster cache use Izcal's own names; the TrueType VM's y-only mode and the "needs instructions" test are defined in Izcal's terms (6.9), not taken from FreeType. Two fuel placeholders (4,096 lookup applications per code point and nesting depth 64) coincide with HarfBuzz's current defaults; they are set from real fonts at TX-M1 (6.3).
+
+**Dependencies used unmodified.** Generic infrastructure only: the Rust standard library; general-purpose crates for data structures, hashing, error handling and serialization of Izcal's own formats; test tooling (Kani, proptest, Miri, a coverage fuzzer). Brotli and zlib decoding uses the networking spec's own `hg-compress` (NW-D6 (a)), built by Izcal. No OS font or text library is linked anywhere (G-TX2); OS interfaces are used only to list directories, read registry keys and open files.
+
+**Data used as inputs to Izcal's own generators** (M-1 part 1's "standards data"): the Unicode Character Database, emoji data and conformance files; CLDR (segmentation suppressions, exemplars); the OpenType script and language tag registries; IANA's BCP 47 registry. **Data that needs the owner's classification** (TX-D9): Microsoft's USE override files (published with the USE specification), ICU's word lists for Thai, Lao, Khmer, Burmese and Chinese/Japanese, TeX hyph-utf8 patterns, and the fonts of the Izcal font set (open-licensed fonts are content, not engine code, but the owner decides the set).
+
+**What each part is anchored to.**
+
+| Part | Anchored to (pinned revision) | Oracle (M-1 part 4) |
+|---|---|---|
+| sfnt container, tables, `cmap`, metrics, variations | OpenType 1.9.1 pages by `ms.date`; ISO/IEC 14496-22:2026 for avar2 | Kani proofs; `.hgfont` round-trip corpus; historical CVE fonts; WPT `css/css-fonts` |
+| WOFF, WOFF2, IFT | W3C WOFF 1.0; WOFF 2.0 (8 August 2024); IFT CRD (13 October 2026); RFC 7932 | W3C WOFF2 decoder and format suites; wpt.fyi IFT report |
+| TrueType VM, CharStrings, COLRv1, composites | OpenType TrueType instruction set and graphics state; Adobe TN #5176 and #5177; CFF2; COLR | Per-opcode tests written from the prose; fuel proofs; COLRv1 reftests |
+| AAT | Apple TrueType Reference Manual (`morx`, `kerx`, `trak`) | Unicode text-rendering-tests AAT fixtures; Izcal corpus |
+| Script engines | Izcal shaping specification, itself anchored to Microsoft's script development pages (USE at its 9 October 2026 revision), the Unicode core specification chapters, UAX 53, UTS 51 | Izcal per-script corpus; Unicode text-rendering-tests; black-box differentials if TX-D9 allows |
+| OpenType Layout | GSUB, GPOS, GDEF, common formats; feature, script and language tag registries | Per-lookup-type corpus |
+| Unicode algorithms | UAX 9, 14 (rev 57), 15, 24, 29 (rev 49), 50, 51, 53, UTS 39 at Unicode 18.0.0 | Unicode conformance files at 100% |
+| Matching and loading | CSS Fonts 4 (16 October 2026 WD) §4–§7, CSS Fonts 5, CSS Font Loading 3 | WPT `css/css-fonts`, `css/css-font-loading` |
+| Text processing and line breaking | CSS Text 3 (CRD 14 August 2026), CSS Text 4 | WPT `css/css-text` |
+| Vertical text | CSS Writing Modes 3 and 4; UAX 50 | WPT `css/css-writing-modes` |
+| Metrics and line boxes | CSS Inline 3; CSS Fonts 5 overrides | WPT `css/css-inline` |
+| Canvas text | HTML canvas text preparation algorithm and `TextMetrics` | WPT `html/canvas/*/text` |
+| Math | MathML Core §5; OpenType `MATH` | WPT `mathml` |
+| Rasterization, hinting, AA, caches, fuel values, placement | No specification governs them: first principles (M-1 part 3), with the evidence cited in Section 6 | CPU reference raster hashes (DET-1); TX-D5's measurement; FP-36 |
+
+**Anchors.** Every generated reader field, script-engine rule and Unicode rule carries a `// spec:` anchor emitted by its generator (G9's rule for generators). The Izcal shaping specification is itself anchored, so a shaping trace can name both the Izcal rule and the Microsoft or Unicode text behind it.
+
+**Test-only tools that need an owner classification (TX-D9).** None is linked into a shipping binary.
+
+| Tool or data | Role | Proposed class |
+|---|---|---|
+| **HarfBuzz** (`hb-shape` command line), **Core Text**, **DirectWrite** | Black-box differential shaping signals in CI, on Izcal's corpus | **Oracle, black-box only** (M-1 part 4): divergences are triaged against the Izcal shaping specification, never resolved by matching |
+| HarfBuzz's shaping test cases (about 2,250 fonts and expectations) | Additional corpus input | **Test data**, if their fonts' licences allow redistribution in CI; expectations are black-box observations, not ground truth |
+| Unicode **text-rendering-tests** | Engine-neutral shaping and rendering tests | **Oracle** (Unicode-published test data) |
+| **FreeType** (`ftview`-class tools), **fontTools** (`ttx`) | Black-box comparison of outlines, metrics and table decoding | **Oracle, black-box only** |
+| Microsoft USE override files; ICU word lists; hyph-utf8 patterns | Generator inputs | **Data**, licence per file (TX-D14 for patterns) |
+| Kani, a coverage fuzzer | Proofs and fuzzing | **Generic test tooling** |
+
+## 8. Targets
+
+† marks thresholds set by this document from first principles; none is measured. "Best shipping browser" means the best result among the stable releases of Chrome, Firefox and (on macOS) Safari on the same reference device, corpus and day. "Corpus" is the Stage 1 recorded corpus plus Izcal's per-script text corpus. Run counts in DST targets are test sizes. The prefix **TX-** (targets TX-1 to TX-60, decisions TX-D1 to TX-D23, milestones TX-M0 to TX-M4, questions Q-TX-1 onward, rules G-TX1 to G-TX5) does not collide with any prefix in `reports/` or the security-scope and coding-standard worktrees (checked 19 October 2026).
+
+### 8.1 Correctness
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **TX-1** | **Unicode conformance** | **100%** of BidiTest, BidiCharacterTest, LineBreakTest (untailored), GraphemeBreakTest, WordBreakTest, SentenceBreakTest, NormalizationTest and emoji-test at the pinned Unicode version, from TX-M0 | `hg-unicode` test runner in T1 | Ship blocker; a Unicode upgrade does not land until 100% |
+| **TX-2** | **WPT text directories** | Per directory (`css-fonts`, `css-text`, `css-writing-modes`, `css-font-loading`, `css-inline`, `css-text-decor`, `html/canvas/*/text`, `svg/text`, `mathml`; scaled-canvas text cases included): **≥ best shipping browser − 5 points†** at Stage 1 exit and **≥ best shipping browser†** at Stage 2 exit; every expected failure cites a spec section and an issue | `hg-wpt` | C-1's failure action; the directory's next release is held |
+| **TX-3** | **Shaping corpus** | Per script engine: **0** unexplained divergences from the Izcal shaping specification's expected output ("unexplained" means no Izcal shaping-specification rule ID and no recorded black-box observation is attached; the corpus and its expectations are reviewed by contracted native readers, not only by the specification's authors); black-box differential divergences triaged within **14 days†** | `hg-shape-corpus`, `hg-text-oracle` | The script's engine change is reverted; a stale divergence blocks that engine's next release |
+| **TX-4** | **Unicode text-rendering-tests** | **100%†** of applicable cases within the suite's 1 font-unit tolerance | Its driver for Izcal | As TX-3 |
+| **TX-5** | **Format conformance** | **100%** of the W3C WOFF2 decoder and format suites; COLRv1 paint reftests at 100%†; every `.hgfont` field anchored | Suites; `hg-anchor` | Ship blocker for the format |
+| **TX-6** | **Split-and-compare** | Reshaping every line and every cache hit from scratch gives **0** differences on the corpus | CI mode of 6.8 | Ship blocker; the cache or break logic is fixed |
+
+### 8.2 Security
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **TX-10** | **No unsafe code, no OS text calls** | **0** `unsafe` blocks in L2t and L2u crates; **0** calls from Izcal code to OS font or text APIs; OS UI frameworks linked by the broker inventoried | `hg-graph-lint`; G-TX2, G-TX3 | Ship blocker |
+| **TX-11** | **Proved reader** | **100%** of generated accessors proved by Kani free of panics, overflow and out-of-bounds reads for all inputs up to the harness bound | `hg-fontgen` CI | The table's reader is not shipped until proved |
+| **TX-12** | **No crash on any input** | Structure-aware fuzzing of every table, interpreter, script engine and Unicode algorithm: **0** open crashes, panics or timeouts older than **14 days†** | `hg-font-fuzz` in T2 | Ship blocker for the affected component |
+| **TX-12a** | **The shell's text path** | Strings that reach the shell renderer (titles, URLs, notification text, download names) are capped at 4,096† code points; the shaping, segmentation, bidi and matching path the shell uses has **0** open fuzz crashes at release (no grace window), over every face the shell can use, including the OS UI faces | Property test over arbitrary strings with each shell face; fuzzing | Ship blocker |
+| **TX-13** | **Historical classes closed** | A regression font for every class in Section 5's CVE rows (16-bit truncation, signed wrap, unbounded counts, VM stack, undocumented opcode, PNG-in-font, variation deltas, Telugu-class desynchronization, O(n²) marks), plus a granted font truncated and rewritten during layout and malformed session images: **100%** rejected, rendered within fuel or unaffected (no crash, no output change) | Corpus in T1 | Ship blocker |
+| **TX-14** | **Bounded work** | On the adversarial corpus (maximal lookups, deep composites, paint cycles, 10⁴ marks on a base, 10⁶-character runs): shaping ≤ **20 µs† per input code point** and rasterization ≤ **5 ms† per glyph** on the slowest reference device, and **linear** scaling in run length (slope test) | Lab | The algorithm or fuel value is fixed before release |
+| **TX-16** | **No hostile strings to OS shapers in the broker** | Fuzzed page titles, URLs and notification text through every native surface (window titles, menus, Dock and taskbar, jump lists, OS notifications): **0** page-controlled strings reach an OS text API in the broker | T1 test with OS API interposition | Ship blocker |
+| **TX-15** | **Placement** | **0** font-parsing crates in the broker, GPU service, network service or storage service; the font service runs at the strictest tier on all three OSes | Binary closure check; sandbox probe | Ship blocker |
+
+### 8.3 Privacy
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **TX-20** | **No font fingerprint beyond build and OS family** | A Fifield-style probe (metrics of ≥ 43 code points across generic, core and OS-tier families), `local()` probes, and **pre-noise** canvas text hashes in a test build, over the device lab with default settings: **1** distinct result per (build, OS family), reported per UI locale; residual entropy reported for each non-default setting ("use the system's fonts", per-site grants) | PRIV-2 suite, extended | Any per-release difference is a ship blocker for the responsible face, which leaves the OS tier |
+| **TX-21** | **No cross-partition text channel** | FP-36's probes for the glyph atlas, shaping cache, raster cache, variation instances, lazy validation state and parsed-font sharing: **0** detectable differences; the font-file residency channel ≤ **1 bit/s†** measured in the device lab | FP-36 suite | The leaking mechanism is partitioned; for residency, TX-D21 (c) |
+
+### 8.4 Determinism
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **TX-30** | **Identical text on every OS and ISA** | Hashes of shaped output, metrics and CPU coverage masks, for every corpus page whose resolved faces are web fonts or the Izcal set (aliases included): **identical** on macOS, Linux and Windows, on x86-64 and AArch64; the share of corpus pages in scope is published, with a floor of **90%†** of pages (pages using `system-ui` or OS-tier-only names are out of scope by design) | DST farm, cross-platform job | Ship blocker; the divergent path is fixed, never excluded |
+| **TX-31** | **Cache transparency** | Output with every text cache disabled is bit-identical on the corpus | CI | Ship blocker |
+| **TX-33** | **GPU outline path tolerance** | Against the CPU reference: ≤ **1/16†** coverage difference per pixel on ≤ **1%†** of a glyph's pixels, per GPU vendor in the lab | Lab | The GPU path is disabled for that vendor |
+| **TX-32** | **Replay** | DET-1 for pages with web fonts, `font-display` swaps and `FontFace` loads: 1,000 of 1,000 identical replays | DST | DET-1's failure action |
+
+### 8.5 Performance and footprint
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **TX-40** | **Shaping throughput** | Per script family, same fonts and text, single core: **≥ 0.8†** of `hb-shape`'s throughput at Stage 1 exit, **≥ 1.0†** at Stage 2 (black-box, if TX-D9 allows; otherwise absolute rates set at TX-M1) | Lab | Profiling and engine work; never an unverified fast path |
+| **TX-41** | **Raster throughput and first text** | Glyph masks per second at 16 px, and time from first text run to first painted text on corpus pages: within **10%†** of the best shipping browser's first-text time at Stage 2 | Lab, trace | As TX-40 |
+| **TX-43** | **Session image ready** | ≤ **50 ms†** after browser start warm and ≤ **300 ms†** cold on the slowest reference device; first text never waits on it beyond that | Lab trace | Hash caching and manifest work fixed before release |
+| **TX-42** | **Web fonts** | WOFF2 decode plus validation ≥ **50 MB/s†** of output on the reference laptop; font-display periods exact to the substrate clock | Lab; WPT | As TX-40 |
+| **TX-50** | **Text memory** | Section 6.16's budgets; 0 bytes at site-process start-up | Footprint ledger | The footprint spec's failure actions |
+| **TX-51** | **Font set size** | Bill of materials per (generic, script or region) measured at TX-M0; installed ≤ **350 MiB†**, compressed ≤ **200 MiB†** | Build | Owner decision between a smaller generic and region matrix and delivery as a separate signed data package (TX-D1) |
+| **TX-52** | **Atlas re-raster rate** | On the CJK part and the emoji-dense part of the corpus at DPR 2: ≤ **5%†** of glyph draws per frame need re-rasterization after first paint | GPU service ledger | Section 9.5's footprint amendment sizes the A8 and RGBA pools |
+
+### 8.6 Observability
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **TX-60** | **Text facts** | Glyph provenance, font timeline, metrics, break and bidi explanation, shaping trace and validation reports available through IIP for **100%** of glyphs in the page's display list; overhead with no observer ≤ **1%†** of text-stack time | IIP tests; lab | The fact's producer is fixed; overhead regressions block release |
+
+## 9. Milestones and staffing
+
+### 9.1 What is staged, and why
+
+The owner's direction allows staging only for a first-principles reason (correctness, security, measurement). The rule here is the JS spec's: **design everything from the start, build in parallel, ship each part when its gates pass.** This table lists every item that is ordered or held.
+
+| Item ordered or held | Reason | Kind |
+|---|---|---|
+| `.hgfont`, `hg-fontgen` and the proofs come before any table reader is used; the shaping specification's engine model before any engine | One source of truth cannot be retrofitted (the JS spec's lesson for rooting and the cage) | Correctness, security |
+| Every script engine is designed at TX-M0 and ships when its corpus gate passes (TX-3), whatever the stage; Stage 1 requires all scripts (Stage 1 13.2) | Gates, not dates | Correctness gate |
+| The TrueType VM is built for measurement at TX-M1 to TX-M2 and ships only per TX-D5 | Its benefit is unmeasured; its cost (attack and side-channel surface) is known | Measurement, security |
+| IFT ships when its WPT suite passes and its privacy review is done; the loader is designed for patches from TX-M0 | The specification is a Candidate Recommendation Draft with no implementation report ([FS 4.9][FS]) | Correctness |
+| `word-break: auto-phrase` and SA-script word breaking ship when native-reader review (the TX-3 method) and WPT pass | UA-dependent behaviour has no specification oracle, so the gate is review plus WPT | Correctness gate |
+| The GPU outline path for large glyphs follows the graphics spec's path pipeline and is verified against the CPU reference | The CPU path is the reference (P3) | Correctness |
+| CJK atlas budget amendment waits for TX-52's measurement | Unmeasured | Measurement |
+| Graphite, LCD AA and Local Font Access are not built | Decided against (TX-D6, TX-D7, TX-D17), each with a reversal trigger | Decision, not staging |
+
+### 9.2 Milestones
+
+Text is needed for first pixels (Stage 1 M4: "inline via Parley" becomes TX-M1), for input (Stage 1 M6: TX-M1b) and for all-scripts breadth (Stage 1 M7: "fonts via utility processes" becomes TX-M2), and Stage 1 exit (M8) requires every script (13.2). **Text is therefore on Stage 1's critical path at M4 and M8.** The ISO/IEC 14496-22:2026 text is bought at TX-M0, so avar2 is built with the other variation tables.
+
+| ID | Milestone | Exit criterion (demo plus measurement) | Needed by |
+|---|---|---|---|
+| **TX-M0** | Foundations (with a measured-velocity review at month 6) | `.hgfont` and `hg-fontgen` with Kani proofs for the required tables and the session-image format, `cmap`, `glyf`/`loca`, `hmtx`, `GDEF`/`GSUB`/`GPOS`; `hg-ucd` and `hg-unicode` at Unicode 18.0 passing TX-1; the Izcal shaping specification's engine model and the default, Arabic-type and USE engines drafted; the layout contract (6.8) frozen with the layout spec; the Izcal font set chosen with its licence review and a **measured bill of materials** (TX-51, TX-D1); OS-family manifests for macOS and Windows and the build-time session-image part (TX-D22); the style metrics query and the layout contract frozen; both rasterizer families spiked; fuel model implemented; TX-D9's oracle harness if allowed | Stage 1 M2 |
+| **TX-M1** | First text | Latin, Greek, Cyrillic, CJK (horizontal), Arabic, Hebrew and Devanagari through layout with bidi and line breaking; WOFF and WOFF2 web fonts; session image on macOS, Linux and Windows; integer rasterizer and atlas upload; TX-30 on the initial corpus; TX-3 for those scripts; fuel values set from real fonts; TrueType VM built for TX-D5's measurement | Stage 1 M4 |
+| **TX-M1b** | Text input | Composition rendering, caret and selection movement rules, broker-side IME relay on three OSes (6.8a, TX-D23); TX-12a and TX-16 green | Stage 1 M6 |
+| **TX-M2** | Every script, every format | All engines (Indic both generations, Khmer, Myanmar, Thai and Lao with dictionaries, Hangul, Mongolian vertical, the 91 USE scripts), AAT, COLRv0/v1, sbix, CBDT, OT-SVG, variations, `MATH`, vertical text, hyphenation, `auto-phrase`, case mapping and find-in-page matching, Font Loading and `font-display` complete; PDF font support in the PDF process; TX-D5's legibility comparison done; TX-52 measured; IIP `text.*` domain (TX-60); TX-20 run | Stage 1 M7 |
+| **TX-M3** | Stage 1 exit | TX-1 to TX-32 at their Stage 1 thresholds; external review of the reader, the interpreters and the shaping engines; TX-40 and TX-41 measured | Stage 1 M8 |
+| **TX-M4** | Parity | Stage 2 thresholds of TX-2, TX-40 and TX-41; IFT shipped if its gate passed; avar2 shipped | Stage 2 exit |
+
+### 9.3 Staffing and duration
+
+No primary source gives a team size for a whole text stack. The estimate is therefore derived from a **component inventory** (sizes in thousands of lines of production Rust†, excluding generated code and tests, sized against the one public reference point, rustybuzz's 17 KLOC of hand-written shaping), at **3–4 KLOC† of verified, reviewed production code per engineer-year** plus the non-code work each track carries:
+
+| Component | Production KLOC† | Non-code work |
+|---|---|---|
+| `.hgfont`, `hg-fontgen`, proofs, WOFF/WOFF2/IFT, variations, session-image format | 25–30 | Writing descriptions for 50 tables from the prose |
+| Glyph programs (CharStrings, COLRv1, composites, TrueType VM), Type 1 and Type 3 for PDF | 15–20 | Per-opcode tests from the prose |
+| Integer rasterizer on two ISAs, autohinter, darkening, colour glyphs | 15–20 | TX-D5's legibility study |
+| Shaping: OpenType Layout and AAT interpreters, `hg-scriptgen`, fallbacks, emoji | 25–35 | **The Izcal shaping specification** (every engine); corpus expectations |
+| Unicode for text: bidi, line breaking, SA and phrase dictionaries, hyphenation, case mapping, search, UAX 50 and 53 | 15–20 | Dictionary and pattern licensing; Unicode upgrades yearly |
+| Matching, loading, font service, manifests, font set | 15–20 | Manifests per OS family; font-set licence review |
+| Text interface, caches, vertical text, canvas, `MATH`, input services, observability | 20–25 | Contracts with layout, style, editing, DevTools |
+| Verification tooling (fuzzers, differential harness, cross-OS jobs) | 10–15 | Running and triaging them |
+| **Total** | **140–185** | |
+
+At 3–4 KLOC† per engineer-year that is 35–60 engineer-years of code alone; specification writing, corpus review, licensing, manifests, triage and the yearly Unicode cycle about double it, which gives the 105–160 engineer-years† below. The data points behind the rates are indirect: FreeType, HarfBuzz and FontTools are each held up by a lead and one or two others ([text2024](https://behdad.org/text2024/)); HarfBuzz took about 7–9 years to be complete ([GO 8.2][GO]); Fontations, with about six core engineers and an existing implementation to compare against, took about three years from repository to default in Chrome ([HP 9.3][HP], [GO 8.4][GO]); rustybuzz is about 17 KLOC of hand-written shaping ([SH 4.2][SH]). Izcal builds more than any of them (parser, VMs, shaper, Unicode, matching, loading, raster, system fonts, observability) and adds proofs, a written shaping specification and cross-OS identity. The rows are first-principles estimates†, each track staffed from TX-M0:
+
+| Track | Scope | Engineers† |
+|---|---|---|
+| Formats and reader | `.hgfont`, `hg-fontgen`, every table, WOFF/WOFF2/IFT, variations, proofs | 4–5 |
+| Glyph programs and raster | CharStrings, COLRv1, composites, TrueType VM, autohinter, integer rasterizer on two ISAs, darkening and contrast, colour glyphs, raster cache | 4–5 |
+| Shaping | The Izcal shaping specification, `.hgscript` and `hg-scriptgen`, OpenType Layout and AAT interpreters, every engine, fallbacks, emoji | 6–8 |
+| Unicode for text | Bidi, line breaking with CSS tailoring, SA and phrase dictionaries, hyphenation, case mapping and search, UAX 50 and 53, UTS 39 data (segmentation and normalization stay with the JS spec's Intl and Unicode track, shared through L2u, and are not counted here) | 3–4 |
+| Fonts and system integration | Matching, loading, the font service and session image per OS, the Izcal font set and manifests, licences | 3–4 |
+| Text interface | Itemization, measurement contract, line-breaking helper, caches, vertical text, canvas, `MATH`, observability and IIP | 3–4 |
+| Verification and security | Kani harnesses, structure-aware fuzzing, the CVE-class corpus, fuel tuning, differential harness, cross-OS identity jobs (component-specific; the security scope's browser-wide security track is not counted here) | 3–4 |
+| Script quality | Per-script corpus building and review with contracted native readers for each script family | 2–3, plus contractors |
+| **Total at full strength** | | **28–37†** |
+
+**Hiring ramp†.** TX-M0 starts with **12–15** engineers (the lead of every track), reaches about **25** by month 12 and full strength by month 24.
+
+**Duration†** (placeholders, replaced from measured velocity at each review): TX-M0 at 9 months, TX-M1 at 15–21 months, TX-M2 at 27–33 months, TX-M3 at Stage 1 exit, TX-M4 (parity) at 4–5 years. Engineer-years to parity, with the ramp: about 18 in year one and 30 in year two, then 28–37 a year, so 18 + 30 + 2 × 28 ≈ **105** over four years and 18 + 30 + 3 × 37 ≈ **160** over five, **about 105–160 engineer-years†**. After parity a sustained **12–16†** engineers track Unicode (yearly), OpenType, CSS and the per-OS base-font manifests. Velocity measures: Unicode conformance and WPT subtests passing per engineer-month, script engines through TX-3 per quarter, fuzz-clean tables per month.
+
+**Effect on Stage 1's plan** (planning facts, not reasons to change the design): Stage 1 8.3's style and layout track (3–4) assumed Parley; text becomes its own track of 28–37† at full strength, larger than Stage 1's whole pre-2.3.0 staffing (23–30.5†), which assumed libraries for every engine component; text is on the critical path at M4 and M8; D-S8 must fund it; the JS spec's Intl and Unicode track shares L2u with this track, so segmentation and normalization are not counted twice.
+
+### 9.4 Decisions for the owner
+
+A bare "yes" to any row means its recommendation. Build-versus-reuse is not on this list (M-1, D-S10). **The rows the owner most needs to see are TX-D1 (font visibility and its disk cost), TX-D4 (removing `measureText` noise, an amendment to D-S1), TX-D5 (hinting), TX-D9 (oracle and data classification under M-1), TX-D14 (hyphenation licences), TX-D19 (core families resolve to Izcal's aliases on every OS) and TX-D23 (IME placement in the broker).**
+
+| ID | Decision | Options | Recommendation | Cost | Reversal trigger |
+|---|---|---|---|---|---|
+| **TX-D1** | Which fonts the web sees | (a) web fonts + the Izcal set + an **OS-family tier** by name (faces present with identical probe metrics in every supported release of that OS family, identity (family, style)); generics and fallback to the Izcal set; a user setting maps them to OS fonts; user-installed and on-demand fonts never visible except by per-site grant; (b) web fonts + OS base fonts only (Safari's model), fallback by OS; (c) web fonts + the Izcal set only (Tor Browser's Linux model; on Windows and macOS Tor allows its bundled Noto set plus an allowlist of OS fonts, which it calls "a compromise", [Tor design](https://2019.www.torproject.org/projects/torbrowser/design/)); (d) every installed font (Chrome) | **(a)**: close to Tor's desktop model, with a manifest per OS family in place of a name allowlist (Tor flagged name-only allowlisting as weaker); cross-OS identical text for most pages (TX-30); no font fingerprint beyond build and OS family (TX-20); native fonts still reachable by name; (b) leaves fallback OS-dependent; (c) breaks pages that name OS fonts on their own OS; (d) is a top fingerprinting surface | **Estimated 200–350 MiB† installed** for the Izcal set (TX-51), in FP-D13's data set, delivered in the installer or as a separate signed data package installed with every installation (both never page-triggered); FP-25's 24 MiB† placeholder rises accordingly; default generic text on macOS and Windows looks like the Izcal set | Corpus breakage traced to hidden OS fonts above 0.5%† of pages, or the TX-D5 study's reading arm showing the Izcal default harms legibility: switch the default to the OS-fonts setting, keeping the manifests |
+| **TX-D2** | Where font code runs | (a) web fonts parsed, shaped and rasterized in their site's renderer, over immutable bytes; the session image from build-time entries and per-session hashing; masks and bounded paths only to the GPU service; (b) a per-(site, container) font utility process doing parsing and raster, with shaping by IPC; (c) a shared font process | **(a)**: no authority gained beyond the site's own renderer; no IPC on layout's synchronous path; (b) adds a process per site and latency for no authority reduction while the code is safe Rust; (c) mixes sites (I-1) | None beyond existing processes | Any `unsafe` needed in font code, or an exploited Izcal font bug: move glyph programs to (b) |
+| **TX-D3** | Web-font validation | (a) the generated reader is the validator; eager structural checks at load, lazy per-glyph checks (partition-keyed state), unknown tables ignored, nothing re-serialized; (b) an OTS-style sanitizer that re-serializes in front of the reader | **(a)**: one parser, one proof set, no lag for new tables ([SE 2.3–2.4][SE]) | `.hgfont` and its generator before the first reader | A validation-only bug class found that a reader cannot express |
+| **TX-D4** | Layout-observable numbers, and `measureText` noise | (a) integer, linear, device-independent values, font size quantized in the drawing context's local units (6.8); `measureText` without noise (amend D-S1); (b) as (a) but keep D-S1's noise on `measureText`; (c) floating-point metrics | **(a)**: identical for every user of a build on an OS family, so noise protects nothing, and layout widths would reveal the same values anyway; (b) costs compatibility for no privacy; (c) breaks TX-30 | Exactness work in every consumer | Web-compatibility failures traced to quantization on the corpus or in WPT `svg/text` and scaled canvas: finer quantization, still integer |
+| **TX-D5** | Hinting | (a) Izcal's own vertical-only autohinter for every font at small sizes; the TrueType VM built for measurement and run only for fonts that need instructions (6.9); (b) y-only execution of fonts' own instructions for every hinted font, autohinter for the rest; (c) no hinting (macOS) | **(a)**, decided by TX-M2's **pre-registered** comparison: ≥ 40† participants with normal or corrected vision, DPR 1 displays, reading-speed and error-rate tasks on the corpus's 50 most-used fonts, α = 0.05†, plus a contrast and stem-sharpness metric; it removes the VM's attack and side-channel surface from almost every page and gives one look per font on every OS | Designing an autohinter; building a VM that may not ship | (b) beats (a) by a statistically significant reading-speed or error-rate gain, or by ≥ 5%† on the metric, **and** the security review accepts the VM's fuzz and proof record (TX-11, TX-12): ship (b) under Section 6.3's fuel |
+| **TX-D6** | Anti-aliasing | (a) grayscale only, darkening and contrast in the mask; (b) LCD as a user setting on opaque layers | **(a)**: opacity constraints under GPU compositing, triple raster variants, per-display geometry, a fingerprint source | Legibility at DPR 1 is unmeasured; an insider conceded LCD looks better on 1× displays ([HP 4.4][HP]) | TX-D5's study includes an LCD prototype arm on opaque layers; if LCD wins significantly, (b) as a user setting applied at composition and never readable by content |
+| **TX-D7** | Formats | (a) OpenType with TrueType, CFF, CFF2; variations with avar2; COLRv0/v1, sbix, CBDT, OT-SVG (restricted glyph mode); AAT; WOFF, WOFF2, IFT; `MATH`; Type 1 and Type 3 for PDF only, in the PDF process; not Graphite, EOT, `mort`; (b) as (a) without OT-SVG (Chrome's set); (c) as (a) plus Graphite | **(a)**: OT-SVG is live on the web (53% of the 0.04–0.05% of sites with colour fonts, but about 5% once fonts with fewer than 5% colour glyphs are excluded, where COLRv0 leads at 25%, [Web Almanac 2024](https://almanac.httparchive.org/en/2024/fonts)), and Izcal's renderer already has an SVG engine, so Chrome's architectural reason does not apply; AAT is needed for macOS system fonts (Q-TX-5 confirms which); Graphite is one engine's niche with its own VM | SVG glyph mode; AAT interpreter; Type 1 in the PDF process | **Per script**, not per page: a script or language whose readers' main font needs Graphite for correct rendering, per the native-reader review: build Graphite under the fuel model |
+| **TX-D8** | How shaping is specified and built | (a) Izcal writes and publishes a shaping specification, anchored to Microsoft's pages and Unicode, and compiles script engines from its machine-readable part; (b) hand-written engines anchored directly to the Microsoft pages, with the observations kept as test cases only | **(a)**: no normative specification exists ([FS 1.9][FS]); the one independent shaper that lasted was built beside one ([HP 3.3][HP]); a written specification lets native readers and upstream review behaviour, not code | Writing and maintaining the specification (in the shaping track) | The specification's machine-readable part cannot express an engine's behaviour without ad hoc escapes in more than 2† engines: hand-write those engines under (b), anchored to the specification's prose |
+| **TX-D9** | Test-only oracles and data (M-1 part 1 classification) | (a) HarfBuzz `hb-shape`, Core Text, DirectWrite, FreeType tools and fontTools as **black-box** CI oracles, never linked; HarfBuzz test cases as test data where licences allow; Unicode text-rendering-tests as an oracle; USE override files, ICU word lists and hyph-utf8 patterns as data; (b) none of them: Izcal's own corpus only | **(a)**: M-1 part 4 allows black-box differential signals, and Fontations' pace came from differential testing ([GO 7.5][GO]); divergences are triaged against Izcal's specification, never resolved by matching | CI integration; licence checks | A licence forbids CI use: drop that oracle |
+| **TX-D10** | Resource bounds | (a) canonical fuel per interpreter and per document per frame (Section 6.3), identical everywhere, values set from the largest real fonts, specified results on exhaustion; (b) per-device time limits | **(a)**: time limits are device-dependent, web-observable and nondeterministic (FP-D19's rule, applied to fuel) | Tuning on real fonts | A real font in the corpus exceeds a bound: raise the bound, keeping it canonical |
+| **TX-D11** | One Unicode implementation | (a) `hg-ucd` and `hg-unicode` in a shared L2u layer used by the text stack and ECMA-402, one pinned version per build; (b) keep them in L2e and give L2t an exception to G6 | **(a)**: the dependency direction is honest (Unicode is below both); (b) makes the text stack depend on the engine's layer | A JS spec amendment (G6, 6.15) | — |
+| **TX-D12** | SA-script and phrase breaking | (a) dictionaries with integer scoring, compiled into the engine image; (b) LSTM models | **(a)**: deterministic across ISAs; data, not floating point | Dictionary size in FP-25 | A measured quality deficit on native-reader review that only a model can close: a model in integer arithmetic |
+| **TX-D13** | Where glyphs rasterize | (a) CPU integer raster in the renderer, masks to the partitioned atlas; GPU outline path only for large or transformed glyphs (TX-33); (b) GPU raster for all text | **(a)**: bit-exact reference; GPU float evaluation is not exact across vendors ([RC 1.7][RC]) | Renderer CPU time | Raster time is the measured cause of a missed TX-41: widen the GPU path, never for hashed output |
+| **TX-D14** | Hyphenation patterns that are not permissively licensed | (a) ship only permissively licensed patterns (including the dual LPPL-or-MIT sets under MIT), and build Izcal's own patterns for the rest from permissively licensed word lists; (b) ship them all under their licences as separate data files; (c) ask authors to relicense, with (a) as fallback | **(c) then (a)**: FP-D13 needs every language; GPL data in an MIT browser (D-S6) needs the owner's legal view | Pattern generation for up to about 22 languages, plus any the review of the MPL and about 9 custom licences excludes | The owner's legal review accepts (b) |
+| **TX-D15** | System font access | (a) no OS font API anywhere: the broker lists directories and registry keys and opens files; fontconfig's XML is read as data by the font service; fontconfig itself (a matching library, engine work) is not linked; (b) OS enumeration APIs (DirectWrite font sets, Core Text descriptors) in the font service | **(a)**: no OS font library in any Izcal process; OS APIs parse fonts internally | Per-OS directory knowledge, maintained with the manifests | An OS hides base fonts from direct file access: use that OS's enumeration API in the font service only |
+| **TX-D16** | Caches | (a) reuse only where `join_reshapes` is unset, every cache partition-keyed, transparent (TX-31); (b) no cross-run cache: each paragraph shaped once and reshaped incrementally on change | **(a)**: the measured large win ([HP 3.6][HP]) without the contextual breakage; (b) loses reuse across paragraphs and pages | Flags; per-partition duplication | Partition keying measured as the cause of a missed TX-41: never unkey; enlarge per-partition budgets |
+| **TX-D17** | Local Font Access API | (a) not implemented; per-site local-font grants from site settings; (b) implement behind a permission | **(a)** | Designers use site settings | The API reaches a second engine and a privacy review shows no added entropy under per-site grants |
+| **TX-D18** | OS fonts in recordings | (a) referenced by manifest entry and hash; replay fails loudly if missing, or runs marked "not exact" with Izcal faces substituted; never embedded; (b) embed used OS font files | **(a)**: vendors' licences forbid redistribution | Some cross-OS replays of OS-font pages are not exact | — |
+| **TX-D19** | Name precedence for core families | (a) Izcal metric-compatible aliases before the OS tier, on every OS; the "use the system's fonts" setting reverses it; (b) OS files first where they exist, aliases elsewhere | **(a)**: the most common named families render identically on every OS (TX-30's scope covers most pages) at the cost of Microsoft's and Apple's exact glyphs for Arial, Times New Roman and similar | Arial on Windows is Izcal's alias, not Microsoft's file | Corpus breakage traced to aliases above 0.5%† of pages, or TX-30's in-scope share below 90%† because of named families: revisit per family |
+| **TX-D20** | Default emoji face | (a) the Izcal COLRv1 emoji face for the `emoji` generic and emoji fallback, everywhere; (b) the OS emoji font on macOS and Windows | **(a)**: identical emoji everywhere, no OS-version signal through emoji metrics; the setting switches to the OS font | Users see Izcal's emoji, not Apple's or Microsoft's, by default | A user study shows the default is unwanted: make (b) the default, recorded as configuration |
+| **TX-D21** | Font-file page-cache residency channel | (a) accept as bounded, measured; (b) the first renderer to map a font file pre-faults all of it, plus (a)'s measurement; (c) per-renderer private copies of touched pages of large fonts | **(b)**: residency then reveals only "some process used this font"; page-cache pages are clean, shared and evictable, so pre-faulting costs no charged memory | Disk reads of whole font files on first use | TX-21's residency bound missed: (c) for fonts above 4 MiB†, with its memory cost in the footprint ledger |
+| **TX-D22** | How the session image is built | (a) the Izcal-set part at build time, the OS part from manifests by hashing only; read through a proved reader; (b) the font service parses every installed font per session (draft 0.1) | **(a)**: no font bytes parsed per session, no poisoning through parsing, fast start (TX-43) | Manifests per OS family, maintained with each OS release | An OS release ships base fonts before Izcal's manifest update: they are invisible until it lands (privacy over native look, P1) |
+| **TX-D23** | Text input placement and ownership | (a) this spec owns composition rendering and caret and selection rules; the broker owns the OS IME frameworks and relays composition by IPC; no IME component in any renderer; (b) IME frameworks in a separate input utility process attached to the native window | **(a)**: the OS frameworks attach to native windows, which the broker owns; (b) is not supported by TSF or `NSTextInputClient` without the window | Third-party IME DLLs load into the broker on Windows (inventoried, in the broker threat model) | An OS offers out-of-process IME hosting for a window owned by another process: move IME there |
+
+### 9.5 Amendments this spec proposes to other documents (not applied)
+
+This document edits no other file; the owners apply these, with revision lines as `CONTRIBUTING.md` requires. Rows marked R# come from the design critique's reconciliation list ([critique][CR]).
+
+| Document | Proposed amendment |
+|---|---|
+| HGBA-2 Section 4.4 and D1 | The text stack is `reports/Izcal fonts and text.md`; nothing in 4.4's superseded text applies to fonts or text |
+| HGBA-3 Tier 1 verified parsers (VER-1) | "Font container headers" becomes the whole generated font reader and the session-image reader, with Kani proofs (TX-11) |
+| HGBA-3 PRIV-2 (R19) | Add TX-20's font-metrics, `local()` and pre-noise canvas-text probes, reported per UI locale and per non-default setting, at OS-family granularity |
+| HGBA-3 DET-1 (R20) | DET-1's text scope is pages whose resolved faces are web fonts or the Izcal set (TX-30); GPU-path glyphs are outside pixel hashes |
+| Stage 1 Section 1, Section 6 (R2) | The utility row's "font parsing" becomes "the font service (per-session hashing and sealed copies; no font parsing)"; web fonts are parsed in the site's renderer (TX-D2); the PDF viewer's utility process links the text stack, with Type 1 and Type 3 for PDF only |
+| Stage 1 Section 2, G9 (R4) | L0 loses `parley`; add layers L2u and L2t with Section 6.15's crates, and add them and the generators `hg-fontgen` and `hg-scriptgen` to G9's anchored list; add G-TX1, G-TX2 and G-TX5 (numbered by the Stage 1 owner); G-TX3 extends the JS spec's G18 |
+| Stage 1 3.3 (R3) | Add text rows: cache insertions under phase purity are outside results and canonical bytes; font installations at task boundaries (JS-D15's rule); session-image identity and manifest versions as recorded inputs |
+| Stage 1 5.6, 8.1, 8.3, 13.2 (R1, R25) | "Inline via Parley" becomes TX-M1's text interface; M6 gains TX-M1b (text input); M7's fonts item becomes TX-M2; the text track (28–37†) is added and text is on the critical path at M4 and M8; double counting with the Intl and Unicode track and the security track is removed; 13.2's "Text and input" row cites this spec, keeps "all scripts render in Stage 1", and names this spec and the broker (TX-D23) as owners of IME composition, caret and editing services |
+| Stage 1 5.8 (R24) | The semantic plane takes per-character bounds, word boundaries and the glyph-to-character map from `hg-text` |
+| Stage 1 7.2, 7.5 (R5) | T0 runs Kani harnesses for changed `.hgfont` accessors; T1 runs split-and-compare and caches-off (TX-6, TX-31) and TX-16's broker string test; fuzzing covers every `.hgfont` table, interpreter, script engine and Unicode algorithm with structure-aware grammars |
+| Stage 1 13.2 "Everyday features" (R6) | Find in page uses `hg-unicode` caseless and canonical-equivalence matching; print-to-PDF subsets fonts honouring `fsType`; spellcheck runs in a utility process (6.8a) |
+| Stage 1 D-S1 (R19) | Remove `measureText`-class metrics from the readback-noise list; text metrics are non-identifying by construction (TX-D4, TX-20); font enumeration normalization is TX-D1's OS-family tier; TX-20 compares canvas text before noise |
+| JS engine spec 6.13, 6.15 (G6, G18) | `hg-ucd`, and the UAX 29, UAX 15 and case-mapping implementations, move to a shared L2u layer that L2e and L2t both use (TX-D11); G6 no longer covers them; `Intl.Segmenter` and the case-mapping builtins use `hg-unicode`; G18's scope extends to values derived from font bytes and the session image |
+| HTML and CSS parsing and style spec (R12) | The metrics query for font-relative units and font installations as mutation-log entries (6.8) are the agreed interface; `text-transform` case mapping lives in `hg-unicode`; font-size quantization is a used-value rule (6.8); on its Q-ST-2, `hg-encoding` does not belong to this spec, which works on Unicode scalar values only |
+| Networking spec (R13) | `hg-compress` serves WOFF2 in the renderer under its decompression budget (128 MiB† per font); font and IFT patch fetches are partitioned subresources of destination `font` |
+| Footprint spec 6.3 (R8) | The session image: owner `hg-font-service` for the per-session part and `hg-image` for the build-time part (signed, in the image inventory, SEC-16); format described in `.hgfont`; start-up budget TX-43 |
+| Footprint spec 6.4 (R7) | The shaping cache, raster cache, variation instances and face working state are class (a), partition-keyed, outside canonical bytes; the cross-process sharing rule gains an explicit exception for the installed Izcal set and OS font files on integrity-protected volumes, under 6.4's immutability rule |
+| Footprint spec 6.6, 8.2 (FP-14) (R10) | State the glyph atlas as A8 and RGBA8 pools and size both from TX-52 (CJK and emoji-dense pages), with no web-observable device dependence |
+| Footprint spec 6.12, 8.2 (FP-25), FP-D13 (R11) | The Izcal font set joins the web-observable data set, in the installer or as a separate signed data package installed with every installation; FP-25 gains installed and compressed lines for it (TX-51) |
+| Footprint spec 6.18.1, FP-36 (R9) | Add the raster cache, variation instances and lazy validation state as closed channels; add the font-file residency channel as bounded, pre-faulted (TX-D21), with TX-21's bound |
+| Security scope 6.3, 6.5, 6.10, Q-SEC-13 (R17) | Fonts are not "unmodified non-browser crates": Izcal builds its own (2.3.0); Q-SEC-13 is answered for fonts; the font service parses no font bytes per session, so "outputs normalized (glyph outlines)" no longer describes it |
+| Security scope IPC-R7, IPC-R17, GPU-service threat model (R14) | Mask transfer with receiver-fixed sizes and a per-partition upload budget; the graphics spec's bounded path format for large glyphs; the session image read as untrusted input |
+| Security scope broker threat model, 6.7 (R15) | No page-controlled string reaches an OS text API in the broker (TX-16); OS UI frameworks linked by the broker are inventoried; third-party IME DLLs loaded into the broker by TSF are recorded (TX-D23) |
+| Security scope shell-renderer threat model, ATK-2 (R16) | Title and string length caps and the shell text path's fuzz bar (TX-12a) |
+| Security scope renderer threat model | Web fonts parsed in the renderer over immutable bytes (TX-D2); the residency channel; Local Font Access not implemented |
+| Coding standard tier table, G18 (R18) | Add L2u and L2t crates (tier R; no tier-P binary links them, since URL display is drawn by the shell renderer), `hg-glyph-atlas` (tier P) and the tools (tier T); G18's scope covers font-derived values |
+| DevTools spec | Add IIP's `text.*` domain (Section 6.14) |
+| Future graphics spec (R21) | The compositing colour space for text masks, the bounded path format, the GPU outline path tolerance (TX-33), and CPU compositing of canvas 2D text |
+| Future layout spec (R22) | The numeric contract (6.8) and the `break_reshapes` and `join_reshapes` contract |
+| Shell UI design 4.10 (R23) | "System UI fonts" means the OS tier's UI face on macOS and Windows and the Izcal UI face on Linux; native-surface strings follow TX-16's rule |
+
+## 10. Risks
+
+| Risk | Likelihood and impact | Mitigation | Trigger for action |
+|---|---|---|---|
+| **Shaping quality behind incumbents for some scripts** | High in Stage 1; script by script | The written specification, native-reader review, black-box differentials, corpus gates per engine | A script's TX-3 gate open for two quarters |
+| **The Izcal font set is too large, or its default look is rejected** | Medium; 200–350 MiB† is unmeasured | Measure at TX-M0; variable fonts and collections to share glyphs; the OS-fonts setting | TX-51 above the owner's figure; TX-D1's reversal trigger |
+| **Microsoft's script pages are stale or silent** (Arabic, Hebrew, Hangul, Myanmar date from 2018) | High | Black-box observations filed upstream; the Izcal specification states the chosen behaviour | Repeated divergences in one engine |
+| **Unicode changes every year** (UAX 14 and 29 changed in each of 15.1–18.0) | Certain | Generated rules and tables; 100% conformance before an upgrade lands | A Unicode release misses TX-1 for two months |
+| **Integer exactness costs speed** | Medium | SIMD with identical semantics; caches | TX-40 or TX-41 missed with exactness as the measured cause |
+| **CJK atlas pressure** | Medium | Raster cache; TX-52; footprint amendment | TX-52 over its bound |
+| **OS changes break directory-based enumeration or manifests** | Medium per OS release | Manifests tested on OS betas; TX-D15's fallback | A base font missing from a new OS release's manifest at release |
+| **Hyphenation licences** | Medium | TX-D14 | Owner's legal review |
+| **Hiring text specialists** (shaping, rasterization, scripts) | High | The specification and generators make the work learnable; contracted native readers | Track below 70%† staffed for two quarters |
+| **Autohinter quality** | Medium | Both options built and measured (TX-D5) | The TX-M2 measurement |
+| **Hostile strings in the broker's OS text stacks** | Medium; the Telugu crash class in a trusted process | TX-16's rule and test | Any page-controlled string found reaching an OS text API |
+| **IME components in the broker** | Medium on Windows (TSF loads third-party DLLs into the window's process) | Inventoried; threat-model entry; TX-D23's reversal trigger | An exploited IME DLL in any browser |
+| **OS-family manifests lag OS releases** | Medium | Manifests tested on OS betas; new faces stay invisible until the manifest lands (TX-D22) | A base font missing at an OS release |
+| **Text on Stage 1's critical path** | High; M4 and M8 depend on TX-M1 and TX-M2 | Every track staffed from TX-M0; month-6 velocity review | TX-M0's review shows TX-M1 cannot precede M4 |
+
+## 11. Open questions and flagged claims
+
+### 11.1 Open questions
+
+- **Q-TX-1.** What is the Izcal font set's bill of materials (faces per generic, script and Han region) and its installed and compressed size? (TX-D1, TX-51; TX-M0.)
+- **Q-TX-2.** Is any normative change in ISO/IEC 14496-22:2026, beyond avar2, absent from Microsoft's 1.9.1 pages ([FS 1.2][FS])? (The text is bought at TX-M0.)
+- **Q-TX-3.** Which rasterizer family (dense accumulation or sparse strips) is faster in integer arithmetic at text sizes, and can strips be re-phased vertically ([RC 1.2][RC])? (TX-M1.)
+- **Q-TX-4.** How many horizontal subpixel phases give output indistinguishable from exact positioning at DPR 1 and 2? (TX-M1.)
+- **Q-TX-5.** Which Apple system fonts are AAT-only in the supported macOS releases, and which Windows base fonts need instructions to form their outlines? (A local survey; TX-M0.)
+- **Q-TX-6.** What fuel values, per glyph and per document per frame, do the largest real fonts (Duployan, Nastaliq, Noto CJK, emoji) need? (TX-M1.)
+- **Q-TX-7.** What re-raster rate do 2 MiB A8 and RGBA pools give on CJK and emoji-dense pages at DPR 2 (TX-52)?
+- **Q-TX-8.** *Answered in 0.2:* the shell uses the OS tier's UI face on macOS and Windows and the Izcal UI face on Linux (Section 9.5, shell UI design row).
+- **Q-TX-9.** How do the OpenType `SVG ` table's rules treat animation and scripting, and does the restricted glyph mode of 6.3 match them? (Checked against the table's text at TX-M0.)
+- **Q-TX-10.** How does emboldening for `font-synthesis: weight` affect advances in other engines (a black-box observation to record and file)?
+- **Q-TX-11.** *Closed in 0.2:* the networking spec's `hg-compress` (NW-D6 (a)) decodes Brotli and zlib for WOFF2.
+- **Q-TX-12.** Which faces of each supported OS family meet the OS-tier rule (present with identical probe metrics in every supported release)? (TX-M0, per manifest.)
+- **Q-TX-13.** What is the residual capacity of the font-file residency channel after pre-faulting, under memory pressure, on each OS (TX-21, TX-D21)?
+
+### 11.2 Claims that are single-source, unverified or conflicting
+
+- **Estimated, not measured**: the Izcal font set's size (200–350 MiB†), extrapolated from Noto CJK download sizes that are zipped static subsets and all-region variable archives, not installed sizes ([GO 2.5][GO], [FC][FC] FC-R14); every † number in Sections 6, 8 and 9.
+- **Unverified**: the publication date of ISO/IEC 14496-22:2026 (iso.org refuses automated access); that macOS 15's Geeza Pro needed `morx` fixes, which TX-D7's AAT rationale uses ([SH 3.2][SH], from a changelog search summary; Q-TX-5 closes it).
+- **Medium or Low in the notes**: the Duqu and DirectWrite CVE-2021-24093 root-cause details ([SE 1.3, 1.10][SE]); Windows 10's AppContainer dates ([SE 2.2][SE]); macOS's reason for dropping LCD AA (an insider's comment, [HP 4.4][HP]); Pathfinder's non-adoption in Firefox and WebRender's glyph path ([HP 4.6][HP], [RC 4.2][RC]); Chrome's remote glyph cache, confirmed only from file names ([RC 4.3][RC]); the routing of Mongolian and N'Ko in other shapers ([SH 1.5][SH]); Chrome's per-OS hinting defaults and subpixel phase count (not verified, [RC 9][RC]); the hinting-VM side-channel paper, read as an abstract only ([RC 2.8][RC]).
+- **Conflicting**: the Web Almanac's WOFF2 share, 81% (2024) against 65% (2025), probably different denominators ([GO 1.3][GO]); its colour-format shares change by an order of magnitude when fonts with few colour glyphs are excluded (SVG 53% to about 5%, TX-D7).
+- **Single-source**: HarfBuzz and FreeType CVE counts (9 and 109) and maintainer counts are from one maintainer's account ([text2024](https://behdad.org/text2024/)); the 34% metric-uniqueness figure is from one 2015 study ([Fifield and Egelman](https://www.bamsoftware.com/papers/fontfp.pdf)); the Steam display data describe a gaming population ([RC 3.5][RC]).
+- **Unknown**: shaping's share of page-load time in current browsers and word-cache hit rates ([SH 5.4][SH]; Ladybird's one profile showed shaping falling from about 11% to 1.8% with a cache); glyphs-per-second figures for any rasterizer at text sizes ([RC 9][RC]); any published attack on a browser glyph cache ([RC 9][RC]).
+
+## Appendix A. Review disposition (revision 0.2)
+
+Sources: the independent fact-check ([factcheck.md][FC]: 100 claims, 73 correct, 22 partly correct, 3 wrong, 2 unverifiable; 267 external links, 1 dead) and the independent design critique ([critique.md][CR]: 37 findings, 7 High, 24 Medium, 6 Low, plus reconciliation items R1–R25). IDs: **FC-M** = fact-check must-fix; **FC-R** = fact-check recommended; **C** = critique finding; **R** = reconciliation item. Dispositions: **Applied**; **Applied differently** (why); **Rejected** (why). Nothing is rejected.
+
+**Fact-check, must-fix**
+
+| ID | Finding | Disposition | Where |
+|---|---|---|---|
+| FC-M1 | Two, not four, of the ten in-the-wild font rows are glyph-program interpreter bugs; CVE-2020-0938 and -1020 are Type 1 dictionary parsing | Applied in the report; the security note's tally and bug-class table are corrected too | Summary; 3; SE 1.2 |
+| FC-M2 | Tor's desktop model allows OS fonts; only Linux is bundled-only | Applied: option (c) relabelled "Tor on Linux", (a) described as close to Tor's desktop model | TX-D1; 6.17 |
+| FC-M3 | "SVG is the most common colour format" misleading (about 5% after excluding fonts with few colour glyphs) | Applied in the report and in GO 1.6's Implications | 2.1; TX-D7; 11.2; GO 1.6 |
+
+**Fact-check, recommended**
+
+| ID | Disposition | Where |
+|---|---|---|
+| FC-R1 (sheet range to October 2026) | Applied | 3; SE method note |
+| FC-R2 (root-cause qualifier; `ADJUST` unpublished) | Applied | Summary; 5 |
+| FC-R3 (CVE-2020-0938 exploited on Windows 7) | Applied | 2.1; 5 |
+| FC-R4 (dead Fifield link; 1,016 browsers) | Applied in the report and SE 4.3 | 1; 11.2 |
+| FC-R5 (Local Font Access quote) | Applied | 6.13 |
+| FC-R6 (Fontations README for "generated") | Applied | 2.1; 5 |
+| FC-R7 (rustybuzz archived 26 July 2026) | Applied in SH | SH 4.2–4.4 |
+| FC-R8 (Ladybird cache commit) | Applied | 2.1 |
+| FC-R9 (219 opcode values) | Applied in the report and FS 3.1 | 4.2; 6.3 |
+| FC-R10 (ISO date unverified) | Applied | 4.2; 11.2 |
+| FC-R11 (BidiTest line count) | Applied | 6.6 |
+| FC-R12 (about 22 non-permissive pattern sets) | Applied | 6.6; TX-D14 |
+| FC-R13 (Web Almanac years) | Applied | 3 |
+| FC-R14 (Noto CJK sizes are zipped static subsets) | Applied | 6.16; 11.2 |
+| FC-R15 (4,096 is HarfBuzz's default) | Applied, and the coincidence stated under M-1 part 3 | 5; 6.3; 7; SH 4.6 |
+| FC-R16 (Geeza Pro claim unverified) | Applied | 11.2 |
+| FC-R17 (which libraries M-1 names) | Applied | Summary |
+| FC-R18 (Tier 1 wording) | Applied | 1; 9.5 |
+| FC-R19 (FP-D19's scope) | Applied; the notes' "session image (FP-D19)" corrected to footprint 6.3 | 1; 6.3; TX-D10; notes |
+| FC-R20 (DT-D4 citation) | Applied | 6.14 |
+| FC-R21 (security scope 6.5) | Applied | 1 |
+| FC-R22 (`hg-compress`) | Applied; Q-TX-11 closed | 6.2; 7; 11.1 |
+| FC-R23 (style metrics query) | Applied | 6.8; 6.14 |
+| FC-R24 (colour-share conflict) | Applied | 11.2 |
+
+**Design critique**
+
+| ID | Severity | Finding | Disposition | Where |
+|---|---|---|---|---|
+| C1 | High | OS manifests per version reveal release and patch level | Applied: OS-family tier, identity (family, style), metrics-identical rule; TX-20 per OS family | 6.4; TX-D1; TX-20 |
+| C2 | High | Cross-OS identity excludes common named families; precedence unspecified | Applied as the critique's option (b): aliases before the OS tier (new TX-D19); TX-30's scope stated with a 90%† floor | 6.4; TX-D19; TX-30 |
+| C3 | High | Mapped files can change or shrink (SIGBUS, double reads) | Applied: only immutable bytes are mapped; sealed copies otherwise; TX-13 truncation case | 4.4; 6.1; 6.4; 6.12 |
+| C4 | High | Session image is a one-to-many artifact with no specified reader | Applied: build-time Izcal part, per-session hashing only, proved reader, untrusted input (new TX-D22) | 6.0; 6.1; 6.4; TX-D22 |
+| C5 | High | Raster cache, instances and lazy validation state not partitioned | Applied | 6.2; 6.8; 6.9; 6.12; TX-21 |
+| C6 | High | Text input, IME and editing lose their owner | Applied: new 6.8a and TX-D23; TX-M1b for Stage 1 M6 | 6.8a; TX-D23; 9.2 |
+| C7 | High | OS text stacks still run in the broker; TX-10 unachievable | Applied: rule and TX-16; TX-10 and G-TX2 restated | 6.1; 6.12; G-TX2; TX-10; TX-16 |
+| C8 | Medium | GPU service gets outlines; mask transfer ignores IPC-R7 | Applied | 6.1; 6.10 |
+| C9 | Medium | Placement does not stop microarchitectural attacks | Applied: per-document fuel per frame, no time access; paper's grade stated | 6.3; 6.12; 11.2 |
+| C10 | Medium | Residency channel without a bound | Applied: TX-D21 (pre-fault) and TX-21's bound | 6.12; TX-D21; TX-21 |
+| C11 | Medium | VM modes and detection were FreeType constructs; trigger ignores security | Applied: defined in Izcal's terms; measurable detection; security review in the trigger | 6.9; TX-D5 |
+| C12 | Medium | Shell text path held to a weak bar | Applied: TX-12a; Q-TX-8 answered | TX-12a; 11.1 |
+| C13 | Medium | Caches were class (b); canonical accounting under parallel insertion | Applied: class (a), outside canonical bytes | 6.8; 6.16; 9.5 |
+| C14 | Medium | No bill of materials; circular TX-51 | Applied: BoM at TX-M0; numeric TX-51; separate-package option | TX-D1; TX-51; 6.16 |
+| C15 | Medium | Session image on the first-text path with no budget | Applied: TX-43; hash cache | 6.4; TX-43 |
+| C16 | Medium | Colour glyphs break the atlas | Applied: RGBA sizing, large emoji as paths, TX-52 emoji part | 6.10; TX-52 |
+| C17 | Medium | TX-20 vs canvas noise; locale; Han default | Applied: pre-noise comparison, per locale, settings reported; Han rule | 6.4; 6.13; TX-20 |
+| C18 | Medium | `local()` unspecified | Applied | 6.4; TX-20 |
+| C19 | Medium | 1/64 CSS px breaks scaled SVG and canvas text | Applied: local-unit quantization with a relative floor; WPT `svg/text` | 6.8; TX-2; TX-D4 |
+| C20 | Medium | Style metrics query missing | Applied | 6.8; 6.14 |
+| C21 | Medium | Case mapping, folding, search absent | Applied; collation stated as not used | 6.6 |
+| C22 | Medium | Coverage-to-pixel step and GPU tolerance | Applied: darkening and contrast in the mask; blending space to the graphics spec; TX-33 | 6.9; TX-33; 9.5 |
+| C23 | Medium | PDF and printing fonts | Applied: PDF process uses the stack; Type 1 and Type 3 for PDF only; `fsType` | 6.18; TX-D7 |
+| C24 | Medium | Output contract reused HarfBuzz's names and shape | Applied: contract derived from CSS Text; Izcal names; Microsoft anchors per engine, observations otherwise; "strike" renamed | 6.7; 7 |
+| C25 | Medium | Holding `auto-phrase` was a scope cut | Applied: built by TX-D12's method with a review gate | 6.6; 9.1 |
+| C26 | Medium | LCD and Graphite evidence and triggers | Applied: LCD cost stated and an LCD arm in TX-D5's study; Graphite trigger per script | TX-D6; TX-D7; 2.2 |
+| C27 | Medium | Critical path and underived staffing | Applied: critical path stated; component inventory and rate; overlaps removed; month-6 review | 9.2; 9.3; 10 |
+| C28 | Medium | Omitted features not stated | Applied: Section 6.18 | 6.18 |
+| C29 | Medium | Unfalsifiable targets | Applied: thresholds for TX-21, TX-51; pre-registered study; "unexplained" defined; TX-60 denominator | 8; TX-D5 |
+| C30 | Medium | Tier and lint conflicts | **Applied differently**: rather than tier P for `hg-ucd` and `hg-unicode`, no tier-P binary links them (URL display is in the shell renderer); G-TX3 extends G18 | 6.15; 9.5 |
+| C31 | Medium | Embedding OS fonts in recordings | Applied: never embedded; "not exact" replay mode | 6.11; TX-D18 |
+| C32 | Low | Q-TX-11 answered by NW-D6 | Applied | 6.2; 11.1 |
+| C33 | Low | avar2 held on a purchase | Applied: bought at TX-M0 | 9.1; 9.2 |
+| C34 | Low | Linux fontconfig sentence; XML in the broker | Applied | 6.4 |
+| C35 | Low | Variation arithmetic underspecified | Applied: 16.16 font units, one rounding | 6.2 |
+| C36 | Low | Strawman options; missing decisions | **Applied differently**: real alternatives for TX-D8, TX-D11, TX-D16; new TX-D19 to TX-D23; the Han default and `local()` are rules in 6.4 rather than decisions, because each has one defensible answer | 9.4; 6.4 |
+| C37 | Low | Accessibility output thin | Applied | 6.8; 6.14 |
+
+**Reconciliation list.** R1 to R25 are applied as rows of Section 9.5, each marked with its R number. **Applied differently**: R18 (no tier-P binary links the Unicode crates, so their tier stays R) and R17 (the security-scope row is restated for a font service that parses no font bytes per session, following TX-D22).
+
+**Research-note fixes made in this pass** (FC-M1, FC-M3, FC-R4, FC-R7, FC-R9, FC-R15, FC-R19): the security note's tally and bug-class table, the gaps note's colour-format implications, the dead Fifield link, rustybuzz's archive date, the TrueType opcode count, HarfBuzz's limit attribution, and the notes' "session image (FP-D19)" references.
+
+[HP]: ../research_notes/Izcal%20fonts%20and%20text/history_postmortems.md
+[FS]: ../research_notes/Izcal%20fonts%20and%20text/formats_specs.md
+[SH]: ../research_notes/Izcal%20fonts%20and%20text/shaping_scripts.md
+[RC]: ../research_notes/Izcal%20fonts%20and%20text/rasterization_caches.md
+[SE]: ../research_notes/Izcal%20fonts%20and%20text/security_robustness.md
+[GO]: ../research_notes/Izcal%20fonts%20and%20text/gaps_opportunities.md
+[FR]: ../research_notes/Izcal%20fonts%20and%20text/frame.md
+[H2]: HGBA%202%20browser%20architecture%20spec.md
+[H3]: Future%20software%20browser%20engine.md
+[S1]: HGBA%20Stage%201%20architecture%20design.md
+[JS]: Izcal%20JavaScript%20engine.md
+[FP]: Izcal%20resource%20footprint.md
+[DT]: Izcal%20DevTools%20spec.md
+[ST]: Izcal%20HTML%20and%20CSS%20parsing%20and%20style.md
+[NW]: Izcal%20networking.md
+[FC]: ../research_notes/Izcal%20fonts%20and%20text/factcheck.md
+[CR]: ../research_notes/Izcal%20fonts%20and%20text/critique.md
