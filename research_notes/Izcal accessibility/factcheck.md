@@ -216,3 +216,5 @@ Section 11.2's own flags were also checked. Each matches its note and the primar
   2. The page for nvaccess/nvda#19276 embeds a snippet of NVDA's `UIAHandler` source. NVDA is a screen reader, not a browser engine, and the spec uses only the maintainer's prose comment.
   3. Mozilla bug titles quoted in SR 4.7–4.9 contain Gecko class and method names (for example `DocAccessibleParent::Unbind`). Titles are metadata; only the bug shapes are used (6.5), not any code.
 - **Confirmation.** No research note or spec section cites another engine's or AccessKit's source code. Section 7's evidence rule holds.
+
+**Addendum, HGBA-2 2.3.3 (20 October 2026).** M-1 part 3 now covers every third-party project's source, OS components and screen readers included. Rows 37 and 39 above were checked against local SDK headers; those counts are now † values measured black-box at AX-M0 (spec 2.1, PA 4.7–4.10). The CDP `browser_protocol.json` stays as a published protocol definition (DT-D11). The per-item log is `research_notes/Phase 3 amendments/source_evidence_2.3.3.md`.

@@ -12,15 +12,15 @@ The documents cite each other by ID. This table maps the IDs to files.
 | HGBA-3 (direction: oracles, data plane, determinism; B-, DET-, AG-) | `reports/Future software browser engine.md` | 3.2.0, frozen |
 | Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S11) | `reports/HGBA Stage 1 architecture design.md` | draft 0.11 |
 | DevTools spec (native inspection protocol, `hg-devtools`, adapters; targets DT-) | `reports/Izcal DevTools spec.md` | draft 0.3 |
-| JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM, on x86-64, AArch64 and riscv64; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.4, decisions accepted; Phase 3 amendments applied; riscv64 first-class (JS-D22) |
-| Resource footprint spec (memory, wakeups, energy, disk and GPU budgets, per ISA on x86-64, AArch64 and riscv64; targets FP-) | `reports/Izcal resource footprint.md` | draft 0.4, decisions accepted; Phase 3 amendments applied (A-FP-1 to A-FP-40) |
-| HTML and CSS parsing and style spec (HTML, XML and CSS parsers, selectors, cascade, invalidation; targets ST-) | `reports/Izcal HTML and CSS parsing and style.md` | draft 0.3.3, decisions accepted |
-| Fonts and text spec (font parsing, shaping, Unicode, rasterization, text input, Izcal's own font set; targets TX-) | `reports/Izcal fonts and text.md` | draft 0.3.4, decisions accepted |
-| Networking spec (HTTP/1.1, HTTP/2, HTTP/3 and QUIC, TLS and cryptography, the root program, DNS, Fetch, cookies, HTTP cache; targets NW-) | `reports/Izcal networking.md` | draft 0.3.3, decisions accepted |
-| Layout spec (box tree, formatting contexts, fragmentation, incremental layout, hit testing; targets LY-) | `reports/Izcal layout.md` | draft 0.4, decisions accepted |
+| JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM, on x86-64, AArch64 and riscv64; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.4.1, decisions accepted; 2.3.3 source-evidence pass; Phase 3 amendments applied; riscv64 first-class (JS-D22) |
+| Resource footprint spec (memory, wakeups, energy, disk and GPU budgets, per ISA on x86-64, AArch64 and riscv64; targets FP-) | `reports/Izcal resource footprint.md` | draft 0.4.1, decisions accepted; 2.3.3 source-evidence pass; Phase 3 amendments applied (A-FP-1 to A-FP-40) |
+| HTML and CSS parsing and style spec (HTML, XML and CSS parsers, selectors, cascade, invalidation; targets ST-) | `reports/Izcal HTML and CSS parsing and style.md` | draft 0.3.4, decisions accepted; 2.3.3 source-evidence pass |
+| Fonts and text spec (font parsing, shaping, Unicode, rasterization, text input, Izcal's own font set; targets TX-) | `reports/Izcal fonts and text.md` | draft 0.3.5, decisions accepted; 2.3.3 source-evidence pass |
+| Networking spec (HTTP/1.1, HTTP/2, HTTP/3 and QUIC, TLS and cryptography, the root program, DNS, Fetch, cookies, HTTP cache; targets NW-) | `reports/Izcal networking.md` | draft 0.3.4, decisions accepted; 2.3.3 source-evidence pass |
+| Layout spec (box tree, formatting contexts, fragmentation, incremental layout, hit testing; targets LY-) | `reports/Izcal layout.md` | draft 0.4.1, decisions accepted; 2.3.3 source-evidence pass |
 | Images and media spec (image decoders, colour and HDR, codecs, audio, WebCodecs, capture; targets MD-) | `reports/Izcal images and media.md` | draft 0.4, decisions accepted |
-| Graphics and rendering spec (GPU abstraction, shaders, rasterizer, compositor, WebGPU, WebGL, Canvas; targets GR-) | `reports/Izcal graphics and rendering.md` | draft 0.4, decisions accepted |
-| Content blocking spec (protection layers, matcher, Izcal's own lists and their governance; targets CB-) | `reports/Izcal content blocking.md` | draft 0.3, decisions accepted |
+| Graphics and rendering spec (GPU abstraction, shaders, rasterizer, compositor, WebGPU, WebGL, Canvas; targets GR-) | `reports/Izcal graphics and rendering.md` | draft 0.4.1, decisions accepted; 2.3.3 source-evidence pass |
+| Content blocking spec (protection layers, matcher, Izcal's own lists and their governance; targets CB-) | `reports/Izcal content blocking.md` | draft 0.3.1, decisions accepted; 2.3.3 source-evidence pass |
 | Shell UI design | `reports/HGBA shell UI design.md` | draft 0.3 |
 
 Reviews that fed the specs are also in `reports/`; the evidence behind every report is in `research_notes/<report name>/`.

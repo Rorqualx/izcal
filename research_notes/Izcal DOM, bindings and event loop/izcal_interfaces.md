@@ -8,7 +8,7 @@ Confidence: every row was read in the cited document by the synthesis author or 
 
 | # | Decision or expectation | ID(s) | Where | Consequence for the DOM spec |
 |---|---|---|---|---|
-| 1.1 | No code from another engine, no library doing engine work; MIT-only shipped code and data; another engine's source code never evidence; spec-anchored implementation at pinned revisions | M-1 (2.3.2), ANC-1 | HGBA-2 Section 2 | Own IDL compiler, DOM, event loop, navigation; anchors on every algorithm and generated item |
+| 1.1 | No code from another engine, no library doing engine work; MIT-only shipped code and data; no third-party project's source code ever evidence (2.3.3); spec-anchored implementation at pinned revisions | M-1 (2.3.3), ANC-1 | HGBA-2 Section 2 | Own IDL compiler, DOM, event loop, navigation; anchors on every algorithm and generated item |
 | 1.2 | One locked renderer per site on desktop; (site, container) key; origin keying of subdomains; documented reduced-isolation mode below about 2 GB | I-1 and its 2.1.2 extensions | HGBA-2 4.1 | Agent clusters must fit inside processes; reduced isolation needs explicit handling |
 | 1.3 | Zero ambient authority; SAB and high-resolution timers only under COOP+COEP | I-2, I-6 | HGBA-2 4.1 | Broker decides; timer coarsening |
 | 1.4 | bfcache hit rate target; one memory policy for bfcache and discard | BF-1 | HGBA-2 Section 6 | DM-31, DM-D14 |
