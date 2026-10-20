@@ -6,7 +6,7 @@ Compiled 19 October 2026 by the reconciliation reviewer, who wrote none of the t
 
 **Addendum, HGBA-2 2.3.1 (19 October 2026).** M-1 part 3 now says another engine's source code is never evidence. This note was checked for links to engine source and for unlinked claims read from it: it has none. Its one size estimate (P9's bytes per glyph) is now derived from TX 6.7's output contract and marked †. P25's test-only oracles (HarfBuzz `hb-shape`, Core Text, DirectWrite, FreeType tools, fontTools, rustls-webpki, other engines over WebDriver BiDi) are run as **black-box programs**: their outputs are observations, which 2.3.1 allows; triaging a divergence must not read the oracle's source. The three specs' passes are logged in [ST's](../Izcal%20HTML%20and%20CSS%20parsing%20and%20style/source_evidence_pass.md), [TX's](../Izcal%20fonts%20and%20text/source_evidence_pass.md) and [NW's](../Izcal%20networking/source_evidence_pass.md) `source_evidence_pass.md`; each spec is at revision 0.3.1.
 
-**Result.** 27 items (P1–P27): conflicts between the new specs, conflicts with the accepted JS and FP specs, gaps that no spec covered, consistency fixes and one open measurement (the Kind column of Section 1). Every item is applied to the three new specs. Four need an owner decision because they change an accepted spec's design or budget (Section 6). No footprint budget is exceeded on paper, but the per-(top-level site, container) network services use about a third of FP-S30's headroom and are outside FP's model until FP is amended (Section 3). The five components need about **169–218 engineers† at full strength** (Section 4).
+**Result.** 27 items (P1–P27): conflicts between the new specs, conflicts with the accepted JS and FP specs, gaps that no spec covered, consistency fixes and one open measurement (the Kind column of Section 1). Every item is applied to the three new specs. Four need an owner decision because they change an accepted spec's design or budget (Section 6). No footprint budget is exceeded on paper, but the per-(top-level site, container) network services use about a third of FP-S30's headroom and are outside FP's model until FP is amended (Section 3). The five components need about **169–218 engineers† at full strength** (Section 4); after the later addenda (TX-D14, the MIT-only licence decisions and the owner's decisions of 19 October 2026) they need about **231–290 people†**, 178–232† of them engineers (Section 8).
 
 ## 1. Summary
 
@@ -262,7 +262,7 @@ Each row is listed in the amendments section of the spec named in the last colum
 
 ## 6. Decisions for the owner
 
-A bare "yes" means the recommendation.
+**Owner decision (19 October 2026): OD-1 to OD-4 are accepted** (Section 8). A bare "yes" means the recommendation.
 
 | ID | Decision | Recommendation | Why |
 |---|---|---|---|
@@ -322,7 +322,7 @@ Of the combined 216–285†, about 38–53† are type-design, root-program and
 | JavaScript engine spec | No licence amendment from these specs beyond the generic-crate rule its own Section 7 must follow (MIT-available crates, `hashbrown` without `foldhash`) | This note |
 | CONTRIBUTING | A carve-out for `hg-crypto` in the review item on hand-rolled cryptography | NW 9.5 |
 
-**Still for the owner.**
+**Still for the owner.** (Answered on 19 October 2026 in Section 8, except Q-NW-14 and the first half of Q-TX-15.)
 
 - **NW-D24's trigger:** if the root program is not credible by the first public release, delay the release or ship that release with OS anchors (visible in the site panel).
 - **Q-NW-3:** may the root program read CCADB records as an input to its own reviews, without shipping them? Recommendation: yes.
@@ -331,3 +331,31 @@ Of the combined 216–285†, about 38–53† are type-design, root-program and
 - **ST:** whether the W3C's MathML Core and SVG UA sheets count as standards data (HGBA-2 2.3.2 names WHATWG, not W3C).
 
 [LA]: licence_audit.md
+
+## 8. Owner decisions addendum (19 October 2026)
+
+**What the owner decided.** Every recommendation in the decision sections of the three specs is accepted: [ST][ST] ST-D1 to ST-D20, [TX][TX] TX-D1 to TX-D25 and [NW][NW] NW-D1 to NW-D26, and so are OD-1 to OD-4 above. The owner also answered the items Section 7 left open, except Q-NW-14:
+
+- **NW-D24's trigger.** If the Izcal root program has not passed its credibility gate (NW-53) at the first public release, that release ships on the OS trust stores (an OS interface) and the site panel says so, until Izcal's store passes its gate. The reason is security, not schedule: a store that has not passed its gate would vet CAs less carefully than the OS vendors' programs.
+- **MIT-only items.** Izcal writes P-256, P-384 and RSA verification (NW-D23). Q-NW-3 is closed: the root program may read CCADB records as an input to its own reviews, without shipping them. The W3C's MathML Core and SVG UA sheets are standards data (ST, Q-ST-19). Type designers' drawing tools count as toolchain (the second half of Q-TX-15; its first half, measuring alias widths from installed reference faces, stays open).
+- **The interim OS-font tier** stands as TX-D25 (a) recommends, with its per-script reversal trigger; the owner treats its fingerprint as a privacy cost to shorten, which sets the type-design size below.
+- **Type-design team: about 45†**, sized to finish the font set's high estimate (400 designer-years†) in about 10 years, because every year a script waits for its Izcal face its readers carry the OS-font fingerprint (a first-principles reason, not a schedule preference).
+
+The specs record this as style 0.3.3, fonts and text 0.3.4 and networking 0.3.3, each with "owner decisions recorded".
+
+**Staffing after the owner's decisions.** Only TX changes. Its type-design track goes from 30–40† to about 45† (type direction 3, Latin, Greek, Cyrillic, aliases and math 4, emoji 3, Han, kana and Hangul 15, other scripts 14, font engineering 6). Its hiring start and month-12 figures are unchanged (6–8 type staff at TX-M0, about 15 at month 12), because type designers for many scripts are scarce; type staff then reach about 30 by month 24 and about 45 by month 36.
+
+| Spec | Full strength† (Section 7) | Full strength† now | Start (M0)† | Month 12† | Person-years to parity† |
+|---|---|---|---|---|---|
+| JavaScript engine (JS) | 60–75 | 60–75 | 20–25 | about 40 | about 265–460 |
+| Resource footprint (FP) | 3–4 | 3–4 | 3–4 | 3–4 | about 15–25 |
+| Parsing and style (ST) | 31–40 | 31–40 | 14–17 | about 27 | about 130–215 |
+| Fonts and text (TX) | 64–85 | **79–90**: 34–45 engineering, about 45 type design | 18–23 | about 40 | engineering about 115–185, plus **150–400 designer-years** for the font set over about 5–10 years (was 5–14) |
+| Networking (NW) | 58–81 | 58–81 | 21–26 | about 45 | about 200–340 |
+| **Combined** | **216–285** | **231–290** | **76–95** | **about 155** | **about 725–1,225**, plus 150–400 designer-years |
+
+**Person-years, recomputed.** Engineer-years to parity are unchanged (about 725–1,225†), since no engineering track changed. The type-design work is still 150–400 designer-years†: the work sets it, not the team size, and the larger team spends it sooner. With the ramp above, type staff spend about 10 designer-years in year one, 22 in year two and 38 in year three, then about 45 a year: about 160† by year five and about 385† by year ten. The low estimate (150†) is therefore reached in about 5 years† (4.8) and the high one (400†) in about 10 years† (10.3), against 5–6 and 11–14 years† at 30–40†. After the set is complete, the sustained type staff stays 6–10†.
+
+Of the combined 231–290†, about 53–58† are type-design, root-program and list-curation staff (about 45 type design, 4–6 root program, 4–7 lists); the engineers are still about 178–232†. The five components alone now need about eight to thirteen times Stage 1 8.3's whole pre-2.3.0 plan (23–30.5 engineers): 231 / 30.5 ≈ 7.6 and 290 / 23 ≈ 12.6. D-S8 (funding) must cover the larger type-design track from month 12 to month 36, when it grows fastest. The Stage 1 8.3 and D-S8 amendments in TX 9.5 now carry about 45†.
+
+**Still open.** Q-NW-14 (who owns WebCrypto, and whether it links `hg-crypto`), and the first half of Q-TX-15.
