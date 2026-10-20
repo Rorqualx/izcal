@@ -280,3 +280,54 @@ A bare "yes" means the recommendation.
 [S1]: ../../reports/HGBA%20Stage%201%20architecture%20design.md
 
 **Addendum (19 October 2026, TX-D14).** The owner decided that Izcal builds its own linguistic data and asks no one to relicense. The fonts and text spec (0.3.2) adds a language-data track of 4–6†, so TX becomes 33–44† and the combined full-strength total for the five specs becomes **173–224†**.
+
+## 7. Licence addendum: MIT only (19 October 2026)
+
+**The rule.** HGBA-2 2.3.2 (M-1 part 1): everything Izcal ships, code and data, must be available under MIT, alone or as one choice of a dual licence; anything else Izcal builds, and it never asks an author to relicense. Exceptions: Unicode data; other standards bodies' own data (WHATWG tables, IANA registries, tz, OpenType registries, the Public Suffix List, the CT log list); test-only inputs that never ship; OS interfaces, drivers and the toolchain. The [licence audit][LA] found what failed the rule; the owner decided each item on 19 October 2026, and the three Phase 2 specs apply the decisions: style 0.3.2, fonts and text 0.3.3, networking 0.3.2.
+
+**What each spec changed.**
+
+- **Style (ST 0.3.2).** WHATWG tables (`entities.json`, the Encoding index files, the UA style sheet) ship as standards data; `@webref/css` is MIT, so ST-D6's classification question is gone; Section 7 lists only MIT-available crates. No new work: staffing unchanged.
+- **Fonts and text (TX 0.3.3).** Izcal designs its own font set (TX-D24): pan-script faces, metric-compatible aliases, a math face, an emoji face and a last-resort face, in waves TX-W1 to TX-W4. Noto, Liberation, STIX Two, Last Resort and Twemoji are test material only. Until a script has an Izcal face, OS fonts render it (TX-D25): for those scripts text differs by OS and the visible OS font set is a fingerprint, bounded by manifests and measured by the new TX-22. TX-30's cross-OS identity and TX-20's entropy bound now hold only for scripts with Izcal faces.
+- **Networking (NW 0.3.2).** Izcal writes its own TLS stack (NW-D22), because rustls always links ISC and BSD-3-Clause crates (0.3.1's "rustls-webpki is not linked" was wrong and is corrected). Cryptography is `hg-crypto` (NW-D23): MIT-dual RustCrypto crates for hashes, HMAC, HKDF, the AEADs, BLAKE2s and ML-KEM, with Izcal's own X25519, Ed25519, P-256, P-384, RSA verification and HPKE. P-256, P-384 and RSA are Izcal's too because RustCrypto's elliptic-curve crates and `rsa` 0.9 link `subtle` (BSD-3-Clause), which the audit had not resolved. Certificate trust is an Izcal root program (NW-D5), staffed before NW-M2, with OS trust-store anchors in development builds only until its first store (NW-D24, a first-principles decision). The HSTS preload list (NW-D25) and the content-blocking lists (NW-D26) are Izcal's own; users may add third-party lists.
+- **Every spec's M-1 section** now uses one wording for standards data ("Allowed as standards data (HGBA-2 2.3.2 M-1 part 1): …"), lists only MIT-available crates, and records the audit's non-MIT defaults: `hashbrown`'s default hasher `foldhash` (Zlib) is avoided with `default-features = false`, and `subtle` (BSD-3-Clause) never enters the graph. `tools/deny.toml`'s licence check enforces it.
+
+**Staffing after the licence decisions.** Full-strength people† as each spec now states them. Two tracks are mostly not engineers: TX's type design (designers, native-script reviewers, font engineers) and NW's root program and lists (CA reviewers, incident and compliance staff, list curators and breakage triagers).
+
+| Spec | Full strength† before | Full strength† now | Start (M0)† | Month 12† | Person-years to parity† |
+|---|---|---|---|---|---|
+| JavaScript engine (JS) | 60–75 | 60–75 (amendments only) | 20–25 | about 40 | about 265–460 |
+| Resource footprint (FP) | 3–4 | 3–4 | 3–4 | 3–4 | about 15–25 |
+| Parsing and style (ST) | 31–40 | 31–40 (unchanged) | 14–17 | about 27 | about 130–215 |
+| Fonts and text (TX) | 33–44 | **64–85**: 34–45 engineering, 30–40 type design | 18–23 | about 40 | engineering about 115–185, plus **150–400 designer-years** for the font set over 5–14 years |
+| Networking (NW) | 46–61 | **58–81**: TLS protocol 3–5, cryptography 2–3, PKI and trust data 3–4 (replacing TLS and PKI 4–5), root program 4–6, lists 4–7 | 21–26 | about 45 | about 200–340 |
+| **Combined** | **173–224** | **216–285** | **76–95** | **about 155** | **about 725–1,225**, plus 150–400 designer-years |
+
+Of the combined 216–285†, about 38–53† are type-design, root-program and list-curation staff; the engineers are about 178–232†. Double counting checked: the TLS, cryptography, root-program and lists tracks exist only in NW, and type design only in TX. WebCrypto, if it links `hg-crypto` (Q-NW-14), is not counted anywhere yet. Two tracks do not end at parity: NW's root program and lists (8–13† for as long as Izcal ships) and TX's type staff (6–10† once the set is complete). The honest reading of Section 4 still holds, more strongly: the five components alone now need about seven to twelve times Stage 1 8.3's whole pre-2.3.0 plan (23–30.5 engineers), and D-S8 (funding) must also cover external cryptography audits (NW-52) and CA/Browser Forum and CCADB participation.
+
+**Amendments the licence decisions add** (not applied; each is listed in the named spec's amendments section):
+
+| Document | Amendment | Listed in |
+|---|---|---|
+| Stage 1 D-S6 | Consequence (a), which expected MPL-2.0 dependencies, is superseded by HGBA-2 2.3.2 | ST, TX, NW 9.5 |
+| Stage 1 13.2 | TLS (own stack), certificates (Izcal root program), content blocking (Izcal's matcher and lists, not `adblock`), text ("all scripts render" through Izcal faces plus OS fonts), and the standards data and `@webref/css` as MIT | NW, TX, ST 9.5 |
+| Stage 1 2.1, 2.2 | `hg-crypto` in L2s; rule G36 in the registry | NW 9.5 |
+| Shell UI design 4.10 | The Linux UI font is Izcal's sans alias face | TX 9.5 |
+| Stage 1 8.3, D-S8 | Fund the type-design track and the ongoing root-program and lists tracks; external audits | TX, NW 9.5 |
+| FP-25, FP-D13 (OD-3), FP 8.2 | A font package that grows wave by wave with a version fixed per build; OS fonts outside the data set; an "interim OS fonts" ledger line | TX 9.5 |
+| FP 6.11 | Default lists are Izcal's own and produced by NW; user-added lists stay downloaded third-party text | NW 9.5 |
+| HGBA-3 PRIV-2, DET-1 | TX-22 joins PRIV-2; DET-1's cross-OS identity scoped to Izcal faces | TX 9.5 |
+| Security scope | SEC-25 advisory scope (RustCrypto pins, Izcal's own TLS and cryptography); NET-R5, NET-R6 and Q-SEC-5 (root program's distrust process); the licence gate in the supply-chain section; Linux interim fonts in the renderer threat model | NW, TX, ST 9.5 |
+| DevTools spec | "Own stack (rustls, neqo, hickory-dns)" becomes Izcal's own; Q-DT-5's TLS half answered | NW 9.5 |
+| JavaScript engine spec | No licence amendment from these specs beyond the generic-crate rule its own Section 7 must follow (MIT-available crates, `hashbrown` without `foldhash`) | This note |
+| CONTRIBUTING | A carve-out for `hg-crypto` in the review item on hand-rolled cryptography | NW 9.5 |
+
+**Still for the owner.**
+
+- **NW-D24's trigger:** if the root program is not credible by the first public release, delay the release or ship that release with OS anchors (visible in the site panel).
+- **Q-NW-3:** may the root program read CCADB records as an input to its own reviews, without shipping them? Recommendation: yes.
+- **Q-NW-14:** who owns WebCrypto, and does it link `hg-crypto`?
+- **TX:** whether the interim OS-font fingerprint is acceptable per script (TX-D25 and TX-22); type-design size (30–40† and 11–14 years at the high estimate, or about 45† to finish in 10); Q-TX-15 (alias widths measured from installed OS fonts; type designers' drawing tools under the toolchain exception).
+- **ST:** whether the W3C's MathML Core and SVG UA sheets count as standards data (HGBA-2 2.3.2 names WHATWG, not W3C).
+
+[LA]: licence_audit.md
