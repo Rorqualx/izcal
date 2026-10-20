@@ -12,8 +12,8 @@ The documents cite each other by ID. This table maps the IDs to files.
 | HGBA-3 (direction: oracles, data plane, determinism; B-, DET-, AG-) | `reports/Future software browser engine.md` | 3.2.0, frozen |
 | Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S11) | `reports/HGBA Stage 1 architecture design.md` | draft 0.11 |
 | DevTools spec (native inspection protocol, `hg-devtools`, adapters; targets DT-) | `reports/Izcal DevTools spec.md` | draft 0.3 |
-| JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.3.1, decisions accepted |
-| Resource footprint spec (memory, wakeups, energy, disk and GPU budgets; targets FP-) | `reports/Izcal resource footprint.md` | draft 0.3.1, decisions accepted |
+| JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM, on x86-64, AArch64 and riscv64; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.4, decisions accepted; Phase 3 amendments applied; riscv64 first-class (JS-D22) |
+| Resource footprint spec (memory, wakeups, energy, disk and GPU budgets, per ISA on x86-64, AArch64 and riscv64; targets FP-) | `reports/Izcal resource footprint.md` | draft 0.4, decisions accepted; Phase 3 amendments applied (A-FP-1 to A-FP-40) |
 | HTML and CSS parsing and style spec (HTML, XML and CSS parsers, selectors, cascade, invalidation; targets ST-) | `reports/Izcal HTML and CSS parsing and style.md` | draft 0.3.3, decisions accepted |
 | Fonts and text spec (font parsing, shaping, Unicode, rasterization, text input, Izcal's own font set; targets TX-) | `reports/Izcal fonts and text.md` | draft 0.3.4, decisions accepted |
 | Networking spec (HTTP/1.1, HTTP/2, HTTP/3 and QUIC, TLS and cryptography, the root program, DNS, Fetch, cookies, HTTP cache; targets NW-) | `reports/Izcal networking.md` | draft 0.3.3, decisions accepted |
