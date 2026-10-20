@@ -1,0 +1,1080 @@
+# Izcal DOM, bindings and event loop
+
+*First-principles specification of Izcal's DOM (WHATWG DOM over the one-copy node storage JS-D4 decided), its WebIDL compiler and bindings for Izcal's own JavaScript engine, HTML's event loop and task scheduling, navigation and session history, browsing contexts, agents and agent clusters and their mapping to processes, the HTML element implementations (forms and constraint validation included), input events and focus, workers, messaging and structured clone, the DOM side of the storage APIs, and what developers and DevTools can see of all of it. Date: 19 October 2026. Status: draft 0.2. Research notes: `research_notes/Izcal DOM, bindings and event loop/` (`frame.md`, `history_postmortems.md`, `specs_semantics.md`, `bindings_object_model.md`, `event_loop_scheduling.md`, `navigation_agents_workers.md`, `security_robustness.md`, `gaps_opportunities.md`, `izcal_interfaces.md`; phase 8: `factcheck.md`, `critique.md`). Relates to: HGBA-2 2.3.2 [M-1, P1–P6, I-1, I-2, I-6, F1, BF-1, ANC-1][H2]; HGBA-3 [B1, B2, B3, B4, B5, B8, B9, B10, DET-1, DST-1][H3]; Stage 1 design [Sections 1, 2 (G1–G9), 3, 4.1, 4.3, 5.1–5.4, 7, 8][S1]; JavaScript engine spec 0.3.1 [JS-D4, JS-D15, JS-D17, JS-D18, Sections 6.2, 6.5, 6.9, 6.12, 6.14, 6.15][JS]; resource-footprint spec [FP-2, FP-4, FP-5, FP-11, FP-32, FP-34, FP-D2, FP-D3, FP-D4, FP-D8, Sections 6.3, 6.4, 6.8, 6.10][FP]; HTML and CSS parsing and style spec 0.3.3 [ST-D1 to ST-D4, Sections 6.2–6.4, 6.10, 6.11, G19–G24][ST]; layout spec 0.4 [6.1, 6.9, 6.14, 6.15, LY-D10][LY]; graphics and rendering spec 0.4 [GR-D15, 6.8, 6.9, 6.15][GR]; networking spec 0.3.3 [NW-D3, NW-D10, 6.7–6.9][NW]; images and media spec 0.4 [MD-D13, 6.6, 6.20, MD-31][MD]; fonts and text spec [TX][TX]; DevTools spec 0.3 [DT][DT]; accessibility spec 0.2 [AX-D3, 6.3, 6.9, G100–G109][AX]; content blocking spec 0.3 [CB-D2, CB-27, I5, I11][CB]; Phase 3 ledger [G-11, G-16, G-19][LG].*
+
+*Revision 0.2 (19 October 2026): phase 8 applied. An independent fact-check graded 194 claims (148 correct, 41 partly correct, 3 wrong, 1 unverifiable, 1 not checked), resolved all 47 inline links and 13 fragments, found no link to engine source, and listed 16 must-fix and about 40 recommended items; all are applied. An independent design critique raised 35 findings (9 High, 17 Medium, 9 Low) and 4 engine-source and licence items; all are applied, five in a different form than proposed (Appendix A). What changed: **DM-D6 now recommends ignoring `Origin-Agent-Cluster: ?0`**, so FP-D8's origin keying has no exception, and every cross-origin `WindowProxy` is a remote-shaped stub even when its target shares the process (reduced isolation, opaque origins); **a decision-point register** lists every enqueue path from outside a sequence's thread (6.7); **one script thread per agent cluster** keeps its recommendation with the amendments it needs (per-cluster interning, atomic shared-bytecode counts) and a thread budget (DM-33); **`hg-script-api`**, an L3 interface, lets lower-layer crates queue tasks and hold promises without the engine; the same-origin proof borrows the script token; message endpoints bind documents, `targetOrigin` is enforced in the broker and cross-process transfers revoke the sender's mapping; the mutation log gains the record kinds style, text and accessibility require and is sealed, not truncated; a **web APIs ownership table** and track cover Fetch's script side, Streams, File API, Performance Timeline and the rest (staffing now 72–92 engineers†); AT input equivalence follows the accessibility spec's table; and many corrections of fact. Earlier revision lines are kept below.*
+
+*Revision 0.1 (19 October 2026): first draft, written by the synthesis author from the research notes (six strands by independent researchers, one strand and the frame by the synthesis author, because the session's concurrent-agent limit was reached when it was due).*
+
+HGBA-2 2.3.0 makes the DOM, the bindings and the event loop Izcal's own work, and the ledger lists them as the largest component with no spec (G-11): Stage 1's sections 5.1 to 5.4 have no source text, and Stage 1 staffed them as part of a five-to-six-person track. The record is clear about what goes wrong. **All three in-the-wild DOM use-after-frees whose analyses were read for this spec were triggered by author script running in the middle of an engine algorithm** (an event during a history traversal, a mutation-event listener, a user callback) that freed something the algorithm still held ([SR 3][SR]); two memory managers for one DOM-and-JS graph failed in three engines, and the one that avoided them checked rooting only with a lint ([HP 1, 8.1][HP]); every removed DOM feature let script run inside, or block, an engine operation ([HP 8.2][HP]); and HTML leaves the event loop's most consequential choice, which task runs next, to the implementation, so no engine can show a developer why a task ran late ([SP 2.1][SP], [GO 4.1][GO]). **The central idea: the spec's own contracts become types.** WHATWG DOM already says which steps must not run script (insertion, removal and moving steps) and where script may run (post-connection steps, `[CEReactions]`, event listeners, conversions); Izcal's IDL compiler and its Rust types make every point that can run script explicit, so no borrow, no node reference and no security check can be held across one, and the generated bindings convert every argument before the operation touches the DOM. The scheduler is the second idea: one recorded, explicit policy picks the next task, so input comes first by design, every choice is a B1 input that replays exactly, and the queue state behind any delay can be shown. The decisions that matter most: (1) a **typed re-entrancy discipline** with two-phase bindings and script-free cores (DM-D5); (2) one **explicit task-selection policy** whose decisions are recorded inputs (DM-D1); (3) **origin-keyed agent clusters always**, so a process never has to hold two origins that can script each other synchronously and FP-D8's origin keying has no exception, diverging from the WHATWG default (DM-D6, an owner decision); (4) Izcal's **own WebIDL front end**, an M-1 classification for the owner (DM-D2); (5) **no `unload` for documents kept in bfcache**, exactly as HTML's salvageability model says (DM-D9). The work is about **72–92 engineers† at full strength** for the DOM, bindings, event loop, navigation, elements, forms, workers, messaging and the script-facing web APIs, which Stage 1 staffed at 5–6 (Section 9).
+
+Note sources are cited as **HP** ([history and postmortems][HP]), **SP** ([specifications and semantics][SP]), **BO** ([bindings and object model][BO]), **EL** ([event loop and scheduling][EL]), **NA** ([navigation, agents and workers][NA]), **SR** ([security and robustness][SR]), **GO** ([gaps and opportunities][GO]) and **IF** ([Izcal interfaces][IF]), with the row number. Primary sources are linked inline for the claims a decision or target depends on.
+
+## 1. The problem and who has it
+
+| User | Task, in their words | What fails today |
+|---|---|---|
+| **People browsing** | "Clicks should respond at once, back should be instant, and a page must not read my other sites" | At p90, input delay (155 ms) is the largest of INP's three parts, while processing and presentation each exceed 100 ms (at p75: 37 ms of input delay against 56 ms of processing) ([Web Almanac 2024](https://almanac.httparchive.org/en/2024/performance), [EL 3.3][EL]); mobile INP is good on 77% of sites but 63% of the top 1,000 ([GO 4.6][GO]); back and forward are 1 in 10 navigations on desktop and 1 in 5 on mobile, and `Cache-Control: no-store` alone blocked 17% of mobile history navigations from bfcache ([web.dev](https://web.dev/articles/bfcache), [Chrome](https://developer.chrome.com/docs/web-platform/bfcache-ccns), [NA 3.1–3.2][NA]); site isolation made 94 universal-XSS-class bugs moot by construction, but DOM bugs were historically 15–20% of in-the-wild browser 0-days ([Reis et al.](https://www.usenix.org/system/files/sec19-reis.pdf), [Project Zero](https://projectzero.google/2022/04/the-more-you-know-more-you-know-you.html), [SR 2.2, 5.1][SR]) |
+| **Web developers** | "Why did this task run late?", "who changed this attribute?", "what keeps this node alive?", "why is this test flaky?", "why isn't my page restored from bfcache?" | HTML lets each engine pick the next task queue and no API or tool reports the choice ([GO 4.1–4.4][GO]); DOM breakpoints pause but keep no log ([GO 5.3][GO]); BLeak had to mirror the DOM into JS and wrap `addEventListener` because engines hide DOM and listener state from heap snapshots ([BLeak](https://par.nsf.gov/servlets/purl/10076201), [GO 3.3][GO]); concurrency and async waits cause 40% of flaky JavaScript tests ([arXiv 2207.01047](https://arxiv.org/abs/2207.01047), [GO 6.1][GO]); 65% of client-side JS faults involve the DOM ([ESEM 2013](https://people.ece.ubc.ca/amesbah/resources/papers/frolin-esem13.pdf), [GO 1.1][GO]) |
+| **Authors of large apps and components** | "Dialogs, popovers, select, forms and web components should just work in every browser" | Popover was the first interop blocker in all three State of HTML surveys (2023–2025); web components entered the top five in 2025 ([GO 1.4–1.8][GO]); scoped custom element registries were at 1.9% interop and dialogs and popovers at 55% in October 2026 ([GO 2.10][GO]) |
+| **Izcal's own UI** (shell, DevTools, prompts) | "Start fast, stay safe, render untrusted page titles" | Izcal-only renderers are jitless (JS-D13), so their DOM speed depends on bindings and the interpreter, not on a JIT |
+| **Izcal's engineers and agents** | "Generate 8,000 binding members from the specs and keep them right as the specs move", "reproduce any race" | The WebIDL corpus has 1,142 interfaces and 8,208 members, 1,807 of them in DOM and HTML ([GO 8.1–8.2][GO]); every binding generator outside a browser leaves `[CEReactions]`, `[HTMLConstructor]`, the `[Legacy*]` set and cross-realm checks as hooks ([BO 5.2, 5.11][BO]) |
+| **Agents** (only with AI on, B9, B10) | "Act on this page and know when it has settled" | Playwright MCP can wait only for text or a fixed time ([GO 7.4][GO]); WebDriver BiDi has no DOM-mutation event and no quiescence primitive ([GO 6.8][GO]) |
+
+**What Izcal's specs already decide** (the full digest is [IF][IF]):
+
+- **[M-1][H2] (2.3.2).** No code from another engine and no library that does engine work; MIT-only shipped code and data; another engine's source code is never evidence. The DOM, bindings and event loop are implemented from WHATWG DOM, HTML and Web IDL at pinned revisions, with spec anchors (ANC-1, G9).
+- **I-1, I-2, I-6.** One locked renderer per (site, container), origin-keyed on every desktop class (FP-D8, which has no trigger that turns it off); below I-1's RAM threshold, a documented reduced-isolation mode may co-locate sites (JS-D20); zero ambient authority; `SharedArrayBuffer` and fine timers only under cross-origin isolation.
+- **HGBA-3.** B1 (recorded inputs, seeded scheduler, virtual clock), B2 (typed capability IPC with sequence affinity), B3 (one serial sequence per agent cluster for the event loop; fork/join for phases), B4 as restated by JS-D4 (the node columns are the data plane; the mutation log with old values stays), B8 (semantic plane, stable IDs), B9 and B10.
+- **JavaScript engine spec ([JS][JS], accepted).** **JS-D4**: one copy of the DOM, node columns outside the cage traced as `hg-heap`'s node space, lazy wrappers held strongly once created, a text arena shared with JS as external strings, release by ID at event-loop points. **JS-D15**: every timing-dependent decision is a recorded B1 input. **JS-D17**: one cage per process, agent heaps in their own blocks. **JS-D18**: every handle carries its heap's brand. JS 6.2: `WindowProxy`, `Location`, legacy platform objects and `[[IsHTMLDDA]]` are shapes with host hooks, and `hg-webidl-codegen` emits shape families and IC generators. JS 6.14: `hg-js-host` with the host hooks, jobs owned by the host, realms and settings objects, and a typed serializer interface for structured clone. JS G6: only `hg-dom`, `hg-bindings`, `hg-script` and `hg-inspect-renderer` may depend on `hg-js-host` and `hg-heap`.
+- **Resource footprint ([FP][FP], accepted).** FP-11's 48 B† column core inside DOM's 72 B† per node; FP-D3 never splits an agent cluster; FP-D4 freezes a hidden page after 30 s† (FP 6.8); bfcache budgeted in bytes (FP 6.10); FP-32's thread counts and FP-34's per-agent line.
+- **HTML and CSS parsing and style ([ST][ST], accepted).** The tree builder writes `hg-dom`'s columns through `DomSink` on the script thread and returns `Yield` values at every call-out; parser yields and speculation are recorded decision points; `hg-cssom` owns CSSOM; every state source writes through `hg-dom`'s API on the script thread; 32 bits of element state in the column.
+- **Layout ([LY][LY]), graphics ([GR][GR]), networking ([NW][NW]), media ([MD][MD]), accessibility ([AX][AX]).** Layout owns CSSOM View, `ResizeObserver`, `IntersectionObserver` and the forcing table (`hg-layout-query`); the compositor is the frame scheduler and sends BeginFrame (GR-D15); the partition service owns service-worker routing (NW 6.7) and `document.cookie` without sync IPC (NW-D10, NW 6.9); media owns `HTMLMediaElement` and its task sources and gates autoplay on transient activation (MD-D13); accessibility asks this spec for one IDREF resolver, mutation-log records for its semantic thread (AX-D3), an input-equivalence entry point implementing its action table (G106, AX 6.9) and recorded AT actions; content blocking asks for per-script restriction profiles with creator inheritance (CB-27) and a popup check before a new traversable exists.
+
+**What success means, measurably.** WPT `dom/`, `html/` (DOM-side directories), `webidl/`, `custom-elements/`, `shadow-dom/`, `navigation-api/`, `workers/`, `service-workers/`, `webmessaging/`, `uievents/` at or above the best shipping engine's black-box rate per directory, never decreasing (DM-1); every generated binding item and every hand-written algorithm anchored (DM-2); zero re-entrancy or cross-origin planted bugs escaping their named mechanism (DM-10, DM-11); a trivial getter costing a field load after inlining (DM-20); input-to-next-task latency bounded by policy, not by luck (DM-22); every event-loop interleaving of a recording replayed exactly (DM-40); bfcache hit rate per BF-1 (DM-31).
+
+## 2. History: what came before and why it was built that way
+
+### 2.1 Chronology
+
+| Year | Project | What it did | Why that way | Fate and why |
+|---|---|---|---|---|
+| 1998–2000 | DOM Level 2 Events, **Mutation Events** | Synchronous events for every tree change (`DOMNodeInserted`, `DOMSubtreeModified`) | Script needed to observe changes; synchronous dispatch was the only model | Deprecated 2011; removed in Chrome 127 (July 2024), Firefox 140 and Safari 26: "slow", "fire too often", and "event listeners can change the entire DOM underneath a running DOM operation" ([Chrome](https://developer.chrome.com/blog/mutation-events-deprecation), [BCD](https://github.com/mdn/browser-compat-data/blob/main/api/MutationEvent.json), [HP 3.1–3.2][HP]) |
+| 2005–2009 | **IE COM DOM + JScript** | DOM as reference-counted COM objects, script with its own collector | Componentized Windows platform | Cycles through expandos and closures leaked until process exit (IE6) or navigation (IE7); IE8 let the JScript collector own DOM objects referenced from script ([Microsoft](https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/dd361842(v=vs.85)), [HP 1.1–1.4][HP]) |
+| 2006–2014 | **Gecko cycle collector** | A second collector over XPCOM and JS | Reference-counted C++ DOM, a JS GC beside it | 40–120 ms typical pauses, worse on leaky pages; pause work through about 2014 ([Bugzilla 698919](https://bugzilla.mozilla.org/show_bug.cgi?id=698919), [HP 1.5–1.7][HP]) |
+| 2008 | Chrome 1.0 beta timers | Dropped the 10 ms clamp to 1 ms, broke the New York Times, settled on **4 ms** | Windows' 15 ms timer; pages that spun the CPU | The 4 ms nesting clamp survives in HTML; a later 1 ms clamp reordered timers and cost 1–1.7% on Speedometer ([Belshe](https://www.belshe.com/2010/06/04/chrome-cranking-up-the-clock/), [WebKit 221124](https://bugs.webkit.org/show_bug.cgi?id=221124), [HP 4.1–4.4][HP]) |
+| 2009–2010 | Web Workers, SharedWorker | Threads without DOM, `postMessage` and structured clone | Keep long work off the one UI thread | Workers stayed; Safari removed SharedWorker during multiprocess bring-up (7–15) and restored it in 16 (2022) ([WebKit 149850](https://bugs.webkit.org/show_bug.cgi?id=149850), [HP 6.2][HP]) |
+| 2010–2012 | WebKit2, Gecko **Paris bindings** | Split-process API; WebIDL-generated bindings replacing XPConnect | Robustness; tiny getters dominated by bridge cost; spec-exact WebIDL | Generated bindings won everywhere; the redesigns' drivers, as far as the bug titles and design documents show, were getter cost and spec-exact behaviour ([HP 2.1–2.5][HP], Medium) |
+| 2010 | History API (`pushState`) | Script-managed URLs and state | AJAX apps | State lost, joint session history, no interception; replaced by the Navigation API (2022–2026) ([explainer](https://github.com/WICG/navigation-api/blob/main/README.md), [HP 5.1–5.2][HP]) |
+| 2011 | `requestAnimationFrame` | Callbacks aligned with frames | Battery, coalesced reflow | Universal ([HP 4.7][HP]) |
+| 2012 | MutationObserver; AppCache postmortem | Batched records per microtask; declarative offline manifest | Replace mutation events; offline apps | MutationObserver universal; AppCache removed (2021) for opaque, unfixable behaviour ([HP 3.7][HP]) |
+| 2013–2017 | Blink **Oilpan**, cross-component tracing | DOM on a traced C++ heap; tracing from JS to the DOM and back | Use-after-free from manual reference counting; leaks from "object grouping" | Shipped, with mobile pauses the 2014 blocker (37% of collections over 50 ms on a Nexus 7) and exact retaining paths only from Chrome 66 ([Oilpan deck](https://docs.google.com/presentation/d/1Nid96XTjKSWowoQ8FQOpCnbe91kOXLAeiafKsDQ5Smw/htmlpresent), [V8](https://v8.dev/blog/tracing-js-dom), [HP 1.8–1.11][HP]) |
+| 2014 | **Servo**: JS GC owns the DOM | Every DOM node a reflector in SpiderMonkey's heap; rooting by types and a lint | No second collector | The lint "will miss some mistakes"; performance against refcounting left open ([Mozilla Research](https://research.mozilla.org/2014/08/26/javascript-servos-only-garbage-collector/), [HP 1.12][HP]) |
+| 2014–2015 | Service workers | Programmable per-scope proxy | AppCache's failure | Universal; when the worker is not running, boot is usually about 50 ms, about 250 ms on mobile, over 500 ms in extreme cases ([web.dev](https://web.dev/blog/navigation-preload), [HP 6.3][HP]) |
+| 2015 | requestIdleCallback; `Object.observe` withdrawn | Idle work capped at 50 ms; data-binding observation | Keep input under 100 ms; frameworks | rIC in Chrome and Firefox, not Safari; O.o withdrawn because frameworks moved on ([HP 3.3, 4.8][HP]) |
+| 2016 | WebKit **DOMJIT** | JIT inlining of tiny DOM getters with declared effects | `firstChild` is a field read buried under binding overhead | About 40% on a micro-benchmark ([WebKit 162544](https://bugs.webkit.org/show_bug.cgi?id=162544), [HP 2.6][HP]) |
+| 2018 | Spectre; Chrome **Site Isolation** | Process per site; SAB disabled, then gated on COOP+COEP | Language-enforced confidentiality inside a process is gone | 9–13% memory, under 2.25% load latency, 450k lines over five years ([Reis et al.](https://www.usenix.org/system/files/sec19-reis.pdf), [NA 1.1–1.10][NA]) |
+| 2020–2024 | `isInputPending`, `scheduler.postTask`, `scheduler.yield`, LoAF, INP | Scheduling and attribution primitives | Long tasks block input; FID missed most of it | `isInputPending` no longer recommended because it can miss input; `postTask` and `yield` in Chrome and Firefox, not Safari; LoAF Chromium-only ([HP 4.11–4.14][HP]) |
+| 2022 | HTML **navigables** rewrite | Session history as traversable navigables and steps | A decade of divergence from implementations | PR 6315 merged after 469 commits and 21 months ([whatwg/html#6315](https://github.com/whatwg/html/pull/6315), [HP 5.3][HP]) |
+| 2023 | Chrome 115: `document.domain` no-op by default | Origin-keyed agent clusters by default, `Origin-Agent-Cluster: ?0` as opt-out | `document.domain` relaxes the same-origin policy on shared hosting | Slipped four times; the WHATWG text still keys by site by default ([Chrome](https://developer.chrome.com/blog/immutable-document-domain), [NA 2.1, 2.6–2.7][NA]) |
+| 2023–2026 | `unload` deprecation | Chrome stops firing `unload` by default: top-50 sites from 2025, 100% of page loads in Chrome 155 (6 October 2026), except on iOS and for sites that opt back in | `unload` is unreliable on mobile and blocks bfcache | Complete in Chrome; HTML fires `unload` only for documents that are not salvageable ([Chrome](https://developer.chrome.com/docs/web-platform/deprecating-unload), [SP 10.2][SP]) |
+| 2025–2026 | `moveBefore`, scoped registries, Sanitizer in HTML, Navigation API everywhere | State-preserving move; per-root registries; `setHTML`; all three engines ship navigation | Component authors' needs; XSS | Interop 2025–2026 focus areas ([SP 11.3, 14.3, 14.5][SP], [GO 2.9][GO]) |
+
+### 2.2 Technology mismatches: assumptions that no longer hold
+
+| Assumption baked into existing designs | Why it no longer holds |
+|---|---|
+| The DOM's memory belongs to a different system than JS's | Izcal owns both, and JS-D4 already makes one collector trace node columns and JS objects together; every two-manager design paid in leaks or pauses, and Servo's one-collector design left rooting to a lint ([HP 1, 8.1][HP]) |
+| Liveness across script calls is a programmer's discipline (strong references held "just in case") | Rust's borrow checker can make "a borrow of DOM state survives a call that can run script" a compile error (CS-D3's `TokenCell`); MiraclePtr, the best runtime fix, mitigated 57% of the UAFs it was measured on and was not used in renderers as of January 2024 ([MiraclePtr](https://security.googleblog.com/2024/01/miracleptr-protecting-users-from-use.html), [SR 1.4–1.6][SR]) |
+| One process holds many sites, so in-process security checks are the boundary | I-1 keeps sites in separate processes; in-process checks protect only same-site, cross-origin pairs, and cross-site `WindowProxy` objects are remote stubs with nothing behind them |
+| Cross-origin documents of one site share an event loop through `document.domain` | Chrome made the `document.domain` setter a no-op by default in Chrome 115 (2023); a process model that keys by origin (FP-D8) cannot hold a site-keyed agent cluster that may span origins ([NA 2.6][NA]) |
+| Task order is an engine-internal detail | HTML leaves it implementation-defined, so order is the engine's decision; under B1 it is a recorded input that can be shown, replayed and varied ([SP 1.3, 2.1][SP]) |
+| Timers fire by wall clock | Under B1 every clock is the substrate's; the 4 ms clamp, padding and throttling are functions of recorded inputs ([EL 2][EL]) |
+| A navigation is one process's business | Under site isolation 56% of navigations cross processes ([NA 1.3][NA]); the traversable's queue lives in the broker, documents in renderers |
+| Bindings are hand-written glue around an engine API | Izcal owns the IDL compiler and the JIT, so effect facts, IC generators and spec anchors are one generated table ([HP 2][HP], [BO 4.1–4.5][BO]) |
+| Workers are cheap threads in a shared process | Shared and service workers serve several documents of one site and storage key; under I-1 they belong to that key's process ([NA 4.8][NA]) |
+| `unload` is a reliable last chance to save state | Mobile kills pages without it; HTML fires it only for non-salvageable documents; Chrome no longer fires it by default ([SP 10.2][SP], [NA 3.3–3.4][NA]) |
+
+## 3. Today: the landscape and its gaps
+
+**What current tools cannot see or do.**
+
+| Question | What exists | What is missing (evidence) |
+|---|---|---|
+| Why did this task run late? | LoAF in Chromium: frames over 50 ms, script attribution by invoker, forced style and layout time ([LoAF](https://developer.chrome.com/docs/web-platform/long-animation-frames)) | No task source, no time spent waiting in a queue, no cause for the forced layout, no view of the runnable set the engine chose from; nothing in Firefox or Safari ([GO 4.3–4.4][GO], [EL 3.4][EL]) |
+| Who changed this node? | DOM breakpoints that pause ([Chrome](https://developer.chrome.com/docs/devtools/javascript/breakpoints)) | No log of writes with old values, script, principal or task; subtree breakpoints miss attribute changes on children ([GO 5.3][GO]) |
+| What keeps this node or listener alive? | "Detached elements" for nodes JS still references | Listeners are a counter; BLeak and MemLab rebuilt DOM state in JS to find leaks ([GO 3.3–3.7][GO]) |
+| Who added this listener, from where? | Listener type and handler location (Firefox) | Where and when it was added, by which world ([GO 5.4][GO]) |
+| Why was this page not restored from bfcache? | `notRestoredReasons` (Chrome 123), cross-origin masked | Spec-step explanations for other lifecycle decisions ([NA 3.5][NA], [GO 5.7][GO]) |
+| Which custom element definition applied, and when did reactions run? | Nothing documented | Scoped registries make this a new question ([GO 5.11][GO]) |
+| Is this race real? | EventRacer found races on 634.6 variables per site before filtering and 45.3 after, and 75 harmful races ([OOPSLA 2013](https://files.sri.inf.ethz.ch/website/papers/oopsla13-web.pdf), [GO 5.6][GO]) | Replaying both orders on demand |
+| What did this `postMessage` cost? | Nothing short of a trace ([Surma](https://surma.dev/things/is-postmessage-slow/)) | Bytes, objects, transfer list and serialize time per message ([GO 5.12][GO]) |
+| Has the page settled? | Playwright's two-stable-frames heuristic and clock shims over page-visible APIs ([Playwright](https://playwright.dev/docs/actionability), [GO 6.5–6.6][GO]) | A wait that means "no runnable task can change this subtree before time T" |
+| Which agent cluster and process holds this document? | Task managers and internal pages | DevTools never shows it ([GO 5.14][GO]) |
+
+**Where conformance stands.** Core DOM is the cheap part: `dom/` passes at about 98% even in Servo and Ladybird. The expensive parts are browsing contexts and navigation (`html/browsers/` 63.6–86.2%), service workers (Servo 7.2%, Ladybird 34.3%) and the Navigation API (Servo 0.5%, Ladybird 63.8%) ([wpt.fyi runs of 19–20 October 2026](https://wpt.fyi/results/?run_id=5931728932962304&run_id=4736054866477056&run_id=5991653121982464&run_id=5171521466400768&run_id=4797548329172992), [GO 8.5–8.6][GO]). Interop 2026's DOM-side areas are dialogs and popovers, the Navigation API, scoped custom element registries and a web-compat area that names the event-loop processing model directly ([Interop 2026](https://github.com/web-platform-tests/interop/blob/main/2026/README.md), [GO 2.9][GO]).
+
+**Legacy that cannot go.** `document.all` is touched on 36.6% of Chrome page loads, `document.write` is on 12% of mobile pages, synchronous XHR on 2.84% and `beforeunload` is registered on 57.9% ([GO 8.7, 8.9, 5.9][GO]). Mutation events are gone from all three engines ([HP 3.2][HP]).
+
+**What Izcal could expose that no one does** (from [GO 10][GO], each tied to a capability Izcal already has): the queue state and the reason behind every scheduling choice (B1, JS-D15); full cause chains from an input to a forced layout without framework help (generated bindings); a mutation log with provenance instead of breakpoints (B4); exact replay of races under other seeds (B1); retainer paths that cross from JS into the DOM and listeners as heap edges (JS-D4); a listener ledger; custom-element reaction traces; a log of refused cross-origin accesses; structured-clone cost per message; use counters generated with the bindings; and a deterministic "settled" signal for tests and, with consent, agents.
+
+## 4. First principles
+
+### 4.1 Users' real tasks
+
+| Task | What the engine must provide |
+|---|---|
+| Respond to input now | A scheduler that can always run an input task next, never starved by timers, messages or rendering (DM-D1) |
+| Change the page from script, fast and safely | A DOM operation that costs what its work costs: a getter is a load; a mutation writes columns and one log record; no hidden synchronous callbacks |
+| Navigate, go back, keep state | Session history in one authority (the broker); bfcache that keeps documents whole; no `unload` for documents that are kept |
+| Build components | Shadow DOM, slots, custom elements and scoped registries implemented from the current specs, not from an engine's history |
+| Use the platform's forms | The nine form-associated elements, 22 input types, four value modes and ten validity flags as a table-driven, anchored implementation ([SP 16][SP]) |
+| Run work off the main thread and talk between contexts | Workers in the right process, messages that cost one IPC hop, a serializer that runs author code only where the spec says |
+| Find out why | Every DOM write, scheduling choice, reaction, message and cross-origin refusal recorded with its cause when DevTools or a recording asks |
+| Be safe from other sites | Cross-site documents never in the process; cross-origin same-site access checked by generated code whose proof is a type |
+
+### 4.2 Platform primitives
+
+- **WHATWG DOM**: the node tree and shadow-including order; the insert, remove and move algorithms with their contracts (insertion and moving steps "must not modify the node tree … or otherwise execute JavaScript"; script only in post-connection steps; removing steps carry no such clause), slot assignment, live ranges, mutation observers per agent, event dispatch with retargeting, `AbortSignal` ([DOM](https://dom.spec.whatwg.org/#concept-node-insert-ext), [SP 11–13][SP]).
+- **HTML**: agents and agent clusters ("an idealized process boundary", deliberately stricter than real process boundaries), the event loop with task queues that are sets, the microtask checkpoint, "update the rendering" as a queued task on the rendering task source with 17 per-document steps, timers, user activation, navigables and session history, document lifecycle and salvageability, custom element reactions, forms, workers and their lifetime predicates, structured serialization, message ports ([HTML](https://html.spec.whatwg.org/multipage/webappapis.html#event-loop-processing-model), [SP 1–10, 14, 16, 17][SP]).
+- **Web IDL**: types and conversions (which run author code), overload resolution with a distinguishing index per arity, exceptions (33 DOMException names), 11 `[Legacy*]` attributes with about 196 uses, legacy platform objects, `[[IsHTMLDDA]]`, per-realm interface objects ([Web IDL](https://webidl.spec.whatwg.org/#dfn-overload-resolution-algorithm), [SP 15][SP]).
+- **Incubations shipped by two engines**: Prioritized Task Scheduling (WICG report; `postTask` and `yield` in Chrome and Firefox), Long Animation Frames (Chromium), Page Lifecycle (Chromium only) ([SP 5][SP]).
+- **The engine's own data**: one-copy node columns, the mutation log with old values, branded GC handles, the host hooks and the typed serializer interface ([JS][JS]); recorded inputs and the seeded scheduler (B1); typed capability endpoints (B2).
+
+### 4.3 Izcal's principles that bind this design
+
+P1 (security and privacy first: cross-site data never shares a process, checks that matter are decided in the broker), P2 (conformance gates speed), P3 (a crash of one agent never corrupts another's state), P4 (p95 latency, measured end to end), P6 (every number sourced or marked †), M-1 (built from the specs, anchored; no engine source as evidence), B1 (every decision that depends on timing is a recorded input), B10 (AI off by default).
+
+### 4.4 Assumptions kept and broken
+
+| Assumption | Keep or break | Reason |
+|---|---|---|
+| The DOM is generated from WebIDL, with hand-written algorithms behind it | **Keep** | 8,208 members cannot be hand-written; every engine converged on generation ([BO 5][BO]) |
+| Bindings may call into the DOM as they convert arguments | **Break** | Conversions run `valueOf`, getters and `@@toPrimitive`; two-phase bindings (convert all, then act) close the class ([SR 3.8][SR]) |
+| DOM algorithms keep strong references to nodes across script to stay safe | **Break** | They hold generational node IDs and re-validate after every call-out, as the parser already does (ST 6.3); no borrow crosses a script point (DM-D5) |
+| Mutation events must be supported for compatibility | **Break** | Removed from all three engines; 0.73% of page loads still add a listener that no engine calls ([GO 8.8][GO], ST-D4) |
+| The scheduler is a heuristic tuned in secret | **Break** | One stated policy whose decisions are recorded inputs and visible to DevTools (DM-D1) |
+| `unload` must fire on every navigation away | **Break** | HTML fires it only when the document is not salvageable; Chrome no longer fires it at all ([SP 10.2][SP]) |
+| Agent clusters are keyed by site unless a page opts in | **Break, flagged** | The origin-keyed process model (FP-D8, no exceptions) cannot hold a site-keyed cluster across origins; Chrome made `document.domain` a no-op by default in 2023; Izcal keys every cluster by origin and files the divergence (DM-D6) |
+| A cross-origin `WindowProxy` is a local object with checks | **Break** | Under I-1 and DM-D6 a cross-origin window is almost always in another process; where it is not (reduced isolation, opaque origins), it is still reached through a remote-shaped stub with HTML's 13 + 2 operations and named child frames ([SP 7.1][SP]) |
+| Session history lives with the documents | **Break** | It lives in the broker (`hg-navigation`); renderers propose, the broker decides ([SR 10][SR]) |
+| Wrappers are created eagerly with their nodes | **Break** | Lazy wrappers (JS-D4); in Chrome's black-box cost an unrendered node is 89 B and a wrapper about 20 B of JS heap plus about 70 B of process memory, so untouched nodes should pay nothing for one ([BO 1.6–1.10][BO]) |
+| User activation is tracked in the renderer | **Break** | The broker mints activation from input it routed; a compromised renderer cannot forge a gesture ([SR 5.5][SR]) |
+| Synchronous IPC for `localStorage` | **Break** | A versioned snapshot in the renderer, the pattern NW-D10 set for cookies (DM-D11) |
+| One event loop per thread | **Keep, refined** | One serial sequence per agent cluster (B3), on its own thread (DM-D19); several clusters of one key may share a process, never a sequence |
+| Text is UTF-16 in the DOM | **Keep, refined** | JS strings are Latin-1 or UTF-16, and JS-D4 shares DOM text with JS as external strings; the arena stores the same two representations (DM-D17) |
+
+## 5. Lessons learned
+
+| Project | What happened | Lesson | How Izcal applies it (ideas only, M-1) |
+|---|---|---|---|
+| IE6–8, Gecko CC, Blink object grouping | Two memory managers for one graph leaked or paused ([HP 1][HP]) | One collector owns both sides from the start | JS-D4's node space; listeners, wrappers and observers are traced edges |
+| Oilpan 2014 | Mobile pauses and allocation locality were the blockers ([HP 1.8–1.9][HP]) | Measure pause tails on small devices and locality, not only bytes | JS-D4's spike and JS-40 measure node-space GC share and pause tails; DM-30 counts bytes per node |
+| Servo 2014 | Rooting by lint "will miss some mistakes" ([HP 1.12][HP]) | Soundness must be a type property | JS-D18 brands; DM-D5 makes script points typed |
+| Mutation events, showModalDialog, sync XHR, unload | Script inside or blocking an engine operation caused crashes, UAFs and hangs; removal took 13 years ([HP 3][HP]) | Never let script run inside an algorithm the spec marks atomic | G91 script-free cores; no mutation events; `alert` and sync XHR implemented as explicit scheduler states |
+| CVE-2022-22620 (Safari) | A 2013 fix was undone by a 2016 refactor that changed a reference-counted argument to a raw pointer, so an object was no longer held across a script point (a `blur` event during a same-document traversal) ([SR 3.1–3.2][SR]) | Safety that lives in reviewers' heads does not survive refactors | The guarantee is in types: nothing but IDs and roots crosses a script point (6.2 Rule 3, G93); a refactor that adds one fails to compile |
+| Domato, FreeDom, Favocado, Domino | Semantic, IDL-driven generation found the most DOM bugs; coverage feedback underperformed in two studies ([SR 7.1–7.5][SR], [BO 5.10][BO]) | Fuzz with the API's types and dependencies | `hg-idl-fuzz` emits a typed grammar and a mod-ref table from the IDL compiler's model (DM-12) |
+| Site Isolation | 94 UXSS-class bugs moot by construction; sandbox flags enforced in the renderer stayed bypassable ([SR 5.1–5.2][SR]) | Put the boundary in the process model and decisions in the broker | Remote proxies for cross-site windows; sandbox flags, activation and history decided in the broker (G94) |
+| Gecko membranes, Blink worlds | Checks in the object's shape are robust; checks at access sites are not ([SR 5.9][SR], [BO 3.1–3.3][BO]) | Make the security relationship part of the object | A cross-origin access yields a `SameOriginDomain` proof or a remote stub; nothing else exists to misuse (G92) |
+| Chrome 1 ms clamp, isInputPending | Heuristics reordered timers or missed input ([HP 4.4, 4.11][HP]) | Implement the spec's rule exactly; give pages primitives instead of heuristics | Exact nesting clamp; `postTask`, `yield`, idle callbacks from the start |
+| HTML navigables rewrite | A decade of divergence ended by a 21-month rewrite ([HP 5.3][HP]) | Build from the post-rewrite model | `hg-navigation` implements traversable navigables and steps directly |
+| bfcache and `no-store` | 17% of mobile history navigations blocked by one header; Chrome now caches with cookie-change eviction ([NA 3.2][NA]) | Eligibility rules are policy, measured | DM-D14 adopts measured rules and shows the reasons |
+| Service workers | Boot of about 50 ms, 250 ms on mobile and over 500 ms in extreme cases when the worker is not running; static routing and navigation preload are the fixes ([NA 4.4–4.5][NA]) | Let declarative data skip the worker | Static routes evaluated in the partition service and navigation preload by default (allocated to NW by this spec, 9.5) |
+| Safari SharedWorker removal | Cross-document workers collided with a multiprocess bring-up ([HP 6.2][HP]) | Decide worker placement with the process model, not after | DM-D8 places shared and service workers by (site, container) key from the start |
+| WebSQL | A spec that named one library could not be implemented independently ([HP 3.8][HP]) | Specs Izcal implements must stand alone | The DOM side of storage depends only on the specs and the storage service's interface |
+| Ladybird 2026 | Moved from DOM-as-JS-object to lazy wrappers to save memory and allow per-world wrappers ([BO 3.9][BO]) | Lazy wrappers and per-world side tables are where engines converge | JS-D4's lazy wrapper; other worlds in side tables (DM-D16) |
+| Speedometer 3, js-framework-benchmark | Rendering, not bindings, dominates fast frameworks (script 1.8 of 20.6 ms) ([BO 10.3][BO]) | Bindings must not be slow, but the budget is elsewhere | Binding targets are absolute (DM-20); the mutation log and flush contract serve style and layout |
+| PMForce | 219 sites trivially exploitable through `postMessage` handlers without origin checks ([NA 5.2][NA]) | The engine's part is an exact, unforgeable `event.origin` | Origin bound to the channel by the broker (DM-D13); DevTools shows handlers that never read `origin` |
+| DOMPurify bypasses, mXSS | Parser and serializer divergences and depth limits became bypasses ([SR 6.1–6.2][SR]) | One parser, one serializer, round trip as an invariant | Owned by ST (ST-D1, ST-8); `setHTML` and Trusted Types from the first release |
+| Loophole, XS-Leaks | Event-loop contention leaks across contexts that share a thread ([SR 8.6–8.7][SR]) | Contexts that must not observe each other must not share a thread | Agent clusters never share a sequence; cross-site never shares a process |
+| Fuzzyfox and Fermata | Complete mediation of every timing source is a design that closes timing channels, where coarsening alone did not ([SR 8.10][SR]) | One mediated time source | B1's substrate clock is that source; coarsening and jitter are seeded functions of it (DM-D10) |
+
+## 6. Design
+
+### 6.0 Architecture at a glance
+
+```
+ BROKER (browser process)                                     RENDERER, one per (origin, container) (I-1, FP-D3, FP-D8)
+ ───────────────────────────────────────────                  ──────────────────────────────────────────────────────────────────
+ hg-navigation   traversables, session history,   ◄──typed──► hg-window     Window, Document lifecycle, Location, History,
+                 navigate/traverse queues, bfcache   IPC (B2)                 Navigation API, beforeunload, pagehide/pageshow
+                 index, sandbox flags, activation              hg-script     agents, realms, settings objects, host hooks,
+ hg-agents       browsing context groups, agent-                              event loop per agent cluster (one sequence),
+                 cluster keys → processes, shared-                            scheduler, timers, microtasks, rendering steps,
+                 worker matching, SW lifetime,                                pause and spin, worker agents, structured clone
+                 BroadcastChannel and Web Locks               hg-bindings   generated bindings + runtime: conversions,
+                 routing per storage key                                      overloads, exceptions, [CEReactions], realms,
+ hg-input-route  OS input → hit-tested target frame                           WindowProxy and Location hooks, use counters
+ network: partition service (NW-D3) — SW routing,             hg-dom        node columns (JS-D4) + rare data, trees, shadow,
+          cookie view (NW-D10)                                                slots, ID maps, collections, live ranges,
+ storage service (storage spec, G-19) — Storage,                              mutation log + MutationObserver, events core,
+          IndexedDB, Cache, SW registrations                                  custom element registries and reactions
+                                                              hg-html       element behaviours, reflection (generated),
+                                                                              focus, dialog/popover/top layer, images' fetch
+                                                              hg-forms      form-associated elements, submission, validity
+                                                              hg-input      input events, user activation mirror, IME glue
+                                                              hg-messaging  MessagePort, MessageChannel, BroadcastChannel
+                                                              hg-workers    worker and worklet global scopes, SW events
+                                                              hg-storage-dom  Storage snapshot, StorageEvent, IDB/Cache glue
+                                                              hg-dom-observe  journal, provenance, ledgers, counters
+                                                              hg-webapi     script-facing web APIs (6.18)
+                                                              hg-script-api (L3) task queues, call-outs, opaque
+                                                                            promise and any handles for lower layers
+                                                                   │ flush (script thread blocked; B4 as restated by JS-D4)
+                                                                   ▼
+                                                              hg-style (ST) → hg-layout, hg-layout-query (LY) → paint (GR)
+                                                              sealed log segments → AX semantic thread (AX-D3)
+```
+
+**Threads.** Each **agent cluster** has one serial sequence (B3) on its own OS script thread (DM-D19); every window agent and every dedicated worker agent has its own agent heap (JS 6.12). A dedicated worker runs on its own thread, because it is a `[[CanBlock]]` agent ([SP 1.1][SP]). Several agent clusters of one process (two browsing context groups of one origin) get separate sequences and threads; the first cluster uses the process's existing script thread, so an idle empty process keeps FP-32's two threads. Data shared between clusters of one process (interned attribute sets, shared bytecode) is either per cluster or concurrency-safe with content-derived identities (6.8). The control thread receives IPC, pressure commands and freeze while script runs (FP 6.3).
+
+**Layering: `hg-script-api`.** `hg-dom` (L3), `hg-cssom` and `hg-html-driver` (ST, L3) and `hg-media` (MD, L3) must queue tasks and call out to script, but the event loop is `hg-script` at L4, and JS G6 lets only `hg-dom`, `hg-bindings`, `hg-script` and `hg-inspect-renderer` touch the engine. So this spec adds an L3 interface crate, **`hg-script-api`**, that names no engine type: a `TaskQueue` handle per (agent, task source), a `ScriptCallout` trait through which a core phase hands a post phase to the event loop, opaque branded `PromiseHandle` and `AnyHandle` values (indices into `hg-script`'s rooted tables, created only by `hg-bindings`), a `CauseId` and a `ScriptPosition` for observability, and the decision-point register's entry IDs (6.7). `hg-script` implements it; every L3 and L4 crate of this spec and of other specs queues work and holds promises and `any` values only through it (G93), so `hg-window`, `hg-messaging`, `hg-storage-dom`, `hg-html` and `hg-forms` resolve promises and carry `history.state` or `MessageEvent.data` without depending on the engine.
+
+**What runs where.** Everything web-visible about a document runs in its renderer; everything that decides between documents, processes or partitions runs in the broker: session history, browsing context groups and their agent-cluster keys, user activation of record, sandbox flags, shared-worker matching, service-worker lifetime, BroadcastChannel routing (G94). The renderer proposes; the broker decides from facts it observed itself (input it routed, responses the network service delivered), never from renderer claims, which is the lesson of renderer-enforced sandbox flags ([SR 5.2][SR]).
+
+### 6.1 The DOM on one-copy node storage
+
+JS-D4 fixes the storage: node columns outside the cage, indexed by a 32-bit slot with a generation, five links, tag, flags and element state, attribute-set and inline-style references, a rare-data index, all inside FP-11's 48 B†; rare fields in side tables; a lazy wrapper held strongly once created; text in an arena shared with JS as external strings; release by ID at event-loop points. This spec designs the DOM on top of it and adds no second copy.
+
+**What `hg-dom` adds, and where it lives.**
+
+| Structure | Storage | Why |
+|---|---|---|
+| Node kind, element namespace and local name | Tag column (static index for the ~150 HTML, SVG and MathML names; atom otherwise) | Style's matcher and the bindings' brand check read one column |
+| Node flags (32 bits) | Column | Connected, in shadow tree, is shadow host, has rare data, custom element state (undefined, failed, uncustomized, precustomized, custom), is form-associated, has listeners, has live ranges anchored, has transient observers, needs slot assignment, is top layer, is inert |
+| Element state (32 bits) | Column (ST 6.11 asks for the most-used pseudo-class bits) | Written only by `hg-dom`'s API on the script thread; every write is a mutation-log record with the old value |
+| Attributes | Interned, immutable, hash-consed attribute sets per partition (ST 6.11), referenced from the column; copy-on-write on change | One set serves style, reflection and serialization; `setAttribute` swaps a reference and logs old and new |
+| Shadow root, slot assignment, assigned nodes, custom element definition and reaction queue, `ElementInternals`, event-listener list, registered observers, the node's realm for its wrapper, the per-world wrapper map entry, form owner | Rare-data side tables keyed by slot | Most nodes never need them; side tables keep FP-11's 72 B† average |
+| Text | Arena of immutable buffers, Latin-1 or UTF-16 per buffer (DM-D17) | `textContent` hands JS an external string with no copy; layout reads the same bytes |
+| `id` → elements map per tree scope | Side table per document or shadow root, ordered by tree order on ties | `getElementById` returns the first in tree order, so duplicates must be ordered ([DOM](https://dom.spec.whatwg.org/#dom-nonelementparentnode-getelementbyid), [BO 7.4][BO]) |
+| Named-property maps (`window`, `document`, `form`) | Side tables, maintained from the mutation log | `[LegacyOverrideBuiltIns]` and named access are hot on real pages ([SR 6.4][SR]) |
+| Live collections | Objects holding (root, filter, cached result, the mutation-log position they reflect) | Valid while no mutation under the root has been logged since; the same `HTMLCollection` may be returned for the same (root, filter) as DOM allows ([DOM](https://dom.spec.whatwg.org/#concept-getelementsbyclassname), [BO 7.1–7.3][BO]) |
+| Live ranges | Per-document registry, plus a node flag | Insert, remove, replace data and split text update every live range synchronously ([SP 12.3][SP]); the flag lets subtrees without ranges skip the registry |
+
+**Tree edits are transactions.** DOM's insert and move algorithms are written so that a batch of nodes is inserted "atomically with respect to script": the insertion steps and the moving steps "must not modify the node tree …, create browsing contexts, fire events, or otherwise execute JavaScript", and script runs only in the post-connection steps ([DOM](https://dom.spec.whatwg.org/#concept-node-insert-ext), [SP 11.1–11.2][SP]). DOM's removing steps carry no such clause; **Izcal applies the same rule to removing steps** as its own restriction, checked against every specification's removing steps at its pin (a removing step that needs script is queued as a task, which every pinned removing step already allows). `hg-dom` makes the contract structural. Each edit runs in two phases:
+
+1. **Core phase (script-free).** Adjust live ranges, update links, run each node's insertion, removing or moving steps (which may only update state and queue tasks), assign slots, append mutation-log records with old values, enqueue custom element reactions and mutation-observer records, and collect the post-connection list. Code in this phase runs under a `CoreGuard` that holds the script token shared (G91); it holds Rust borrows freely, because nothing it calls can run script.
+2. **Post phase.** After the borrows end, run post-connection steps, which may run script (`<script>` execution, iframe loading), through `hg-script-api`'s call-out with `&mut ScriptToken`.
+
+**`moveBefore` is a third primitive.** DOM's state-preserving move (7 March 2025) runs the live-range and NodeIterator pre-remove steps and the **moving steps**, not removal plus insertion, and enqueues `connectedMoveCallback` ([DOM](https://dom.spec.whatwg.org/#move), [SP 11.3][SP]). `hg-dom` implements it as one link rewrite with one `Move` log record, so style and layout see a move, not a remove and an insert, and an iframe, a focused element or a playing video keeps its state.
+
+**The mutation log is the single source of change.** JS-D4 keeps it because restyle invalidation, B1 replay and B5 need old values. This spec makes every DOM consumer read it rather than install hooks: MutationObserver records, live-collection and `id`-map invalidation, named-property maps, the accessibility spec's semantic thread (AX-D3), DevTools' provenance (6.15) and slot-assignment dirtiness. A record carries the node ID with its generation, the kind and old and new values. The kinds are the DOM's own (`Insert`, `Remove`, `Move`, `SetAttr`, `SetState`, `SetInlineStyle`, `SetText`, `AttachShadow`, `SetSlot`) plus the kinds other specs already require as log entries: `SetEnvironment` (the environment snapshot, ST 6.10), `InstallFont` (font installations, TX 9.5), and for the semantic plane `SetInternalsSemantics` (`ElementInternals` defaults), `SetAttrElements` (explicitly set attr-element targets as generational IDs), `Focus`, `Selection` and `TopLayer`. Causes (task, script position, world) are attached only when DevTools is attached or the session is recorded (DM-D18). The log is per agent and is **sealed at each flush**: a sealed segment is handed by reference to registered consumers on other threads (the semantic thread reads it after the flush, AX-D3 (d)) and is freed when every consumer has released it, within the accessibility spec's two-flush† bound. Column writes are relaxed atomic 32-bit stores, as the accessibility spec asks of JS-D4, so a reader on another thread never sees a torn value; a litmus test checks the publication order on x86-64, AArch64 and riscv64.
+
+**Release and reuse.** When the collector finds a dead node (JS 6.5), the slot goes on the release list; `hg-dom` processes it only at event-loop points between tasks, with `&mut ScriptToken`, clears side-table entries, notifies style and layout to clear their per-slot columns (ST 6.11), bumps the generation, and only then makes the slot reusable. A stale node ID anywhere (semantic plane, an agent, a DevTools handle, a queued task) is detected by its generation and never aliased; a property test checks it (Stage 1 5.2's open item).
+
+**Text representation (DM-D17).** DOM text must hold any `DOMString`, which "might include unmatched surrogate code points" ([Web IDL](https://webidl.spec.whatwg.org/#idl-DOMString), [BO 7.8][BO]). The arena stores each buffer as Latin-1 when every code unit is below 256 and as UTF-16 otherwise, which are exactly the JS engine's two sequential string representations (JS 6.13), so `textContent`, `nodeValue` and attribute values become external strings with no transcoding. The alternative, WTF-8 ([WTF-8](https://wtf-8.codeberg.page/), [BO 7.9][BO]), would suit Rust code but would transcode at every JS crossing; it is rejected unless the text stack measures the transcoding at its end to cost more than the JS side's (reversal trigger in DM-D17).
+
+**Depth and size.** No algorithm in `hg-dom`, `hg-html` or `hg-window` recurses on content-controlled depth (G98): tree walks, clone, serialization helpers, event-path construction and slot assignment use explicit stacks. The parser's 512 cap is ST's (ST 6.2); DOM APIs do not cap depth, since the specs do not, and so they never recurse.
+
+### 6.2 Re-entrancy: every point that can run script is typed (DM-D5)
+
+The security record is one pattern: author script runs in the middle of an engine algorithm and frees, moves or changes something the algorithm still holds. CVE-2022-22620 was an object no longer held across a `blur` event fired during a same-document traversal, after a refactor turned a reference-counted argument into a raw pointer; CVE-2021-1879 was a script object the garbage collector did not track, triggered from a mutation-event listener; CVE-2021-26411 was "a user controlled callback in between two actions using an object" ([SR 3.1–3.4][SR]). Web IDL conversions run `valueOf` and getters, structured serialization runs getters, custom element reactions run callbacks ([SR 3.7–3.9][SR]). Izcal closes the class with three rules, enforced by the compiler rather than review.
+
+**Rule 1: a call that can run script takes `&mut ScriptToken`.** `ScriptToken` (CS-D3, JS 6.5) guards Rust state outside the GC heap that script can reach: DOM side tables, binding state, the event loop's queues, parser state. That state lives in `TokenCell`s, and a borrow of a `TokenCell` needs a shared borrow of the token, so no borrow can be live across a call that takes the token mutably. Every script point in this spec takes it:
+
+| Script point | Spec source | Who calls it |
+|---|---|---|
+| Event listener invocation | DOM dispatch, "inner invoke" | `hg-dom::events::dispatch`, after the path is computed |
+| Custom element reactions (upgrade, connected, disconnected, connectedMove, adopted, attributeChanged, the four form callbacks) | HTML `[CEReactions]`, backup element queue | `hg-bindings` on return from a `[CEReactions]` member; the microtask for the backup queue |
+| Web IDL conversions of arguments and dictionary members | Web IDL §3.2 | Generated bindings, phase 1 (below) |
+| Getters during structured serialization | HTML StructuredSerializeInternal | `hg-script::clone::serialize` |
+| Post-connection steps (`<script>`, iframes) | DOM insert | `hg-dom` post phase |
+| Callback functions and callback interfaces (`NodeFilter`, `MutationCallback`, `EventListener.handleEvent`, rAF and timers) | Web IDL "invoke a callback function" | `hg-bindings::callback` |
+| Microtask checkpoint, "clean up after running script" | HTML 8.1.4–8.1.7 | `hg-script` only |
+| Parser call-outs | HTML parsing (ST 6.3) | `hg-html-driver` |
+| `alert`, `confirm`, `prompt`, `print`, beforeunload prompt (pause) | HTML pause | `hg-script` scheduler state (6.7) |
+
+**Rule 2: script-free algorithms hold the token shared for their whole duration.** Insertion, removing and moving steps, slot assignment, live-range updates, event-path computation, mutation-record queuing, `id`-map maintenance and the deserializer's object construction are entered through functions that take a `CoreGuard<'t>`, obtainable only from a shared borrow `&'t ScriptToken` and held until return. While it lives, no `&mut ScriptToken` can exist, so nothing called from inside, including a closure or `dyn FnMut` a caller passed in, can run script (G91). An `ast-grep` rule that keeps `ScriptToken` out of those modules is a second check. A refactor that makes such a step run script fails to compile.
+
+**Rule 3: nothing durable is held across a script point except IDs.** Across a call that takes `&mut ScriptToken`, DOM code holds generational node IDs (`NodeId`), never borrows; GC references cross only as branded `Root`s (JS-D18); after the call, the code re-validates every ID it still needs (connected? same parent? same generation?) as the spec's algorithms do in their re-checks. The tree builder already works this way (ST 6.3).
+
+**Two-phase bindings.** A generated binding for an operation runs in two phases:
+
+1. **Convert.** Brand-check `this`, then convert every argument and dictionary member to its IDL type (running author code as the spec requires), resolve overloads, and produce owned Rust values: `NodeId`s, numbers, strings as external-string handles or arena copies, `Root`s for objects. Phase 1 touches no DOM state.
+2. **Act.** Call the hand-written operation with typed arguments and a `DomCtx` (the agent's DOM state behind its `TokenCell`), then convert the result, push and pop `[CEReactions]`, and map errors to exceptions.
+
+Phase 2's signature decides whether the operation can run script: most take `&DomCtx` and cannot; the few that must (`dispatchEvent`, `click()`, `focus()`, `showModal()`, operations with `[CEReactions]` that call reactions on return) take `&mut ScriptToken` and are listed in the IDL overlay (DM-D3), so the list is reviewed in one place. The order "convert all, then act" is the spec's own: Web IDL converts arguments before the operation's steps run, so the two-phase shape changes no behaviour; it makes the order a type.
+
+**Reactions.** `[CEReactions]` members push an element queue on the agent's reactions stack before phase 2 and pop and invoke it after, from generated code only, never by hand ([HTML](https://html.spec.whatwg.org/multipage/custom-elements.html#cereactions), [SP 14.2][SP]). The push and pop are a counter and a test when the agent has no custom element definitions, which is most agents (target DM-21). Paths without `[CEReactions]` (parser, editing) use the backup element queue, drained in a microtask, as the spec says.
+
+**Events.** Dispatch computes the whole event path, retargeting and activation target in the core phase from the columns, stores the path as a list of IDs with their retargeted values, then invokes listeners one by one with the token. Each invocation re-reads the listener list from the side table (listeners added during dispatch to a later target fire, as DOM specifies; removed ones do not) and re-validates IDs. Legacy-pre-activation and activation behaviour run at the points DOM names ([SP 13.1][SP]).
+
+**What is planted.** DM-10's planted-bug suite has one case per row of the table above (a borrow held across the call, a script call from a script-free module, a node reference held in a task closure, a conversion after a DOM read), each caught at compile time or by the moving-GC stress test (JS-10's mechanism).
+
+### 6.3 The WebIDL compiler and the bindings (DM-D2, DM-D3, DM-D4, DM-D21)
+
+**Inputs (DM-D21).** The IDL is the pinned specifications' own: `hg-webidl` reads the IDL blocks of each pinned specification revision (the same pins as ANC-1), and CI compares the result with `@webref/idl` at a pinned version (MIT, [BO 5][BO]). WPT's `interfaces/` directory is not a second oracle: its files "are copied from @webref/idl by a workflow that tries to sync the files daily", so it serves idlharness, not the cross-check. A disagreement between Izcal's extraction and `@webref/idl` is triaged against the spec text. The corpus Izcal ships at Stage 1 is DOM, HTML, Web IDL's own interfaces, and every specification this spec or another accepted spec admits (CSSOM, CSSOM View, Fetch, URL, Encoding, Streams, File API, UI Events, Pointer Events, Selection, Trusted Types, Storage, Service Workers, Web Animations and the rest, with owners in 6.18); Izcal's admission rule for single-engine features is LY-D10's.
+
+**An Izcal overlay, not edits.** Izcal-specific facts live in a separate `.hgidl-overlay` file per specification, never in the spec IDL: which operations may run script (6.2), effect facts for the optimizer (below), which hand-written function implements each member, use-counter IDs, deviations with their spec issue. The overlay is checked against the IDL: an entry for a member that does not exist, or a member with no implementation, fails the build.
+
+**The front end (DM-D2).** `hg-webidl` is Izcal's own parser and resolver for the Web IDL grammar (one appendix of the spec, LL(1)), with every extended attribute typed at parse time and unknown ones rejected, and errors that point to spec anchors. Stage 1 5.3 chose `weedle` 0.13 (MIT) for parsing. `weedle` is maintained (it moved to the wasm-bindgen organisation and released 0.13.1 in February 2026), so the case for writing the parser rests on what Izcal needs: the grammar is small, Izcal's own typed attributes and spec-anchored errors are the point, and a parser for the browser's interface language sits on the line M-1 draws ([BO 5.4–5.6, 11.6–11.8][BO]). Whether a Web IDL parser is engine work or generic infrastructure is an M-1 classification, which M-1 reserves for the owner; the recommendation is to classify it as engine work and build it (DM-D2). `webidl2.js` stays a test-time oracle only, and only after its licence conflict (MIT in the repository, "W3C" in the npm metadata) is settled ([BO 5.1][BO]). Code emission uses `proc-macro2` and `quote` (MIT OR Apache-2.0, generic code-generation infrastructure, [BO 11.1–11.2][BO]).
+
+**What `hg-webidl-codegen` emits, per interface:**
+
+| Output | Form | Consumed by |
+|---|---|---|
+| **Descriptors** | Read-only tables in the engine image: interface name, inheritance, members, attributes, `[Exposed]` sets, `[SecureContext]`, `[CrossOriginIsolated]`, constants, `[LegacyUnforgeable]` placement, `[Global]` shape | `hg-js-host` creates per-realm interface objects lazily from them (JS 6.14); FP-4's per-realm cost depends on this |
+| **Shape families and IC generators** | `.hgop` source, compiled by `hg-opgen` (JS G16) | The engine's ICs and optimizer: a DOM attribute access is cached and inlinable like any property (JS 6.2) |
+| **Conversion and dispatch glue** | Rust, one function per operation, attribute getter and setter: brand check, argument conversions, overload resolution compiled to a type dispatch at the distinguishing argument index for each argument count ([Web IDL](https://webidl.spec.whatwg.org/#dfn-distinguishing-argument-index), [BO 6.2][BO]), the phase-2 call, result conversion, exception mapping | The interpreter and baseline tiers; the optimizer inlines the conversion glue |
+| **Legacy behaviour** | Generated hooks for legacy platform objects (indexed and named getters, setters, deleters with `LegacyPlatformObjectGetOwnProperty`), `[LegacyUnforgeable]`, `[LegacyOverrideBuiltIns]`, `[LegacyUnenumerableNamedProperties]`, `[LegacyFactoryFunction]` (`Image`, `Audio`, `Option`), `[LegacyWindowAlias]`, `[LegacyNullToEmptyString]`, `[LegacyTreatNonObjectAsNull]`, `[LegacyLenientThis]`, `[LegacyLenientSetter]`, `[LegacyNoInterfaceObject]`, `[LegacyNamespace]` | Every one of the 11 `[Legacy*]` attributes and their ~196 uses is a named generator rule with its idlharness tests ([SP 15.3][SP]); only `WindowProxy`, `Location` and `HTMLAllCollection`'s `[[IsHTMLDDA]]` are hand-built exotic objects, in one inventoried module (G97) |
+| **Reflection** | Getters and setters for HTML's `[Reflect]`-family attributes, generated from the reflection rules (enumerated, limited to known values, nullable, URL, numeric with bounds) | Removes most of the hand-written code of the 113 HTML elements ([SP 16.1][SP]) |
+| **Effect facts** | Per member: reads (which column groups or side tables), writes, may-run-script, may-throw, may-allocate, returns-same-object (`[SameObject]`), pure-for-DevTools | The optimizer's effect sets (JS 6.4's assumption ledger), DevTools' side-effect-free evaluation, and the fuzzer's mod-ref table (6.15, 6.16) |
+| **Anchors and counters** | A `// spec:` anchor on every generated item (G9) and a use-counter increment site per member | `hg-anchor`, DevTools, telemetry (6.15) |
+| **Fuzzing grammar** | A typed grammar with object dependencies and mod-ref pairs from the effect facts | `hg-idl-fuzz` (DM-12) |
+
+**Effect facts are trusted only when checked (DM-D4).** Gecko puts side-effect facts in IDL so its JIT can hoist and eliminate DOM calls; Blink puts them in IDL to decide what DevTools may evaluate without side effects ([BO 4.1–4.5][BO]). A wrong fact is a JIT bug of the class the JS spec closes by construction (missing invalidation, JS 6.2), so in Izcal an effect fact is an input the optimizer trusts only after two checks: the generator derives the coarse facts from the IDL itself (a getter of a `readonly` attribute with no `[NewObject]` reads, a `[CEReactions]` member may run script) and the overlay can only **narrow** them with a reason; and a debug and fuzzing build runs an **effect auditor** that records every column, side table and log write each binding call makes and fails when a call writes outside its declared set. A narrowed fact without an auditor run in CI is ignored by the optimizer. The same facts serve the optimizer and DevTools' side-effect-free evaluation.
+
+**Exceptions.** Phase 2 returns `Result<T, DomError>`; `DomError` is an enum of the 33 `DOMException` names, `QuotaExceededError` as its own interface, the five simple exceptions, and a "rethrow" variant carrying a JS exception from a callback ([SP 15.2, 8.7][SP]). The generated glue creates the exception object in the **current realm**'s intrinsics, which is the realm Web IDL names, and never in the object's realm.
+
+**Realms (JS 6.14).** Interface objects and prototypes are created per realm on first use from the descriptors. A platform object's `[[Realm]]` is its relevant realm, and Web IDL says it "can change after it has been created", with `[[Prototype]]` updated at once ([Web IDL](https://webidl.spec.whatwg.org/#es-platform-objects), [BO 3.11][BO]); HTML tightened this in July 2026 ("Create nodes in the realm of the document they are created for", [SP 15.7][SP]). Izcal stores the node's realm in its rare data only when it differs from its node document's, and adoption into a document of another realm updates the wrapper's prototype through `hg-js-host`, as the spec requires. Every handle carries its heap's brand (JS-D18), so "a wrapper created in the wrong realm's heap" is a type error; a wrapper created in the wrong realm of the same heap is caught by the realm assertions in debug builds and by idlharness.
+
+**Every ISA from the start.** The generator emits ISA-independent Rust and `.hgop`; the JS engine compiles them for each target ISA, so the bindings add no ISA-specific code. riscv64 is a target from the start (owner decision, 19 October 2026) alongside x86-64 and AArch64; the JS engine spec covers x86-64 and AArch64 today (ledger G-4), so this spec relies on the riscv64 back end that decision requires (amendment, 9.5), and DM-20 and DM-40 are measured on all three ISAs.
+
+**Testing.** WPT `webidl/` and an idlharness run for every interface in WPT's `interfaces/` (346 IDL files) gate every change to the generator; a golden-file test pins the output for a sample IDL; the generator's own code carries anchors to the Web IDL algorithms it implements (G9).
+
+### 6.4 Wrappers, worlds and cross-origin objects (DM-D7, DM-D16)
+
+**Main-world wrappers (JS-D4).** A node's wrapper in its own realm is created on first script access, held strongly by the node once created, and collected with it; its slot is a field of the node's rare data, so a node never touched by script pays nothing. Chrome's black-box cost of a wrapper is about 17–22 B of JS heap and about 70 B of process memory against 89 B for an unrendered element and about 800 B for a rendered one ([BO 1.6–1.12][BO]), so the wrapper is a minor term in FP-11.
+
+**Other worlds (DM-D16).** Extensions' content scripts (Stage 2), DevTools' console evaluated in an isolated world, and the agent tool surface (B9) see the same DOM through their own realms, never the page's JS objects. Each world has its own wrappers in a **per-world side table** keyed by (world, slot), traced as external traced slots of the node space, as Blink keeps an inline main-world slot and per-world maps ([BO 3.1–3.2][BO]) and Ladybird moved to in 2026 ([BO 3.9][BO]). A privileged world's view of a page object is an **Xray-style view**: it reads the native DOM through the generated bindings of its own realm and never sees page expandos or redefinitions, which Gecko's design shows is robust when the relationship is in the object rather than at each access site ([SR 5.9][SR], [BO 3.6][BO]).
+
+**Unmodified wrappers.** Chrome collects a wrapper that has no JS references and no modifications while its node lives, and recreates it on the next access ([BO 1.10–1.11][BO]). JS-D4 holds the wrapper strongly instead, which is simpler and needs no rule about what "unmodified" means (no expando, no prototype change, never a `WeakMap` key, `WeakRef` target or registry target, since those observers would see a new identity). The memory at stake is about 20 B of JS heap and about 70 B of process memory per touched node in Chrome's black-box measurement ([BO 1.9][BO]); DM-D16 keeps JS-D4's rule and names the measurement that would reopen it.
+
+**Cross-origin objects (DM-D7).** HTML's cross-origin surface is closed: a cross-origin `Window` exposes 13 properties (`window`, `self`, `location`, `close`, `closed`, `focus`, `blur`, `frames`, `length`, `top`, `opener`, `parent`, `postMessage`), its child navigables by index and by target name (the document-tree child navigable target name property set), and a cross-origin `Location` exposes `href` (setter only) and `replace`; everything else throws `SecurityError`, and `then`, `@@toStringTag`, `@@hasInstance` and `@@isConcatSpreadable` return undefined ([HTML](https://html.spec.whatwg.org/multipage/nav-history-apis.html#crossoriginproperties-(-o-)), [SP 7.1–7.6][SP]). Izcal's rule is structural: **every cross-origin `WindowProxy` and `Location` is a remote-shaped stub, whether its target is in another process or in this one.** The local form exists only for same origin-domain access.
+
+| Target window is in | Object script holds | How access works |
+|---|---|---|
+| **Not same origin-domain**, wherever the target is: another process (cross-site under I-1, cross-origin under DM-D6 and FP-D8), or this process (I-1's reduced-isolation mode, JS-D20; opaque-origin documents co-located under 6.8's rules) | A **remote-shaped `WindowProxy`**: a host exotic object whose only state is a broker-minted handle to the target browsing context and the `[[CrossOriginPropertyDescriptorMap]]` | The 13 + 2 operations and named and indexed child access are generated from HTML's tables and become typed messages: `postMessage` over the messaging channel (6.11), `location` writes and `replace` as navigation requests to `hg-navigation`, `close`, `focus`, `blur` as broker requests. `closed`, `length`, `top`, `parent`, `opener` and child names come from a **frame-tree projection** the broker sends each renderer: only what that renderer's documents may observe (their own frames' direct children and names, their ancestors, their opener), updated at task boundaries as recorded inputs. When the target is in the same process the transport is local, but the stub and its operations are the same, so no `Window` or `Document` of another origin is ever reachable from script |
+| **Same origin-domain** (same origin; `document.domain` never relaxes it under DM-D6) | A local `WindowProxy` whose `[[Window]]` is swapped on navigation | Every `[[Get]]`, `[[Set]]`, `[[GetOwnProperty]]`, `[[DefineOwnProperty]]`, `[[Delete]]` and `[[OwnPropertyKeys]]` hook first calls `hg-bindings::access::check(current_settings, target)`, which implements IsPlatformObjectSameOrigin and returns either a `SameOriginDomain` proof or switches the object to its remote-shaped form |
+
+**The proof is a type (G92).** A `&Window`, `&Document` or `&Location` state reachable from a `WindowProxy` or a `Location` object is obtainable only through `access::check`, whose success value is `SameOriginDomain<'t>`, a zero-sized token with a private constructor that borrows `&'t ScriptToken` shared. Any call that can run script takes `&mut ScriptToken`, so the proof ends at the first script point at compile time; a generated member that runs author code after the check (an argument conversion, a getter, a `[CEReactions]` callback) checks again afterwards, because a navigation may have swapped `[[Window]]` in between. Generated code for every cross-origin-sensitive member takes the proof as a parameter, so a member that forgets the check does not compile. The check runs before the getter's context is pushed, as HTML specifies ([SP 7.3][SP]). Refusals are recorded for DevTools (6.15), never shown to the pages involved.
+
+**Same-origin descriptor identity.** `[[CrossOriginPropertyDescriptorMap]]` memoizes accessor functions per (current global, object global, key) so their identity is stable ([SP 7.4][SP]); Izcal keeps it in the current realm, traced weakly, and drops it when `document.domain` changes, as allowed.
+
+### 6.5 Events, input, focus and user activation
+
+**Event dispatch** follows DOM exactly (6.2): path with retargeting and closed-shadow tracking, activation target, legacy-pre-activation, capture and bubble, passive listeners with the default-passive rule for `touchstart`, `touchmove`, `wheel` and `mousewheel` on window, document, root and body ([SP 13.1–13.2][SP]). Listener lists live in rare data. For compositor scrolling, `hg-dom` maintains a column flag "has a non-passive listener for touch or wheel" and its ancestor summary; paint attaches it to scroll nodes in the property trees, where the compositor decides per scroll node whether it may scroll without asking the renderer (GR 6.8). Most such listeners never cancel: about 80% of the touch events that block scrolling never call `preventDefault()` ([BO 8.1–8.2][BO]). How long the compositor waits for a renderer's answer before scrolling is a timing decision recorded as a B1 input, set jointly with graphics (Q-GR-20).
+
+**Input (`hg-input`).** The broker routes OS input to the target frame's renderer after hit-testing composited surfaces (LY 6.14, GR); `hg-input` turns it into UI Events and Pointer Events in the order those specs give (pointer, then compatibility mouse events, click, `dblclick`, `contextmenu`, keyboard with `keydown`/`beforeinput`/`input` ordering at the editing boundary, composition events from the IME glue, wheel, touch), queued on the **user interaction task source** as HTML requires for trusted input ([SP 1.4][SP]). Every input event is a recorded B1 input with the broker's sequence number. Coalescing of `pointermove` and `wheel` within a frame is a function of those recorded inputs, never of timing on the renderer.
+
+**Input equivalence for assistive technology (AX G106).** The accessibility spec requires that AT actions (`SemanticAction`) run only through the input-equivalence table of its Section 6.9, implemented in the input crate this spec names. That crate is `hg-input`: `hg-input::equivalent::perform(action, node)` implements AX 6.9's table exactly (keyboard activation with `keydown`, `keypress`, a `click` with `detail` 0 and `keyup` on focusable elements; the full pointer sequence on others; arrow-key sequences for set-value; `insertReplacementText` input events), marks the events trusted, records the action as a B1 input, and **queues** each synthesized event as a task on the user interaction task source, never dispatching inside the IPC handler (AX-24). Pages cannot distinguish AT users, and replays reproduce AT sessions.
+
+**Focus.** HTML focus (focusable areas, sequential focus navigation, `autofocus`, `delegatesFocus`, the focus fix-up rule in "update the rendering", `inert`, `:focus-visible` with its modality as a recorded input) is implemented in `hg-html::focus`. **Surface focus** (which of the shell, a page frame or a prompt has system focus) belongs to the broker's `hg-ax-focus` (AX 6.6); a renderer reports its focused element and requests focus moves across frames, which the broker grants.
+
+**User activation is minted by the broker (DM-D20).** HTML's activation model (sticky, transient, history-action activation; activation-triggering events: trusted `keydown` except Esc and reserved shortcuts, `mousedown`, `pointerdown` for mouse, `pointerup` for other pointers, `touchend`) needs a timestamp per window and propagation to ancestors and same-origin descendants ([SP 4.7][SP]). Chrome's post-Spectre threat model says a secure gesture for autofill and passwords tracked in the renderer "can be forged by web content that compromises the renderer" ([SR 5.5][SR]); this spec applies the same reasoning to activation. The broker, which routed the input, records the activation timestamp for the target browsing context and its ancestors and sends it with the input; the renderer keeps a mirror for script-visible queries (`navigator.userActivation`) and consumption. Expiry is computed on both sides by one function of that timestamp and the recorded substrate time carried with each input, so the mirror and the broker never disagree near the boundary. Every capability whose spec gates on activation and whose effect leaves the renderer (popups, fullscreen, downloads, clipboard writes, history-action, payment, `requestStorageAccess`, audible autoplay and `AudioContext` start under MD-D13) is checked against the broker's record, so a compromised renderer cannot open a popup, start audio or manipulate history without a gesture. The transient duration is **5 s†**, inside HTML's "at most a few seconds", a recorded configuration value replaced by DM-M0's black-box measurement of the shipping engines (Q-DM-4).
+
+### 6.6 Shadow DOM, custom elements, observers, ranges and the selection boundary
+
+**Shadow DOM and slots** follow DOM and HTML at the pinned revision: open and closed roots, `delegatesFocus`, `serializable`, `clonable`, named and manual slot assignment, `customElementRegistry` on the root, declarative shadow roots from the parser (ST 6.5) ([SP 11.4–11.5][SP]). Slot assignment runs in the core phase of every tree edit (6.1) and is incremental: a "needs slot assignment" flag on hosts and slots, resolved before any read of assigned nodes and at the flush. `slotchange` is signalled through the agent's signal-slot set and fires during "notify mutation observers", as DOM orders it ([SP 12.1][SP]). Style and layout read the flat tree from the columns plus the assigned-nodes side table through `hg-tree-traits` (G1), never through `hg-dom`.
+
+**Custom elements and scoped registries.** Definitions live in registries owned by a document, a shadow root or an element (scoped registries landed in HTML and DOM on 14 April 2025, Interop 2026, [SP 14.3][SP]); a registry maps names to definitions holding `Root`s to the constructor and callbacks. Element creation, upgrade and the ten reactions (including `connectedMoveCallback` and the four form callbacks) follow HTML; the per-agent reactions stack and the backup element queue are exactly the spec's structures ([SP 14.1–14.2][SP]). Customized built-ins (`is=`) are implemented, since HTML specifies them and two engines ship them ([SP 14.4][SP]); `ElementInternals` covers form association, ARIA reflection, `states` and shadow-root access ([SP 14.7][SP]). Every reaction is recorded for DevTools with the definition and registry that produced it (6.15).
+
+**Mutation observers** are per agent, as DOM puts them: records come from the mutation log, the "mutation observer microtask queued" flag coalesces delivery into one compound microtask, transient registered observers keep `subtree` working on removed subtrees until the next notification ([SP 12.1–12.2][SP]). No synchronous mutation callback exists in Izcal: mutation events are not implemented (ST-D4), and all three engines have removed them ([HP 3.2][HP]).
+
+**Ranges.** Live ranges are updated synchronously in the core phase by insert, remove, move, replace-data and split-text, exactly as DOM specifies, through the per-document range registry (6.1); `StaticRange` is a value. `Range`'s mutation methods (`deleteContents`, `extractContents`, `surroundContents`) are DOM algorithms with `[CEReactions]` and run through the two-phase binding.
+
+**Selection: the boundary with the editing spec.** The Selection API is a W3C Editor's Draft: one selection per document, associated with at most one range, with `getComposedRanges` across shadow roots ([SP 12.5][SP]). This spec owns the **data model and its DOM consequences**: the document's selection object, its range in the range registry (so DOM mutations update it), `selectionchange` events on the DOM manipulation task source, `getSelection`, `getComposedRanges`, the `Selection` interface's non-editing methods, and the `Selection` record kind of the mutation log. The **future editing spec** (ledger G-16) owns caret movement in editable content, editing commands and `execCommand`, `contenteditable` behaviour, `beforeinput`/`input` semantics for edits, IME composition beyond the event plumbing of 6.5, spellchecking, and the visual selection painted by graphics. **Caret browsing** (F7) in non-editable text is the accessibility spec's (AX 6.12), over this spec's Selection model. Text-control selection (`input.setSelectionRange`) belongs to `hg-forms` over the control's value, not to DOM ranges, as HTML specifies.
+
+### 6.7 The event loop and the scheduler (DM-D1, DM-D10, DM-D19)
+
+**One sequence per agent cluster.** HTML gives each agent one event loop and lets several window event loops share a thread ([SP 1.1][SP]); B3 gives each agent cluster one serial sequence. An agent cluster holds one similar-origin window agent (per browsing context group) and the worklet agents its documents create; the cluster's sequence serves the window agent's event loop, and worklets run where their owning spec puts them. Each agent keeps its own task queues and its own heap. A process holds the clusters of one (origin, container) key; each cluster gets its own sequence and, under DM-D19, its own OS script thread, so a long task in one tab never delays input in a same-origin sibling tab. Dedicated workers, shared workers and service workers have their own sequences and threads.
+
+**Queues.** Task queues are sets ordered by enqueue position ([SP 1.2][SP]). Each agent has one queue per task source it uses: user interaction, rendering, DOM manipulation, networking, navigation and traversal, timer, posted message, each enabled port message queue, media element, storage, bitmap, JavaScript engine (FinalizationRegistry cleanup), speculation rules, and the Prioritized Task Scheduling queues by effective priority 0–5 ([SP 1.4–1.5, 5.2–5.3][SP]). A task records its source, document, settings objects, enqueue position, enqueue time on the substrate clock, and, when recording, its cause (the task, script position and API that queued it). Tasks whose document is not fully active are not runnable.
+
+**The selection policy (DM-D1).** The scheduler picks the next task with one stated function of the queue state, the substrate clock and visibility, nothing else:
+
+| Order | Class | Rule |
+|---|---|---|
+| 1 | **Input** | The oldest runnable user-interaction task. Input is first because input delay, not processing, is the largest part of poor INP at p90 ([EL 3.3][EL]) |
+| 2 | **Rendering, when due** | A pending "update the rendering" task (queued when the compositor's BeginFrame arrives, GR-D15) whose frame deadline has arrived, or that has waited one frame interval behind input, so a stream of input cannot stop frames |
+| 3 | **Elevated** | Scheduler effective priority 3–5 (user-blocking tasks and their continuations, and user-visible continuations, which include every `scheduler.yield()` continuation by default), as the scheduling report suggests: "effective priority of 3 or higher" above most task sources, below input and rendering ([SP 5.3][SP]) |
+| 4 | **Normal** | All other task sources plus scheduler effective priority 2 (user-visible tasks), by **oldest enqueue position across sources**, FIFO within each source |
+| 5 | **Background** | Scheduler effective priority 0–1, only when classes 1–4 have nothing runnable |
+| — | **Anti-starvation** | A runnable task in class 4 older than **100 ms†**, or in class 5 older than **1 s†**, is promoted to class 3 for one pick; rendering runs ahead of runnable input at most once per frame interval, and only after waiting one interval |
+| — | **Idle** | When nothing is runnable: an idle period with HTML's deadline (50 ms cap, lowered to the next timer and the next frame, [SP 2.7][SP]) for `requestIdleCallback`, then GC and release-list work (JS 6.5) |
+
+The policy is a pure function of (queue contents in enqueue order, task ages on the substrate clock, the pending frame deadline). Every input to it must be a B1 input, so **the picks need not be logged** if, and only if, every way a task can be enqueued, or a task can become runnable, from outside the sequence's own thread is itself recorded at the position where it took effect. Those paths are closed by the **decision-point register** below: `hg-script-api`'s cross-thread enqueue takes a register entry ID, and no other cross-thread enqueue path exists (G93). Replay re-derives the picks, and a running checksum of picked task IDs every 1,024† picks detects divergence. This is what makes "why did this task run late?" answerable: DevTools can show the runnable set and the rule that chose (6.15), and DST can run the same session under other seeds to explore the orders HTML permits (B1).
+
+**The decision-point register.** Each row is a path by which work enters a sequence, or runnability changes, at a time that depends on another thread or process. Each is recorded at the pick position where it takes effect when recording, enforced at that position in replay, and driven by the seeded scheduler in simulation (JS-D15's rule).
+
+| Path | Owner | Notes |
+|---|---|---|
+| IPC messages on any endpoint of the agent (navigation, network, storage, broker replies, cross-process `postMessage`) | B2, this spec | Stage 1 3.4 records each data-pipe read |
+| Input events from the broker | This spec (`hg-input`) | With the broker's sequence number |
+| BeginFrame ticks and presentation feedback | Graphics (GR-D15) | — |
+| Timer expiry, idle-period start and deadline | This spec | On the substrate clock |
+| Same-process messages from dedicated workers, worklets and the audio rendering thread | This spec, MD | Not IPC, so recorded here |
+| `Atomics.waitAsync` resolutions and SAB-driven wakeups | JS engine | Production races stay an excluded class (JS 6.9) |
+| Off-thread completions: compile and parse installs, GC completion and weak clearing, FinalizationRegistry cleanup | JS engine (JS-D15) | — |
+| Image decode, font install, style-sheet install completions | MD 6.6, TX, ST 6.6a | Applied at recorded decision points by their owners |
+| Parser yields and speculative fetches | ST 6.4 | — |
+| Control-thread commands: freeze, resume, discard, pressure | Footprint, this spec | — |
+| Stop-script, debugger pause and resume | This spec, DevTools | — |
+| Worker termination and suspension decisions | `hg-agents` (broker) | Arrive as IPC |
+| Prerender activation | `hg-navigation` | Arrives as IPC |
+| Frame-tree projection updates, `localStorage` version installs | This spec | Applied at task boundaries |
+| bfcache evictions (no-store credential change, 3 min†) | `hg-navigation` | Arrive as IPC |
+
+DM-40 includes a case per row, including a dedicated-worker ping-pong and a decode-completion race.
+
+**Microtasks and script.** The engine hands promise jobs and FinalizationRegistry cleanup to the host (JS 6.14); `hg-script` performs a microtask checkpoint after each task, and on "clean up after running script" when the JS execution context stack becomes empty, which is why microtasks run between listeners of a user-dispatched event and not of a script-dispatched one ([SP 3.1–3.2][SP]). The checkpoint also notifies rejected promises, cleans up IndexedDB transactions (through the storage DOM glue) and runs `ClearKeptObjects`. HostMakeJobCallback and HostCallJobCallback carry the incumbent settings object and the scheduler's continuation state, so `scheduler.yield()` inherits priority through promise jobs ([SP 5.3][SP]).
+
+**No nested event loops.** HTML defines "spin the event loop" as a macro that saves the JavaScript execution context stack, performs a microtask checkpoint, waits, and queues a continuation on the same task source ([SP 3.3][SP]). Izcal never implements it as a nested Rust loop that runs tasks inside a task. At DM-M0 every spin call site in the pinned HTML is listed with whether script frames can be on the stack when it is reached. A site reached only with an empty JavaScript stack (the parser's tasks, for example) becomes a continuation. A site reachable with script on the stack suspends the agent's script frames on the engine's stack segments (JS 6.6) as an explicit scheduler state, *suspended in spin*, which runs no other task of that agent and is recorded; DST has a case per site. The other blocking constructs are explicit scheduler states as well:
+
+| Construct | Izcal mechanism |
+|---|---|
+| **Pause** (`alert`, `confirm`, `prompt`, `print`, the beforeunload prompt) | The sequence enters *paused*: it runs no task; the script thread blocks on the broker's reply; the control thread keeps serving IPC, freeze and pressure. The dialog is drawn by the broker's prompt surface with the requesting origin, never by the page. HTML calls pausing "highly detrimental" and permits alternatives ([SP 3.4][SP]); Izcal pauses exactly as specified, because the alternatives change task and microtask timing ([SP 19.4][SP]), and records the pause and its duration |
+| **Synchronous XHR** (2.84% of page loads, [GO 8.7][GO]) | The sequence enters *blocked on fetch*: no task runs; the partition service performs the fetch; the result arrives as a recorded input. Disallowed during page dismissal, as the specs require |
+| **Debugger pause** (breakpoints, `debugger`, stepping) | The sequence enters *paused in debugger*: no tasks and no microtasks run; the control thread keeps serving the IIP and IPC; the pause and its duration are recorded, and the DevTools spec's execution points count it (DT) |
+
+**Timers and clocks (DM-D10).** `setTimeout` and `setInterval` implement HTML's timer initialization steps exactly: negative timeouts become 0; **nesting level greater than 5 and timeout under 4 ms become 4 ms**; IDs map to unique handles so a cleared and reused ID cannot cancel the wrong timer ([SP 4.1–4.2][SP]). There is **no 1 ms clamp**: it is not in HTML, it reordered timers, and WebKit measured 1–1.7% on Speedometer from removing it ([WebKit 221124](https://bugs.webkit.org/show_bug.cgi?id=221124), [HP 4.4][HP]). Expiry is evaluated on the substrate clock, which is the virtual clock in simulation and a recorded clock in production. HTML's optional power padding ([SP 4.3][SP]) is used in one place only: **timers of a hidden document are aligned to 1 s† boundaries of the substrate clock** until the page freezes 30 s† after hiding (FP-D4); visible documents get no padding. There is no budget-based throttling and no intensive throttling, because FP-D4's freeze replaces both, and alignment is a function of the recorded visibility input and the clock, so it replays exactly.
+
+`performance.now()` and every other `DOMHighResTimeStamp` go through one coarsening function: **100 µs** without cross-origin isolated capability and **5 µs** with it, with jitter drawn from a per-realm stream of B1 entropy, so the same recording replays the same jitter ([hr-time](https://w3c.github.io/hr-time/#dfn-coarsen-time), [SP 4.5][SP]). The monotonic clock keeps ticking across system sleep on every OS, as hr-time's clock model implies (clocks "attempt to count 1 millisecond of clock time per 1 millisecond of real-world time"); MDN reports that only browsers on Windows appear to do so today ([EL 4.3][EL]); DM-M1 measures each OS's clock source. Coarsening alone does not close timing channels ([SR 8.10][SR]); I-1's process boundary and DM-D19's per-cluster sequences do the rest, and implicit clocks (a SAB counter, message ping-pong, rAF, CSS animations, [SR 8.11][SR]) are bounded by the same isolation.
+
+**Scheduler APIs.** `scheduler.postTask` with priorities, delays and `TaskController`/`TaskSignal`, `scheduler.yield()`, `requestIdleCallback`, `queueMicrotask`, `requestAnimationFrame` (also in dedicated workers for `OffscreenCanvas`, [SP 2.8][SP]) ship from the first milestone; pages then need neither the `MessageChannel` yield hack nor a racy `isInputPending` ([HP 4.10–4.12][HP]). `isInputPending` is not implemented: it is no longer recommended because it can miss input, and only one engine shipped it ([HP 4.11][HP]).
+
+**Rendering opportunities.** A rendering opportunity is the compositor's BeginFrame (GR-D15), throttled by GR's process-independent rule (hidden documents get none; non-visible navigables are throttled by visibility and intersection only, identical in and out of process, so throttling cannot reveal site isolation). When BeginFrame arrives, `hg-script` queues **one "update the rendering" task for the event loop** on the rendering task source, as HTML now specifies ([SP 2.2][SP]); the task processes the event loop's fully active documents in HTML's order (a container document before its child navigables, in tree order, as layout's flush also requires, LY 6.1), after filtering the documents without an opportunity. The rendering class of the policy decides when it runs.
+
+**The rendering steps and who owns each.** HTML's 17 per-document steps ([HTML](https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering), [SP 2.3–2.4][SP]) run in `hg-script::rendering`, which calls each owner in order, with a spec anchor per step and a frame-log record per step:
+
+| Step | Owner | Notes |
+|---|---|---|
+| Filter non-renderable and unnecessary rendering | This spec | Render-blocked, hidden, rendering suppressed for view transitions, no opportunity; the "unnecessary rendering" skip is a recorded decision |
+| Reveal; flush autofocus candidates | This spec (`hg-html`) | — |
+| Resize steps; scroll steps (`scroll`, `scrollend`) | Layout state (`hg-scroll`) produces the facts; this spec fires the events | Scroll offsets are LY's primary state |
+| Evaluate media queries and report changes | Style's environment snapshot (ST 6.10); this spec fires `MediaQueryList` change events | — |
+| Update animations and send events | Future animation spec (ledger G-13) | Until it exists, this spec fires CSS transition and animation events from ST's before-change and after-change styles in a placeholder module, `hg-anim-events`, recorded as a G-13 dependency with a milestone (DM-M2) |
+| Fullscreen steps | This spec (element side); broker (window side) | Fullscreen requires broker-minted activation |
+| Context-lost steps | Graphics (canvas, GR 6.15) | — |
+| Animation frame callbacks | This spec | Frame timestamp from the BeginFrame tick |
+| Style and layout loop with `content-visibility` proximity and `ResizeObserver` | Style (ST), layout (`hg-layout-query` owns ResizeObserver) | The flush contract of B4 as restated by JS-D4: script thread blocked, workers read columns |
+| Run snapshot post-layout state steps (scroll-state snapshot); record last remembered sizes | Layout (LY 6.9) | Right after the ResizeObserver loop, as LY specifies; the snapshot is a recorded input to style |
+| Focus fix-up | This spec (`hg-html::focus`) | — |
+| Pending view-transition operations | Graphics (GR) with the future animation spec | — |
+| IntersectionObserver | Layout (`hg-layout-query`) | — |
+| Record rendering time; mark paint timing | This spec (LoAF and paint timing entries) | — |
+| Update the rendering | Paint and compositing (GR) | At the end of the flush the sealed mutation-log segment is handed to the accessibility spec's semantic thread (AX-D3); no level-dependent work is reachable from `hg-script` (AX G105) |
+| Process top layer removals | This spec | — |
+
+**Long tasks and stopping scripts.** The scheduler cannot preempt a running task; the engine's interrupt checks (JS 6.5, 6.13) can stop it. When an input has waited behind one task for **10 s†**, the broker offers the user "stop this page's script" (HTML permits killing scripts, [SR 11.2][SR]); stopping terminates the agent cluster's current script without running `finally` blocks, as HTML describes, and is recorded.
+
+**Interventions from content blocking.** The content-blocking spec's I5 (restrict a script: a cookie-write cap, a CPU and wakeup budget, with CB-D3's gate uniform fingerprinting surfaces) and I11 (heavy-frame and heavy-script interventions with FP-D7's thresholds) run in the renderer's engine, bindings and scheduler ([CB 6.6][CB]). Izcal keeps an **always-on attribution ID** per task and per callback: the script (URL and partition) whose code is running. It is cheap (one integer copied when a task is queued) and separate from the DevTools-attached journal (6.15, DM-D18). It follows **creator inheritance** as CB-27 requires: code created by a restricted script through `eval`, `Function`, string timers, `javascript:` URLs, inserted inline scripts and same-origin child documents inherits the creator's restriction profile, and each of those paths in `hg-script`, `hg-html` and `hg-window` carries the attribution forward (DM-10 has a case per path). A restriction profile attached to a script by the partition service is applied by `hg-bindings` (for example the cookie-write cap on `document.cookie` setters) and by the scheduler (a script whose budget is spent has its timers and posted tasks deferred to the background class, a recorded decision). The budgets are charged on the substrate clock, so they replay exactly.
+
+**Worker and worklet event loops** use the same scheduler with their own queue sets and no rendering class, except dedicated workers' animation frames for `OffscreenCanvas`. Worklets follow HTML: at least two global scopes per worklet where the spec requires it, randomly assigned by a seeded choice ([SP 17.5][SP]).
+
+### 6.8 Browsing contexts, agents, agent clusters and processes (DM-D6, DM-D8, DM-D19)
+
+HTML's agent cluster is "an idealized 'process boundary'" that is "more restrictive than the actual process boundaries" ([SP 6.2][SP]); FP-D3 adds that a process split may never divide one. So the mapping is: **a renderer process holds whole agent clusters of one isolation key**, and the key is (origin, container) on every desktop class (FP-D8) and (site, container) only where I-1's reduced-isolation mode applies.
+
+**Origin-keyed agent clusters, always (DM-D6).** The WHATWG text keys a similar-origin window agent by **site** unless the document requests origin keying with `Origin-Agent-Cluster: ?1`, the group is cross-origin isolated, or the group's historical key map already says origin; values other than `?1` are ignored ([SP 6.3, 6.6][SP], [NA 2.1–2.3][NA]). Chrome announced that from Chrome 115 (2023) the `document.domain` setter does nothing by default, with `Origin-Agent-Cluster: ?0` as a last-resort opt-out ([Chrome](https://developer.chrome.com/blog/document-domain-setter-deprecation), [NA 2.6–2.7][NA]); whether that means Chrome origin-keys clusters by default today is confirmed black-box at DM-M0 (Q-DM-5). Izcal's reason is its own: FP-D8, an accepted decision with no trigger that turns it off, keys processes by origin on every desktop class, and a site-keyed cluster that spans two origins (`a.example.com` and `b.example.com` after both set `document.domain`) would have to live in one process. So:
+
+- Every similar-origin window agent is **origin-keyed**. `document.domain` silently does nothing, as HTML specifies for origin-keyed clusters ([SP 6.7][SP]); 0.66% of Chrome page loads set it without the header and already get a no-op there ([GO 5.13][GO]).
+- `Origin-Agent-Cluster: ?0` is **ignored**, as the WHATWG text ignores every value but `?1`; Izcal does not create site-locked processes for it, so FP-D8 has no exception. Pages that rely on Chrome's `?0` opt-out lose `document.domain`; the corpus and a use counter measure how many (DM-D6's reversal trigger). The alternative that honours `?0` with a site-locked process is presented in DM-D6 with its security cost: it re-enables same-site co-location of two origins whenever both opt out.
+- Cross-origin-isolated groups and opaque origins are origin-keyed, as HTML requires. **Opaque-origin documents** (sandboxed iframes without `allow-same-origin`, navigated `data:` documents) are placed in their own process keyed by (precursor origin, container, opaque) on every desktop class, as Chrome isolates sandboxed iframes on desktop since Chrome 127 ([NA 1.15][NA]); under reduced isolation they share their precursor's process and are reached only through remote-shaped stubs (6.4).
+- The divergence from the WHATWG default is filed upstream (the open question in [NA Q6][NA]); DM-1's conformance floor excludes only the WPT cases that test the site-keyed default and `document.domain` relaxation, listed by name.
+
+**The historical agent cluster key map** is per browsing context group and "only ever gains entries" ([SP 6.5][SP]); it lives in the broker's `hg-agents`, because it decides process placement, and its entries are recorded B1 state.
+
+**Mapping table.**
+
+| Agent | Agent cluster | Process | Sequence and thread |
+|---|---|---|---|
+| Similar-origin window agent (one per cluster per browsing context group) | Origin-keyed (DM-D6) | The renderer for its key (I-1, FP-D3, FP-D8); a new browsing context group of the same key joins the same process (FP-D3 (a)); opaque origins as above | The cluster's sequence on its own script thread (DM-D19) |
+| Dedicated worker | Its owner's cluster (shares SAB with it) | The owner's process | Its own sequence and OS thread (`[[CanBlock]]`) |
+| Shared worker | A new origin-keyed cluster | The renderer for the worker's (origin, container), joining an existing one when present (DM-D8) | Its own sequence and thread |
+| Service worker | A new origin-keyed cluster | As shared workers (DM-D8) | Its own sequence and thread |
+| Worklet agent (audio, paint, layout, animation) | Its owner's cluster | The owner's process | Audio worklets on the audio rendering thread that MD owns; others on the owner's sequence or a worklet thread per the owning spec |
+
+**Process placement of shared and service workers (DM-D8).** Chrome places service workers "in the same process as a document that is likely to rely on them"; Firefox runs a dedicated `webServiceWorker=$SITE` process per site; Safari removed SharedWorker for about nine years (Safari 7 to 16) during its multiprocess work ([NA 4.8][NA], [HP 6.2][HP]). Izcal's key-based process model makes the choice simple: a shared or service worker runs in the renderer of its (origin, container) key. Among that key's processes it prefers one that already holds documents of the worker's **storage key** (a third-party worker partitioned under top-level site A goes where A-partition documents of that origin already are), and otherwise starts a new one, so no partition's data enters a process only because a worker was placed there. That keeps I-1 (the worker and the documents it serves are one origin), costs one agent heap (FP-34's 768 KiB†) rather than a process when a document of the key is open, and needs no special process kind. A worker crash takes the documents of its process with it; DM-D8's reversal trigger measures that. **Recorded sessions** follow the DevTools spec instead: the recorded browsing context group runs in dedicated, freshly launched processes and its service and shared workers outside them (DT).
+
+**Browsing context groups and COOP.** `hg-agents` creates groups, applies COOP's browsing-context-group switches and keeps each group's cross-origin isolation mode ("none", "logical" or "concrete", derived from COOP and COEP; only "concrete" grants cross-origin isolated capability, [SP 6.5, 6.9][SP]) and its agent cluster map. Izcal gives the cross-origin isolated capability only where the process really holds one origin's data, which every origin-keyed renderer does.
+
+**Reduced-isolation mode (I-1, JS-D20).** Below the RAM threshold, where sites may share a process, the agent-cluster rules are unchanged (they are stricter than processes); every cross-origin window is a remote-shaped stub (6.4); sequences of different sites never share an OS thread, because event-loop contention is a cross-context channel ([SR 8.6–8.7][SR]); and per-site intern tables and caches follow JS-D20.
+
+**What per-cluster threads change elsewhere (DM-D19).** Three accepted designs assumed one script thread per process; each needs a stated rule, proposed as amendments (9.5): (1) the style spec hash-conses attribute sets and parsed sheets per partition across the agents of a process (ST 6.11); with two clusters on two threads, interning becomes concurrent and interned IDs would depend on thread timing, so intern tables become **per agent cluster** (the sharing they lose is between same-origin tabs, measured by DM-30); (2) the JS engine shares verified bytecode across agent heaps of one process with reference counts released through the release lists (JS 6.11); those counts become atomic, released only at each cluster's event-loop points; (3) FP-D3's cost line ("a heavy same-site tab can slow its siblings") now applies only to the per-process worker pool, whose contention between two clusters' flushes is measured at DM-M2. DM-33 bounds the thread cost, and a target checks that interned IDs are identical with one and with two concurrent clusters (DM-43).
+
+### 6.9 Navigation and session history (`hg-navigation`, DM-D9, DM-D14, DM-D20)
+
+**The model is the post-rewrite HTML one.** Navigables and traversable navigables, session history entries and steps, the navigate algorithm, "apply the history step" with its traversal queue and its two-part continuation structure, document state, and the Navigation API's `navigate` event with `intercept()` and `NavigationPrecommitController` ([SP 9.1–9.6][SP]). Stage 1 4.3 put `hg-navigation` in the broker as pure functions over IPC events; this spec keeps that and divides the algorithms by who must decide:
+
+| Part | Where | Why |
+|---|---|---|
+| Traversables, session history entries, the session history traversal queue, the current step, "apply the history step", target-name lookup, sandbox flags, history-action activation checks, and content blocking's `$popup` check, which refuses a popup before the new top-level traversable is created (CB 6.2) | Broker (`hg-navigation`) | History, sandbox flags, popups and activation are security decisions a compromised renderer must not make ([SR 10.8][SR]); a traversal spans documents in several processes |
+| Site-instance and process selection, process swap on commit, browsing context group switches (COOP) | Broker (`hg-agents`, `hg-navigation`) | I-1 |
+| Fetching the response, redirects, CSP and COOP/COEP header processing for the navigation | Partition service (NW), delivering to the broker the facts it needs (final URL, origin, COOP, COEP, `Origin-Agent-Cluster`) | NW 6.8 |
+| `navigate` event, `beforeunload`, `pagehide`/`unload`/`visibilitychange`, `pageshow`, Document creation and initialization, `history.pushState`/`replaceState` proposals, the Navigation API objects | Renderer (`hg-window`) | Script-visible; the renderer proposes entries, the broker commits them |
+| Fragment navigations and same-document traversals | Renderer, with a commit message to the broker | No new document; the broker records the entry |
+
+**Cross-process protocol.** Each step that crosses processes is a typed message: "check if unloading is canceled" fans out `beforeunload` to every affected document, each in its own task, and gathers the results under a **deadline of 1 s†** after which a non-answering document counts as not canceling (a hung renderer cannot hold a navigation); "unload" and "destroy" are sent in the order Izcal chooses where HTML says "in what order?" ([SP 10.4][SP]): **child navigables before their parents, siblings in tree order**, recorded as an Izcal choice with its spec issue. Every message carries the broker's step number, so a stale or reordered reply is discarded.
+
+**The beforeunload prompt** shows only when HTML's five conditions hold, including sticky activation, and its text is the browser's own, never the page's ([SP 9.5][SP]); the activation check uses the broker's record (6.5).
+
+**`unload` (DM-D9).** HTML's "unload a document" fires `pagehide` (with `persisted` true when the document is salvageable), sets visibility hidden, and fires `unload` **only if the document is not salvageable** ([SP 10.2][SP]). Izcal implements exactly that: an `unload` listener does **not** by itself make a document ineligible for bfcache (unlike Firefox desktop, [NA 3.3][NA]); a document kept in bfcache never receives `unload`; a document that is destroyed does. That keeps bfcache open to the 11% of all sites and 28% of the top 1,000 (desktop; 10% and 20% on mobile) that still register `unload` ([GO 5.8][GO]), and it matches the spec text rather than Chrome's default since Chrome 155, which does not fire `unload` at all except on iOS and for sites that opt back in. Pages that need a last save get `pagehide` and `visibilitychange`, as every engine now advises.
+
+**bfcache policy (DM-D14, BF-1).** A document is kept when it is salvageable after the unloading cleanup steps. Izcal's blocking reasons are the spec's (WebSocket, WebTransport, the other specs' cleanup hooks) plus these policies, each published in `notRestoredReasons` with cross-origin masking ([NA 3.5–3.6][NA]):
+
+| Condition | Izcal policy | Evidence |
+|---|---|---|
+| `Cache-Control: no-store` on the main resource | Cached; evicted when any cookie or authentication state of the partition changes, on a `no-store` subresource fetch, and after **3 min†** | The largest blocker: 17% of mobile and 7% of desktop history navigations; Chrome's eviction rules shipped to 100% in 2025 ([NA 3.2][NA]) |
+| Open WebSocket, WebTransport, WebRTC | Not cached (spec cleanup steps make the document unsalvageable) | HTML |
+| Dedicated workers, shared memory | As the footprint spec's eligibility rule (FP 6.9–6.10): no `SharedArrayBuffer` shared with an agent outside the page; dedicated workers are frozen with the page, or the page is not cached | HTML worker lifetime "suspendable" predicate ([SP 17.1][SP]); FP |
+| Open IndexedDB connections that block another context; Web Locks held | Cached while no other context is waiting on them; evicted when one starts waiting | Chrome freezes groups except when they "hold a Web Lock or an IndexedDB connection that blocks operations outside the group" ([NA 7.4][NA]) |
+| Shared worker clients; BroadcastChannel subscribers | Cached; a shared worker keeps the document as a suspended owner; a BroadcastChannel message delivered while the document is cached evicts it | Izcal's first-principles choice†; no engine publishes a rule |
+| `window.opener` references in either direction | Cached; the reference is severed for the cached document's group only if a script of another document touches it, then evicted | Non-null opener can block in other engines ([NA 3.3][NA]) |
+| Any entry | Kept in memory under the footprint spec's byte budgets (FP 6.10: a total share of RAM, a cap, and a per-(site, container) line), evicted before live tabs are discarded (BF-1) | Every eviction above (credential change, 3 min†, a waiting context, a message) is a recorded decision that reaches the renderer as IPC (6.7's register) |
+
+**Prerendering.** Speculation-rules prerendering creates a document in a new hidden browsing context whose script runs ([NA 3.8–3.9][NA]); in Izcal it is an ordinary agent in its key's process, its activation is a recorded input, and APIs HTML defers until activation queue their effects. Prerendering is off under the Hardened profile and under memory pressure.
+
+**History privacy.** `history.length` and frame counts are cross-origin leaks the specs keep ([SR 8.2–8.3][SR]); Izcal implements them as specified. `:visited` is partitioned by (link URL, top-level site, frame origin), as Chrome 136 does, through the style spec's state source (ST 6.7.1).
+
+### 6.10 Workers and worklets
+
+**Lifetime is the broker's computation.** HTML defines worker lifetime by four predicates over an owner graph: actively needed, protected, permissible, suspendable ([SP 17.1][SP]). `hg-agents` keeps the owner graph (documents and workers as nodes, ownership edges from creation and from ports) and evaluates the predicates whenever an edge or a document's activity changes; a worker that loses "protected" is closed as an orphan when it loses "permissible"; one whose owners are all in bfcache is suspended with them. Every close, suspend and terminate is a recorded B1 input.
+
+**Timeouts (all recorded configuration, measured black-box at DM-M0 against the shipping engines, [NA Q2][NA]).**
+
+| Timeout | Izcal value | Spec |
+|---|---|---|
+| Between-loads shared worker timeout | **5 s†** | "A typical value … might be 5 seconds" ([SP 17.2][SP]) |
+| Extended-lifetime shared worker timeout | **30 s†** | 10 s to 5 min, not above the service worker idle limit ([SP 17.2][SP]) |
+| Service worker idle termination (no event to handle) | **30 s†** | The spec sets no number ([SP 17.4][SP]); Chrome documents 30 s only for extensions ([NA 4.7][NA]) |
+| Service worker single event or `waitUntil` limit | **5 min†** | Same |
+
+**Service workers.** Registrations are keyed by (storage key, scope) and stored by the storage service; the job queue (register, update, unregister) and the lifetime decisions run in the broker's `hg-agents`; routing of fetches to a worker is the partition service's (NW 6.7), and this spec allocates navigation preload and static routes (`InstallEvent.addRoutes`, at most 1,024 conditions and depth 10) to the partition service as well (an amendment, 9.5; [NA 4.5][NA]). The worker itself runs in its key's renderer (DM-D8). Static routes are evaluated without starting the worker, which is their point: when the worker is not running, boot is usually about 50 ms, about 250 ms on mobile and over 500 ms in extreme cases ([NA 4.4][NA]). **Opaque responses** that pass through a service worker or the Cache API are non-readable handles that never map into the renderer, as the media spec requires for opaque media (MD-31, G56).
+
+**Dedicated worker creation** creates an agent heap in the owner's process (FP-34: ≤ 768 KiB† charged) and a thread with a 256 KiB OS stack (FP 6.3). No browser publishes a creation cost ([NA 4.3][NA]); DM-26 sets Izcal's.
+
+### 6.11 Messaging and structured clone (DM-D12, DM-D13)
+
+**Structured serialization** implements HTML's StructuredSerializeInternal, StructuredSerializeWithTransfer and their inverses exactly: primitives, wrappers, `Date`, `RegExp`, `ArrayBuffer` including resizable, `SharedArrayBuffer` (same agent cluster, cross-origin isolated), views, `Map`, `Set`, `Error` with normalized names, arrays, the 32 `[Serializable]` and 16 `[Transferable]` interfaces, and plain objects with a memory map for cycles; transfer detaches only after serialization succeeds, because "transferring has side effects" ([SP 8.1–8.3][SP]). It is built on the engine's typed serializer interface over engine objects (JS 6.14), never on raw layouts.
+
+**Where author code runs.** Serialization reads own enumerable properties with `[[Get]]`, so getters run mid-serialization ([SR 3.9][SR]). Izcal's serializer holds no DOM or binding borrow while walking: it takes `&mut ScriptToken`, emits records into an owned buffer, and re-validates every platform object it serializes after each getter. **Deserialization runs no author code**: it constructs objects and platform objects only, under a `CoreGuard` (G91), so a later change cannot add a callback into script there, the path the 2013 WebKit hardening closed for one caller ([SR 3.1–3.2][SR]).
+
+**One wire format (DM-D12).** `hg-clone-wire` defines one versioned, little-endian, length-prefixed record format for every serialized value that leaves an agent: `postMessage` across agents and processes, `MessagePort`, `BroadcastChannel`, `history.state` and navigation API state (stored by the broker as opaque bytes), IndexedDB values (stored by the storage service as opaque bytes), and `structuredClone()` itself. Its decoder is the only parser of the format (G95), uses checked arithmetic on every size (JS G18's rule), has a Kani harness per record kind as Stage 1 4.1 requires for IPC messages, and is fuzzed (DM-12). **Stored values outlive releases**, so the decoder reads every published version of the format forever, and a corpus of values written by each release is a CI fixture (DM-12). Same-agent `structuredClone()` takes a fast path that never encodes, with a differential test against the encode-decode path.
+
+**Transfers across processes never leave the sender a writable mapping.** HTML detaches a transferred buffer in the sender, but a compromised sender process could keep its OS mapping of a shared region and write into the receiver's buffer later, a double-fetch across a trust boundary. A cross-process transfer therefore either copies, or moves a region that the receiver alone can map: a sealed memfd on Linux, a section handle duplicated without write access and closed in the sender on Windows, a Mach memory entry sent with the sender's right deallocated on macOS, the broker verifying each before delivery. Small buffers (below 64 KiB†) are always copied. Same-process transfers move the backing store. DM-11 has a case for a sender that keeps writing after a transfer.
+
+**Message ports are capability endpoints (DM-D13).** An entangled `MessagePort` pair is a B2 endpoint pair; transferring a port transfers the endpoint, and the broker **re-mints the endpoint's binding** on every transfer to the receiving context, so a port never carries its old owner's identity. Cross-process messages therefore take **one IPC hop**, renderer to renderer over an endpoint pair the broker minted, rather than a relay through the browser process ([NA 5.6][NA]). For **port messages** `event.origin` is the empty string, as HTML specifies; the binding only decides which context may hold the port.
+
+`window.postMessage` between documents in different processes uses an endpoint the broker mints per **(source document, target document)** on first use and revokes when either document unloads, so a window that navigates never keeps an old document's channel. The broker stamps each message with the source document's committed origin, and the receiver takes `event.origin` and `event.source` from that stamp, never from the message, so a compromised sender cannot forge its origin ([SR 9.4][SR]). The **`targetOrigin` check runs in the broker**, against the target document's committed origin, before delivery: it protects the sender's data, so it must not depend on a receiver that a compromised renderer controls. Within a process, both checks run in `hg-messaging` and delivery is a queue append. Port garbage collection follows HTML: an entangled port is strongly held by its twin or its global while it can receive ([SP 8.5][SP]); across processes, the endpoint's closure is the signal.
+
+**BroadcastChannel** messages go to the broker's `hg-agents`, which delivers them to every channel with the same name and the same storage key for non-storage purposes (partitioned, as in Chrome 115 and Firefox 103, [SP 8.6][SP], [NA 5.7][NA]), ordered by creation within each agent as HTML requires. A `SharedArrayBuffer` posted where the spec forbids it fires `messageerror` ([SP 6.10][SP]).
+
+### 6.12 HTML elements, forms and legacy features (DM-D15)
+
+**Who implements which element.** This spec owns the HTML element implementations except where another spec claims the element's behaviour:
+
+| Elements | Owner | This spec's part |
+|---|---|---|
+| Document structure, sections, grouping, text-level semantics, `a`, `area`, `template`, `slot`, `details`/`summary`, `dialog`, `search`, `selectedcontent`, `iframe` and `object` (as navigables), `script` (element side; execution through `hg-script`, parsing through ST), `link` (rel processing, `preload`, `modulepreload`), `meta`, `base`, `style` (element side; sheets are ST's) | **This spec** (`hg-html`) | All |
+| Forms: `form`, `input` (22 types), `button`, `select`, `option`, `optgroup`, `datalist`, `textarea`, `output`, `progress`, `meter`, `fieldset`, `legend`, `label`, form-associated custom elements | **This spec** (`hg-forms`) | All, including submission, constraint validation and autofill's DOM side |
+| `img`, `picture`, `source` (image selection: `srcset`, `sizes`, update the image data) | **This spec** for the selection algorithm and the element (MD 6.20's coverage table: "selection algorithms are HTML's, in `hg-dom`") | MD decodes |
+| `video`, `audio`, `track`, `source` in media | **Images and media spec** (`HTMLMediaElement`, its task sources) | The element's DOM plumbing; reflection generated |
+| `canvas` | **Graphics spec** (GR 6.15) for contexts | Element, `transferControlToOffscreen` plumbing |
+| SVG elements and the SVG DOM | **Future SVG spec** (ledger G-12) | Generic element machinery and bindings; the DOM-generic members SVG shares with HTML (`HTMLOrSVGElement`'s `dataset`, `nonce`, `autofocus`, `tabIndex`, `focus()`, `blur()`; event-handler attributes; SVG `<script>` and `<a>` behaviour through the same `hg-html` code) |
+| MathML elements | DOM element machinery here; layout's MathML Core | — |
+| `embed`, plugins | No plugins exist; `embed` and `object` navigate or show fallback, as HTML specifies | All |
+
+**Forms.** The form-associated categories (listed, submittable, resettable, autocapitalize-inheriting, labelable), the four value modes, `ValidityState`'s ten flags, static and interactive validation, "construct the entry list" with `formdata`, and form submission are a table-driven implementation, each step anchored ([SP 16.2–16.5][SP]). Native appearance is not specified ("Need to detail the native appearance and primitive appearance", 10 open markers, [SP 16.6][SP]); controls are rendered from Izcal-defined UA shadow trees and metrics (LY-D11), built lazily (WebKit builds `input`'s user-agent shadow tree "lazily during construction and cloning", [BO 2.4][BO]; Izcal builds it at first render, its own choice). Autofill writes values through `hg-forms` from the broker (SH-R rules of the security scope), never by script injection, and its data never enters the renderer before a broker-side gesture (Chrome's secure-gesture rule, [SR 5.5][SR]).
+
+**Top layer, dialog and popover.** One top-layer list per document, `showModal`, `closedby`, `popover` (`auto`, `manual`, `hint`), light dismiss, `:open`, invokers (`command`, `commandfor`) and focus restoration follow HTML at the pin; they are Interop 2026 areas ([GO 2.9–2.10][GO]), so each step carries an anchor and the Interop-labelled tests are release gates (DM-1).
+
+**Legacy feature admission (DM-D15).** Izcal implements what the pinned specifications require, including the legacy surface the web still depends on, and nothing the specifications have removed:
+
+| Feature | Decision | Evidence |
+|---|---|---|
+| `document.all` with `[[IsHTMLDDA]]`, named access on `window` and `document`, `document.write` (ST owns it), synchronous XHR on window, `alert`/`confirm`/`prompt` including in cross-origin iframes | **Implemented** as specified | `document.all` on 36.6% of Chrome page loads, `document.write` on 12% of mobile pages, sync XHR on 2.84% ([GO 8.7, 8.9][GO]); Chrome is "no longer pursuing" removal of cross-origin dialogs ([SR 10.7][SR]) |
+| Mutation events, XSLT (ST-D4), `showModalDialog`, AppCache, WebSQL, `setImmediate`, NPAPI, `isInputPending`, Shadow DOM v0, Custom Elements v0, HTML Imports | **Not implemented** | Removed from the specs or never standardized; removed from the engines ([HP 3][HP]) |
+| `document.domain` setter | Implemented; a no-op in origin-keyed clusters (DM-D6) | [SP 6.7][SP] |
+| `unload` | Fired only for non-salvageable documents (DM-D9) | [SP 10.2][SP] |
+| `execCommand`, `contenteditable` | Future editing spec (G-16); 1.19% of page loads call `execCommand` ([GO 8.7][GO]) | — |
+| Single-engine features: Page Lifecycle `freeze`/`resume`, Long Animation Frames, `notRestoredReasons` | **Owner exceptions** to LY-D10's admission rule, as layout handled the same situation (LY 6.15): `freeze`/`resume` because FP-D4 freezes pages and pages need the signal; LoAF and `notRestoredReasons` because their data is what 6.15 already records and pages use them (LoAF observed on 36.4% of Chrome page loads, [GO 4.5][GO]) | Each is shipped by one engine ([SP 5.5–5.6][SP], [NA 3.5][NA]); DM-D15 asks for the exceptions |
+
+### 6.13 The DOM side of storage (DM-D11)
+
+The storage service, IndexedDB's engine, the Cache API's store and quotas belong to the storage spec (ledger G-19). This spec owns what script sees: the `Storage` objects, `StorageEvent`, the IndexedDB and Cache API bindings and their event dispatch on the right task sources, transaction auto-commit at the microtask checkpoint, structured clone of values through `hg-clone-wire` (6.11), and the partition key on every object (G99).
+
+**`localStorage` without synchronous IPC (DM-D11).** Stage 1 4.1 lists `localStorage` reads among the expected synchronous IPC calls. The networking spec removed `document.cookie` from that list with a renderer-side, versioned, read-only region (NW-D10). This spec applies the same pattern: when a document of a storage key first touches `localStorage`, the storage service maps a **read-only snapshot** of the key's area into the renderer (shared memory, versioned); reads are local; writes apply to a local overlay at once, so a script reads its own writes, and are sent asynchronously to the storage service, which orders all writers of the key (documents of one origin can live in two processes after an FP-D3 split) with **last-writer-wins per key in its sequence order**. An overlay entry is retired only when the snapshot version that contains its acknowledgment is installed, so a value never reverts. A new version is installed only at a task boundary, as a recorded input (6.7's register); other contexts receive `storage` events when it lands. The first touch waits for the snapshot (a recorded blocking point, like sync XHR), but the snapshot is requested at navigation commit for documents whose key has a non-empty area, so the wait is usually zero. **Quota is enforced by the storage service**; the renderer's check against the overlay is advisory and only decides when to throw `QuotaExceededError` early. `sessionStorage` is per top-level traversable and cloned on the navigations HTML names, kept in the broker as opaque bytes per traversable.
+
+### 6.14 Memory, footprint and page lifecycle
+
+**Per-node and per-agent cost.** The DOM's share of FP-11 is 72 B† per node averaged over the corpus (columns ≤ 48 B†, rare data, wrappers that exist), with text excluded and attribute sets shared; style has 80 B† and layout and paint 360 B† (ST 6.11). Chrome's black-box cost of an unrendered element is 89 B and of an `id` plus `class` pair 268 B more ([BO 1.6–1.8][BO]); DM-30 measures Izcal's with the same harness. Per realm, interface objects are created lazily from image descriptors (FP-4: ≤ 64 KiB† per realm with untouched intrinsics); per agent, `hg-dom`'s tables, the scheduler's queues and the mutation log start empty.
+
+**Freeze and resume (FP-D4).** A hidden page is frozen after 30 s† unless it has a declared reason (FP 6.8). Freezing applies to whole browsing context groups (as Chrome freezes, [NA 7.4, 7.6][NA]), so the **broker** decides it: a group is frozen only when every top-level page of the group is hidden past the grace period and no declared reason applies to any of them, and the broker sends `freeze` to every renderer that holds a document of the group. In each, `hg-script` fires `freeze`, then stops taking tasks from the group's sequences; timers stop counting toward expiry ("fully active for N ms", [SP 4.3][SP]); dedicated workers are suspended. Following FP 6.8, a frozen process gets no scheduled wakeups: inputs addressed to a frozen group are held by the broker or the network service, not delivered to the renderer, and a page whose held inputs exceed a per-group byte budget† is discarded; frozen pages close their connections as FP 6.9 requires. On resume, the held inputs are delivered in order, `resume` fires, and queued tasks run. `document.wasDiscarded` is set after a discard-and-reload, and the reason is recorded for DevTools.
+
+**Release work** (node slots, side tables) happens only at event-loop points between tasks (JS 6.5), so it never runs during a DOM algorithm.
+
+### 6.15 Observability: what developers, DevTools and agents can see (DM-D18)
+
+Every item here exists because the engine performs the step in generated or anchored code it owns, and keeps a record linking it to its cause ([GO 10][GO]). Each record type has a cost class: **always** (counters only), **DevTools-attached** (per-session journals in the inspected renderer), or **recording** (B1 replays, where everything is derivable).
+
+| What | Data | Answers | Class |
+|---|---|---|---|
+| **Task journal** | Per task: source, priority class, enqueue time and cause (task, script position, API), the runnable set at the pick and the rule that chose, start, end, microtask checkpoint time, forced flushes inside it | "Why did this task run late?", full cause chains from input to forced layout | DevTools-attached; derivable on replay |
+| **Mutation provenance** | The mutation log with cause: task, script position, world (page, extension, DevTools, agent); causes are attached only in the DevTools-attached and recording classes (6.1) | "Who changed this attribute, and what was it before?" | DevTools-attached |
+| **Listener ledger** | Per listener: type, options, adding script position and task, world, invocation count | "Who added this listener?", listener leaks | DevTools-attached |
+| **Reaction trace** | Per custom element reaction: definition, registry (global or scoped), element, reaction kind, queue position | "Which definition applied, and when did my callback run?" | DevTools-attached |
+| **Retainers across JS and DOM** | Heap snapshots from the one collector with node columns, wrappers and listeners as edges (JS-D4, JS 6.10) | "What keeps this detached node alive?" without page shims | On demand |
+| **Clone cost** | Per `postMessage`, `structuredClone`, history state and IndexedDB write: bytes, objects, transfer list, serialize and deserialize time | "What did this message cost?" | DevTools-attached |
+| **Cross-origin refusals** | Every `SecurityError` from `access::check`, with caller and target (never shown to the pages) | "Why did my frame access fail?"; abuse detection | DevTools-attached |
+| **Lifecycle explanations** | Spec-step explanations for bfcache restore or not, freezes, discards, dialog and popover dismissal, worker termination | Generalizes `notRestoredReasons` | Always computed for the decision; shown in DevTools |
+| **Agent and process view** | Each document and worker: agent cluster, key, process, sequence, thread | "Where does this run?" | Always (from the broker) |
+| **Use counters** | One counter per IDL member and per legacy behaviour, incremented in generated code | Which features the corpus uses; admission decisions | Always (local); published only from CI and the corpus, and from users only with opt-in telemetry (P1) |
+| **Settled signal** | In simulation and replay: "no runnable task, timer, fetch, animation or worker message can change subtree S before time T" under the virtual clock. In production: "no runnable or pending local work can change S; these fetches and cross-process messages are outstanding", a statement of fact with the list, never a prediction about the network | Deterministic waits for tests and, with consent, agents | On request |
+
+**Interfaces.** These reach DevTools through the IIP domains of the DevTools spec (DT) from `hg-dom-observe`, which `hg-inspect-renderer` reads; the CDP compatibility profile's DOM, DOMDebugger and Page domains are translated from them (DT). WebDriver BiDi's missing DOM-mutation event and quiescence primitive ([GO 6.8][GO]) are offered to the WebDriver BiDi group as proposals built on the mutation log and the settled signal.
+
+**Agents (B9, B10).** With AI on and the user's consent, the agent principal reads the DOM through its own world (DM-D16): stable generational node IDs, a subscription to mutation diffs instead of repeated snapshots, the semantic plane, and the settled signal; WebMCP tools registered by a page are exposed only through the agent principal, never as an ambient capability ([GO 7.1–7.4][GO]). The agent world, the mutation-diff subscription and the WebMCP exposure are compiled only with feature `ai` (Stage 1 G4, as AX G107 does for its agent extras). With AI off, nothing here is computed for agents (B10); `document.modelContext.registerTool` stays inert, as B10 requires.
+
+**Privacy.** Page-facing APIs keep their specified masking: LoAF's cross-origin attribution, `"masked"` bfcache reasons, coarsened clocks. Extension and agent identities, refused cross-origin accesses and journals appear only in the user's own tools; recordings stay off by default and are redacted on export (DT).
+
+### 6.16 Security, privacy and robustness
+
+**Threats and what closes each.**
+
+| Class | Record | Izcal mechanism | Checked by |
+|---|---|---|---|
+| Use-after-free and lifetime confusion in DOM algorithms | 70% of Chromium's high-severity bugs are memory safety, half of those UAF; DOM bugs 15–20% of browser 0-days ([SR 1.1, 2.2][SR]) | Safe Rust; no `Drop` on GC objects; release by ID between tasks; generational IDs; no borrows across script points (6.2) | Compile-fail tests, moving-GC stress (JS-10), DM-10's planted bugs |
+| Re-entrancy through events, reactions, conversions, serialization | All three in-the-wild DOM UAFs whose analyses were read ([SR 3][SR]) | Typed script points, script-free cores (G91), two-phase bindings | DM-10 |
+| Cross-thread lifetime (media, worker threads) | WebAudio UAF and race in Chrome ([SR 4.1–4.2][SR]); posted-task "Unretained" pointers ([SR 4.4][SR]) | Script-visible buffers never aliased across threads without a `Send`/`Sync` proof; tasks capture IDs only (G93); cross-process transfers never leave the sender a writable mapping (6.11) | TSAN and loom on the shared buffer paths; DM-10, DM-11 |
+| Universal XSS, cross-origin check bypass | 94 UXSS-class bugs in Chrome 2014–2018, mooted by isolation ([SR 5.1][SR]) | Cross-site and (DM-D6) cross-origin windows are remote stubs; same-process checks return a proof type (G92); the allow-list is generated | DM-11: planted check omissions, a fuzzer over the 13 + 2 members and their hooks |
+| Renderer-enforced policy (sandbox flags, activation, history) | Bypassable by a compromised renderer ([SR 5.2, 5.5][SR]) | Decided in the broker (G94, 6.5, 6.9) | Compromised-renderer simulation tests: a renderer that lies in every message |
+| Forged message origins | PMForce: 219 trivially exploitable sites ([NA 5.2][NA]) | Origin bound to the endpoint by the broker (DM-D13) | DM-11 |
+| Deserializer and wire-format bugs | CVE-2022-22620 ([SR 3.1][SR]) | One decoder (G95), no script in deserialization, checked arithmetic, Kani | DM-12 fuzzing, Kani in CI |
+| Variants after refactors | 25% of 2020's 0-days were variants ([SR 2.9][SR]) | Guarantees in types and generated code, which a refactor cannot drop silently | Mutation-generated variants of every planted bug (JS-10's rule) |
+| DOM clobbering, mXSS, sanitizer bypasses | 9.8% of the top 5K sites clobberable; DOMPurify bypasses via depth and namespaces ([SR 6.1–6.4][SR]) | Named access per spec (clobbering is web-compatible behaviour, 10.5% of pages would break, [SR 6.4][SR]); one parser and `setHTML` (ST); Trusted Types enforced at every sink the bindings generate | Trusted Types WPT; ST's round-trip suite |
+| Timing channels | Loophole: 25 µs event-loop monitoring and 75% page identification ([SR 8.6][SR]) | One mediated clock with seeded jitter; sequences never shared across clusters or sites (DM-D19); isolation | DM-14 |
+| Fingerprinting through discrete environment values | D-S1 as amended by OD-6; HGBA-3 PRIV-2 | `navigator` (`hardwareConcurrency`, `languages`, `platform`, `userAgent` and client-hint mirrors, `deviceMemory`), `screen` and `devicePixelRatio` come from one broker-supplied, normalized **environment-values record** per document, the same record ST's environment snapshot is built from (ST 6.10); the renderer never reads them from the OS | PRIV-2's measurement; a test that no binding reads an OS value |
+| Partitions co-located in one process | I-1 (b) partitions state per (top-level site, container), but a process holds several partitions of its key | G99 makes keys unforgeable; it does not stop a compromised renderer from reading partitions already mapped into it, which is I-1's accepted residual risk; DM-D8 never places a worker where its partition's data would not otherwise be | Threat model statement |
+| Denial of service | Deep trees, runaway handlers, huge URLs ([SR 11][SR]) | No recursion on content depth (G98); interrupt checks and the stop-script prompt; per-group queue budget while frozen; ST's limits | DST cases with deep and wide inputs |
+
+**Fuzzing.** `hg-idl-fuzz` turns the IDL compiler's model into a typed, dependency-aware grammar with a mod-ref table from the effect facts, which is what made Domato, FreeDom and Favocado effective where coverage feedback alone did not ([SR 7.1–7.5][SR]), and what Mozilla's IDL-driven fuzzing used to find over 850 bugs ([BO 5.10][BO]); every crash is captured as a B1 recording and replays exactly.
+
+### 6.17 Crate layout and the crate graph
+
+| Layer | Crate | Role | Tier |
+|---|---|---|---|
+| L2 | `hg-clone-wire` | Structured-clone wire format: records, versioning, decoder (no engine dependency) | R; decoder under JS G18; Kani harness per record kind |
+| L3 | `hg-script-api` | The interface lower layers use to reach the event loop without the engine: `TaskQueue` handles per (agent, task source), the `ScriptCallout` trait, opaque `PromiseHandle` and `AnyHandle`, `CauseId`, `ScriptPosition`, decision-point register entry IDs (6.0, 6.7); no engine types | R |
+| L3 | `hg-dom` | Node columns and node space (JS-D4), rare data, trees, shadow DOM and slots, `id` and named maps, collections, live ranges, mutation log and MutationObserver, events core, custom element registries and reaction queues, the IDREF resolver (AX 6.2), text arena | R; node space in `hg-heap`'s inventoried unsafe core |
+| L3 | `hg-bindings` | Generated bindings (`src/gen`, freshness-checked) and their runtime (`src/rt`): conversions, overload dispatch, exceptions, `[CEReactions]`, realms and interface objects, `access::check`, `WindowProxy`, `Location` and `[[IsHTMLDDA]]` (the inventoried `exotic` module), callbacks, use counters | R |
+| L3 | `hg-html-driver`, `hg-cssom` | (ST) | R |
+| L4 | `hg-script` | Agents, realms and settings objects, host hooks (JS 6.14), the event loop and scheduler, timers and clocks, microtasks, pause and blocked states, rendering-step orchestration, worker agents, structured serialization over `hg-clone-wire` | R |
+| L4 | `hg-window` | `Window`, `Document` lifecycle, `Location`, `History`, Navigation API, `beforeunload`/`pagehide`/`unload`/`pageshow`, the renderer side of navigation | R |
+| L4 | `hg-html` | Element behaviours (6.12), reflection glue, focus, top layer, dialog and popover, image selection, `iframe` and `object` navigables | R |
+| L4 | `hg-forms` | Form-associated elements, value modes, submission, constraint validation, autofill's DOM side | R |
+| L4 | `hg-input` | Input events, user-activation mirror, IME event plumbing, the input-equivalence entry point (AX G106) | R |
+| L4 | `hg-anim-events` (interim) | CSS transition and animation events from ST's styles until the animation spec (ledger G-13) takes them over | R |
+| L4 | `hg-webapi` | Script-facing web APIs this spec owns (6.18): Fetch's renderer side, Streams, File API and Blob URLs, `XMLHttpRequest`, `WebSocket` and `EventSource` objects, Performance Timeline family, Reporting, Permissions, Clipboard, Notifications, Fullscreen, Web Locks, Geolocation, Encoding, URL and Compression Streams bindings, the environment-values record | R |
+| L4 | `hg-messaging` | `MessagePort`, `MessageChannel`, `BroadcastChannel`, `window.postMessage` routing | R |
+| L4 | `hg-workers` | Worker and worklet global scopes, service-worker events, shared-worker connection | R |
+| L4 | `hg-storage-dom` | `Storage` snapshot and overlay, `StorageEvent`, IndexedDB and Cache API DOM glue | R |
+| L4 | `hg-dom-observe` | Task journal, provenance, listener ledger, reaction trace, clone cost, refusals, settled signal | R |
+| L5 | `hg-navigation` | Traversables, session history, navigate and traversal, sandbox flags, history-action checks, bfcache index | P (broker) |
+| L5 | `hg-agents` | Browsing context groups, agent-cluster keys and the historical map, process placement, worker lifetime, shared-worker matching, service-worker job queue and lifetime, BroadcastChannel and Web Locks routing, user activation of record | P (broker) |
+| L5 | `hg-input-route` | OS input to target frame, activation minting | P (broker) |
+| tools | `hg-webidl` | Web IDL parser, resolver, overlay checker (DM-D2) | T (output held to R) |
+| tools | `hg-webidl-codegen` | Descriptors, `.hgop` shape families and IC generators, Rust glue, reflection, effect facts, anchors, counters, fuzz grammar | T (output held to R) |
+| tools | `hg-idl-fuzz` | Typed, dependency-aware DOM fuzzer from the IDL model | T |
+| tools | `hg-effect-audit` | Effect auditor for narrowed facts (DM-D4) | T |
+
+**Rules G90–G99** (this spec's range in the registry; JS G6 already lets `hg-dom`, `hg-bindings` and `hg-script` depend on `hg-js-host` and `hg-heap`, and no other crate of this spec does):
+
+| Rule | Statement | Why |
+|---|---|---|
+| **G90** | Only `hg-bindings` converts JS values to IDL types or IDL types to JS values; hand-written DOM, HTML, form, window, worker, messaging and web-API code receives typed IDL values and `hg-script-api`'s opaque handles (promises, `any`) and never names an engine value type | Two-phase bindings (6.2); the conversion order is the spec's |
+| **G91** | Every entry point of a script-free module (insertion, removing and moving steps, slot assignment, live-range updates, event-path computation, mutation-record queuing, `id`-map maintenance, structured deserialization) takes a `CoreGuard<'t>` built from `&'t ScriptToken` and holds it to return, so no `&mut ScriptToken` can exist inside, including in callbacks passed in; an `ast-grep` rule keeps `ScriptToken` out of those modules as a second check | DOM's insertion and moving contracts, extended by Izcal to removing steps and deserialization, become types; a refactor cannot silently add a script point |
+| **G92** | A `Window`, `Document` or `Location` reachable from a `WindowProxy` or `Location` object is obtained only through `hg-bindings::access::check`, whose success value is a `SameOriginDomain` proof required by every generated cross-origin-sensitive member | The security check cannot be omitted by a new member |
+| **G93** | Tasks are queued, and the sequence is blocked or resumed, only through `hg-script-api` handles implemented by `hg-script`; every cross-thread enqueue names a decision-point register entry (6.7); task closures capture IDs and owned values only (a bound that excludes `Gc`, references and `TokenCell` borrows); clocks are read only through the substrate (Stage 1 G3) | B1 and the replay argument of 6.7; Unretained-pointer UAFs and CVE-2022-22620's lost reference ([SR 3.1, 4.4][SR]) |
+| **G94** | Only `hg-navigation` and `hg-agents` in the broker mutate session history, sandbox flags, user activation of record, agent-cluster keys and worker lifetime; renderers send requests | Policy a compromised renderer must not decide ([SR 5.2, 5.5][SR]) |
+| **G95** | Only `hg-clone-wire` encodes or decodes the structured-clone format; its decoder uses checked arithmetic on every size and has a Kani harness per record kind | One parser per format (ST G23's rule) |
+| **G96** | Every generated binding item carries a spec anchor (G9) and a use-counter ID; hand edits to `hg-bindings/src/gen` fail CI; the IDL inputs are pinned (DM-D21) | Provenance and freshness, as JS G16 for `.hgop` |
+| **G97** | Legacy behaviour (`[Legacy*]` rules, legacy platform objects, `[[IsHTMLDDA]]`, `WindowProxy` and `Location` hooks) exists only in generated code or in `hg-bindings::exotic`, an inventoried module | No ad-hoc special cases ([SP 15][SP]) |
+| **G98** | No crate of this spec recurses on content-controlled depth (extends ST's G21 to `hg-dom`, `hg-html`, `hg-forms`, `hg-window`, `hg-bindings`, `hg-clone-wire`) | DoS and stack exhaustion ([SR 11.3][SR]) |
+| **G99** | Every DOM-side object that touches state shared across documents (`Storage`, `BroadcastChannel`, `SharedWorker`, service-worker registrations, Web Locks, Blob URLs) takes its partition key from the broker-minted capability, never computes it in the renderer | Partition keys cannot be forged by a compromised renderer ([SR 9.3][SR], [NA 6.2][NA]); partitions already mapped into a process remain I-1's residual risk (6.16) |
+
+### 6.18 Ownership boundaries with other specs
+
+| Area | Owner | Boundary |
+|---|---|---|
+| Node storage, node space, wrappers' lifetime, the text arena's memory | JS engine (JS-D4) | This spec owns the DOM algorithms and the side tables on top |
+| Host hooks, realms, modules' graph algorithms, the typed serializer interface | JS engine (JS 6.14) | This spec implements the HTML host side (`hg-script`), module fetching with import maps (HTML), and serialization over the interface |
+| Parsing HTML and XML, `document.write`, the sanitizer's parser integration, CSSOM, selectors, `getComputedStyle`, element-state sources' style meaning | HTML and CSS parsing and style (ST) | `DomSink` calls `hg-dom`'s API; state sources write through `hg-dom` |
+| CSSOM View, geometry APIs, scrolling APIs and offsets, ResizeObserver, IntersectionObserver, the forcing table | Layout (`hg-layout-query`, `hg-scroll`) | This spec fires scroll, scrollend and resize events from layout's facts, and generates the bindings |
+| Frame scheduling (BeginFrame), compositing, canvas contexts, OffscreenCanvas, view transitions' rendering | Graphics (GR-D15, GR 6.15) | This spec runs "update the rendering" when the rendering task is picked |
+| `HTMLMediaElement`, media task sources, video frame callbacks, Web Audio, decoding | Images and media (MD) | Element plumbing and reflection here; image selection here |
+| Fetch, CORS, CSP network checks, cookies and `document.cookie` (NW-D10), service-worker routing, navigation preload, static routes | Networking (NW) | This spec owns the navigation and service-worker algorithms' DOM side |
+| Storage service, IndexedDB engine, Cache API store, quotas, Storage Buckets | Storage spec (ledger G-19) | This spec owns the DOM objects, events, task sources and `localStorage`'s snapshot protocol (DM-D11) |
+| Semantic tree, AccName, platform adapters, surface focus, `ariaNotify` delivery | Accessibility (AX) | This spec owns the IDREF resolver, ARIA reflection, `ElementInternals`, the input-equivalence entry point (G106), and records AT actions as B1 inputs |
+| Caret, editing commands, `contenteditable`, `execCommand`, spellcheck, IME composition semantics | Future editing spec (ledger G-16) | This spec owns the Selection data model, `selectionchange`, composition-event plumbing and `beforeinput`/`input` dispatch |
+| SVG DOM, SMIL | Future SVG spec (G-12) | Generic element machinery and bindings here |
+| Web Animations, CSS transitions and animations events | Future animation spec (G-13) | The "update animations" step calls it |
+| DevTools frontend, IIP and CDP profile | DevTools (DT) | `hg-dom-observe` produces the data; `hg-inspect-renderer` reads it |
+| Shell UI, prompts' rendering | Shell and security scope | The broker draws `alert`, `beforeunload` and permission prompts |
+| Caret browsing in non-editable text | Accessibility (AX 6.12) | Over this spec's Selection model |
+| Environment values (`navigator`, `screen`, `devicePixelRatio`) | This spec, from the broker's normalized record (D-S1, OD-6) | ST's environment snapshot is built from the same record |
+
+**Script-facing web APIs.** Stage 1 8.3's "JS, bindings and DOM" track also covered "web APIs". This spec takes the script-facing side of every API whose engine part another spec owns, and lists the ones that remain unowned:
+
+| API | Script-facing side (this spec, `hg-webapi` unless noted) | Engine or service side |
+|---|---|---|
+| Fetch (`fetch()`, `Request`, `Response`, `Headers`, body mixin), `XMLHttpRequest` | The renderer's steps of NW 6.7's split ("the renderer constructs the request from script and documents") | Partition service (NW) |
+| Streams, Compression Streams, Encoding, URL and `URLSearchParams` | Bindings and algorithms; Compression Streams over `hg-compress` (NW), Encoding over `hg-encoding` and URL over `hg-url` (ST) | — |
+| File API (`Blob`, `File`, `FileReader`), Blob URLs | Objects and readers; the Blob URL store is a broker registry keyed by partition (G99) | Storage service for large blobs (storage spec) |
+| `WebSocket`, `EventSource`, WebTransport objects | Objects, events, task sources | Transports (NW 6.11) |
+| Performance Timeline (User Timing, Navigation, Resource, Event, Paint, Element Timing, LoAF, `PerformanceObserver`), Reporting API | Objects and buffering; values from NW's coarsened timing, GR and the task journal | — |
+| Permissions, Notifications, Clipboard, Geolocation, Fullscreen, Screen Wake Lock, Web Locks | DOM side and activation checks (6.5) | Broker stores, prompts and OS integration (shell, security scope) |
+| WebCrypto (`SubtleCrypto`) | Bindings, once the owner of the algorithms is named | **Unowned: ledger G-18** |
+| Media capture, WebRTC, Web Audio, WebCodecs | — | Images and media spec |
+| Canvas, WebGL, WebGPU | — | Graphics spec |
+| IndexedDB, Cache API, Storage Buckets | DOM glue (6.13) | Storage spec (ledger G-19) |
+| Web Animations | — | Future animation spec (G-13) |
+
+Any web API not in this table or another spec's is recorded in the ledger as a gap before it is admitted.
+
+### 6.19 Alternatives
+
+| Area | Chosen | Alternatives | Cost | Reversal trigger |
+|---|---|---|---|---|
+| Re-entrancy (DM-D5) | Typed script points, script-free cores, two-phase bindings | (b) Strong references held across script (refcount or root everything a DOM algorithm touches); (c) review discipline with sanitizers | An explicit token on every script-running call; IDs instead of references across call-outs | A DOM algorithm whose spec requires holding a borrow across script, found at DM-M1, that cannot be restated with IDs: then a root scope for that algorithm only |
+| Task selection (DM-D1) | Stated policy, picks derived from recorded inputs | (b) Per-source round-robin; (c) FIFO across all sources; (d) per-pick logging of an unconstrained heuristic | Promotion rules to tune; a checksum every 1,024† picks | Input latency (DM-22) or frame-time tails (DM-23) worse than (b) or (c) by >10%† on the corpus in the lab |
+| Agent-cluster key (DM-D6) | Origin always; `?0` ignored | (a) Origin by default, `?0` gives a site-keyed cluster in a site-locked process; (b) the WHATWG default (site) with site-locked processes for any group that could use `document.domain` | Pages relying on Chrome's `?0` opt-out lose `document.domain`; a recorded spec divergence | `?0`-dependent breakage on more than 0.1%† of corpus page loads, measured by a use counter: then (a), as an owner decision amending FP-D8 |
+| WebIDL front end (DM-D2) | Izcal's own parser | (b) `weedle` 0.13.1 (MIT); (c) `weedle2` (MIT) | A small parser and its tests | Owner classifies the parser as generic infrastructure (then (c) with Izcal's attribute typing layered on top) |
+| Worker placement (DM-D8) | In the key's renderer, preferring one that holds the worker's storage key | (b) A dedicated service-worker process per key; (c) any renderer of the site | An agent heap per worker in a shared process; a worker crash takes that process's documents with it | More than 1 document lost per 10⁴† worker starts in the field suite: then (b) |
+| `unload` (DM-D9) | Spec: fired only for non-salvageable documents | (b) Never fired (Chrome 155); (c) handler blocks bfcache (Firefox desktop) | Compatibility edge: pages expecting `unload` on every leave | BF-1's hit rate below Chrome's with `unload` as a leading reason (it cannot be, under (a)); or WPT moves with Chrome |
+| Threads (DM-D19) | One script thread per agent cluster, with per-cluster interning and atomic shared-bytecode counts | (b) One script thread per process, clusters multiplexed with per-cluster fairness | One thread per additional cluster; amendments to ST 6.11, JS 6.11, FP 6.3 | DM-33's thread budget missed, or DM-43 (interned IDs identical with one and two clusters) cannot be met: then (b) |
+| Wrapper retention (DM-D16) | Held once created (JS-D4) | (b) Drop unmodified, unobserved wrappers and recreate | About 20 B of JS heap and 70 B of process memory per touched node (Chrome's black-box cost) | Wrappers exceed 15%† of DOM bytes per node on the corpus (DM-30) |
+| `localStorage` (DM-D11) | Read-only snapshot plus local overlay, async writes | (b) Synchronous IPC per access | A versioned region per storage key | NW-D10's ordering cases or Web Storage WPT fail under (a) and cannot be fixed |
+| Text (DM-D17) | Latin-1 or UTF-16 buffers, as JS strings | (b) WTF-8 | Text stack converts at its boundary if it wants UTF-8 | The text stack's measured transcoding cost exceeds the JS side's crossing cost on the corpus |
+
+## 7. M-1 compliance
+
+**Evidence rule.** No engine's source code was used as evidence for this spec or its notes: no code files, headers, commits, diffs or code reviews of Blink, Gecko, WebKit, Servo, Ladybird, V8, SpiderMonkey, JSC or any engine library were opened. Prose documents hosted in engine repositories (Blink's `IDLCompiler.md`, `V8BindingDesign.md`, `IDLExtendedAttributes.md` and bindings `README.md`; Chromium's security and process-model documents; Firefox's source-docs pages; Ladybird's `AddNewIDLFile.md`) were read as prose under OD-7. Commits cited are to the **specification** repositories (whatwg/html, whatwg/dom), for their messages and dates. Values that only an engine's source states (the Chrome milestone of the 1 ms clamp removal, V8 fast-call restrictions, engine timer and service-worker timeouts) are open questions answered by black-box measurement (Section 11), never numbers in this spec. The black-box per-node and per-wrapper costs in [BO 1.6–1.12][BO] were measured on stock Chrome 155 with a harness the researcher wrote.
+
+**Dependencies used, unmodified (all MIT, or MIT as one choice of a dual licence).**
+
+| Dependency | Licence | Use | Class |
+|---|---|---|---|
+| `proc-macro2` 1.x | MIT OR Apache-2.0 | Token streams for `hg-webidl-codegen`'s Rust output | Generic code-generation infrastructure ([BO 11.1][BO]) |
+| `quote` 1.x | MIT OR Apache-2.0 | Quasi-quoting for the same | Generic ([BO 11.2][BO]) |
+| Rust standard library; the workspace's generic crates already admitted by other specs (hashing, small vectors, bit sets, serialization of tool outputs) | MIT or MIT-dual | Data structures | Generic |
+
+**Data.** The Web IDL of the WHATWG and W3C specifications is standards data, used as a build input; the generated code is Izcal's. `@webref/idl` (MIT) is a CI cross-check of the extracted IDL. HTML's reflection rules, the DOMException name table and the CrossOriginProperties lists are read from the pinned specifications.
+
+**Test-only inputs** (any licence, never shipped): WPT (`dom/`, `html/`, `webidl/`, `interfaces/`, `custom-elements/`, `shadow-dom/`, `navigation-api/`, `workers/`, `service-workers/`, `webmessaging/`, `uievents/`, `selection/`, `trusted-types/`, `scheduler/`, `requestidlecallback/`, `long-animation-frame/`, `hr-time/`), `idlharness.js`; `webidl2.js` as a differential oracle on the parsed model once its licence conflict is resolved ([BO 5.1][BO]); Kani (MIT OR Apache-2.0), loom (MIT) and the toolchain's sanitizer runtimes for verification; the black-box harnesses' scripts. Bug-tracker pages are cited for their discussion text only: the WebKit 221124 figures are from comments in the bug's discussion, and WebKit 162544 is the DOMJIT patch-review thread, cited only for its author's prose description, because no prose post exists ([BO 4.6][BO]).
+
+**Not used.** `weedle` and `weedle2` (MIT, but DM-D2 recommends building the parser as engine work); `webidl2js` and `webidl-conversions` (jsdom; JS libraries doing binding work); any engine's binding generator or IDL compiler, as prose evidence only.
+
+**Built new, by Izcal, from the specifications.** Everything in Section 6: the Web IDL parser, resolver and code generator; the bindings runtime and exotic objects; the DOM algorithms over JS-D4's columns; the event loop, scheduler, timers and clock coarsening; navigation, session history and the agent registry; every HTML element implementation in 6.12; forms and constraint validation; input events and activation; workers, messaging, the structured-clone format; the DOM side of storage; the observability layer; the IDL fuzzer and effect auditor.
+
+**Anchors.** Each part is anchored at pinned revisions (ANC-1, G9):
+
+| Part | Specifications |
+|---|---|
+| `hg-dom` | WHATWG DOM; HTML (custom elements, slots' HTML side); Selection API (ED); Trusted Types (ED) for sinks |
+| `hg-bindings`, `hg-webidl*` | Web IDL; HTML's cross-origin objects and `WindowProxy`, `Location`; ECMAScript Annex B (`[[IsHTMLDDA]]`) |
+| `hg-script` | HTML (event loops, agents, scripting, timers, microtasks, structured data); hr-time; Prioritized Task Scheduling (WICG); requestIdleCallback (W3C ED); Long Animation Frames (W3C ED); Page Lifecycle (WICG) |
+| `hg-window`, `hg-navigation`, `hg-agents` | HTML (navigables, browsing the web, document lifecycle, browsers, origin-keyed agent clusters, COOP/COEP, workers' lifetime); Navigation API in HTML; Service Workers (W3C ED) for lifetime and jobs |
+| `hg-html`, `hg-forms` | HTML (elements, forms, focus, top layer, dialog, popover, user activation, reflection) |
+| `hg-input` | UI Events; Pointer Events; HTML (user activation, focus); Input Events |
+| `hg-messaging`, `hg-clone-wire` | HTML (web messaging, BroadcastChannel, structured serialization) |
+| `hg-workers` | HTML workers and worklets; Service Workers |
+| `hg-storage-dom` | HTML Web Storage; Indexed Database API and Service Workers' Cache (DOM side); Storage |
+
+## 8. Targets
+
+### 8.1 Correctness
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **DM-1** | **Conformance per directory** | WPT subtests on an aligned WPT revision, per directory, at or above the best of Chrome, Firefox and Safari measured black-box on the same revision, and never decreasing (C-1's rule). Stage 1 exit floors: ≥ 97%† in `dom/`, `shadow-dom/`, `custom-elements/`, `webidl/`, `html/semantics/`, `html/webappapis/`, `html/dom/`; ≥ 95%† in `html/browsers/`, `navigation-api/`, `workers/`, `service-workers/`, `webmessaging/`, `uievents/`, `selection/`. DM-D6's excluded default-key cases are listed by name | `hg-wpt` in T1, black-box engines on the lab rigs | Directory owner fixes; the floor is never lowered |
+| **DM-2** | **Spec-anchored** | 100% of generated binding items and 100% of hand-written algorithm functions in this spec's crates carry anchors; every Izcal choice where a spec is silent ("in what order?", unspecified timeouts) has an anchor to the spec issue and an Izcal test | `hg-anchor` in T0 | Merge blocked |
+| **DM-3** | **IDL-exact** | `idlharness.js` passes for 100% of the interfaces Izcal exposes, except cases filed upstream; `hg-webidl`'s extracted IDL equals the pinned spec IDL, and differs from `@webref/idl` only in listed, triaged cases | T1 | Generator fix before the next release |
+| **DM-4** | **Interop focus areas** | Every DOM-side Interop 2025–2026 area (dialogs and popovers, Navigation API, scoped registries, mutation-event removal, `details`, `scrollend`, web compat's event-loop items) ≥ 99%† of its tests | wpt.fyi labels in T1 | Release gate for the area |
+| **DM-5** | **Parser to DOM** | ST's round-trip and chunking properties (ST-8, ST-40) hold through `DomSink` on the real columns | ST's suites | Joint fix with ST |
+
+### 8.2 Security
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **DM-10** | **Re-entrancy closed by construction** | A planted-bug suite with at least one case per script point in 6.2's table and per G91 module (borrow across a call-out, script from a script-free module, a reference captured by a task, conversion after a DOM read, deserializer that runs script), plus ≥ 20† mutation-generated variants per case: **100%** caught by the named mechanism (compile error, moving-GC stress, or the effect auditor) | T0 compile cases, T1 stress | Ship blocker; the mechanism is fixed before release |
+| **DM-11** | **Cross-origin and policy** | (a) Planted omissions of `access::check` in generated and hand-written members, and a proof held across a conversion that navigates the target: 100% compile errors; (b) a compromised-renderer suite that lies in every navigation, activation, sandbox, popup, history, BroadcastChannel, storage-key, `postMessage` and `targetOrigin` message, and a sender that keeps writing a buffer after transferring it: **0** effects outside the renderer's own key; (c) the 13 + 2 cross-origin members, named and indexed child access and every hook fuzzed, including same-process cross-origin cases (reduced isolation, opaque origins): 0 property leaks | T1; DST | Ship blocker |
+| **DM-12** | **Fuzzing** | `hg-idl-fuzz` and the clone decoder fuzzed continuously from DM-M1; every crash replays from its recording; 0 open crashes older than 14† days at a release; the decoder's Kani harnesses pass | Fuzz farm (Stage 1 7.5) | Release blocked on open crashes |
+| **DM-13** | **Unsafe surface** | No `unsafe` in this spec's crates outside `hg-heap`'s node space and `hg-bindings::exotic`'s inventoried hooks, each with a written verification condition | G5 inventory | Remove or inventory with review |
+| **DM-14** | **Timer precision** | No script-visible time is finer than 100 µs (5 µs with cross-origin isolated capability); jitter replays identically from a recording | Izcal timing suite; WPT `hr-time/` | Ship blocker |
+
+### 8.3 Performance
+
+**riscv64.** No shipping engine of comparable class runs on riscv64, so each comparative target below (DM-20's jitless part, DM-22, DM-23, DM-25, DM-28) has a riscv64 form: Izcal's result on riscv64 ≤ 1.5×† its own result on AArch64 hardware of the nearest class, until a comparable engine exists; absolute targets (DM-24, DM-26, DM-27) apply unchanged on a riscv64 reference board, which the lab does not have yet (Section 10).
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **DM-20** | **A trivial getter costs a load** | In the optimizing tier, a loop reading `node.firstChild` or `node.nodeType` costs ≤ 1.2×† a loop reading an own data property; in the jitless ceiling, ≤ 1.0×† the best shipping engine's jitless mode on the same micro-benchmark set; measured on x86-64, AArch64 and riscv64 | Lab micro-benchmarks, black-box engines | Generator and IC work; effect facts reviewed |
+| **DM-21** | **`[CEReactions]` is free when unused** | `setAttribute` and `appendChild` loops in an agent with no custom element definitions: ≤ 2%† slower than a build with reactions compiled out | Lab | Fast-path fix |
+| **DM-22** | **Input is never queued behind newer work** | By construction (policy class 1), checked in DST: 0 picks where an input task was runnable and a class 3–5 task ran, and rendering ahead of runnable input at most once per frame interval and only after waiting one interval; in the lab, input delay on the corpus's recorded interactions at p75 and p95 ≤ the best shipping engine's | DST; lab with the corpus | Policy fix (DM-D1's reversal trigger) |
+| **DM-23** | **DOM-heavy work** | js-framework-benchmark script time per operation (create, replace, update, swap, remove, clear) and Speedometer 3.x's DOM-heavy workloads: ≤ the best shipping engine's script time on the same device; script, bindings, DOM, style, layout and paint reported separately per operation | Lab, every engine on the same rig | Profile-driven work in the owning track |
+| **DM-24** | **Scheduler overhead** | Median ≤ 1 µs† per task and ≤ 0.2 µs† per microtask on the reference device, including queue selection and recording hooks when not recording | Lab micro-benchmarks | Scheduler fix |
+| **DM-25** | **Messaging** | Cross-process `postMessage` round trip ≤ 0.6×† Chrome's black-box cross-process round trip on the same rig (one hop against two); clone throughput ≥ the best shipping engine's on Surma's payload set ([NA 5.4][NA]) | Lab | Transport or serializer work |
+| **DM-26** | **Workers** | Dedicated worker: first message ≤ 5 ms† after `new Worker` for a cached module script; ≤ 768 KiB† charged (FP-34) | Lab | Per-agent state trimmed |
+| **DM-27** | **Service workers** | Cold start to the first `fetch` event ≤ 30 ms† on the desktop reference device; static routes never start the worker | Lab | Startup work with JS engine (snapshots) |
+| **DM-28** | **History navigation** | bfcache restore to `pageshow` p95 ≤ 50 ms† on the desktop reference device | Lab | Restore path work |
+
+### 8.4 Memory
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **DM-30** | **Bytes per node** | DOM columns + rare data + wrappers that exist ≤ 72 B† per node averaged over the corpus, text excluded (FP-11, JS-D4's metric); wrappers reported as a share | Canonical bytes in CI; black-box comparison with the BO harness | FP-11's failure action |
+| **DM-31** | **bfcache** | BF-1's hit rate on the corpus's back and forward navigations at or above Chrome stable's on the same corpus | Lab corpus replay | Leading `notRestoredReasons` investigated (BF-1) |
+| **DM-32** | **Empty agent** | DOM, bindings and event-loop state of an empty agent ≤ 64 KiB† charged, inside FP-34 | Canonical bytes | Lazy initialization fixed |
+| **DM-33** | **Threads are budgeted** | Threads per renderer ≤ 2 + one per additional agent cluster + one per worker (dedicated, shared, service); each additional cluster thread ≤ 64 KiB† charged with no scheduled wakeups while idle; DM-32 + FP-4 + ST-34 for an empty agent fit FP-2's 0.25 MiB `about:blank` line; on macOS, Linux and Windows | Lab process inspection; canonical bytes | DM-D19's reversal to (b) |
+
+### 8.5 Determinism
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **DM-40** | **Event-loop replay** | Every recorded corpus session replays with an identical task-pick checksum stream and DET-1's hashes, across macOS, Linux and Windows and across x86-64, AArch64 and riscv64 (JS-D12's rules for NaNs); DST has a case per decision-point register row (6.7) | DST and replay CI | Divergence is a ship blocker (DET-1) |
+| **DM-41** | **Seeds explore what HTML permits** | DST runs every corpus session under ≥ 100† seeds; every order produced is one HTML allows (per-source FIFO, runnable rule, microtask placement), checked by an independent checker over the journal | DST | Scheduler fix |
+| **DM-42** | **Recording is cheap** | Recording the inputs of this spec's crates adds ≤ 1%† on Speedometer 3.x and corpus p95 frame time (shared with JS-52) | Lab | Make records cheaper; never drop determinism (DET-2) |
+| **DM-43** | **Interning does not depend on threads** | Interned attribute-set, atom and sheet IDs, and DET-1's canonical bytes, are identical when a session's documents run in one agent cluster and when they run in two concurrent clusters of one process | DST | DM-D19's reversal to (b) |
+| **DM-44** | **Column publication** | A memory-model litmus suite for column writes and sealed-segment handoff passes on x86-64, AArch64 and riscv64 hardware | CI on each ISA | Fence placement fixed |
+
+### 8.6 Observability
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **DM-50** | **Every task explained** | With DevTools attached, 100% of tasks in the journal carry source, enqueue cause and pick rule; overhead ≤ 5%† on the corpus | Lab | Journal fix |
+| **DM-51** | **Use counters** | 100% of generated members counted; overhead ≤ 0.5%† on Speedometer 3.x | CI | Counter placement fix |
+| **DM-52** | **Settled means settled** | In DST, after `settled(S, T)` no mutation of subtree S occurs before T in 100% of seeds over the corpus | DST | Signal definition fixed |
+
+## 9. Milestones and staffing
+
+### 9.1 What is staged, and why
+
+| Item | When | Reason |
+|---|---|---|
+| Extensions' isolated worlds | Stage 2 (with extensions, ledger G-20) | No extension surface exists in Stage 1; the per-world side tables exist from DM-M1 for DevTools' isolated evaluation |
+| Wasm-facing DOM bindings from the same IDL | When the component-model web design exists | No standard defines direct Wasm access to the DOM ([BO 9.3–9.4][BO]); a correctness reason, not a schedule one |
+| Single-engine features beyond those admitted in 6.12 | When LY-D10's admission rule is met | Admission rule, not schedule |
+| Everything else in Section 6 | Built from DM-M0 by tracks staffed from the start; each feature ships when its gates pass | — |
+
+### 9.2 Milestones
+
+| ID | Milestone | Exit criterion | Stage 1 |
+|---|---|---|---|
+| **DM-M0** | Foundations | `hg-webidl` parses and resolves the full pinned corpus with the overlay checker; codegen emits descriptors and glue against a mock host; `hg-dom`'s core over a stand-in column store with the G90–G92 compile-fail tests; the scheduler in simulation with the policy and checksum; black-box harnesses run on the rigs (per-node cost in three engines, timer clamps and throttling, `performance.now` resolution, transient-activation duration, service-worker idle, the OAC default, unload order); the decision-point register complete and every HTML spin call site classified (6.7); the litmus suite on the three ISAs (DM-44); a riscv64 board procured; first fuzz grammar | With JS-M0, Stage 1 M1 |
+| **DM-M1** | The DOM runs | Bindings generated against `hg-js-host`; `Node`, `Element`, `Document`, `Text`, `Event`, `EventTarget`, `MutationObserver`, `Range`, shadow DOM, custom elements and the event loop on the real engine and columns; `DomSink` builds documents; timers, microtasks, `postTask`, rIC; WPT `dom/` and `webidl/` recorded; idlharness for DOM | With JS-M1, Stage 1 M2 |
+| **DM-M2** | Pages navigate and interact | `hg-navigation` and `hg-agents` across processes; `Window`, `Location`, remote `WindowProxy`; Navigation API; input, focus and activation; forms and validation; top layer, dialog, popover; dedicated workers; messaging and the clone format; bfcache with DM-D14's rules | Stage 1 M5–M6 |
+| **DM-M3** | Breadth | Shared and service workers with NW's routing; storage DOM with the storage service; prerendering; the full element set; observability domains in DevTools; fuzz campaign at full scale; DM-1's floors met | Stage 1 M7 |
+| **DM-M4** | Stage 1 exit | Every target in Section 8 met or waived by an owner decision naming the evidence | Stage 1 M8 (48–60 months†, set by layout and graphics) |
+
+**Critical path.** `hg-js-host` (JS-M1) → bindings → DOM core → `DomSink` (ST) → style and layout (ST, LY). Mitigation: `hg-webidl` and `hg-dom`'s core are built against a mock host and a stand-in column store from DM-M0 (this spec's addition to JS 9.2's mitigation, which designs and freezes `hg-js-host` early), so the bindings work proceeds while the engine fills in. A second path is navigation across processes (M5), which depends on B2 and NW and runs in parallel.
+
+### 9.3 Staffing and duration
+
+| Track | Scope | Engineers† |
+|---|---|---|
+| IDL compiler and bindings | `hg-webidl`, codegen, runtime, realms, exotic objects, effect facts with the JS optimizer team, idlharness | 7–9 |
+| DOM core | Trees, shadow DOM and slots, ranges, mutation log consumers and observers, events, custom elements and registries, IDREF resolver | 8–10 |
+| Event loop and scheduler | `hg-script`: agents, host side of the hooks, scheduler, timers and clocks, rendering orchestration, pause and blocked states, freeze, determinism | 5–6 |
+| Navigation and browsing contexts | `hg-navigation`, `hg-agents`, `hg-window`, bfcache, Navigation API, COOP and COEP, prerendering | 8–10 |
+| HTML elements | `hg-html`: element behaviours, focus, top layer, dialog and popover, image selection, `iframe` and `object` | 8–11 |
+| Forms | `hg-forms`: 22 input types, select and customizable select, validation, submission, UA shadow trees with layout | 6–8 |
+| Input | `hg-input`, `hg-input-route`, UI Events and Pointer Events, activation, AT input equivalence | 3–4 |
+| Workers, messaging, clone and storage DOM | `hg-workers`, `hg-messaging`, `hg-clone-wire`, `hg-storage-dom`, service-worker lifecycle with NW | 6–8 |
+| Security and fuzzing | `hg-idl-fuzz`, planted bugs, compromised-renderer suite, effect auditor | 3–4 |
+| Observability | `hg-dom-observe`, IIP domains with the DevTools track | 3–4 |
+| Web APIs | `hg-webapi`: Fetch's renderer side, Streams, File API, XHR, WebSocket and EventSource objects, Performance Timeline and Reporting, Permissions, Clipboard, Notifications, Fullscreen, Web Locks, Geolocation, Encoding, URL and Compression bindings, environment values (6.18) | 12–14 |
+| Conformance infrastructure | WPT per directory, black-box harnesses, interop triage, upstream spec issues | 3–4 |
+| **Total** | | **72–92†** |
+
+With management, technical writing for anchors and test triage, about **83–106 people†**. Duration: the tracks start at DM-M0 and ramp to full strength by month 18†; engineer-years to DM-M4 are about **235–380†** (about 30 in year one, 60–75 in year two, then 72–92 a year to Stage 1 exit at 48–60 months†). This spec does not lengthen Stage 1: its critical path runs in parallel with layout's and graphics', which set the exit date (RN2 Section 4).
+
+**Overlap with other specs' staffing.** Counted elsewhere and not here: the node space, wrappers' lifetime and the text arena's memory (JS "GC and heap" track); the tree builder, `DomSink` and CSSOM (ST); CSSOM View, observers and scroll state (LY); canvas contexts and frame scheduling (GR); media elements (MD); the partition service's fetch, service-worker routing and cookies (NW); the storage service (storage spec); the semantic plane (AX, which counts the IDREF resolver and reflection as this spec's work); the IIP transport and DevTools frontend (DT). Three overlaps need a counting rule: the DevTools spec's 3 engineers for "JS, bindings and DOM: `hg-script` inspector interface, side-effect-free evaluation, profiler hookup" (DT 9.2) are counted there, and this spec's Observability track (3–4) builds only `hg-dom-observe` and its IIP domains; content blocking's 1–1.5 for renderer interventions are counted there, and this spec builds only the attribution ID and creator inheritance; Stage 1 8.3 put `hg-navigation` in the substrate and IPC track, and this spec's navigation track replaces that line. Stage 1 8.3's "JS, bindings and DOM" track (5–6) is replaced by this table plus the JS engine's tracks, now that 6.18's web-API table assigns every script-facing API.
+
+**Stage 1's combined staffing.** The Phase 2 component specs and their reconciliations put about 437–560 people† on the components they cover "before the DOM, bindings, shell, storage, security, infrastructure and DevTools tracks" (MD 9.3; GR 9.3 gives the same total); this spec adds its 83–106†.
+
+### 9.4 Decisions for the owner
+
+Starred decisions are the ones the owner most needs to see. A bare "yes" to any of these means the recommendation. Build-versus-reuse is not on this list except where M-1 part 1 reserves a classification for the owner (DM-D2).
+
+| ID | Decision | Options | Recommendation | Cost | Reversal trigger |
+|---|---|---|---|---|---|
+| **★ DM-D1** | Task selection policy | (a) a stated policy (input; rendering when due, at most once per frame ahead of input; elevated scheduler priorities 3–5; oldest across normal sources; background; anti-starvation), picks derived from recorded inputs closed by the decision-point register, with a checksum; (b) per-source round-robin; (c) FIFO across sources; (d) an unconstrained heuristic with every pick logged | **(a)**: input first by design; every choice explainable and replayable without logging picks | Promotion constants to set from the corpus (100 ms†, 1 s†); every cross-thread enqueue registered | DM-22 or frame-time tails worse than (b) or (c) by >10%† in the lab; or a register gap that cannot be closed (then (d)) |
+| **★ DM-D2** | Web IDL front end (M-1 classification) | (a) engine work: Izcal writes `hg-webidl`; (b) generic infrastructure: use `weedle` 0.13.1 (MIT, maintained in the wasm-bindgen organisation) or `weedle2` 5.0 (MIT) and layer typed attributes on top | **(a)**: the grammar is one appendix; Izcal's typed attributes and spec-anchored errors are the point; the parser of the browser's interface language is on the engine side of M-1's line | A small parser and its tests (weeks, inside the bindings track) | The owner classifies it as generic: then (b) |
+| **DM-D3** | Binding emission | (a) descriptors in the engine image, `.hgop` shape families and IC generators, Rust glue per member, generated reflection and legacy rules; (b) a table-driven interpreter over descriptors for every member | **(a)**: inlinable, typed, anchored; the interpreter form cannot give DM-20 | Generated code size, measured per release | Generated code > 25%† of the renderer's text size with no DM-20 benefit over (b) for cold members: then (b) for members never seen hot in the corpus |
+| **DM-D4** | Effect facts for the optimizer | (a) derived from IDL, narrowed only by overlay entries checked by the effect auditor; (b) hand-annotated and trusted; (c) none (every DOM call is opaque) | **(a)**: hoisting and CSE where proven, never on trust | An auditor build in CI | An auditor miss found by fuzzing: the fact class is withdrawn until the auditor covers it |
+| **★ DM-D5** | Re-entrancy discipline | (a) typed script points (`ScriptToken`), script-free cores (G91), two-phase bindings, IDs across call-outs; (b) strong references or roots held across script; (c) runtime quarantine | **(a)**: closes, at compile time, the class behind all three in-the-wild DOM UAFs whose analyses were read for this spec | Token plumbing; ID re-validation after call-outs | A spec algorithm that cannot be restated with IDs: a root scope for that algorithm only |
+| **★ DM-D6** | Agent-cluster key | (a) origin by default; `Origin-Agent-Cluster: ?0` gives a site-keyed cluster in a site-locked process (amends FP-D8 and I-1 (c)); (b) the WHATWG default (site), with site-locked processes for any group that could use `document.domain`; (c) **origin always; `?0` ignored** | **(c)**: FP-D8 (accepted, "none that turns it off") then has no exception; no author header can re-create same-site co-location of two origins; the WHATWG text already ignores every value but `?1` | Pages relying on Chrome's `?0` opt-out lose `document.domain`; a recorded divergence from the site-keyed default, with its excluded WPT cases | `?0`-dependent breakage on more than 0.1%† of corpus page loads (use counter): then (a), an owner decision amending FP-D8 and I-1 (c), whose security cost is re-enabled co-location of two origins of a site |
+| **DM-D7** | Cross-origin objects | (a) every cross-origin `WindowProxy` and `Location` is a remote-shaped stub, in or out of process; same-origin access through a proof that borrows the script token (G92); generated allow-lists including named child access; (b) local proxies with checks at each access site | **(a)** | A proof type on generated members; a frame-tree projection per renderer | A planted omission or proof misuse that compiles (DM-11 (a)): the proof type is redesigned before release |
+| **★ DM-D8** | Shared and service worker placement | (a) in the renderer of the worker's (origin, container) key, preferring one that holds its storage key; (b) a dedicated service-worker process per key; (c) any renderer of the site | **(a)**: I-1 holds; an agent heap instead of a process when the key is open; no partition's data placed only because of a worker | A worker crash takes its process's documents with it | More than 1 document lost per 10⁴† worker starts in the field suite: (b) |
+| **★ DM-D9** | `unload` | (a) as HTML: fired only for documents that are not salvageable; an `unload` listener does not block bfcache; (b) never fired (Chrome 155); (c) a listener blocks bfcache (Firefox desktop) | **(a)**: the spec's text, and bfcache stays open | Pages expecting `unload` on every navigation get `pagehide` instead when cached | WPT or HTML moves to (b) |
+| **DM-D10** | Timers and clocks | (a) HTML's clamp exactly, no 1 ms clamp, hidden-page alignment to 1 s† until FP-D4's freeze, one coarsening function with seeded jitter; (b) add budget and intensive throttling as other engines do | **(a)**: freeze replaces throttling heuristics; everything replays | Hidden pages wake once a second for up to 30 s† before freezing | Background-suite breakage that alignment causes and a declared reason cannot fix; or FP-21's idle-power bound missed because of hidden-page wakeups |
+| **DM-D11** | `localStorage` | (a) read-only snapshot plus local overlay, async writes, events through the broker; (b) synchronous IPC per access | **(a)**: removes `localStorage` from the sync-IPC allowlist, as NW-D10 did for cookies | A versioned region per storage key; first-touch wait | Web Storage WPT or NW-D10-style ordering cases fail under (a) |
+| **DM-D12** | Structured-clone format | (a) one versioned wire format for every boundary, decoder reading every published version, a same-agent fast path checked differentially, cross-process transfers that copy or revoke the sender's mapping; (b) separate formats per use | **(a)** | Versioning discipline for stored values; a per-release fixture corpus | A stored-value fixture from an earlier release fails to decode, or the fast path diverges from encode-decode in the differential test |
+| **DM-D13** | Message transport | (a) ports and cross-process `postMessage` as broker-minted endpoints, one hop, origin bound to the endpoint; (b) relay through the broker | **(a)**: one hop, unforgeable origin | Endpoint minting per window pair | A security review finds a cross-key path the broker cannot police under (a) |
+| **DM-D14** | bfcache eligibility | (a) the policies of 6.9 (no-store cached with eviction on credential change and 3 min†); (b) no-store and opener block caching | **(a)**: the largest measured blocker, handled as Chrome's 2025 rollout does | Eviction plumbing to the partition service | Any credential leak traced to a restored no-store page |
+| **★ DM-D15** | Legacy and single-engine feature admission | (a) the table in 6.12: implement what the pinned specs require, omit what they removed; owner exceptions to LY-D10 for Page Lifecycle `freeze`/`resume`, LoAF and `notRestoredReasons`; (b) also omit `document.all`, sync XHR and cross-origin dialogs; (c) no single-engine exceptions | **(a)**: use counters show the web needs the legacy surface; the three exceptions carry data Izcal records anyway | Legacy surface to maintain; three single-engine APIs | Use counters below 0.01%† and a spec removal (legacy); a competing standard replacing an exception's API |
+| **DM-D16** | Wrappers in other worlds and wrapper retention | (a) per-world side tables; JS-D4's retention; (b) also drop unmodified, unobserved wrappers | **(a)** | About 20 B of JS heap and 70 B of process memory per touched node | Wrappers >15%† of DOM bytes per node (DM-30) |
+| **DM-D17** | DOM text representation | (a) Latin-1 or UTF-16 buffers, as JS strings; (b) WTF-8 | **(a)**: zero-copy external strings (JS-D4) | The text stack converts if it wants UTF-8 | The text stack's transcoding cost exceeds the JS side's on the corpus |
+| **DM-D18** | Observability cost classes | (a) counters always; journals when DevTools is attached; full detail on replay; (b) journals always on | **(a)** | DevTools attach shows history from attach time only (replay covers earlier) | DM-50's overhead bound missed: journal fields move to replay-only |
+| **DM-D19** | Script threads | (a) one per agent cluster, with per-cluster intern tables and atomic shared-bytecode counts (amending ST 6.11, JS 6.11, FP 6.3); (b) one per process, clusters multiplexed with per-cluster fairness | **(a)**: a long task in one tab never delays a same-origin sibling's input | One thread per additional cluster; lost interning across same-origin tabs | DM-33 or DM-43 fails: (b) |
+| **DM-D20** | Who decides history, activation, popups and sandbox | (a) the broker, from facts it observed; renderer mirrors with one expiry function; (b) the renderer, with broker spot checks | **(a)** | IPC per activation-gated capability | Activation-gated IPC adds more than 5 ms† at p95 to popup, fullscreen or clipboard latency in the lab |
+| **DM-D21** | IDL inputs | (a) extracted from the pinned specs, cross-checked with `@webref/idl` (MIT); WPT `interfaces/` (copied from `@webref/idl`) used by idlharness only; (b) WPT `interfaces/` as the input (Stage 1 5.3); (c) `@webref/idl` as the input | **(a)**: the spec is the source of truth (M-1 part 2) | An extractor | Extraction disagreements dominate triage time: (c), with the spec text as the arbiter |
+
+### 9.5 Amendments this spec proposes to other documents (not applied)
+
+This document edits no other file. The spec owners apply these, with revision lines as `CONTRIBUTING.md` requires.
+
+| Document | Proposed amendment |
+|---|---|
+| Stage 1 design Section 1 | Renderer row: "agent heaps and the engine; DOM, bindings, event loop per agent cluster (one sequence and script thread per cluster, DM-D19); shared and service workers of its key (DM-D8)"; broker row adds `hg-agents` (agent-cluster keys, worker lifetime, BroadcastChannel and Web Locks routing, activation of record) |
+| Stage 1 design Section 2 | Add this spec's crates (6.17) to L2, L3, L4, L5 and tools; register G90–G99; G9's list adds `hg-window`, `hg-html`, `hg-forms`, `hg-input`, `hg-messaging`, `hg-workers`, `hg-storage-dom`, `hg-agents` |
+| Stage 1 design 4.1 | Remove `localStorage` reads from the synchronous-IPC allowlist once DM-D11's cases pass; sync XHR stays, as a blocked scheduler state |
+| Stage 1 design 4.3 | `hg-navigation` as divided in 6.9; `hg-agents` added; the cross-process unload order and beforeunload deadline recorded |
+| Stage 1 design 5.1 | Replaced by 6.7: one sequence per agent cluster, the DM-D1 policy, rendering as a queued task on BeginFrame (GR-D15), no nested event loops |
+| Stage 1 design 5.2 | Already replaced by JS-D4 (A-S1-35); add this spec's side tables, mutation-log consumers and the release protocol (6.1) |
+| Stage 1 design 5.3 | Replaced by 6.3: `hg-webidl` (DM-D2) instead of `weedle`; IDL inputs per DM-D21; two-phase bindings; effect facts (DM-D4); `webidl2.js` as an oracle only after its licence is settled |
+| Stage 1 design 8.1, 8.3 | DM-M0 to DM-M4 join the milestone table; the "JS, bindings and DOM" track becomes this spec's tracks (9.3) |
+| HGBA-2 I-1 | Agent clusters are origin-keyed always and `Origin-Agent-Cluster: ?0` is ignored (DM-D6), so FP-D8's origin keying has no exception; opaque-origin documents get their own process on desktop classes (6.8) |
+| HGBA-3 B3 | "One serial sequence per agent cluster" gains: each on its own script thread (DM-D19); task selection per DM-D1 with picks derived from recorded inputs |
+| JavaScript engine spec 6.11, 6.12 | 6.12: "Window agents of the same (site, container) in one process may share the script thread" becomes: a cluster's window agent and worklets share its sequence; clusters get separate threads (DM-D19). 6.11: shared bytecode's reference counts become atomic and are released only at each cluster's event-loop points. JS-D4: column writes are relaxed atomic 32-bit stores (as the accessibility spec also asks) |
+| JavaScript engine spec 6.14 | HostMakeJobCallback and HostCallJobCallback carry the scheduler's continuation state (Prioritized Task Scheduling's patch); the typed serializer interface's deserialization side takes no `ScriptToken` (G91) |
+| Resource-footprint spec 6.3, FP-32, FP-D3 | A script thread per additional agent cluster (DM-D19), counted per page like dedicated workers, with DM-33's budget; FP-D3's cost line restated: same-origin tabs no longer share a script thread, only the worker pool |
+| Resource-footprint spec 6.8, 6.10 | Freeze is decided by the broker per browsing context group when every top-level page of the group is hidden (6.14); inputs to a frozen group are held outside the renderer up to a per-group byte budget†, then the page is discarded; bfcache eviction reasons of 6.9 are recorded decisions |
+| Networking spec 6.7, 6.9 | `postMessage` and `MessagePort` do not pass through the partition service; the service-worker fetch dispatch targets the worker's renderer chosen by DM-D8; navigation preload and static routes (`addRoutes`) are allocated to the partition service by this spec; bfcache eviction on credential change for no-store pages needs a partition-service notification (DM-D14); the renderer's side of Fetch (NW 6.7's split) is built by this spec's web-API track |
+| HTML and CSS parsing and style spec 6.10, 6.11 | Intern tables (attribute sets, atoms, parsed sheets) are per agent cluster rather than per partition across a process (DM-D19, DM-43); the environment snapshot is built from the broker's normalized environment-values record (6.16), and its changes are `SetEnvironment` log records |
+| Graphics and rendering spec 6.8 | The non-passive-listener flag reaches scroll nodes through paint's property trees; the compositor's wait for a renderer's answer is a recorded input (Q-GR-20, jointly) |
+| Images and media spec | Audible autoplay and `AudioContext` start check the broker's activation record (6.5); opaque responses through service workers and the Cache API stay non-readable handles (MD-31) |
+| Content blocking spec | The attribution ID and creator-inheritance paths of 6.7 meet CB-27; the `$popup` check runs in `hg-navigation` before a traversable exists |
+| Accessibility spec 9.5 | This spec adopts its requests as follows: one IDREF resolver in `hg-dom`; the mutation log carries `SetInternalsSemantics`, `SetAttrElements`, `Focus`, `Selection` and `TopLayer` records and is sealed per flush for the semantic thread (AX-D3 (d)); `hg-input::equivalent` implements AX 6.9's table and queues events as tasks (G106, AX-24); AT actions are B1 inputs; G105 is checked over this spec's crates; `ariaNotify` follows AX 6.7 (a constant-time record that travels with the next update); caret browsing is AX's, over this spec's Selection model |
+| DevTools spec | IIP domains for 6.15's records (task journal, provenance, listener ledger, reaction trace, clone cost, refusals, agent and process view, settled signal), read through `hg-inspect-renderer`; a *paused in debugger* scheduler state (6.7); console evaluation in the inspected realm, isolated worlds only for DevTools' own queries; recorded units placed in dedicated processes with workers outside, an exception to DM-D8 |
+| JavaScript engine spec (ISA coverage) | riscv64 back ends for the interpreter, IC programs and the optimizer, per the owner decision of 19 October 2026 (ledger G-4); this spec's generated bindings and DM-20 and DM-40 assume them |
+| Phase 3 ledger | G-11 closed by this spec; G-16 (editing) receives the Selection boundary of 6.6; G-19 (storage) receives 6.13's interface; G-13 (animation) receives `hg-anim-events` to take over; G-18 (WebCrypto) remains open, with this spec ready to build the bindings; new gap rows for any web API missing from 6.18's table |
+
+## 10. Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| The typed re-entrancy discipline is too costly to write against for the long tail of HTML elements | Medium | Slower element breadth | Most code takes `&DomCtx` and cannot run script; the script-running list is small and reviewed in the overlay; JS-M1's rooting-site counts include this spec's crates |
+| The bindings track is blocked on `hg-js-host` | High early | Critical-path delay | A mock host from DM-M0 (this spec's addition to JS 9.2's mitigation, which designs and freezes `hg-js-host` early) |
+| Hiring 72–92 engineers with DOM, bindings and navigation experience while every other component spec ramps | High | Schedule | Ramp from DM-M0; the DM-M0 work (front end, core, scheduler in simulation) needs the fewest specialists; tracks open in dependency order |
+| No riscv64 reference board in the lab (the rigs are x86-64 and AArch64) | High | DM-20, DM-40, DM-44 on riscv64 unmet | Procure a riscv64 board before DM-M1; until then riscv64 runs in CI under emulation for correctness only |
+| DM-D6 breaks sites that depend on Chrome's `?0` opt-out to keep `document.domain` working | Medium | Compatibility on a few sites (enterprise, shared-hosting apps) | A use counter and the corpus (Q-DM-16); the reversal to option (a) is an owner decision |
+| The DM-D1 policy has a pathology the corpus does not show (starvation of a source, frame drops under input floods) | Medium | Responsiveness | DST explores orders; anti-starvation bounds; DM-22 and DM-23 in the lab; reversal to (b) or (c) |
+| Effect facts produce an optimizer bug | Low | Security | Facts only narrowed with the auditor; withdrawn on any auditor miss (DM-D4) |
+| Navigation across processes is the slowest area for small engines ([GO 8.5][GO]) | High | Schedule | Navigation track staffed from DM-M0; WPT `html/browsers/` and `navigation-api/` tracked per milestone |
+| Service-worker and timeout values chosen without measurements | Medium | Compatibility | Black-box measurements at DM-M0 (Q-DM-3, Q-DM-4) before values freeze |
+| Per-cluster threads strain FP-32 on pages with many same-origin tabs | Low | Footprint | DM-D19's reversal to multiplexing |
+| Interop moves faster than the pins (scoped registries, dialogs and popovers, Navigation API precommit) | Medium | Conformance | Pins advanced each release with the anchor diff (ANC-1); Interop labels are release gates |
+| The storage spec is late | Medium | DM-M3 | `hg-storage-dom` works against a test storage service; DM-D11's protocol is fixed here |
+
+## 11. Open questions and flagged claims
+
+### 11.1 Open questions
+
+- **Q-DM-1.** Do current Chrome, Firefox and Safari still clamp a top-level `setTimeout(f, 0)` to 1 ms, keep 0 ms and 1 ms timers in call order, and align hidden-page timers to 1 s? The Chrome milestone of its clamp removal is stated only in a commit ([HP Q4][HP]). Black-box at DM-M0.
+- **Q-DM-2.** Per-engine `performance.now()` resolution and jitter in 2026, with and without cross-origin isolation ([SR Q4][SR], [EL Q-EL-4][EL]).
+- **Q-DM-3.** How long does an idle web service worker survive in each engine, and how does `waitUntil` extend it? No engine publishes it for web workers ([NA Q2][NA]). DM-M0 measurement before 6.10's values freeze.
+- **Q-DM-4.** The transient-activation duration each engine uses; HTML says "at most a few seconds" ([SP 4.7][SP]). DM-M0 measurement; 6.5's value is † until then.
+- **Q-DM-5.** Does Chrome origin-key agent clusters by default today (`window.originAgentCluster` on two same-site origins), and do Firefox or Safari plan to? Is a WHATWG change pending ([NA Q6][NA], [SP open questions][SP])?
+- **Q-DM-6.** What fraction of nodes on real pages is ever touched by script? No published figure exists ([BO 1.15][BO]); measure on the corpus at DM-M1 (it sizes wrappers' share of DM-30).
+- **Q-DM-7.** Per-node cost in Firefox and Safari with the BO harness, and Chrome on Linux and Android ([BO Q1][BO]).
+- **Q-DM-8.** Cost of a dedicated worker in each engine (first message, resident memory) ([NA Q1][NA]).
+- **Q-DM-9.** The cost of a cross-process iframe and of a cross-process `postMessage` round trip in current engines ([NA Q3][NA]); DM-25's baseline.
+- **Q-DM-10.** How common is forced synchronous layout on real pages ([GO 9.5][GO])? Corpus measurement with the task journal.
+- **Q-DM-11.** Where does each engine's DOM time go on Speedometer 3 and js-framework-benchmark (bindings vs DOM vs style vs layout)? No vendor publishes it ([BO 4.13][BO]).
+- **Q-DM-12.** The order in which child navigables are unloaded and destroyed ("in what order?", [SP 10.4][SP]): Izcal's choice (children first, siblings in tree order) is filed upstream and compared black-box.
+- **Q-DM-13.** `webidl2.js`'s licence (MIT in the repository, "W3C" in npm metadata) before it is used even as an oracle ([BO 5.1][BO]).
+- **Q-DM-14.** Whether WebKit ships site isolation by default in 2026 ([NA 1.18][NA], graded Low).
+- **Q-DM-15.** The anti-starvation constants (100 ms†, 1 s†) and the stop-script threshold (10 s†): set from the corpus at DM-M1.
+- **Q-DM-16.** How many pages depend on Chrome's `Origin-Agent-Cluster: ?0` opt-out to keep `document.domain` working? A use counter and the corpus decide DM-D6's reversal trigger.
+- **Q-DM-17.** Which HTML spin-the-event-loop call sites can be reached with script frames on the stack at the pin (6.7)? Classified at DM-M0.
+- **Q-DM-18.** The per-group byte budget for inputs held for a frozen group, and the 64 KiB† copy threshold for cross-process transfers: set from the corpus at DM-M2.
+- **Q-DM-19.** Which web APIs not in 6.18's table does the corpus use, and which spec owns each? Recorded as ledger gaps.
+
+### 11.2 Claims that are single-source, unverified or conflicting
+
+- **Resolved**: `scheduler.yield()` ships in Firefox 142 (BCD and the Chrome post's badges agree; only the post's body text is stale) ([EL 1.6][EL], [HP 4.12][HP]).
+- **Conflicting**: `Origin-Agent-Cluster` first shipped in Chrome 88 (web.dev) or 90 (BCD) ([NA 2.4][NA]).
+- **Spec divergence**: Chrome treats `Origin-Agent-Cluster: ?0` as an opt-out of origin keying; the WHATWG text ignores values other than `?1` ([NA 2.2, 2.6][NA]). DM-D6 ignores `?0`, as the WHATWG text does, but keys every cluster by origin, unlike the WHATWG default. Whether Chrome origin-keys by default today is from Chrome's own announcement for the `document.domain` setter; Q-DM-5 confirms it black-box.
+- **Single source**: Chrome's in-the-wild DOM share (7 of 55, 2019–2025) is the researcher's classification of Project Zero's sheet ([SR 2.3][SR], Medium).
+- **Single source**: Google's "130 services, no client-side XSS" figure for Trusted Types comes through Roth et al. ([SR 6.7][SR]).
+- **Single source**: the 512-element flattening in all three engines' `DOMParser` is one researcher's black-box test ([SR 6.2][SR]).
+- **Unverified mechanism**: that Chrome collects unmodified wrappers of live nodes is inferred from black-box heap deltas ([BO 1.10][BO]).
+- **Low-confidence history**: Web Components v0 removal dates, Safari timer coalescing, the `MessageChannel` yield hack and setImmediate's failure reasons rest on recollection ([HP 3.4, 4.6, 4.9, 4.10][HP]); no decision depends on them.
+- **First-principles values to measure, not facts**: every † in Sections 6 and 8, in particular the scheduler constants, the hidden-page alignment of 1 s†, the service-worker and shared-worker timeouts, the beforeunload deadline, the transient-activation duration, and the no-store bfcache limit of 3 min† (Chrome's published value for its own policy, [NA 3.2][NA]).
+
+
+## Appendix A. Review disposition (revision 0.2)
+
+The fact-check is `research_notes/Izcal DOM, bindings and event loop/factcheck.md` and the design critique is `critique.md` in the same folder; neither reviewer wrote the spec. Every item is applied. Items applied in a different form than proposed are marked.
+
+**Fact-check must-fix items.**
+
+| ID | Item | Disposition |
+|---|---|---|
+| FC-M1 | `[IF]` points to a missing note | Applied: `izcal_interfaces.md` written by the synthesis author from Izcal's own documents (the researcher assigned to it did not finish) |
+| FC-M2 | Engineer-years did not follow from the components | Applied, recomputed with the web-API track: 235–380† (9.3) |
+| FC-M3 | Section 1 misstated FP-D8 | Applied (Section 1) |
+| FC-M4 | `weedle`'s maintenance status | Applied: `weedle` is maintained in the wasm-bindgen organisation; DM-D2 rests on Izcal's needs and M-1 (6.3, DM-D2) |
+| FC-M5 | WPT `interfaces/` copies `@webref/idl`; misquotation | Applied: one cross-check, WPT used by idlharness only (6.3, DM-D21) |
+| FC-M6 | "Every in-the-wild DOM UAF" rested on three bugs | Applied: "all three whose analyses were read", with each bug's trigger stated (summary, 6.2) |
+| FC-M7 | CVE-2022-22620's lost property | Applied: a strong reference held across a script point (Section 5, 6.2, 6.11, G93) |
+| FC-M8 | DOM's script-free contract covers insertion and moving steps only | Applied: removing steps are an Izcal restriction (4.2, 6.1, G91) |
+| FC-M9 | DM-D1's class 3 contradicted the scheduling report | Applied: elevated class is effective priority 3–5 (6.7, DM-D1) |
+| FC-M10 | Named child navigables missing from the cross-origin surface | Applied (6.4, DM-11) |
+| FC-M11 | INP percentiles mixed | Applied (Section 1, 6.7) |
+| FC-M12 | Freezing exemptions do not name shared workers or BroadcastChannel | Applied: those rows marked Izcal's choice† (6.9) |
+| FC-M13 | Chrome's `unload` exceptions | Applied (2.1, 2.2, 6.9) |
+| FC-M14 | "Four engines" | Applied: three, with Servo separately (summary, 2.2) |
+| FC-M15 | 346 IDL files | Applied (6.3) |
+| FC-M16 | 10 appearance markers | Applied (6.12; SP 16.6 corrected in the note) |
+| FC-R | About 40 recommended wording, number and cross-reference fixes | Applied: header versions, FP, NW, MD and GR section numbers, LoAF threshold, EventRacer's variables, `[LegacyUnforgeable]`, 32 serializable interfaces, hr-time wording, overload dispatch wording, effect facts per engine, wrapper costs in both units, passive-listener wording, WebKit's lazy shadow tree, desktop `unload` shares, "historically 15–20%", MiraclePtr's date, Fuzzyfox wording, fuzzer list, the Cache bug's class, activation context, CC dates, Chrome 1.0 beta, BCD for mutation events, service-worker boot wording, nine years of SharedWorker absence, Paris bindings' drivers as Medium, `scheduler.yield()` resolved, JS 9.2's mitigation, owner exceptions for single-engine features, the DOMJIT citation's status (Section 7); note corrections listed in the fact-check are applied to the notes |
+
+**Design critique.**
+
+| ID | Severity | Disposition |
+|---|---|---|
+| C1 | High | Applied: new record kinds; sealed segments instead of truncation; relaxed atomic column writes with a litmus suite (DM-44); the accessibility amendment row rewritten (6.1, 9.5) |
+| C2 | High | Applied: the decision-point register, enforced through `hg-script-api` (6.7, G93, DM-40) |
+| C3 | High | Applied: DM-D19 keeps (a) with per-cluster intern tables, atomic shared-bytecode counts, FP-D3's cost restated, a thread budget (DM-33) and an interning-identity target (DM-43); amendments to ST 6.11, JS 6.11, FP 6.3 |
+| C4 | High | Applied: every cross-origin `WindowProxy` is remote-shaped, in or out of process; opaque-origin placement; reduced-isolation rows (6.4, 6.8, DM-11). **Applied differently** for `?0`: DM-D6 now recommends ignoring it, which removes the site-locked case instead of handling it |
+| C5 | High | Applied: the proof borrows the script token and is re-checked after script points (6.4, G92, DM-11) |
+| C6 | High | Applied: document-bound window endpoints revoked on unload; `targetOrigin` in the broker; empty origin for port messages; bindings re-minted on transfer (6.11) |
+| C7 | High | Applied: a web-API ownership table, the `hg-webapi` crate and a 12–14† track; WebCrypto left as ledger G-18 (6.18, 6.17, 9.3) |
+| C8 | High | Applied: `hg-script-api` at L3; G90 and G93 restated; clocks only through the substrate (6.0, 6.17) |
+| C9 | High | Applied: cross-process transfers copy or move receiver-only regions per OS, with a DM-11 case (6.11) |
+| C10 | Medium | Applied: AX 6.9's table, events queued as tasks, the semantic-extract row replaced (6.5, 6.7) |
+| C11 | Medium | Applied: broker-decided group freeze, inputs held outside the renderer, FP references fixed (6.14, 9.5) |
+| C12 | Medium | Applied: *paused in debugger* state; recorded-unit placement exception; console in the inspected realm (6.7, 6.8, 9.5) |
+| C13 | Medium | Applied: always-on attribution ID, creator-inheritance paths, `$popup` in the broker (6.7, 6.9) |
+| C14 | Medium | Applied: every spin call site classified at DM-M0; *suspended in spin* on engine stack segments where script is on the stack (6.7, Q-DM-17) |
+| C15 | Medium | Applied: one rendering task per event loop in HTML's document order; layout's snapshot and last-remembered-size row; `hg-anim-events` as the interim owner of animation events (6.7) |
+| C16 | Medium | Applied: one expiry function on the broker's timestamp; autoplay and `AudioContext` added (6.5) |
+| C17 | Medium | Applied: last-writer-wins in the storage service's order, overlay retirement, version installs as recorded inputs, quota enforced by the storage service (6.13) |
+| C18 | Medium | Applied: G99's reason restated with the residual risk; storage-key-aware placement; opaque responses as handles (6.8, 6.10, 6.16, G99) |
+| C19 | Medium | Applied: riscv64 forms for comparative targets, litmus test, board procurement as a risk and DM-M0 item (8.3, DM-44, Section 10) |
+| C20 | Medium | Applied (DM-22) |
+| C21 | Medium | Applied: DM-33 with a per-cluster thread line and the sum inside FP-2's `about:blank` line |
+| C22 | Medium | **Applied differently**: DM-D6 now rests on FP-D8 and recommends option (c), ignoring `?0`; the Chrome claim is stated as Chrome's announcement with Q-DM-5 as the black-box confirmation; option (a) keeps the security cost the critic named |
+| C23 | Medium | Applied: the flag reaches scroll nodes through paint's property trees; the compositor's timeout is a recorded input set with GR (6.5, 9.5) |
+| C24 | Medium | Applied: named child access; a per-renderer frame-tree projection updated at task boundaries (6.4) |
+| C25 | Medium | Applied: one broker-supplied environment-values record (6.16, 6.18, 9.5) |
+| C26 | Medium | Applied: G91 as a `CoreGuard` type rule, with the lint as a second check (6.2, G91) |
+| C27 | Low | Applied: the note exists; versions and section numbers updated |
+| C28 | Low | Applied (6.7) |
+| C29 | Low | Applied: measurable triggers for DM-D7, DM-D8, DM-D10, DM-D12, DM-D20 |
+| C30 | Low | Applied: production settled signal defined as a statement of fact; agent code behind feature `ai` (6.15) |
+| C31 | Low | Applied (6.1, 6.15) |
+| C32 | Low | Applied: counting rules for DT, CB and Stage 1's navigation line; a hiring risk (9.3, Section 10) |
+| C33 | Low | Applied: worker row aligned with FP; BroadcastChannel rule; evictions recorded (6.9) |
+| C34 | Low | Applied: the decoder reads every published version; a per-release fixture corpus (6.11, DM-D12) |
+| C35 | Low | Applied: caret browsing to AX; SVG's DOM-generic members here (6.6, 6.12, 6.18) |
+| E1 | — | No change needed |
+| E2 | — | Applied: Section 7 states that the WebKit 221124 figures come from the discussion comments; the event-loop note says so too |
+| E3 | — | **Applied differently**: Minerva is no longer cited by the spec; the security note keeps the repository link only as the source of the method description and says no code file was opened |
+| E4 | — | Applied: Kani, loom and the sanitizer runtimes listed as test-only (Section 7) |
+
+[HP]: ../research_notes/Izcal%20DOM%2C%20bindings%20and%20event%20loop/history_postmortems.md
+[SP]: ../research_notes/Izcal%20DOM%2C%20bindings%20and%20event%20loop/specs_semantics.md
+[BO]: ../research_notes/Izcal%20DOM%2C%20bindings%20and%20event%20loop/bindings_object_model.md
+[EL]: ../research_notes/Izcal%20DOM%2C%20bindings%20and%20event%20loop/event_loop_scheduling.md
+[NA]: ../research_notes/Izcal%20DOM%2C%20bindings%20and%20event%20loop/navigation_agents_workers.md
+[SR]: ../research_notes/Izcal%20DOM%2C%20bindings%20and%20event%20loop/security_robustness.md
+[GO]: ../research_notes/Izcal%20DOM%2C%20bindings%20and%20event%20loop/gaps_opportunities.md
+[IF]: ../research_notes/Izcal%20DOM%2C%20bindings%20and%20event%20loop/izcal_interfaces.md
+[H2]: HGBA%202%20browser%20architecture%20spec.md
+[H3]: Future%20software%20browser%20engine.md
+[S1]: HGBA%20Stage%201%20architecture%20design.md
+[JS]: Izcal%20JavaScript%20engine.md
+[FP]: Izcal%20resource%20footprint.md
+[ST]: Izcal%20HTML%20and%20CSS%20parsing%20and%20style.md
+[LY]: Izcal%20layout.md
+[GR]: Izcal%20graphics%20and%20rendering.md
+[NW]: Izcal%20networking.md
+[MD]: Izcal%20images%20and%20media.md
+[TX]: Izcal%20fonts%20and%20text.md
+[DT]: Izcal%20DevTools%20spec.md
+[AX]: Izcal%20accessibility.md
+[CB]: Izcal%20content%20blocking.md
+[LG]: ../research_notes/Phase%203%20amendments/ledger.md
