@@ -333,3 +333,5 @@ Owner confirmations, not decisions (Q31): the Vulkan loader as an OS interface o
 [H2]: ../../reports/HGBA%202%20browser%20architecture%20spec.md
 [RN]: reconciliation.md
 [LA]: licence_audit.md
+
+**Addendum (19 October 2026).** The owner accepted OD-5 to OD-8 and every recommendation of the layout, images and media, graphics and rendering, and content blocking specs.
