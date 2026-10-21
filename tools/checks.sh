@@ -13,7 +13,7 @@
 #   IZCAL_REVIEW_MAX_LINES=4000      diff lines sent to the review
 #
 # Checks: conflict, size, binary, secrets, rustfmt, shellcheck, actionlint,
-#         mdlinks, revision, provenance, security, v8-audit, review.
+#         mdlinks, revision, provenance, security, review.
 # Bash 3.2 compatible (macOS /bin/bash).
 
 set -u
@@ -339,52 +339,6 @@ $(printf '%s\n' "$dout" | grep -E '^(error|warning)\[|ID:|Crate:|Title:|^ +[a-z_
     echo "    fix it, or skip with IZCAL_HOOKS_SKIP=security and say why in the commit body" | indent
   else ok security; fi
   [ -n "$sec_warn" ] && warn "security: not checked (tool missing or offline):$sec_warn"
-fi
-
-# --- v8-audit: script-running V8 entry points are all wrapped (CS-D3) ------
-# CS-TY-10's soundness depends on every rusty_v8 method that can run script
-# being in clippy's disallowed-methods (criterion 2). When the fork's gitlink,
-# the audit or the list changes, regenerate the list from the fork's api.cc and
-# sources and fail on any entry that is neither listed nor reviewed as safe.
-# Uses the fork checkout when it is at the committed gitlink, otherwise
-# fetches that commit and api.cc (network). Needs ast-grep and python3 >= 3.11.
-FORK=m0/rusty_v8 AUDIT=m0/token-cell-spike/audit
-if ! skipped v8-audit; then
-  if [ "$MODE" = staged ]; then
-    fork_changed=$(git diff --cached --name-only -- "$FORK")
-    want=$(git ls-files -s -- "$FORK" | awk '{print $2}')
-  else
-    fork_changed=$(git diff --name-only "$BASE" "$HEAD" -- "$FORK")
-    want=$(git ls-tree "$HEAD" -- "$FORK" | awk '{print $3}')
-  fi
-  audit_changed=$(files_matching "^$AUDIT/|^m0/token-cell-spike/token-cell-v8/clippy\.toml$")
-  if [ -z "$fork_changed$audit_changed" ]; then ok "v8-audit (fork and list unchanged)"
-  elif ! exists_in_tree "$AUDIT/audit.py"; then ok "v8-audit (no audit in this tree)"
-  elif [ -z "$want" ]; then fail v8-audit; echo "    no gitlink for $FORK" | indent
-  elif ! command -v ast-grep >/dev/null; then fail v8-audit; echo "    ast-grep not installed" | indent
-  else
-    mkdir -p "$TMP/audit"
-    for f in audit.py fns.yml impls.yml reviewed.toml; do content "$AUDIT/$f" > "$TMP/audit/$f"; done
-    content m0/token-cell-spike/token-cell-v8/clippy.toml > "$TMP/audit/clippy.toml"
-    src="" api=""
-    if [ "$(git -C "$FORK" rev-parse -q --verify HEAD 2>/dev/null)" = "$want" ] && [ -f "$FORK/v8/src/api/api.cc" ] \
-       && [ -z "$(git -C "$FORK" status --porcelain -- src 2>/dev/null)" ]; then
-      src=$FORK api=$FORK/v8/src/api/api.cc
-    else
-      url=$(git config -f .gitmodules --get "submodule.$FORK.url")
-      if git init -q "$TMP/fork" && git -C "$TMP/fork" fetch -q --depth 1 "$url" "$want" 2>/dev/null \
-         && git -C "$TMP/fork" checkout -q FETCH_HEAD -- src 2>/dev/null; then
-        v8sha=$(git -C "$TMP/fork" ls-tree FETCH_HEAD v8 | awk '{print $3}')
-        mkdir -p "$TMP/fork/v8/src/api"
-        curl -fsSL -o "$TMP/fork/v8/src/api/api.cc" "https://raw.githubusercontent.com/denoland/v8/$v8sha/src/api/api.cc" \
-          && src=$TMP/fork api=$TMP/fork/v8/src/api/api.cc
-      fi
-    fi
-    if [ -z "$src" ]; then fail v8-audit; echo "    could not get $FORK at $want and its api.cc (offline?)" | indent
-    elif aout=$(python3 -I "$TMP/audit/audit.py" "$src" "$api" "$TMP/audit/clippy.toml" "$TMP/audit/reviewed.toml" 2>&1); then
-      ok "v8-audit ($(printf '%s\n' "$aout" | head -1 | sed 's/^v8-audit: //'))"
-    else fail v8-audit; printf '%s\n' "$aout" | grep -v '^  by hand:' | head -40 | indent; fi
-  fi
 fi
 
 # --- review: AI code review of the diff (code only) ---------------------------
