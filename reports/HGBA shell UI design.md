@@ -1,6 +1,6 @@
 # HGBA shell UI design
 
-*Companion to the Stage 1 architecture design, HGBA-2.1 and HGBA-3.1. Written against design draft 0.8, HGBA-2.1.3 and HGBA-3.1.3; current revisions are draft 0.10, 2.2.0 and 3.2.0. Date: 14 October 2026. Status: draft 0.4, complete for review (0.4, 21 October 2026: batch-4 amendments applied from the accepted shell spec 0.3 and phishing protection spec 0.3 — prompts are separate broker-owned OS windows, the trusted-region property is restated as an own-layer/no-overlap property, the site panel gains Phishing protection and trust-store rows, the phishing/malware interstitial is the phishing spec's surface, UI-9 cites PH-11 and UI-10 covers the interstitial, notifications move to Stage 2; 0.3, 17 October 2026: keyboard model anchored to WAI-ARIA APG and UAAG 2.0 under HGBA-2 M-1). Evidence notes: `research_notes/Shell UI design/`.*
+*Companion to the Stage 1 architecture design, HGBA-2.1 and HGBA-3.1. Written against design draft 0.8, HGBA-2.1.3 and HGBA-3.1.3; current revisions are draft 0.10, 2.2.0 and 3.2.0. Date: 14 October 2026. Status: draft 0.5, complete for review (0.5, 21 October 2026: phase 3 amendments A-UI-1 to A-UI-6 and A-UI-8 applied from the accepted resource-footprint, fonts and text, images and media, graphics, layout and content-blocking specs and the SVG, animation and editing specs, Section 10; 0.4, 21 October 2026: batch-4 amendments applied from the accepted shell spec 0.3 and phishing protection spec 0.3 — prompts are separate broker-owned OS windows, the trusted-region property is restated as an own-layer/no-overlap property, the site panel gains Phishing protection and trust-store rows, the phishing/malware interstitial is the phishing spec's surface, UI-9 cites PH-11 and UI-10 covers the interstitial, notifications move to Stage 2; 0.3, 17 October 2026: keyboard model anchored to WAI-ARIA APG and UAAG 2.0 under HGBA-2 M-1). Evidence notes: `research_notes/Shell UI design/`.*
 
 This document consolidates every UI decision scattered across the HGBA documents, then designs the shell the same way the engine was designed. Each surface traces to a requirement, each claim about user behaviour carries a source, each element has a maturity label, and each target can fail. It changes no engine target. Thresholds marked † are set by this document.
 
@@ -125,12 +125,12 @@ Maturity labels follow HGBA-3.1 P7: **shipped** (in a browser today), **shipped 
 | Connection: secure (TLS 1.3, hybrid PQ)         |
 |-------------------------------------------------|
 | Permissions        camera: ask  location: off   |
-| Blocked here       23 trackers, 4 ads   [list]  |
+| Blocked here       9 parties, 4 orgs    [list]  |
 | Phishing protect.  protected · list 12 min old   |
 | JavaScript         full          [change]       |
 | Fingerprinting     protected (noise on readback)|
 | Accessibility      2 repairs applied [inspect]  |  <- only if repairs are enabled (R6)
-| Resources          CPU 3%  net 1.2 MB  [meter]  |  <- Stage 2 (R13)
+| Resources          CPU 3%  net 1.2 MB  [why]    |  <- Stage 2 (R13): causal view, not a meter
 | Protected media    not in use                   |
 | Certificates       checked by your OS store     |
 |-------------------------------------------------|
@@ -226,7 +226,7 @@ The name is **"Troubleshoot"**, and every option says exactly what it disables. 
 
 ### 4.10 Visual language
 
-- System UI fonts.
+- **System UI fonts:** the OS tier's UI face on macOS and Windows and Izcal's sans alias face on Linux, with the interim tier for scripts that face does not cover until their Izcal faces ship; native-surface strings follow the fonts and text spec's TX-16 rule (fonts and text spec 9.5, R23).
 - Two densities, normal and compact. Compact is kept because removing it was a measured-later mistake elsewhere.
 - Light and dark themes following the OS.
 - No brand colour on any security state.
@@ -291,3 +291,17 @@ The owner accepted the shell spec's decisions (SH-D1–SH-D30) and the phishing 
 - **UI-9** delegates the phishing study to PH-11. The §5 targets map to the shell's SH targets in order: UI-1 → SH-3; UI-2 → SH-4; UI-3 → SH-9/SH-13; UI-4 → SH-6; UI-5 → SH-7; UI-6 → SH-8; UI-7 → SH-2; UI-8 → SH-9; UI-9 → SH-10; UI-10 → SH-11; UI-11 → SH-12. Where thresholds differ, the stricter spec target governs (for example SH-9's 95%† over UI-8's 90%†).
 
 **Open after batch 4:** Q-UI-1 (omnibox query mix, measured at SH-M4); Q-UI-3 (mixed protected media, Q-SH-12); Q-UI-4 (project name, owner); Q-UI-5/Q-PH-16 (lookalike class ownership); AX-D3/D4/D9/D11 placement and AT approval (pending, shell spec 9.5).
+
+## 10. Phase 3 amendments (21 October 2026)
+
+The owner accepted the component specs' Section 9.4/9.5 recommendations on 20–21 October 2026. These rows were queued for this design. This section records what changed here; each component spec's text governs the engine behaviour.
+
+- **Resources (A-UI-1; R13).** The per-site resource meter becomes the **causal view** of the resource-footprint spec's 6.14: it names the top cause — heavy third-party script, a background timer loop, a runaway animation, a spinning worker, a retainer — from the same attribution data, and shows numbers rather than asking for them; the whole-browser view uses the same causes. The site panel gains the two outcome controls of FP-D15: **"keep this site running in the background"** (a declared reason) and **"limit this site on battery"** (hidden CPU at the floor, visible animation capped at 30 Hz† with user input exempt), the battery control shipping only after FP-30 shows the attribution it acts on is right. There are no numeric MB or CPU budgets for users to set.
+- **System UI fonts (A-UI-2; 4.10).** As 4.10 now states: the OS tier's UI face on macOS and Windows, Izcal's sans alias face on Linux, the interim tier for scripts that face does not cover, and TX-16's rule for native-surface strings (fonts and text spec 9.5, R23).
+- **Media (A-UI-3; R17, MD-D32).** The shell owns the native controls' shell parts and the fullscreen exit affordance with its security message; Picture-in-Picture and Document PiP are shell-owned windows with their own exit affordances; protected playback carries MD-D32's affordance; per-site autoplay and animation settings sit in the site panel; caption preferences (size, colour, opacity, edge) are in Settings > Media and DRM, with the OS style as the default for properties the page has not styled; a media-process crash is labelled a media crash, not a page crash; per-site media energy appears in the resource view.
+- **Site panel and prompts (A-UI-4; GR-D11, GR-D28, GR-S11).** Suspended GPU contexts and unavailable WebGL or WebGPU get named states with a reason, never a blank canvas, and the WebGPU permission is a prompt. The prompt surface is a separate broker-owned OS layer (already 0.4, SH-D2/SH-D3). Reduce-motion, reduce-transparency and flash protection are shell settings that also enable the compositor's interventions.
+- **Settings (A-UI-5; LY 9.5).** Settings > Appearance gains an **overlay-or-classic scrollbar** preference defaulting to the OS accessibility setting; **page-zoom levels are recorded environment inputs**, so a replay reproduces them; form-control pickers (select, date, colour) are positioned from `hg-layout-query` rectangles, never guessed.
+- **Site panel (A-UI-6; CB-D13, CB-D19).** "Blocked here" counts **parties and organisations**, never requests. The controls are graduated, narrowest first: allow one party here; allow sign-in with a provider for this tab; hiding off here; protection off here. Turning protection off or reporting a break opens the report flow (a narrow fix and a consented report), and when a fix ships the panel offers to restore protection. User-added lists carry the **"recognizability"** label, because a unique list set distinguishes the user. The **Security interstitial** is the security list's warning surface, distinct from the phishing and malware interstitial (PH-D6, PH-12).
+- **SVG, motion and editing surfaces (A-UI-8; SVG R14, AN-D10, editing 6.6–6.12).** **SVG:** the SV-D9 scriptless-document bar and its "run with script" action; play controls for SVG images and inline SMIL paused under reduce-motion, with the per-site animation setting to resume. **Motion:** Settings > Accessibility gains the motion level per site (R, S, X), the command and shortcut for level X, the offer to throttle rAF, and flash protection; the opt-in uniformity profile shows the warning that reduced motion stops working and that levels S and X are detectable. **Editing:** the Paste popup (a separate OS window at the pointer or caret, enabled after 1 s†, no default action); the autofill preview (a separate non-interactive OS window over the field); the UI-10 amendment allowing such in-page-area OS windows when page content cannot draw over them, tested with the red-team suite; the clipboard panel (memory only, nothing in private windows) and its notices; the command-text warning; find options (case, diacritics, whole word, regex); the spelling menu with "Add to dictionary"; the autofill chooser listing fields; a setting to stop caret blinking.
+
+**No target changed.** Section 5's targets stand, and UI-1 to UI-11 map to the shell spec's SH targets as Section 9 records. A-UI-7 was applied in 0.4.
