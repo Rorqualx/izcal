@@ -10,3 +10,8 @@ Decided 21 October 2026. The owner settled every item the phase 3 wave left open
 - **A-LA-1/2/3 (licence audit).** Confirmed as recommended: the table rule (no table taken from RFC code components; per-publisher confirmation of codec constant tables), the Vulkan loader/SPIR-V/ash dispositions, and the content-blocking dataset dispositions. Applied: licence audit dated note, ledger.
 
 Nothing else changes: these resolutions edit no thresholds, milestones or budgets beyond the A-SH-39 ceiling the owner just accepted.
+
+**Appended 21 October 2026 (the last three):**
+- **A-SH-10.** The accessibility baseline is AX-D4's validated broker mirror, read by the UI host through a read-only mirror client that is the single seam if AX-M0 chooses otherwise. Applied: accessibility 0.2.4, shell 0.3.3.
+- **A-SH-11.** AX-D9's UI-host AT-adapter placement and FP row are confirmed provisional until AX-M0 measures them. Applied: accessibility 0.2.4, shell 0.3.3.
+- **A-SH-12.** The security owner adopts AX-D11's proposal: AT-invoked approval of high-risk prompt classes requires person-present evidence, and until it is implemented a high-risk AT approval is not accepted and the AT action moves focus only. Applied: accessibility 0.2.4, security scope 0.3.6.

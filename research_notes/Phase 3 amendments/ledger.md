@@ -612,7 +612,7 @@ The wave that closes the ledger ran on 21 October 2026, after all 22 component s
 - **C-21** — the PDF pagination contract between layout and `hg-pdf-write` — owner decision needed.
 - **G-4** — the JS spec's missing riscv64 row in Stage 1 8.3 — Stage 1's riscv64 references stay conditional until the owner decides the row.
 - **A-EX-12** — open until the Stage 2 extension surfaces exist (EX-D15 says so).
-- **A-SH-10/11/12** — pending the AX-D3/AX-D4, AX-D9 and AX-D11 owner decisions. **A-SH-39 — accepted 21 October 2026: the ~74 MiB† Windows ceiling, measured at SH-M0 (shell 0.3.2, FP-1 amended).**
+- **A-SH-10/11/12** — **settled 21 October 2026**: AX-D4's mirror is the baseline, AX-D9 confirmed provisional to AX-M0, AX-D11's person-present rule adopted by the security owner (accessibility 0.2.4, security scope 0.3.6). **A-SH-39 — accepted 21 October 2026: the ~74 MiB† Windows ceiling, measured at SH-M0 (shell 0.3.2, FP-1 amended).**
 - **A-LA-1/2/3** — **confirmed 21 October 2026 as recommended (licence audit, dated note).**
 - **A-CON-2** — conditional on the owner authorising RFC code reading under MD-D4's reversal; untriggered.
 - **A-SEC-26** — Phase 5 (security-scope rebase).
@@ -669,9 +669,9 @@ Three new specs exist: **ML service** (draft 0.3, ML-D1–D12), **shell** (draft
 | A-SH-7 | Security scope process kinds | The recovery window joins as a native process kind with no engine, no page data and no network (twenty kinds, twenty-two threat-model files) | **Applied (security scope 0.3.2, branch)** |
 | A-SH-8 | Security scope prompt renderer | Confirmed jitless, project JS only, no page strings except the broker-formatted origin, one process per prompt, and **expiry per class**: low-risk 30 s† with no decision, high-risk until decided or the window closes; the fixed 30 s statement is removed | **Applied (security scope 0.3.2, branch)** |
 | A-SH-9 | Security scope CON-R4 | No change; 6.3 and 6.18 restate it and `shell.password` returns usernames only | **Applied (security scope 0.3.2, branch; no text change)** |
-| A-SH-10 | Accessibility AX-D3 / AX-D4 | **Pending owner decision; no placement adopted.** Baseline is AX-D4's validated mirror in the broker, read by the UI host through a read-only client; the mirror client is the only seam if AX-M0 chooses otherwise | **Pending (queued; AX-D3/AX-D4)** |
-| A-SH-11 | Accessibility AX-D9 | **Pending AX-M0; provisional assumption only.** ED-D5(b) settles TSF, not AT; the UI host's AT adapter/mirror placement and its FP row wait on AX-M0 | **Pending (queued; AX-D9)** |
-| A-SH-12 | Accessibility AX-D11 | **Pending as a proposal to the security owner.** High-risk prompt classes need person-present evidence for an AT-invoked approval; until decided, high-risk AT approval is not accepted and the AT action moves focus only | **Pending (queued; AX-D11)** |
+| A-SH-10 | Accessibility AX-D3 / AX-D4 | **Settled 21 October 2026.** Baseline is AX-D4's validated mirror in the broker, read by the UI host through a read-only client; the mirror client is the only seam if AX-M0 chooses otherwise (accessibility 0.2.4) | **Applied** |
+| A-SH-11 | Accessibility AX-D9 | **Confirmed provisional 21 October 2026.** ED-D5(b) settles TSF, not AT; the UI host's AT adapter/mirror placement and its FP row wait on AX-M0 (accessibility 0.2.4) | **Applied (provisional stands)** |
+| A-SH-12 | Accessibility AX-D11 | **Settled 21 October 2026: the security owner adopted it** — high-risk prompt classes need person-present evidence for an AT-invoked approval; until implemented, high-risk AT approval is not accepted and the AT action moves focus only (accessibility 0.2.4, security scope 0.3.6) | **Applied** |
 | A-SH-13 | Accessibility AX-D12 | The recovery window and the shell use AX-D12's sandboxed AT-SPI bridge process (b) on Linux, including when the engine is down | **Applied (accessibility 0.2.3)** |
 | A-SH-14 | Accessibility diagnostics | The shell's `about:diagnostics` includes the AT bridge state and the last 20 accessibility events; no page can read it | **Applied (accessibility 0.2.3)** |
 | A-SH-15 | Editing ED-D5(b) | TSF and third-party IME DLLs run in the UI host on Windows; the UI host is an always-on Windows process kind with its own FP row | **Applied (editing 0.3.2)** |
@@ -750,7 +750,7 @@ Three new specs exist: **ML service** (draft 0.3, ML-D1–D12), **shell** (draft
 | A-PH-38 | Licence audit | Rows for CERT Polska, Phishunt, URLAbuse, Phishing.Database, PhishTank, URLhaus and Spamhaus, APWG eCX and Netcraft, each MIT-compatible, test-only or exception-only, with terms, the MIT-redistribution test and attribution recorded; the bundle carries expressions and provenance only and ships a NOTICE / LICENSE-DATA file; **no existing row authorises the feeds** | **Applied (licence audit, 21 October 2026)** |
 | A-PH-39 | Phase 3 ledger | G-22 closed by this spec's milestones and staffing; A-FUT-7 applied; A-UI-7's "phishing interstitials depend on SEC-D7" becomes "depend on this spec" | **Applied (this section; G-22 and A-FUT-7 above)** |
 
-Not tracked as rows: the three source specs' own revision lines and the phishing spec's open questions Q-PH-1 to Q-PH-16, except Q-PH-7 (answered by PH-D14 (a)) and Q-PH-16 (the lookalike detector, assigned to the shell). Open owner decisions stay recorded: **Q-SH-3's retention defaults** and the accessibility rows **AX-D3/AX-D4, AX-D9 and AX-D11** (A-SH-10 to A-SH-12). C-6R/Q-AE-1 and FP-1's Windows ceiling (A-SH-39) were settled on 21 October 2026 (residue_decisions.md).
+Not tracked as rows: the three source specs' own revision lines and the phishing spec's open questions Q-PH-1 to Q-PH-16, except Q-PH-7 (answered by PH-D14 (a)) and Q-PH-16 (the lookalike detector, assigned to the shell). Open owner decisions stay recorded: **Q-SH-3's retention defaults** only; the accessibility rows were settled on 21 October 2026 (above). C-6R/Q-AE-1 and FP-1's Windows ceiling (A-SH-39) were settled on 21 October 2026 (residue_decisions.md).
 
 ## Shell UI design (A-UI)
 
