@@ -277,3 +277,4 @@ HGBA-2's superseded passages and research notes, HGBA-3, the Stage 1 design, the
 | O-51 | research_notes/Future software browser engine/incremental_computation.md:131 | commit in a git.joshthomas.dev repository |
 | O-52 | research_notes/Composable platform essay review/factcheck_A.md:90 | uBlock Origin file mode-manager.js |
 
+**HGBA-3 (3.3.0, 21 October 2026):** one rust-analyzer commit link, the source of a 64→14 ms durability anecdote, is removed; the durability mechanism stays cited to the Salsa book. HGBA-3 was outside the original pass.
