@@ -51,7 +51,7 @@
 
 **Owner may want to look at.**
 - **CDP definition JSON (DT-D11):** whether the protocol definition JSON stays allowed.
-- **MD-D4 (a):** the images and media spec still forbids reading the RFC 6386 and RFC 6716 code components. Under 2.3.3 that code is IETF specification text, so the decision is now stricter than the rule; it was left unchanged.
+- **MD-D4 (a):** the images and media spec still forbids reading the RFC 6386 and RFC 6716 code components. Under 2.3.3 that code is IETF specification text, so the decision is stricter than the rule. **The owner was asked on 20 October 2026 and chose to keep it strict**: the RFCs' code components are never read; the narrative, the test vectors and the black-box reversal route stand as written.
 - **Paul Irish's "What forces layout" gist:** kept as third-party prose. It is derived from Blink source, and the layout spec already excludes it as an input.
 
 ## Izcal JavaScript engine (draft 0.4 → 0.4.1)
