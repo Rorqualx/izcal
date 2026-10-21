@@ -8,7 +8,7 @@ Compiled 19 October 2026 on branch `spec/hgba2-2.4`, read-only over every source
 
 ## Summary
 
-### Counts per target
+### Counts per target (snapshot of 19 October 2026; superseded by the Phase 3 completion note at the top of the batch-4 section)
 
 | Target | Rows | Still to apply | Already applied | Superseded or conditional |
 |---|---|---|---|---|
@@ -601,6 +601,24 @@ Three new specs exist: **WebCrypto** (draft 0.3, WC-D1–D10), **storage** (draf
 | A-EX-15 | Accessibility 6.12 | Extension UI in the AT bar; extension-provided names under AX-32; no AT client status | **Applied (accessibility 0.2.2)** |
 
 Not tracked as rows: the extensions spec's WECG position statement (filed upstream, not an Izcal document) and the three source specs' own revision lines.
+
+## Phase 3 completion (21 October 2026)
+
+The wave that closes the ledger ran on 21 October 2026, after all 22 component specs existed with accepted decisions. **HGBA-2 is 2.4.0** (no superseded section remains; the 2.2.x record moved to Appendix B), **HGBA-3 is 3.3.1**, **Stage 1 is 0.14.1** (stale V8/Stylo/WebRender/AccessKit tracks replaced, settled conflicts folded), and the **sweep** applied the remaining receiver rows. Sweep totals over 323 assigned A-rows: **80 applied in the sweep, 232 already present from earlier waves, 11 not applied** (reasons below). Rows the sweep lists as obsolete or superseded are marked accordingly in their row text where it mattered.
+
+**Not applied, by design (the honest residue):**
+- **C-11** — "Izcal-only renderers jitless by default" — stated unresolved in HGBA-2 9.2/S-4a/D2 and the security scope; owner decision needed (HGBA-2 follows JS-D13's Full-by-default and records the Jitless ceiling as identical either way).
+- **C-19** — the replay host — stated unresolved in HGBA-2 9.2; DevTools owns the surface; owner decision needed.
+- **C-21** — the PDF pagination contract between layout and `hg-pdf-write` — owner decision needed.
+- **G-4** — the JS spec's missing riscv64 row in Stage 1 8.3 — Stage 1's riscv64 references stay conditional until the owner decides the row.
+- **A-EX-12** — open until the Stage 2 extension surfaces exist (EX-D15 says so).
+- **A-SH-10/11/12** — pending the AX-D3/AX-D4, AX-D9 and AX-D11 owner decisions. **A-SH-39** — pending the owner's Windows always-on memory trade-off at SH-M0.
+- **A-LA-1/2/3** — licence-audit dispositions awaiting owner confirmation.
+- **A-CON-2** — conditional on the owner authorising RFC code reading under MD-D4's reversal; untriggered.
+- **A-SEC-26** — Phase 5 (security-scope rebase).
+- A-SG-13 is **applied** (HGBA-3 3.3.0 carried it, PRIV-2); the sweep's report predates that agent's edit.
+
+**Done elsewhere in this wave:** A-H2S-1..20 and A-H2-1..16 (HGBA-2 2.4.0; A-H2-17..25 deferred or superseded by design); all 30 A-H3 rows plus A-H3-31/32 (HGBA-3 3.3.0); the A-S1 redesign (Stage 1 0.14); the sweep's receiver revisions (style 0.3.7, fonts 0.3.7, networking 0.3.7, media 0.4.3, graphics 0.4.4, JS 0.4.3, accessibility 0.2.4, DevTools 0.3.4, shell UI design 0.5, content blocking 0.3.4, PDF 0.2.4, footprint 0.4.3, reconciliation addenda, skill A-SKILL-1/2, CONTRIBUTING/checks.sh A-CON-3/4, coding standard 0.3.4 A-CS-1..6, security scope 0.3.4 A-SEC-1..24 and A-SG-12); C-8, C-9 and C-10 settled and applied; the 24–36-month Stage 1 placeholder is retired everywhere (C-7's 48–60 months† stands).
 
 ## Batch 4: the ML service, shell and phishing protection specs (added 21 October 2026)
 
