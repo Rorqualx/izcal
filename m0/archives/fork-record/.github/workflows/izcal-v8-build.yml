@@ -1,0 +1,306 @@
+# Izcal V8 build farm for the project's rusty_v8 fork (branch `hgba`).
+#
+# Builds librusty_v8 from source in the sandbox configuration (cargo feature
+# `v8_enable_sandbox`, which implies pointer compression), release and debug,
+# on the three reference platforms; runs the fork's tests; and publishes the
+# archives under the file names build.rs expects, so consumers use
+#   RUSTY_V8_MIRROR=https://github.com/<org>/rusty_v8/releases/download
+#   RUSTY_V8_MIRROR_TAG=v152.2.0-izcal.<n>
+# This is step (2)-(4) of the update procedure in HGBA-2.1.6 S-4e.
+#
+# Every recipe below is the one that worked by hand in M0
+# (m0/M0_SUMMARY.md, m0/linux/M0_LINUX_RESULTS.md,
+# m0/windows/M0_WINDOWS_RESULTS.md). Runs on GitHub's hosted runners are
+# still untested.
+#
+# Fork setup: disable the upstream workflows (ci.yml, release.yml,
+# update-v8.yml) in the fork's Actions settings. ci.yml triggers on every tag
+# and update-v8.yml runs on a daily schedule.
+
+name: izcal-v8-build
+
+on:
+  push:
+    branches: [hgba]
+    tags: ["v*-izcal.*"]
+  pull_request:
+    branches: [hgba]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  V8_FROM_SOURCE: 1
+  CARGO_TERM_COLOR: always
+  FEATURES_SUFFIX: _ptrcomp_sandbox
+
+jobs:
+  build:
+    name: ${{ matrix.variant }} sandbox ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Runners: GitHub's standard images by default, as upstream
+          # rusty_v8's CI uses in forks. Set the repository variables
+          # IZCAL_RUNNER_{MACOS,LINUX,WINDOWS} to use larger or self-hosted
+          # runners (the M0 hosts were an M4 Mac, huey and a 32-thread
+          # laptop). Build jobs are sized from the runner's cores and memory
+          # in a step below, so no per-runner job count is hard-coded.
+          #
+          # Debug on macOS and Linux: the dev profile, which build.rs maps to
+          # is_debug=true.
+          - { os: "${{ vars.IZCAL_RUNNER_MACOS || 'macos-15' }}", target: aarch64-apple-darwin, variant: release, profile_flag: --release, profile_dir: release }
+          - { os: "${{ vars.IZCAL_RUNNER_MACOS || 'macos-15' }}", target: aarch64-apple-darwin, variant: debug, profile_flag: "", profile_dir: debug }
+          - { os: "${{ vars.IZCAL_RUNNER_LINUX || 'ubuntu-24.04' }}", target: x86_64-unknown-linux-gnu, variant: release, profile_flag: --release, profile_dir: release }
+          - { os: "${{ vars.IZCAL_RUNNER_LINUX || 'ubuntu-24.04' }}", target: x86_64-unknown-linux-gnu, variant: debug, profile_flag: "", profile_dir: debug }
+          # Windows: build.rs forces is_debug=false, so debug is the release
+          # cargo profile with GN_ARGS=is_debug=true (gn takes the last
+          # assignment). V8 is then /MTd, so everything that links it needs
+          # the static debug CRT. build.rs never requests a debug archive on
+          # Windows, so consumers of the debug archive point
+          # RUSTY_V8_ARCHIVE at it explicitly.
+          - { os: "${{ vars.IZCAL_RUNNER_WINDOWS || 'windows-2022' }}", target: x86_64-pc-windows-msvc, variant: release, profile_flag: --release, profile_dir: release }
+          - { os: "${{ vars.IZCAL_RUNNER_WINDOWS || 'windows-2022' }}", target: x86_64-pc-windows-msvc, variant: debug, profile_flag: --release, profile_dir: release,
+              gn_args: is_debug=true,
+              rustflags: "-Ctarget-feature=+crt-static -Clink-arg=/NODEFAULTLIB:libcmt.lib -Clink-arg=libcmtd.lib" }
+
+    env:
+      LIB_NAME: ${{ contains(matrix.target, 'windows') && 'rusty_v8' || 'librusty_v8' }}
+      LIB_EXT: ${{ contains(matrix.target, 'windows') && 'lib' || 'a' }}
+      GN_ARGS: ${{ matrix.gn_args }}
+      RUSTFLAGS: ${{ matrix.rustflags }}
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global core.autocrlf false
+
+      # The triggering ref (branch, tag or PR). Submodules include
+      # third_party/disarm/src (arm64) and third_party/fadec/src (x64), which
+      # the debug sandbox builds need (rusty_v8#2070).
+      - name: Checkout fork with submodules
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 1
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Download tools/win
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p tools/win
+          curl -fL https://chromium.googlesource.com/chromium/src/tools/win/+archive/faefd1b6fa9eeb033ad6fe60368ccb9bf908cbd0.tar.gz | tar -xz -C tools/win
+
+      - name: Install rust (rust-toolchain.toml pin)
+        uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621 # v1
+
+      - name: Install python (native arch)
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: 3.12.x
+          # On macOS arm64 a native interpreter matters: tools/*.py pick the
+          # gn/ninja/clang/rust host packages from platform.machine().
+
+      # bindgen needs libclang >= 21.1, and CLANG_PATH as well as
+      # LIBCLANG_PATH: otherwise bindgen runs the first `clang` on PATH for
+      # include paths and fails after the full V8 compile (M0, huey).
+      - name: libclang 21 for bindgen (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo dd of=/etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y libclang-21-dev clang-21 lld-21 libglib2.0-dev
+          echo "LIBCLANG_PATH=/usr/lib/llvm-21/lib" >> "$GITHUB_ENV"
+          echo "CLANG_PATH=/usr/lib/llvm-21/bin/clang" >> "$GITHUB_ENV"
+
+      # Native arm64 Homebrew. M0's Homebrew failure was an x86_64 install
+      # under Rosetta.
+      - name: libclang 21 for bindgen (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@21
+          echo "LIBCLANG_PATH=$(brew --prefix llvm@21)/lib" >> "$GITHUB_ENV"
+          echo "CLANG_PATH=$(brew --prefix llvm@21)/bin/clang" >> "$GITHUB_ENV"
+
+      # Windows: build.rs downloads Chromium's libclang package itself when
+      # LIBCLANG_PATH is unset.
+      #
+      # gn gen copies dbghelp.dll from the SDK's "Debugging Tools for
+      # Windows". If the runner image lacks that feature, mirror the SDK with
+      # junctions and supply the DLLs from System32, as on the M0 laptop.
+      - name: Windows SDK debugging tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdk = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          if (Test-Path "$sdk\Debuggers\x64\dbghelp.dll") { exit 0 }
+          Write-Host "Debugging Tools for Windows missing; using the mirrored-SDK workaround"
+          $mirror = "C:\winsdk"
+          New-Item -ItemType Directory -Force $mirror | Out-Null
+          Get-ChildItem $sdk | Where-Object Name -ne 'Debuggers' | ForEach-Object {
+            $dest = Join-Path $mirror $_.Name
+            if (Test-Path $dest) { return }
+            if ($_.PSIsContainer) { cmd /c mklink /J "$dest" "$($_.FullName)" | Out-Null }
+            else { Copy-Item $_.FullName $mirror }
+          }
+          New-Item -ItemType Directory -Force "$mirror\Debuggers\x64" | Out-Null
+          Copy-Item "$env:WINDIR\System32\dbghelp.dll","$env:WINDIR\System32\dbgcore.dll" "$mirror\Debuggers\x64"
+          # No byte-order mark, whichever PowerShell runs this.
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "WINDOWSSDKDIR=$mirror`n")
+
+      # V8 compile units need about 0.8 GB each in release and 1.3 GB in
+      # debug (M0). Size from *available* memory, not total: on the M0
+      # laptop 32 jobs thrashed 28 GB because other processes held about
+      # 10 GB. One job per core, capped by available memory less 2 GB.
+      - name: Size build jobs
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux)   cores=$(nproc)
+                     avail_mb=$(( $(awk '/MemAvailable/ {print $2}' /proc/meminfo) / 1024 )) ;;
+            macOS)   cores=$(sysctl -n hw.ncpu)
+                     page=$(sysctl -n hw.pagesize)
+                     pages=$(vm_stat | awk '/Pages (free|inactive|speculative)/ {gsub(/\./,"",$NF); n+=$NF} END {print n}')
+                     avail_mb=$(( pages * page / 1048576 )) ;;
+            # CIM can fail in some sessions (seen under a scheduled task:
+            # "No mapping between account names and security IDs"), so fall
+            # back to .NET's ComputerInfo.
+            Windows) cores=$NUMBER_OF_PROCESSORS
+                     avail_mb=$(powershell -NoProfile -Command "try { [int]((Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).FreePhysicalMemory / 1KB) } catch { Add-Type -AssemblyName Microsoft.VisualBasic; [int]((New-Object Microsoft.VisualBasic.Devices.ComputerInfo).AvailablePhysicalMemory / 1MB) }" | tr -d '\r') ;;
+          esac
+          if ! [ "${avail_mb:-0}" -gt 0 ] 2>/dev/null; then
+            echo "::warning::could not read available memory; using half the cores"
+            avail_mb=$(( 2048 + (cores / 2) * ${{ matrix.variant == 'debug' && 1300 || 800 }} ))
+          fi
+          per_job_mb=${{ matrix.variant == 'debug' && 1300 || 800 }}
+          by_mem=$(( (avail_mb - 2048) / per_job_mb ))
+          jobs=$(( by_mem < cores ? by_mem : cores ))
+          [ "$jobs" -ge 1 ] || jobs=1
+          echo "cores=$cores avail_mb=$avail_mb jobs=$jobs" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+
+      # Standard Linux runners have too little free disk for a debug V8
+      # build (checkout 3.4 GB plus up to 8 GB of build output).
+      - name: Free disk (Linux)
+        if: runner.os == 'Linux'
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      # Release (tag) builds restore no caches, so a published archive can
+      # never be built from a poisoned cache (zizmor: cache-poisoning).
+      - name: sccache
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9 # zizmor: ignore[cache-poisoning] skipped on tags
+
+      # .gitmodules does not change when a submodule pointer moves, so key
+      # the cache on the recorded submodule commits instead.
+      - name: Submodule state for the cache key
+        shell: bash
+        run: git submodule status --recursive > .submodule-status
+
+      - name: Cache cargo registry and build outputs
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0 # zizmor: ignore[cache-poisoning] skipped on tags
+        with:
+          path: |
+            ~/.cargo/registry
+            target/${{ matrix.target }}/${{ matrix.profile_dir }}/build
+            target/${{ matrix.target }}/${{ matrix.profile_dir }}/deps
+          key: izcal-v8-${{ matrix.target }}-${{ matrix.variant }}-${{ hashFiles('Cargo.lock', 'build.rs', '.submodule-status', 'src/binding.cc') }}
+          restore-keys: izcal-v8-${{ matrix.target }}-${{ matrix.variant }}-
+
+      - name: Disk before
+        shell: bash
+        run: df -h . || true
+
+      - name: Build V8 + bindings (sandbox)
+        shell: bash
+        env:
+          SCCACHE: ${{ !startsWith(github.ref, 'refs/tags/') && 'sccache' || '' }}
+          PRINT_GN_ARGS: 1
+        run: |
+          start=$(date +%s)
+          cargo build -vv --locked --target ${{ matrix.target }} ${{ matrix.profile_flag }} --features v8_enable_sandbox
+          echo "build_seconds=$(( $(date +%s) - start ))" | tee -a "$GITHUB_STEP_SUMMARY"
+          du -sh target || true
+
+      - name: Check gn args match the variant
+        shell: bash
+        run: |
+          args=target/${{ matrix.target }}/${{ matrix.profile_dir }}/gn_out/args.gn
+          cat "$args"
+          want=${{ matrix.variant == 'debug' && 'true' || 'false' }}
+          # gn takes the last assignment, so check the last is_debug line.
+          got=$(grep -E '^is_debug *=' "$args" | tail -1 | sed -E 's/.*= *//')
+          [ "$got" = "$want" ] || { echo "is_debug=$got, expected $want"; exit 1; }
+          grep -q 'v8_enable_sandbox *= *true' "$args"
+
+      - name: Fork tests (sandbox), incl. predictable platform and cppgc API
+        shell: bash
+        run: |
+          cargo test --locked --target ${{ matrix.target }} ${{ matrix.profile_flag }} --features v8_enable_sandbox \
+            --test test_predictable_platform --test test_cppgc --test test_single_threaded_default_platform
+
+      - name: Package
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ matrix.os }}
+        run: |
+          mkdir -p dist
+          out=target/${{ matrix.target }}/${{ matrix.profile_dir }}/gn_out
+          name=${LIB_NAME}${FEATURES_SUFFIX}_${{ matrix.variant }}_${{ matrix.target }}
+          gzip -9c "$out/obj/${LIB_NAME}.${LIB_EXT}" > "dist/${name}.${LIB_EXT}.gz"
+          cp "$out/src_binding.rs" "dist/src_binding${FEATURES_SUFFIX}_${{ matrix.variant }}_${{ matrix.target }}.rs"
+          cp "$out/args.gn" "dist/${name}.args.gn"
+          {
+            echo "fork_commit=$(git rev-parse HEAD)"
+            echo "ref=${GITHUB_REF}"
+            echo "rustc=$(rustc -V)"
+            echo "runner=$RUNNER_LABEL"
+            echo "submodules:"
+            cat .submodule-status
+          } > "dist/${name}.build-info.txt"
+          # Hash into a file outside dist/, or the glob would list the
+          # half-written checksum file itself.
+          (cd dist && { sha256sum -- * 2>/dev/null || shasum -a 256 -- *; }) > sums.tmp
+          mv sums.tmp "dist/SHA256SUMS.${name}"
+          ls -l dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: izcal-v8-${{ matrix.variant }}-${{ matrix.target }}
+          path: dist/*
+
+  # S-4e step (3) also requires spike items 1-5 and the cross-OS determinism
+  # hash check. Their code (m0/spike-sandbox, m0/determinism-probe) lives
+  # outside the fork, in a project folder that is not yet under version
+  # control. Until it is, run them by hand against these artifacts before
+  # tagging; once the project repository exists, add them here as a job
+  # with `needs: build`.
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-izcal.')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Combined checksums
+        run: cd dist && cat SHA256SUMS.* > SHA256SUMS && sha256sum -c SHA256SUMS
+      # build.rs fetches $RUSTY_V8_MIRROR/<tag>/<file>; with
+      # RUSTY_V8_MIRROR_TAG set to this release's tag, a GitHub release
+      # works as the mirror.
+      - name: Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: dist/*

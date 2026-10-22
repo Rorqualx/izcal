@@ -1,0 +1,48 @@
+# Izcal repository checks for pull requests into hgba: the project's
+# tools/checks.sh (formatting, secrets, workflow lint, file size, security), fetched
+# from Rorqualx/izcal so both repositories enforce one set of rules. Cheap;
+# the V8 build itself runs in izcal-v8-build.yml. Branch protection on hgba
+# requires this job ("checks").
+#
+# While Rorqualx/izcal is private, set the secret IZCAL_REPO_TOKEN to a
+# fine-grained token with read access to it.
+
+name: izcal-checks
+
+on:
+  pull_request:
+    branches: [hgba]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch the project's checks
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Rorqualx/izcal
+          path: .izcal
+          token: ${{ secrets.IZCAL_REPO_TOKEN || github.token }}
+          sparse-checkout: tools
+          persist-credentials: false
+
+      # Pinned and SHA-256-verified tools, from the project's installer.
+      - name: Install check tools
+        run: |
+          bash .izcal/tools/ci-install-tools.sh "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      # rustfmt runs under the fork's pinned toolchain (rust-toolchain.toml).
+      - name: Checks
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: bash .izcal/tools/checks.sh --range "$PR_BASE" "$GITHUB_SHA"
