@@ -45,3 +45,39 @@ FP-M0 open question 17, the macOS part. A standalone 30-line probe (task_info's 
 | 30 cross-site tabs | **1,830 MB (36 procs)** | **2,066 MB (41 procs)** |
 
 **Reading:** Firefox's same-site economy disappears across sites (+1,226 MB, 15→41 processes — each distinct domain gets its own content process); Chrome's cross-site cost is mild (+101 MB) because its per-tab process model was already paying. The FP-S30 budget's worst case is the cross-site row, not the same-site one — the corpus's FP-S30 caveat ("≤ 10–12 cross-site frames per iframe-heavy page") now has its first incumbent baseline. Neither row is a threshold; both are FP-M0 observations.
+
+## Linux leg (22 October 2026, rig hueyj — Ubuntu, snap chromium + Firefox 158)
+
+Counter: **VmRSS + VmSwap summed across the process tree** (`/proc/<pid>/status`, per the footprint spec's Linux definition), same steady-state rule (last 12 samples), same loads. Harness: `harness/sample-tree-linux.sh` + `harness/run-matrix-linux.sh`.
+
+| Load | Chromium (snap) | Firefox 158 (snap) |
+|---|---|---|
+| Blank | **897 MB** (9 procs) | **1,432 MB** (13 procs) |
+| 1 tab | 1,024 MB (10) | 1,241 MB (12) |
+| 10 tabs | 2,187 MB (20) | 1,562 MB (15) |
+| 30 tabs | **5,656 MB** (50) | **1,583 MB** (15) |
+| 30 cross-site tabs | **9,698 MB** (80) | **4,958 MB** (41) |
+
+**Discarded versions:** Firefox v1 (no `-headless` — hueyj has no display, so Firefox never launched; all-zero rows) and v2 (repeated invocations to open tabs: the headless instance runs the profile lock but no remote listener, so every invocation after the first died and the tab count stayed at zero — identical 13-proc/1,431 MB rows at every load, the giveaway). **v3 opens each load as one invocation with N URLs** (one window, N tabs); its cross-site row's 41 processes (ten origins, ten content processes) is the evidence that the multi-URL mechanism genuinely loads every site. Same-site loads stay near-flat (1,241→1,583 MB, 15 procs) because Fission shares one content process per site — the 29 extra same-site documents cost ~350 MB inside that shared process. Same-site page-count verification stays queued (headless Firefox serves no page list); the cross-site process evidence is the load evidence. Chromium page counts were verified via `/json` (42 pages at the 30-tab load, 72 at cross-site).
+
+**Rig notes recorded:** the firefox snap cannot see host `/tmp` ("Could not find profile folder" on a valid dir), so its profile lives under `$HOME`; the chromium snap accepted a `/tmp` profile path. Chromium needed `--headless=new`; Firefox `-headless`.
+
+**Reading (Linux):** both browsers' Linux floors sit far above their macOS floors in this counter — ~5.5x for Chromium, ~2.2x for Firefox — because VmRSS counts shared pages fully where macOS phys_footprint does not; this is exactly the counter-mapping evidence FP open question 17 asks for, and it means FP-1's Linux budget must be argued against the Linux counter, never the macOS number. The cross-site slope is the dominant cost on Linux for both engines (Chromium +4,042 MB same→cross; Firefox +3,375 MB), consistent with macOS. Neither row is a threshold; both are FP-M0 observations.
+
+## Windows leg (22 October 2026, rig rig253 — Edge 155 + Firefox 158.0.1)
+
+Counters: **commit charge (PrivateMemorySize64) primary, working set secondary**, both summed across the process tree, same steady-state rule and loads. Edge stands in for the Chromium family here — the rig ships no Chrome, and Edge 155 is the Windows Chromium incumbent (recorded as a stand-in, not a substitution). Harness: `harness/sample-tree-windows.ps1` + `harness/run-matrix-windows-edge.ps1` + `harness/run-matrix-windows-ff.ps1`.
+
+| Load | Edge 155 (private / ws) | Firefox 158 (private / ws) |
+|---|---|---|
+| Blank | **161 / 369 MB** (8 procs) | **608 / 803 MB** (12 procs) |
+| 1 tab | 193 / 440 (9) | 619 / 767 (12) |
+| 10 tabs | 430 / 1,037 (19) | 720 / 946 (15) |
+| 30 tabs | **1,152 / 2,825 MB** (50) | **742 / 919 MB** (15) |
+| 30 cross-site tabs | **2,184 / 5,200 MB** (80) | **1,711 / 2,941 MB** (41) |
+
+**Discarded versions:** Firefox v1 (the GUI instance dies at window creation from the ssh service session; every sampled process was a ~4 MB launcher stub — max_single 4 MB was the giveaway) and v2 (`-headless` fixed the instance, but repeated invocations polluted the process set: 296 procs at the cross-site load, roughly a third of the private total in stubs). **v3 is the Linux v3 pattern**: one invocation per load with N URLs; the cross-site row's 41 processes (ten content processes) is the load evidence. Edge page counts verified via its DevTools `/json` (2/12/42/72 pages).
+
+**Rig notes recorded:** the default `%TEMP%` under this user profile contains a space and an apostrophe (`joe's pc`), which breaks `Start-Process -ArgumentList` joining — profiles live under `C:\fp-m0-run\profiles` instead; `timeout` fails from the ssh session ("input redirection is not supported") — the install watchdog uses `ping -n` delays; `rig run` executes its command locally, so rig commands need an explicit `ssh`. **Firefox delivery:** Mozilla no longer publishes portable zips (the `firefox-latest` URL serves the UPX-packed setup exe; `msiexec /a` on the MSI ran a real install instead of an extract — it rolled back with no artifacts; winget per-user failed with 0x80070534 SID mapping from the ssh session), so Firefox 158.0.1 was installed via the documented `-ms` silent switch, which landed **machine-scope** in `C:\Program Files\Mozilla Firefox`. Flagged to the owner; a normal uninstaller exists.
+
+**Reading (Windows):** the family pattern holds on a third OS — the Chromium-family blank floor (~161 MB private) sits far below Firefox's (~608 MB), Firefox's same-site tabs are nearly free (shared content processes, +134 MB private across 30 same-site tabs) while Edge pays ~33 MB private per same-site tab, and the cross-site mix is the dominant cost for both (+1,032 MB for Edge, +969 MB for Firefox — near-identical absolute jumps). The counter-mapping observation now has all three OSes: Task Manager's "Memory" column is private working set, so on Windows the reported figure follows neither raw commit nor total working set alone. Neither row is a threshold; both are FP-M0 observations.
