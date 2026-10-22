@@ -83,13 +83,9 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 - **Protected branches:** never pushed directly. The `IZCAL_ALLOW_PROTECTED=1` override exists only for repository administration, and GitHub's protection refuses the push anyway.
 *(Historical: the fork's CI matrix and release-tag rules applied until the fork material was removed on 21 October 2026.)*
 
-## The S-4e upstream rebase (fork only)
+## The S-4e upstream rebase (historical)
 
-Every Chrome stable release, the `rusty_v8` owner rebases the fork's commits onto the new upstream tag (HGBA-2.1 S-4e). This is the one time `hgba` is rewritten:
-
-1. On a `rebase/v<new>` branch, rebase the fork's commits onto the upstream tag. Fix conflicts commit by commit.
-2. Open a pull request into `hgba` so CI runs the full V8 matrix on the rebased branch, and complete S-4e steps 2–3.
-3. Tag the old tip so its commits stay reachable, because the project's submodule history pins them: `git tag hgba-pre-v<old> izcal/hgba && git push izcal hgba-pre-v<old>`.
+*(The fork-only S-4e rebase procedure applied until the fork material was removed on 21 October 2026; it survives in git history.)*
 4. Temporarily allow force pushes on `hgba` (repository settings, or `gh api`), then push: `IZCAL_S4E_REBASE=1 git push --force-with-lease izcal rebase/v<new>:hgba`. `pre-push` refuses the push unless the old tip is tagged `hgba-pre-*`. Restore the protection immediately afterwards.
 5. Bump the project's submodule pointer.
 
