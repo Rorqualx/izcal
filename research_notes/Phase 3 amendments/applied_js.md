@@ -44,6 +44,8 @@ Evidence is in [riscv64.md][RV].
 
 ## Conflicts and items not resolved here
 
+*(State at application time, 19 October 2026. **Update, 22 October 2026:** C-6 is settled — the ledger's about 635–845 people† full strength, with the JS figure at 65–82†; and C-11 was settled on 21 October 2026 as recommended (HGBA-2 2.4.1).)*
+
 - **C-6, staffing totals:** still unresolved. The JS figure in that total changes from 61–76† (or 60–75† after OD-1) to **65–82†** with riscv64, so the Stage 1 8.3 statement must use the new figure.
 - **C-11, "jitless by default":** unchanged. The JS spec still says what it said before: Izcal-only renderers and the banking container are jitless, and other renderers default to full. The security scope's rule is still to be re-decided when that scope is rebased.
 - **C-7 / Q29:** the JS spec now states that Stage 1 exit is 48–60 months† and that JS-M3 has about 9 months of float. The riscv64 tiers are planned inside that float, staffed separately, and not added after it.

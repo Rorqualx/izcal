@@ -10,7 +10,7 @@ cd izcal
 tools/setup-hooks.sh
 ```
 
-`setup-hooks.sh` points git at `.githooks/` for the project and for the fork. It also lists any missing tools. The checks need `gitleaks`, `shellcheck`, `actionlint`, `zizmor` and `cargo-deny` (`brew install gitleaks shellcheck actionlint zizmor cargo-deny`), `rustfmt` (from rustup), `python3`, and the Claude Code CLI `claude` for the review. A missing tool gives a warning, not a failure, except where noted.
+`setup-hooks.sh` points git at `.githooks/` for the project. *(Historical: it also did so for the fork until the fork material was removed on 21 October 2026.)* It also lists any missing tools. The checks need `gitleaks`, `shellcheck`, `actionlint`, `zizmor` and `cargo-deny` (`brew install gitleaks shellcheck actionlint zizmor cargo-deny`), `rustfmt` (from rustup), `python3`, and the Claude Code CLI `claude` for the review. A missing tool gives a warning, not a failure, except where noted.
 
 ## Branches
 
@@ -41,8 +41,8 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 
 ## Commits
 
-- **One logical change per commit**, building and passing tests on its own. The fork's commits in particular must stay separable: each S-4e rebase replays them onto a new upstream, and they are offered upstream individually.
-- **Commit messages:** a subject of the form `<area>: <summary>`, with a lowercase area, at most 72 characters, no trailing period, and a blank line before the body. Examples: `ci: cache submodule state`, `spec: restate S-4e as an update policy`. The body says why, not what. The `commit-msg` hook enforces the subject rules. `Merge`, `Revert`, `fixup!` and `squash!` subjects are exempt.
+- **One logical change per commit**, building and passing tests on its own. *(Historical: the fork's commits also had to stay separable — each S-4e rebase replayed them onto a new upstream, and they were offered upstream individually — until the fork material was removed on 21 October 2026.)*
+- **Commit messages:** a subject of the form `<area>: <summary>`, with a lowercase area, at most 72 characters, no trailing period, and a blank line before the body. Examples: `ci: cache rust build output`, `spec: restate S-4e as an update policy`. The body says why, not what. The `commit-msg` hook enforces the subject rules. `Merge`, `Revert`, `fixup!` and `squash!` subjects are exempt.
 - **Trailers:** commits written with an AI agent end with its `Co-Authored-By` line (and `Claude-Session` where the tool provides one).
 
 ## Checks
@@ -55,7 +55,7 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 | `size` | A file is over 5 MB |
 | `binary` | A build output or archive is added (`.a`, `.lib`, `.o`, `.dll`, `.so`, `.dylib`, `.exe`, `.pdb`, `.gz`, `.xz`, `.zst`, `.tar`, `.zip`, `.7z`) |
 | `secrets` | `gitleaks` finds a credential. Without gitleaks, a regex covers GitHub, AWS, Slack and API keys and private-key blocks |
-| `rustfmt` | A Rust file is not formatted under its crate's edition and `rustfmt.toml` (the fork's files use the fork's pinned toolchain) |
+| `rustfmt` | A Rust file is not formatted under its crate's edition and `rustfmt.toml` |
 | `shellcheck` | A shell script has a warning or error. Scripts under `logs*/` folders are records of what ran in M0 and are not checked |
 | `actionlint` | A GitHub workflow has an error |
 | `mdlinks` | A relative Markdown link points at a file that does not exist |
@@ -87,7 +87,7 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 
 *(The fork-only S-4e rebase procedure applied until the fork material was removed on 21 October 2026; it survives in git history.)*
 4. Temporarily allow force pushes on `hgba` (repository settings, or `gh api`), then push: `IZCAL_S4E_REBASE=1 git push --force-with-lease izcal rebase/v<new>:hgba`. `pre-push` refuses the push unless the old tip is tagged `hgba-pre-*`. Restore the protection immediately afterwards.
-5. Bump the project's submodule pointer.
+5. Bump the project's submodule pointer. *(Neither the fork nor its submodules exist in the tree since 21 October 2026; this step is record text.)*
 
 If the rebase cannot pass inside the security window, follow S-4e's backport rule instead: cherry-pick the V8 security commits onto the pinned V8 through an ordinary pull request.
 
@@ -112,7 +112,7 @@ Izcal is a new engine written from the ground up: it neither copies another brow
 ## License
 
 - Contributions are licensed under MIT, the project's license ([LICENSE](LICENSE)); no separate agreement is needed.
-- **MIT only.** Every dependency and data set that ships must be available under MIT, alone or as one choice of a dual licence ("MIT OR Apache-2.0" is fine). If it is not, Izcal builds its own; we do not ask authors to relicense. Exceptions (HGBA-2 M-1 part 1): standards data from the standards bodies themselves (Unicode, WHATWG, IANA, tz, OpenType registries, the Public Suffix List, the CT log list); test-only crates and suites that never ship (dev-dependencies, WPT, test262, oracles), whatever their licence; OS interfaces, drivers and the toolchain. The `security` check runs `cargo deny check licenses` with `tools/deny.toml` on every changed `Cargo.lock` outside the V8-era history crates.
+- **MIT only.** Every dependency and data set that ships must be available under MIT, alone or as one choice of a dual licence ("MIT OR Apache-2.0" is fine). If it is not, Izcal builds its own; we do not ask authors to relicense. Exceptions (HGBA-2 M-1 part 1): standards data from the standards bodies themselves (Unicode, WHATWG, IANA, tz, OpenType registries, the Public Suffix List, the CT log list); test-only crates and suites that never ship (dev-dependencies, WPT, test262, oracles), whatever their licence; OS interfaces, drivers and the toolchain. The `security` check runs `cargo deny check licenses` with `tools/deny.toml` on every changed `Cargo.lock`.
 - Release binaries ship the license notices of every dependency and data set.
 
 ## Large files and artifacts
