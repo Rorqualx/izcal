@@ -1,0 +1,48 @@
+
+=================== DOM size 1000 ===================
+memory/node: cppgc DOM heap(used)=128.9B  DOM Rust-side malloc=285.9B req / 301.0B actual  => DOM total=429.9B
+memory/node: data plane=166.2B owned (columns+boxes) / 145.9B req / 152.4B actual malloc
+data plane share of total node memory = 26.2% (actual malloc; 35.5% of DOM-only cppgc+malloc); vs cppgc heap alone 118.2%
+excluded: script-side handle table 8B/node; DomNode payload size_of=104B; attr strings + decl blocks are shared Arcs (counted on DOM side only)
+initial flush: 8160 logged mutations in 434.25µs (53.2ns/mutation)
+projection+equality on the full built tree (1000 connected nodes): projection 0.083ms + equality 0.053ms = 0.136ms (median of 5) oracle=Ok(())
+data plane after shrink_to_fit: 152.5B/node actual malloc (-0.1B/node was Vec growth slack); share of total node memory 26.2%
+data plane column breakdown (bytes/node): generation 4 + links 20 + tag 4 + state 4 + attrs ptr 16 + attrs heap 83.7 + classes ptr 16 + classes heap 7.8 + inline-style ref 8 + dirty 1
+log append (steady-state capacity): 8.3ns/append, size_of::<Mutation>()=32B
+flush N=    1: mean=52ns p50=42ns p99=125ns max=48750ns (n=5000)  | oracle after 5000 flushes: Ok(())
+flush N=  100: mean=5410ns p50=4584ns p99=19959ns max=77750ns (n=1000)  | oracle after 1000 flushes: Ok(())
+flush N=10000: mean=727146ns p50=595542ns p99=1391875ns max=1446834ns (n=20)  | oracle after 20 flushes: Ok(())
+projection+equality after the flush runs: projection 1.475ms + equality 1.083ms = 2.558ms (8657 connected nodes, 13821 slots; median of 5)
+negative control (one unlogged mutation): oracle -> Err("node #5236 id=NodeId { idx: 2, generation: 1 }: state flags differs")
+
+=================== DOM size 10000 ===================
+memory/node: cppgc DOM heap(used)=141.8B  DOM Rust-side malloc=283.7B req / 299.2B actual  => DOM total=441.1B
+memory/node: data plane=210.9B owned (columns+boxes) / 191.0B req / 197.5B actual malloc
+data plane share of total node memory = 30.9% (actual malloc; 44.8% of DOM-only cppgc+malloc); vs cppgc heap alone 139.3%
+excluded: script-side handle table 8B/node; DomNode payload size_of=104B; attr strings + decl blocks are shared Arcs (counted on DOM side only)
+initial flush: 81546 logged mutations in 2.876625ms (35.3ns/mutation)
+projection+equality on the full built tree (10000 connected nodes): projection 1.578ms + equality 0.714ms = 2.292ms (median of 5) oracle=Ok(())
+data plane after shrink_to_fit: 174.0B/node actual malloc (23.5B/node was Vec growth slack); share of total node memory 28.3%
+data plane column breakdown (bytes/node): generation 4 + links 20 + tag 4 + state 4 + attrs ptr 16 + attrs heap 83.4 + classes ptr 16 + classes heap 7.9 + inline-style ref 8 + dirty 1
+log append (steady-state capacity): 4.4ns/append, size_of::<Mutation>()=32B
+flush N=    1: mean=67ns p50=42ns p99=292ns max=2208ns (n=5000)  | oracle after 5000 flushes: Ok(())
+flush N=  100: mean=8702ns p50=7375ns p99=36666ns max=54417ns (n=1000)  | oracle after 1000 flushes: Ok(())
+flush N=10000: mean=2770652ns p50=2209166ns p99=6718917ns max=9599875ns (n=20)  | oracle after 20 flushes: Ok(())
+projection+equality after the flush runs: projection 17.716ms + equality 6.091ms = 23.807ms (18969 connected nodes, 25586 slots; median of 5)
+negative control (one unlogged mutation): oracle -> Err("node #1 id=NodeId { idx: 1, generation: 1 }: state flags differs")
+
+=================== DOM size 100000 ===================
+memory/node: cppgc DOM heap(used)=136.7B  DOM Rust-side malloc=283.8B req / 299.3B actual  => DOM total=436.0B
+memory/node: data plane=186.9B owned (columns+boxes) / 167.1B req / 173.6B actual malloc
+data plane share of total node memory = 28.5% (actual malloc; 39.8% of DOM-only cppgc+malloc); vs cppgc heap alone 127.0%
+excluded: script-side handle table 8B/node; DomNode payload size_of=104B; attr strings + decl blocks are shared Arcs (counted on DOM side only)
+initial flush: 815394 logged mutations in 80.167834ms (98.3ns/mutation)
+projection+equality on the full built tree (100000 connected nodes): projection 34.528ms + equality 23.556ms = 58.084ms (median of 5) oracle=Ok(())
+data plane after shrink_to_fit: 153.6B/node actual malloc (20.0B/node was Vec growth slack); share of total node memory 26.1%
+data plane column breakdown (bytes/node): generation 4 + links 20 + tag 4 + state 4 + attrs ptr 16 + attrs heap 83.2 + classes ptr 16 + classes heap 8.0 + inline-style ref 8 + dirty 1
+log append (steady-state capacity): 9.6ns/append, size_of::<Mutation>()=32B
+flush N=    1: mean=237ns p50=167ns p99=667ns max=76583ns (n=5000)  | oracle after 5000 flushes: Ok(())
+flush N=  100: mean=16218ns p50=14083ns p99=40375ns max=88375ns (n=1000)  | oracle after 1000 flushes: Ok(())
+flush N=10000: mean=2480269ns p50=2598208ns p99=3809541ns max=3887750ns (n=20)  | oracle after 20 flushes: Ok(())
+projection+equality after the flush runs: projection 28.401ms + equality 16.597ms = 44.998ms (109262 connected nodes, 117893 slots; median of 5)
+negative control (one unlogged mutation): oracle -> Err("node #1 id=NodeId { idx: 1, generation: 1 }: state flags differs")
