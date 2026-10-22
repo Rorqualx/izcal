@@ -15,3 +15,6 @@ Nothing else changes: these resolutions edit no thresholds, milestones or budget
 - **A-SH-10.** The accessibility baseline is AX-D4's validated broker mirror, read by the UI host through a read-only mirror client that is the single seam if AX-M0 chooses otherwise. Applied: accessibility 0.2.4, shell 0.3.3.
 - **A-SH-11.** AX-D9's UI-host AT-adapter placement and FP row are confirmed provisional until AX-M0 measures them. Applied: accessibility 0.2.4, shell 0.3.3.
 - **A-SH-12.** The security owner adopts AX-D11's proposal: AT-invoked approval of high-risk prompt classes requires person-present evidence, and until it is implemented a high-risk AT approval is not accepted and the AT action moves focus only. Applied: accessibility 0.2.4, security scope 0.3.6.
+
+**Appended 21 October 2026 (the final item):**
+- **Q-SH-3 (history retention).** Decided as recommended: **90 days† of full visits and 12 months† of the aggregate record, user-configurable**. Applied: shell 0.3.6, ledger.
