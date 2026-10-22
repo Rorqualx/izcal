@@ -1,0 +1,27 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running unittests src/lib.rs (target/miri/aarch64-apple-darwin/debug/build/token-cell/4efdc4dd2199783d/out/token_cell-4efdc4dd2199783d)
+
+running 20 tests
+test cell::tests::borrow_and_mutate ... ok
+test cell::tests::drop_and_replace ... ok
+test cell::tests::get_mut_without_token ... ok
+test cell::tests::multi_borrow_distinct ... ok
+test cell::tests::multi_borrow_nested_cell_panics - should panic ... ok
+test cell::tests::multi_borrow_same_cell_panics - should panic ... ok
+test cell::tests::multi_borrow_zst_same_cell_panics - should panic ... ok
+test cell::tests::reentrant_mutation_is_seen_after_lend ... ok
+test cell::tests::slices_unsized ... ok
+test cell::tests::zst_distinct_cells ... ok
+test dom::tests::insert_before_links_and_counts ... ok
+test dom::tests::observer_moves_the_reference_node ... ok
+test dom::tests::observer_reenters_and_mutates ... ok
+test dom::tests::observer_reenters_insert_before_recursively ... ok
+test token::tests::deep_lend_reenter_chain ... ok
+test token::tests::enter_mints_and_restores ... ok
+test token::tests::nested_enter_panics - should panic ... ok
+test token::tests::reenter_needs_lend ... ok
+test token::tests::state_restored_on_unwind ... ok
+test token::tests::tokens_are_per_thread ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.14s
+

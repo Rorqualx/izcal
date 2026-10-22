@@ -1,0 +1,11 @@
+v8-audit: 74 script-running V8 functions, 70 public rusty_v8 entries; 61 disallowed, 20 reviewed as safe, 10 listed by hand
+  by hand: v8::Isolate::perform_microtask_checkpoint
+  by hand: v8::MicrotaskQueue::perform_checkpoint
+  by hand: v8::Object::get_own_property_names
+  by hand: v8::Object::set_prototype
+  by hand: v8::Platform::pump_message_loop
+  by hand: v8::Promise::then2
+  by hand: v8::PromiseResolver::resolve
+  by hand: v8::ValueDeserializer::read_value
+  by hand: v8::ValueSerializer::write_value
+  by hand: v8::inspector::V8InspectorSession::dispatch_protocol_message

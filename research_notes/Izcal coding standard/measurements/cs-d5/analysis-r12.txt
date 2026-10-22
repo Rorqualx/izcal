@@ -1,0 +1,275 @@
+## Cross-job spread, head phase (new values): (max-min)/median %
+
+### ubuntu-24.04-arm
+| bench | metric | n | min | median | max | spread % | distinct |
+|---|---|---|---|---|---|---|---|
+| css_tokenize | Ir | 30 | 28356736 | 28356736.0 | 28356736 | 0.0000 | 1 |
+| css_tokenize | Dr | 30 | 9365845 | 9365845.0 | 9365845 | 0.0000 | 1 |
+| css_tokenize | Dw | 30 | 6209883 | 6209883.0 | 6209883 | 0.0000 | 1 |
+| css_tokenize | I1mr | 30 | 122 | 122.0 | 122 | 0.0000 | 1 |
+| css_tokenize | D1mr | 30 | 6593 | 6593.0 | 6593 | 0.0000 | 1 |
+| css_tokenize | D1mw | 30 | 0 | 0.0 | 0 | 0.0000 | 1 |
+| css_tokenize | ILmr | 30 | 122 | 122.0 | 122 | 0.0000 | 1 |
+| css_tokenize | DLmr | 30 | 30 | 30.0 | 30 | 0.0000 | 1 |
+| css_tokenize | DLmw | 30 | 0 | 0.0 | 0 | 0.0000 | 1 |
+| css_tokenize | L1hits | 30 | 43925749 | 43925749.0 | 43925749 | 0.0000 | 1 |
+| css_tokenize | LLhits | 30 | 6563 | 6563.0 | 6563 | 0.0000 | 1 |
+| css_tokenize | RamHits | 30 | 152 | 152.0 | 152 | 0.0000 | 1 |
+| css_tokenize | TotalRW | 30 | 43932464 | 43932464.0 | 43932464 | 0.0000 | 1 |
+| css_tokenize | EstimatedCycles | 30 | 43963884 | 43963884.0 | 43963884 | 0.0000 | 1 |
+| html_tokenize | Ir | 30 | 65254049 | 65254049.0 | 65254049 | 0.0000 | 1 |
+| html_tokenize | Dr | 30 | 17282868 | 17282868.0 | 17282868 | 0.0000 | 1 |
+| html_tokenize | Dw | 30 | 12587328 | 12587328.0 | 12587328 | 0.0000 | 1 |
+| html_tokenize | I1mr | 30 | 41961 | 41961.0 | 41961 | 0.0000 | 1 |
+| html_tokenize | D1mr | 30 | 7855 | 7855.0 | 7855 | 0.0000 | 1 |
+| html_tokenize | D1mw | 30 | 3886 | 3886.0 | 3886 | 0.0000 | 1 |
+| html_tokenize | ILmr | 30 | 455 | 455.0 | 455 | 0.0000 | 1 |
+| html_tokenize | DLmr | 30 | 60 | 60.0 | 60 | 0.0000 | 1 |
+| html_tokenize | DLmw | 30 | 3848 | 3848.0 | 3848 | 0.0000 | 1 |
+| html_tokenize | L1hits | 30 | 95070543 | 95070543.0 | 95070543 | 0.0000 | 1 |
+| html_tokenize | LLhits | 30 | 49339 | 49339.0 | 49339 | 0.0000 | 1 |
+| html_tokenize | RamHits | 30 | 4363 | 4363.0 | 4363 | 0.0000 | 1 |
+| html_tokenize | TotalRW | 30 | 95124245 | 95124245.0 | 95124245 | 0.0000 | 1 |
+| html_tokenize | EstimatedCycles | 30 | 95469943 | 95469943.0 | 95469943 | 0.0000 | 1 |
+| selector_match | Ir | 30 | 16172600 | 16172600.0 | 16172600 | 0.0000 | 1 |
+| selector_match | Dr | 30 | 5529511 | 5529511.0 | 5529511 | 0.0000 | 1 |
+| selector_match | Dw | 30 | 1351464 | 1351464.0 | 1351464 | 0.0000 | 1 |
+| selector_match | I1mr | 30 | 27 | 27.0 | 27 | 0.0000 | 1 |
+| selector_match | D1mr | 30 | 1009 | 1009.0 | 1009 | 0.0000 | 1 |
+| selector_match | D1mw | 30 | 1 | 1.0 | 1 | 0.0000 | 1 |
+| selector_match | ILmr | 30 | 27 | 27.0 | 27 | 0.0000 | 1 |
+| selector_match | DLmr | 30 | 0 | 0.0 | 0 | 0.0000 | 1 |
+| selector_match | DLmw | 30 | 0 | 0.0 | 0 | 0.0000 | 1 |
+| selector_match | L1hits | 30 | 23052538 | 23052538.0 | 23052538 | 0.0000 | 1 |
+| selector_match | LLhits | 30 | 1010 | 1010.0 | 1010 | 0.0000 | 1 |
+| selector_match | RamHits | 30 | 27 | 27.0 | 27 | 0.0000 | 1 |
+| selector_match | TotalRW | 30 | 23053575 | 23053575.0 | 23053575 | 0.0000 | 1 |
+| selector_match | EstimatedCycles | 30 | 23058533 | 23058533.0 | 23058533 | 0.0000 | 1 |
+| url_parse | Ir | 30 | 10817984 | 10817984.0 | 10817984 | 0.0000 | 1 |
+| url_parse | Dr | 30 | 2247373 | 2247373.0 | 2247373 | 0.0000 | 1 |
+| url_parse | Dw | 30 | 1404683 | 1404683.0 | 1404683 | 0.0000 | 1 |
+| url_parse | I1mr | 30 | 77637 | 77637.0 | 77637 | 0.0000 | 1 |
+| url_parse | D1mr | 30 | 8221 | 8221.0 | 8221 | 0.0000 | 1 |
+| url_parse | D1mw | 30 | 1802 | 1802.0 | 1802 | 0.0000 | 1 |
+| url_parse | ILmr | 30 | 518 | 518.0 | 518 | 0.0000 | 1 |
+| url_parse | DLmr | 30 | 19 | 19.0 | 19 | 0.0000 | 1 |
+| url_parse | DLmw | 30 | 884 | 884.0 | 884 | 0.0000 | 1 |
+| url_parse | L1hits | 30 | 14382380 | 14382380.0 | 14382380 | 0.0000 | 1 |
+| url_parse | LLhits | 30 | 86239 | 86239.0 | 86239 | 0.0000 | 1 |
+| url_parse | RamHits | 30 | 1421 | 1421.0 | 1421 | 0.0000 | 1 |
+| url_parse | TotalRW | 30 | 14470040 | 14470040.0 | 14470040 | 0.0000 | 1 |
+| url_parse | EstimatedCycles | 30 | 14863310 | 14863310.0 | 14863310 | 0.0000 | 1 |
+
+### ubuntu-latest
+| bench | metric | n | min | median | max | spread % | distinct |
+|---|---|---|---|---|---|---|---|
+| css_tokenize | Ir | 30 | 28752958 | 28752958.0 | 28752958 | 0.0000 | 1 |
+| css_tokenize | Dr | 30 | 8979190 | 8979190.0 | 8979190 | 0.0000 | 1 |
+| css_tokenize | Dw | 30 | 5567375 | 5567375.0 | 5567375 | 0.0000 | 1 |
+| css_tokenize | I1mr | 30 | 109 | 109.0 | 109 | 0.0000 | 1 |
+| css_tokenize | D1mr | 30 | 6600 | 6600.0 | 6600 | 0.0000 | 1 |
+| css_tokenize | D1mw | 30 | 0 | 0.0 | 0 | 0.0000 | 1 |
+| css_tokenize | ILmr | 30 | 109 | 109.0 | 109 | 0.0000 | 1 |
+| css_tokenize | DLmr | 30 | 36 | 36.0 | 36 | 0.0000 | 1 |
+| css_tokenize | DLmw | 30 | 0 | 0.0 | 0 | 0.0000 | 1 |
+| css_tokenize | L1hits | 30 | 43292814 | 43292814.0 | 43292814 | 0.0000 | 1 |
+| css_tokenize | LLhits | 30 | 6564 | 6564.0 | 6564 | 0.0000 | 1 |
+| css_tokenize | RamHits | 30 | 145 | 145.0 | 145 | 0.0000 | 1 |
+| css_tokenize | TotalRW | 30 | 43299523 | 43299523.0 | 43299523 | 0.0000 | 1 |
+| css_tokenize | EstimatedCycles | 30 | 43330709 | 43330709.0 | 43330709 | 0.0000 | 1 |
+| html_tokenize | Ir | 30 | 67106292 | 67106292.0 | 67106292 | 0.0000 | 1 |
+| html_tokenize | Dr | 30 | 16058067 | 16058067.0 | 16058067 | 0.0000 | 1 |
+| html_tokenize | Dw | 30 | 11671208 | 11671208.0 | 11671208 | 0.0000 | 1 |
+| html_tokenize | I1mr | 30 | 50462 | 50462.0 | 50462 | 0.0000 | 1 |
+| html_tokenize | D1mr | 30 | 7876 | 7876.0 | 7876 | 0.0000 | 1 |
+| html_tokenize | D1mw | 30 | 3882 | 3882.0 | 3882 | 0.0000 | 1 |
+| html_tokenize | ILmr | 30 | 474 | 474.0 | 474 | 0.0000 | 1 |
+| html_tokenize | DLmr | 30 | 75 | 75.0 | 75 | 0.0000 | 1 |
+| html_tokenize | DLmw | 30 | 3850 | 3850.0 | 3850 | 0.0000 | 1 |
+| html_tokenize | L1hits | 30 | 94773347 | 94773347.0 | 94773347 | 0.0000 | 1 |
+| html_tokenize | LLhits | 30 | 57821 | 57821.0 | 57821 | 0.0000 | 1 |
+| html_tokenize | RamHits | 30 | 4399 | 4399.0 | 4399 | 0.0000 | 1 |
+| html_tokenize | TotalRW | 30 | 94835567 | 94835567.0 | 94835567 | 0.0000 | 1 |
+| html_tokenize | EstimatedCycles | 30 | 95216417 | 95216417.0 | 95216417 | 0.0000 | 1 |
+| selector_match | Ir | 30 | 17729135 | 17729135.0 | 17729135 | 0.0000 | 1 |
+| selector_match | Dr | 30 | 5556726 | 5556726.0 | 5556726 | 0.0000 | 1 |
+| selector_match | Dw | 30 | 1350747 | 1350747.0 | 1350747 | 0.0000 | 1 |
+| selector_match | I1mr | 30 | 29 | 29.0 | 29 | 0.0000 | 1 |
+| selector_match | D1mr | 30 | 1010 | 1010.0 | 1010 | 0.0000 | 1 |
+| selector_match | D1mw | 30 | 1 | 1.0 | 1 | 0.0000 | 1 |
+| selector_match | ILmr | 30 | 29 | 29.0 | 29 | 0.0000 | 1 |
+| selector_match | DLmr | 30 | 0 | 0.0 | 0 | 0.0000 | 1 |
+| selector_match | DLmw | 30 | 0 | 0.0 | 0 | 0.0000 | 1 |
+| selector_match | L1hits | 30 | 24635568 | 24635568.0 | 24635568 | 0.0000 | 1 |
+| selector_match | LLhits | 30 | 1011 | 1011.0 | 1011 | 0.0000 | 1 |
+| selector_match | RamHits | 30 | 29 | 29.0 | 29 | 0.0000 | 1 |
+| selector_match | TotalRW | 30 | 24636608 | 24636608.0 | 24636608 | 0.0000 | 1 |
+| selector_match | EstimatedCycles | 30 | 24641638 | 24641638.0 | 24641638 | 0.0000 | 1 |
+| url_parse | Ir | 30 | 11181077 | 11181077.0 | 11181077 | 0.0000 | 1 |
+| url_parse | Dr | 30 | 2453397 | 2453397.0 | 2453397 | 0.0000 | 1 |
+| url_parse | Dw | 30 | 1428321 | 1428321.0 | 1428321 | 0.0000 | 1 |
+| url_parse | I1mr | 30 | 94720 | 94720.0 | 94720 | 0.0000 | 1 |
+| url_parse | D1mr | 30 | 8289 | 8289.0 | 8289 | 0.0000 | 1 |
+| url_parse | D1mw | 30 | 1826 | 1826.0 | 1826 | 0.0000 | 1 |
+| url_parse | ILmr | 30 | 544 | 544.0 | 544 | 0.0000 | 1 |
+| url_parse | DLmr | 30 | 30 | 30.0 | 30 | 0.0000 | 1 |
+| url_parse | DLmw | 30 | 883 | 883.0 | 883 | 0.0000 | 1 |
+| url_parse | L1hits | 30 | 14957960 | 14957960.0 | 14957960 | 0.0000 | 1 |
+| url_parse | LLhits | 30 | 103378 | 103378.0 | 103378 | 0.0000 | 1 |
+| url_parse | RamHits | 30 | 1457 | 1457.0 | 1457 | 0.0000 | 1 |
+| url_parse | TotalRW | 30 | 15062795 | 15062795.0 | 15062795 | 0.0000 | 1 |
+| url_parse | EstimatedCycles | 30 | 15525845 | 15525845.0 | 15525845 | 0.0000 | 1 |
+
+## Cross-job spread over all phases (base, head, head2, cachesim), Ir only
+ubuntu-24.04-arm css_tokenize: n=120 distinct=1 spread=0.0000%
+ubuntu-24.04-arm html_tokenize: n=120 distinct=1 spread=0.0000%
+ubuntu-24.04-arm selector_match: n=120 distinct=1 spread=0.0000%
+ubuntu-24.04-arm url_parse: n=120 distinct=1 spread=0.0000%
+ubuntu-latest css_tokenize: n=120 distinct=1 spread=0.0000%
+ubuntu-latest html_tokenize: n=120 distinct=1 spread=0.0000%
+ubuntu-latest selector_match: n=120 distinct=1 spread=0.0000%
+ubuntu-latest url_parse: n=120 distinct=1 spread=0.0000%
+
+## Same-job base vs head (and head2) diffs
+head vs base, ubuntu-24.04-arm, Ir: comparisons=120 nonzero=0 max|diff|=0.00000% over1%=0
+head vs base, ubuntu-24.04-arm, EstimatedCycles: comparisons=120 nonzero=0 max|diff|=0.00000% over1%=0
+head vs base, ubuntu-latest, Ir: comparisons=120 nonzero=0 max|diff|=0.00000% over1%=0
+head vs base, ubuntu-latest, EstimatedCycles: comparisons=120 nonzero=0 max|diff|=0.00000% over1%=0
+head2 vs base, ubuntu-24.04-arm, Ir: comparisons=120 nonzero=0 max|diff|=0.00000% over1%=0
+head2 vs base, ubuntu-24.04-arm, EstimatedCycles: comparisons=120 nonzero=0 max|diff|=0.00000% over1%=0
+head2 vs base, ubuntu-latest, Ir: comparisons=120 nonzero=0 max|diff|=0.00000% over1%=0
+head2 vs base, ubuntu-latest, EstimatedCycles: comparisons=120 nonzero=0 max|diff|=0.00000% over1%=0
+
+## Per-job host
+('ubuntu-24.04-arm', '0xd49', 'ubuntu24-arm64 20261012.149.1', '6.17.0-1022-azure', 'valgrind-3.22.0') 30
+('ubuntu-latest', 'AMD EPYC 9V74 80-Core Processor', 'ubuntu24 20261012.334.1', '6.17.0-1022-azure', 'valgrind-3.22.0') 7
+('ubuntu-latest', 'AMD EPYC 7763 64-Core Processor', 'ubuntu24 20261012.334.1', '6.17.0-1022-azure', 'valgrind-3.22.0') 14
+('ubuntu-latest', 'AMD EPYC 9V45 96-Core Processor', 'ubuntu24 20261012.334.1', '6.17.0-1022-azure', 'valgrind-3.22.0') 5
+('ubuntu-latest', 'INTEL(R) XEON(R) PLATINUM 8573C', 'ubuntu24 20261012.334.1', '6.17.0-1022-azure', 'valgrind-3.22.0') 3
+('ubuntu-latest', 'Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz', 'ubuntu24 20261012.334.1', '6.17.0-1022-azure', 'valgrind-3.22.0') 1
+
+## Ir by CPU model (head phase)
+ubuntu-24.04-arm css_tokenize [0xd49]: [28356736]
+ubuntu-24.04-arm html_tokenize [0xd49]: [65254049]
+ubuntu-24.04-arm selector_match [0xd49]: [16172600]
+ubuntu-24.04-arm url_parse [0xd49]: [10817984]
+ubuntu-latest css_tokenize [AMD EPYC 9V74 80-Core Processor]: [28752958]
+ubuntu-latest css_tokenize [AMD EPYC 7763 64-Core Processor]: [28752958]
+ubuntu-latest css_tokenize [AMD EPYC 9V45 96-Core Processor]: [28752958]
+ubuntu-latest css_tokenize [INTEL(R) XEON(R) PLATINUM 8573C]: [28752958]
+ubuntu-latest css_tokenize [Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz]: [28752958]
+ubuntu-latest html_tokenize [AMD EPYC 9V74 80-Core Processor]: [67106292]
+ubuntu-latest html_tokenize [AMD EPYC 7763 64-Core Processor]: [67106292]
+ubuntu-latest html_tokenize [AMD EPYC 9V45 96-Core Processor]: [67106292]
+ubuntu-latest html_tokenize [INTEL(R) XEON(R) PLATINUM 8573C]: [67106292]
+ubuntu-latest html_tokenize [Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz]: [67106292]
+ubuntu-latest selector_match [AMD EPYC 9V74 80-Core Processor]: [17729135]
+ubuntu-latest selector_match [AMD EPYC 7763 64-Core Processor]: [17729135]
+ubuntu-latest selector_match [AMD EPYC 9V45 96-Core Processor]: [17729135]
+ubuntu-latest selector_match [INTEL(R) XEON(R) PLATINUM 8573C]: [17729135]
+ubuntu-latest selector_match [Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz]: [17729135]
+ubuntu-latest url_parse [AMD EPYC 9V74 80-Core Processor]: [11181077]
+ubuntu-latest url_parse [AMD EPYC 7763 64-Core Processor]: [11181077]
+ubuntu-latest url_parse [AMD EPYC 9V45 96-Core Processor]: [11181077]
+ubuntu-latest url_parse [INTEL(R) XEON(R) PLATINUM 8573C]: [11181077]
+ubuntu-latest url_parse [Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz]: [11181077]
+
+## Raw Ir (head phase) per job
+| run | os | rep | cpu | css_tokenize | html_tokenize | selector_match | url_parse |
+|---|---|---|---|---|---|---|---|
+| 39160348068 | ubuntu-24.04-arm | 1 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 2 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 3 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 4 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 5 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 6 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 7 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 8 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 9 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 10 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 11 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 12 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 13 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 14 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-24.04-arm | 15 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160348068 | ubuntu-latest | 1 | AMD EPYC 9V74 80-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 2 | INTEL(R) XEON(R) PLATINUM 8573C | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 3 | INTEL(R) XEON(R) PLATINUM 8573C | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 4 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 5 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 6 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 7 | AMD EPYC 9V45 96-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 8 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 9 | AMD EPYC 9V74 80-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 10 | AMD EPYC 9V74 80-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 11 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 12 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 13 | AMD EPYC 9V45 96-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 14 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160348068 | ubuntu-latest | 15 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-24.04-arm | 1 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 2 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 3 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 4 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 5 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 6 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 7 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 8 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 9 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 10 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 11 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 12 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 13 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 14 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-24.04-arm | 15 | 0xd49 | 28356736 | 65254049 | 16172600 | 10817984 |
+| 39160530092 | ubuntu-latest | 1 | AMD EPYC 9V45 96-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 2 | Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 3 | AMD EPYC 9V74 80-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 4 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 5 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 6 | AMD EPYC 9V45 96-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 7 | AMD EPYC 9V74 80-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 8 | INTEL(R) XEON(R) PLATINUM 8573C | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 9 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 10 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 11 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 12 | AMD EPYC 9V74 80-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 13 | AMD EPYC 7763 64-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 14 | AMD EPYC 9V45 96-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+| 39160530092 | ubuntu-latest | 15 | AMD EPYC 9V74 80-Core Processor | 28752958 | 67106292 | 17729135 | 11181077 |
+
+## Step wall times (s), from the GitHub jobs API
+
+### ubuntu-24.04-arm: jobs=30 conclusions={'success': 30}
+| step | n | median | p90 | max |
+|---|---|---|---|---|
+| Set up job | 30 | 1 | 1 | 2 |
+| Run actions/checkout@11d5960a326750d5838078e36cf38b85af67726 | 30 | 1 | 1 | 2 |
+| Setup (valgrind, pinned toolchain, gungraun-runner) | 30 | 21 | 26 | 32 |
+| Build base | 30 | 15 | 16 | 17 |
+| Build head | 30 | 2 | 3 | 3 |
+| Bench base (save baseline) | 30 | 3 | 4 | 4 |
+| Bench head (compare with base) | 30 | 4 | 4 | 4 |
+| Bench head again (same binary) | 30 | 4 | 4 | 4 |
+| Bench head with cache simulation | 30 | 3 | 4 | 5 |
+| Upload results | 30 | 1 | 1 | 2 |
+| Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af | 30 | 0 | 1 | 1 |
+| Complete job | 30 | 0 | 0 | 1 |
+| **job total** | 30 | 59 | 64 | 70 |
+
+### ubuntu-latest: jobs=30 conclusions={'success': 30}
+| step | n | median | p90 | max |
+|---|---|---|---|---|
+| Set up job | 30 | 1 | 2 | 2 |
+| Run actions/checkout@11d5960a326750d5838078e36cf38b85af67726 | 30 | 1 | 2 | 3 |
+| Setup (valgrind, pinned toolchain, gungraun-runner) | 30 | 21 | 26 | 33 |
+| Build base | 30 | 20 | 21 | 22 |
+| Build head | 30 | 2 | 2 | 3 |
+| Bench base (save baseline) | 30 | 4 | 4 | 4 |
+| Bench head (compare with base) | 30 | 3 | 4 | 4 |
+| Bench head again (same binary) | 30 | 3 | 4 | 4 |
+| Bench head with cache simulation | 30 | 3 | 4 | 4 |
+| Upload results | 30 | 1 | 2 | 2 |
+| Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af | 30 | 0 | 1 | 1 |
+| Complete job | 30 | 0 | 0 | 1 |
+| **job total** | 30 | 60 | 67 | 71 |
