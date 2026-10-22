@@ -14,7 +14,7 @@ Plus the black-box observations 0.3.1 added: which OS counters each incumbent's 
 
 ## The harness
 
-`harness/sample-footprint.sh <bundle-id> <url> <minutes>` — launches the target, waits for idle, samples the process tree every 5 s (macOS: `footprint` CLI per process; Linux: `/proc/<pid>/status` + `smaps_rollup`; Windows: PowerShell commit-charge counters via the rig). Output: a dated TSV in `results/` with per-sample columns (timestamp, pid, footprint counters, note). Spawn latency uses the same wrapper with a wall-clock probe.
+`harness/sample-footprint.sh <app-name|pid> <url-or-empty> <minutes> [label]` — launches the target by app name (anchored to /Applications) or attaches to a PID, waits for idle, and samples **one process** every 5 s (macOS: `footprint` CLI; Linux: `/proc/<pid>/status` + `smaps_rollup`; Windows: PowerShell commit-charge counters via the rig). Output: a dated TSV in `results/` with per-sample columns (t, sample, pid, phys_footprint_MB, peak_MB). **Tree-sum mode** (sampling the full process tree of a browser, not just the main process) is the next harness change, queued before the real matrix; the smoke rows in `results/` are main-process-only and say so.
 
 ## Decision-log discipline
 
