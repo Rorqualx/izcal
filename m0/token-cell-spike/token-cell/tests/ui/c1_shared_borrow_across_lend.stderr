@@ -1,9 +1,0 @@
-error[E0502]: cannot borrow `*t` as mutable because it is also borrowed as immutable
- --> tests/ui/c1_shared_borrow_across_lend.rs:8:9
-  |
-7 |         let s: &String = c.borrow(t);
-  |                                   - immutable borrow occurs here
-8 |         lend(t, || ());
-  |         ^^^^^^^^^^^^^^ mutable borrow occurs here
-9 |         println!("{s}");
-  |                    - immutable borrow later used here

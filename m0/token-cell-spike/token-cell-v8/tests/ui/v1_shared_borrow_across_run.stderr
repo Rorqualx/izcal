@@ -1,9 +1,0 @@
-error[E0502]: cannot borrow `*tok` as mutable because it is also borrowed as immutable
- --> tests/ui/v1_shared_borrow_across_run.rs:7:5
-  |
-6 |     let s: &str = text.borrow(tok);
-  |                               --- immutable borrow occurs here
-7 |     hg_script::run(tok, scope, "document.body.textContent = ''");
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here
-8 |     s.len()
-  |     - immutable borrow later used here
