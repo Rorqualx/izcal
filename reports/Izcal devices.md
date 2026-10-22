@@ -1,10 +1,12 @@
 # Izcal devices
 
-*First-principles specification of Izcal's device access: WebUSB, WebHID, Web Serial, Web MIDI, Web Bluetooth and Web NFC behind one device-access boundary — one process kind in two roles (arbiter and session, with the session's stateless enumeration configuration), broker-signed device-access tickets, one per-device permission model, Izcal-written descriptor and protocol parsers, and recorded device sessions that replay against a virtual device. Date: 21 October 2026. Status: draft 0.2. Research notes: `research_notes/Izcal devices/` (`specs_standards.md`, `os_interfaces.md`, `security_permissions.md`, `fingerprinting_privacy.md`, `determinism_recording_testing.md`, `gaps_opportunities.md`, `history_postmortems.md`; phase 8: `factcheck.md`, `critique.md`). Relates to: HGBA-2 2.4.1 [M-1, P1, P2, P6, I-1, I-2, I-6, Section 4.8][H2]; HGBA-3 3.3.1 [B1, B2, B5, B9, B10, DET-1, DET-2, PRIV-2, AG-0][H3]; Stage 1 design 0.14.2 [Sections 1, 2.1–2.2, 4, 6, 8.1, 8.3][S1]; security scope 0.3.6 [CON-R1 to CON-R5, A-SH-12, IPC-R1 to IPC-R17, SEC-3 to SEC-9, SEC-24, SEC-26, REC-R1 to REC-R6, Sections 3.5, 6.3, 6.3a, 6.5–6.7, 6.13][SS]; coding standard 0.3.5 [tier P, tier R, tier O, CS-D1, CS-ER-9, CS-PF-1, CS-PF-4, G-range registration][CS]; shell 0.3 [SH-D11, SH-13 to SH-16, Sections 6.4–6.6][SH]; DevTools spec 0.3.5 [DT-D1 to DT-D5, DT-1, DT-13, DT-15, DT-16, G11, G12][DT]; resource footprint 0.4.3 [FP-1, FP-22, FP-D8, FP-D13, FP-25, Section 8.2][FP]; extensions 0.4 [Ring C, EX-D5][EX]; DOM, bindings and event loop 0.2.4 [Section 6.18][DM]; HTML and CSS parsing and style 0.3.7 [ST-D18][ST]; layout 0.4.2 [LY-D10][LY]; accessibility 0.2.4 [AX-D11][AX]; images and media 0.4.3 [MD-D3][MD].*
+*First-principles specification of Izcal's device access: WebUSB, WebHID, Web Serial, Web MIDI, Web Bluetooth and Web NFC behind one device-access boundary — one process kind in two roles (arbiter and session, with the session's stateless enumeration configuration), broker-signed device-access tickets, one per-device permission model, Izcal-written descriptor and protocol parsers, and recorded device sessions that replay against a virtual device. Date: 21 October 2026. Status: draft 0.3. Research notes: `research_notes/Izcal devices/` (`specs_standards.md`, `os_interfaces.md`, `security_permissions.md`, `fingerprinting_privacy.md`, `determinism_recording_testing.md`, `gaps_opportunities.md`, `history_postmortems.md`; phase 8: `factcheck.md`, `critique.md`). Relates to: HGBA-2 2.4.2 [M-1, P1, P2, P6, I-1, I-2, I-6, Section 4.8][H2]; HGBA-3 3.3.2 [B1, B2, B5, B9, B10, DET-1, DET-2, PRIV-2, AG-0][H3]; Stage 1 design 0.14.3 [Sections 1, 2.1–2.2, 4, 6, 8.1, 8.3][S1]; security scope 0.3.7 [CON-R1 to CON-R9, A-SH-12, IPC-R1 to IPC-R17, SEC-3 to SEC-9, SEC-24, SEC-26, REC-R1 to REC-R7, Sections 3.5, 6.3, 6.3a, 6.5–6.7, 6.13][SS]; coding standard 0.3.6 [tier P, tier R, tier O, CS-D1, CS-ER-9, CS-ER-19, CS-PF-1, CS-PF-4, CS-TY-12, CS-TY-13, G-range registration][CS]; shell 0.3 [SH-D11, SH-13 to SH-16, SH-35, Sections 6.4–6.6][SH]; DevTools spec 0.3.6 [DT-D1 to DT-D5, DT-1, DT-13, DT-15, DT-16, G11, G12][DT]; resource footprint 0.4.4 [FP-1, FP-22, FP-D8, FP-D13, FP-25, Section 8.2][FP]; extensions 0.4.1 [Ring C, EX-D5][EX]; DOM, bindings and event loop 0.2.5 [Section 6.18][DM]; HTML and CSS parsing and style 0.3.7 [ST-D18][ST]; layout 0.4.2 [LY-D10][LY]; accessibility 0.2.5 [AX-D11][AX]; images and media 0.4.3 [MD-D3][MD].*
 
 *Revision 0.1 (21 October 2026): first draft, written from the seven research notes by the synthesis author.*
 
 *Revision 0.2 (21 October 2026): phase 8 applied — independent fact-check (24 findings) and independent design critique (36 findings); dispositions in Appendix A.*
+
+*Revision 0.3 (21 October 2026): owner decision applied — all fifteen recommendations in 9.4 (DV-D1 to DV-D15) are accepted; the six proposed owner exceptions in 6.15 (DV-E1 to DV-E6) remain proposed and are not granted; the C-6 staffing reconciliation in 9.3, 9.5.11 and F2 is corrected; the 9.5 amendments are applied to their target documents, each with a dated revision line.*
 
 Six web APIs let a page talk to hardware: **WebUSB**, **WebHID**, **Web Serial**, **Web MIDI**, **Web Bluetooth** and **Web NFC**. Every one of them is a direct path from page script to an operating-system device interface, and every one is implemented default-on today by one engine family (MIDI and Serial also ship behind an add-on in Firefox), under its own permission model, with its own choice of what a "device" is and when a grant persists. No Izcal document owns any of them: the DOM spec's API table has no device row, the security scope's 36-kind process map has no device service, the Stage 1 feature table has no device track, and the extensions spec's Ring C does not even name the six. The corpus has a rule for exactly this situation — the DOM spec's 6.18 sends every unclaimed web API to the amendment ledger as a gap before admission — and the ledger has no row for devices. This specification names that gap **G-26**, owns the six APIs, and closes it.
 
@@ -830,9 +832,11 @@ The windows overlap with Stage 1's milestones M0–M8 and exit at 48–60 months
 | UX, accessibility and documentation | 1–2† | Chooser, indicator, site panel, errors, AX-D11, help pages |
 | **Total** | **23–31† at peak** | **70–110† engineer-years across months 3–72†, ramping from the Stage 1 team and winding down after DV-M5** |
 
-The Stage 1 share is **9–13† engineers gross**, **8–12† net** after the 1† of shared security and fuzzing time already counted in the Stage 1 total. That makes the corpus's Stage 1 total **67.5–96.5† engineers** (59.5–84.5† + 8–12†). C-6 is a Stage 1 staffing statement, not a full-strength total: its recommendation is ~442–570† plus DevTools 5–6.5† and Security 3–4†, and the device addition to that Stage 1 figure is the 8–12† net share above. A full-strength total would have to be derived in 9.2 from named tracks; this spec does not claim one. The seven roles sum to 23–31† at peak; the **70–110†** engineer-year figure is the area under the ramp, not peak × 5.75 years (which would be 132–178†): the device team ramps from the 9–13† Stage 1 share, holds 23–31† for roughly half the window, and winds down after DV-M5. The critical path is DV-M0 → DV-M1 (parsers) → DV-M2 (recording/replay) → DV-M3 (Stage 1 exposure), with the Bluetooth backend able to run in parallel because it has no parser dependency beyond the GATT codec. The first hires are the parser lead, the boundary lead, the Android/platform lead and the fuzz lead; the UX work starts at DV-M1, not at the end.
+The Stage 1 share is **9–13† engineers gross**, **8–12† net** after the 1† of shared security and fuzzing time already counted in the Stage 1 total. That makes the corpus's Stage 1 total **67.5–96.5† engineers** (59.5–84.5† + 8–12†), and the share folds into Stage 1 8.3's track table. C-6's full-strength total is not withdrawn: it is about **590–778† people†** (the nine-spec base of 442–570† plus the folds from batches 2–4), and this spec's **23–31† peak folds into it**, making about **613–809† people†**. C-6's Stage 1 statement stays as it is — 442–570† plus DevTools 5–6.5† and Security 3–4† — with the device addition to that Stage 1 figure being the 8–12† net share above. The seven roles sum to 23–31† at peak; the **70–110†** engineer-year figure is the area under the ramp, not peak × 5.75 years (which would be 132–178†): the device team ramps from the 9–13† Stage 1 share, holds 23–31† for roughly half the window, and winds down after DV-M5. The critical path is DV-M0 → DV-M1 (parsers) → DV-M2 (recording/replay) → DV-M3 (Stage 1 exposure), with the Bluetooth backend able to run in parallel because it has no parser dependency beyond the GATT codec. The first hires are the parser lead, the boundary lead, the Android/platform lead and the fuzz lead; the UX work starts at DV-M1, not at the end.
 
 ### 9.4 Decisions
+
+**Owner decision (21 October 2026): every recommendation below is accepted** (DV-D1 to DV-D15). The six proposed owner exceptions in 6.15 (DV-E1 to DV-E6) are **not granted**: they remain proposed, each carries its 12-month† expiry after grant, and each is re-decided at DV-M5.
 
 | ID | Decision | Recommendation | Reversal trigger | Owner decision |
 |---|---|---|---|---|
@@ -856,9 +860,9 @@ The Stage 1 share is **9–13† engineers gross**, **8–12† net** after the 
 
 ### 9.5 Amendments to other documents
 
-All amendments are written here, as the corpus requires; no other document is edited by this spec.
+All amendments are written here, as the corpus requires; this spec itself edits no other document. The Revision 0.3 pass applied every row to its target document, each with a dated revision line in the receiver.
 
-#### 9.5.1 Security scope 0.3.6
+#### 9.5.1 Security scope 0.3.7
 
 | Location | Amendment |
 |---|---|
@@ -876,7 +880,7 @@ All amendments are written here, as the corpus requires; no other document is ed
 | SEC-24 | Add the six parser targets and the weekly hours in 6.9; zero open crash bugs older than 14† days |
 | Threat-model index and ATK/TB tables | `device-access.md` joins the index; ATK-10 and TB-14 are cross-referenced from the existing ATK/TB tables |
 
-#### 9.5.2 Stage 1 architecture design 0.14.2
+#### 9.5.2 Stage 1 architecture design 0.14.3
 
 | Location | Amendment |
 |---|---|
@@ -891,7 +895,7 @@ All amendments are written here, as the corpus requires; no other document is ed
 | G9 anchors | `hg-device-*` crates carry `// spec: Izcal devices <rev> <section>` |
 | Crate rules | Register G210–G219 in the Stage 1 rule set; add the tier rows from 6.17 |
 
-#### 9.5.3 Shell 0.3
+#### 9.5.3 Shell 0.3.4
 
 | Location | Amendment |
 |---|---|
@@ -903,7 +907,7 @@ All amendments are written here, as the corpus requires; no other document is ed
 | Settings page | Add a Devices page: per-family policy, Experimental device APIs per-origin test-site list (max 20† origins, managed-profile lock), identifier-exposure default, all grants, clear all |
 | SH-16 / new SH-35 | SH-35: the device indicator and site-panel Devices row are broker/shell UI, never page-drawable; the page cannot read or hide them |
 
-#### 9.5.4 DevTools spec 0.3.5
+#### 9.5.4 DevTools spec 0.3.6
 
 | Location | Amendment |
 |---|---|
@@ -917,7 +921,7 @@ All amendments are written here, as the corpus requires; no other document is ed
 | DT-16 | The virtual device is labelled in the DevTools overlay, not in the page; inspection does not change device behaviour |
 | 6.13 export | The recording export header carries the fidelity claims and the redaction list |
 
-#### 9.5.5 Resource footprint 0.4.3
+#### 9.5.5 Resource footprint 0.4.4
 
 | Location | Amendment |
 |---|---|
@@ -929,7 +933,7 @@ All amendments are written here, as the corpus requires; no other document is ed
 | FP-25 | Device code adds ≤ 3 MiB† to the installer; no separate data download |
 | FP-1 Windows note | The ≈ 74 MiB† Windows always-on ceiling is accepted (A-SH-39); device rows do not change it; no device code runs in the shell |
 
-#### 9.5.6 Coding standard 0.3.5
+#### 9.5.6 Coding standard 0.3.6
 
 | Location | Amendment |
 |---|---|
@@ -941,7 +945,7 @@ All amendments are written here, as the corpus requires; no other document is ed
 | CS-TY-13 / unsafe inventory | The device FFI lives in `hg-substrate-os` modules with inventory entries; the parsers and the arbiter/session logic carry `#![forbid(unsafe_code)]` |
 | No new CS rule | The log-redaction requirement is G218, not a new CS-ER rule; the existing 66 rules are unchanged |
 
-#### 9.5.7 DOM, bindings and event loop 0.2.4
+#### 9.5.7 DOM, bindings and event loop 0.2.5
 
 | Location | Amendment |
 |---|---|
@@ -949,7 +953,7 @@ All amendments are written here, as the corpus requires; no other document is ed
 | 6.18 gap rule | Record that G-26 is closed; no other device API is claimed by this spec |
 | Bindings | Add the six interfaces to the bindings inventory with their `[SecureContext]`, `[Exposed]` and policy tokens; service-worker and shared-worker exposure is not shipped (6.10) |
 
-#### 9.5.8 Extensions 0.4
+#### 9.5.8 Extensions 0.4.1
 
 | Location | Amendment |
 |---|---|
@@ -957,14 +961,14 @@ All amendments are written here, as the corpus requires; no other document is ed
 | Web APIs | Refuse WebUSB, WebHID, Web Serial, Web MIDI, Web Bluetooth and Web NFC to extension pages, content scripts and workers; a main-world script injected into a page runs as the page and can use the page's handle, so the boundary relies on the extensions spec's main-world injection rules (6.14) |
 | EX-D5 | Unchanged; the closed-list rule now covers the device namespaces |
 
-#### 9.5.9 Accessibility 0.2.4
+#### 9.5.9 Accessibility 0.2.5
 
 | Location | Amendment |
 |---|---|
 | AX-D11 | Add the three device classes as high-risk; record that an AT-invoked device approval is refused until person-present evidence exists, and that the OS-attested path (physical input within 30 s† or an attested assistive state) is the device approval path once implemented; the chooser remains keyboard-operable; DV-E5/DV-E6 are conditioned on it or an owner acceptance; DV-15 is the comprehension gate |
 | Chooser | Focus order, listbox semantics, consequence announcement, no timeout while AT is interacting (6.18) |
 
-#### 9.5.10 HGBA-2 2.4.1 and HGBA-3 3.3.1
+#### 9.5.10 HGBA-2 2.4.2 and HGBA-3 3.3.2
 
 | Location | Amendment |
 |---|---|
@@ -978,9 +982,9 @@ All amendments are written here, as the corpus requires; no other document is ed
 
 | Location | Amendment |
 |---|---|
-| "Other gaps" | Add **G-26**: "Six device APIs (WebUSB, WebHID, Web Serial, Web MIDI, Web Bluetooth, Web NFC) have no owner, no process, no permission model, no recording class and no threat model." Mark **closed by Izcal devices 0.2**, with the process row, the six DOM rows, the Ring C additions and the security-scope row as evidence |
+| "Other gaps" | Add **G-26**: "Six device APIs (WebUSB, WebHID, Web Serial, Web MIDI, Web Bluetooth, Web NFC) have no owner, no process, no permission model, no recording class and no threat model." Mark **closed by Izcal devices 0.3**, with the process row, the six DOM rows, the Ring C additions and the security-scope row as evidence |
 | G-rule registry | Register **G210–G219** with their crate names and tiers |
-| C-6 | Add the staffing addendum in 9.3: 23–31† full strength, 9–13† gross in Stage 1, 8–12† net; C-6 is a Stage 1 statement (~442–570† + DevTools 5–6.5† + Security 3–4†) and its Stage 1 total rises by the 8–12† net device share; no full-strength C-6 total is claimed |
+| C-6 | Add the staffing addendum in 9.3: the 23–31† peak folds into C-6's full-strength total, taking it from about 590–778† to about 613–809† people†; the 9–13† gross / 8–12† net Stage 1 share folds into Stage 1 8.3's track table, taking its total from 59.5–84.5† to 67.5–96.5† engineers; C-6's Stage 1 statement remains ~442–570† + DevTools 5–6.5† + Security 3–4† |
 | Decision log | Add A-DV-1 to A-DV-15 as DV-D1–DV-D15, with DV-D3, DV-D4, DV-D5, DV-D8, DV-D9, DV-D12, DV-D13 and DV-D15 flagged for the owner |
 | Cross-references | This spec claims only the six device APIs; do not extend G-26 to another surface |
 
@@ -1054,7 +1058,7 @@ Phase 8 was performed for this draft by two independent agents, each briefed sep
 | **C7** | Compromised arbiter can read and inject every session's device traffic | **Accepted, fixed.** Stated as a residual; the arbiter is named the highest-value service process and DV-13 covers it. |
 | **C8** | No throughput, latency, stalled-device or recording-overhead targets | **Accepted, fixed.** DV-18 added with per-family throughput and p99 latency, stalled-device liveness, ring benchmark and recording overhead. |
 | **C9** | Six-family footprint row omitted per-additional-device arbiter cost and rings | **Accepted, fixed.** Six-family row recomputed at 34/38 MiB†; profile ring cap 64 MiB† with per-transfer and per-device caps; DV-11 gate corrected. |
-| **C10** | Staffing roles, total and engineer-years could not all hold | **Accepted, fixed.** 23–31† peak, 70–110† engineer-years with a stated ramp; Stage 1 share 9–13† gross/8–12† net; C-6 addendum restated as a Stage 1 statement. |
+| **C10** | Staffing roles, total and engineer-years could not all hold | **Accepted, fixed.** 23–31† peak, 70–110† engineer-years with a stated ramp; Stage 1 share 9–13† gross/8–12† net; C-6 addendum reconciled with the full-strength total (590–778† plus 23–31†, about 613–809† people†). |
 | **C11** | Nested vendor/keyboard HID collection with a unique report ID bypassed the refusal | **Accepted, fixed.** Any collection at any depth with a refused usage, and any report ID it uses, is refused; corpus and DV-4 cases added. |
 | **C12** | OS radio stack is an external trust boundary, not the codec | **Accepted, fixed.** Stated in 6.7 and the threat model; BlueBorne/KNOB/BrakTooth (OS/controller) separated from BLESA (bond); minimum patched-OS requirement added. |
 | **C13** | Global experimental setting was not a test-only gate | **Accepted, fixed.** The setting is a per-origin test-site list (max 20† origins), and the exposure decision is recorded as such. |
@@ -1087,7 +1091,7 @@ Phase 8 was performed for this draft by two independent agents, each briefed sep
 | ID | Finding | Disposition |
 |---|---|---|
 | **F1** | Windows shell ceiling presented as not accepted | **Fixed.** Corrected to owner decision A-SH-39; 9.5.5 carries the FP-1 Windows note. |
-| **F2** | Unsupported 607–799† full-strength C-6 total | **Fixed.** The total is withdrawn; 9.3 states C-6 is a Stage 1 statement (~442–570† + DevTools 5–6.5† + Security 3–4†) and the device addition is 8–12† net. |
+| **F2** | Unsupported 607–799† full-strength C-6 total | **Corrected in Revision 0.3.** The total is not unsupported and is not withdrawn: C-6's full-strength figure is about **590–778† people†** (the nine-spec base of 442–570† plus batches 2–4's folds), and this spec's 23–31† peak folds into it, making about **613–809† people†**. C-6's Stage 1 statement remains ~442–570† + DevTools 5–6.5† + Security 3–4†, and the 9–13† gross / 8–12† net Stage 1 share folds into Stage 1 8.3's track table. |
 | **F3** | Five Stage 1 amendment locations wrong | **Fixed.** Section 1, 2.1–2.2, 8.1 and 8.3; the 13.2 track-index row replaced with the 6 feature table and 8.1 milestone table. |
 | **F4** | Shell prompt queue and ledger fields cited as 6.5/6.6 | **Fixed.** Both amendments point at shell 6.4. |
 | **F5** | New shell target reused SH-17 | **Fixed.** The new target is SH-35; SH-17 is untouched. |
