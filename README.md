@@ -1,6 +1,6 @@
 # Izcal
 
-Izcal is a new Rust-first browser engine, written from the web specifications and first principles (HGBA-2's method constraint M-1). It uses V8 (through a project fork of `rusty_v8`), Stylo, Taffy, Parley and WebRender as dependencies, and copies no other browser's code. **HGBA** (Hardware-Growth Browser Architecture) is the name of its architecture and specifications; the product name is Izcal (Stage 1 design, D-S9). The project is at the end of milestone M0: specifications, spikes and build infrastructure, with no engine code yet.
+Izcal is a new Rust-first browser engine, written from the web specifications and first principles (HGBA-2's method constraint M-1), built **from the ground up with no engine dependencies** (HGBA-2 2.4.3, 21 October 2026; the earlier V8-fork plan of this README is superseded history). The accepted specification corpus lives on branch `spec/phase2c`. **HGBA** (Hardware-Growth Browser Architecture) is the name of its architecture and specifications; the product name is Izcal (Stage 1 design, D-S9). The project is at the end of milestone M0: specifications, spikes and build infrastructure, with no engine code yet.
 
 ## Specifications
 
@@ -31,7 +31,7 @@ Reviews that fed the specs are also in `reports/`; the evidence behind every rep
 ## Getting the code
 
 ```
-git clone --recurse-submodules https://github.com/Rorqualx/izcal.git
+git clone https://github.com/Rorqualx/izcal.git
 cd izcal && tools/setup-hooks.sh
 ```
 
@@ -41,4 +41,4 @@ Both repositories are public. The V8 archives built in M0 are not in git (see `.
 
 ## License
 
-MIT ([LICENSE](LICENSE)), for code and documents (Stage 1 design, D-S6). The `rusty_v8` fork is MIT too. Some dependencies keep their own licenses, notably Stylo, `selectors` and WebRender (MPL-2.0); see CONTRIBUTING.md, "License".
+MIT ([LICENSE](LICENSE)), for code and documents (Stage 1 design, D-S6). Everything Izcal ships, code and data, must be available under MIT (HGBA-2 2.4.3); the exceptions are in CONTRIBUTING.md, "License".
