@@ -34,3 +34,14 @@ FP-M0 open question 17, the macOS part. A standalone 30-line probe (task_info's 
 | After `MADV_FREE` (comparison) | 1,328 KB |
 
 **Finding:** `MADV_FREE_REUSABLE` releases the `phys_footprint` charge on this OS — the spec's FP-1 macOS release path works as intended. The re-touch observation (no re-charge within the run) is recorded as observed, not explained; a longer-observation variant is queued if any budget depends on the re-charge rate. Probe: `harness/madvise-probe.c` (build: `clang -O2`).
+
+## Cross-site mix (22 October 2026, macOS, rig local)
+
+30 tabs across 10 distinct domains (example.com, example.org, iana.org, wikipedia.org, archive.org, openstreetmap.org, gutenberg.org, ietf.org, w3.org, python.org — three tabs each), Chrome's page count verified (30), Firefox by direct invocation with the queued page-count caveat, same sampler and steady-state rule as the v4 matrix.
+
+| Load | Chrome | Firefox |
+|---|---|---|
+| 30 same-site tabs (v4) | 1,729 MB (47 procs) | 840 MB (15 procs) |
+| 30 cross-site tabs | **1,830 MB (36 procs)** | **2,066 MB (41 procs)** |
+
+**Reading:** Firefox's same-site economy disappears across sites (+1,226 MB, 15→41 processes — each distinct domain gets its own content process); Chrome's cross-site cost is mild (+101 MB) because its per-tab process model was already paying. The FP-S30 budget's worst case is the cross-site row, not the same-site one — the corpus's FP-S30 caveat ("≤ 10–12 cross-site frames per iframe-heavy page") now has its first incumbent baseline. Neither row is a threshold; both are FP-M0 observations.
