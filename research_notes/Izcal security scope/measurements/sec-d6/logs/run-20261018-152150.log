@@ -1,0 +1,541 @@
+# start 2026-10-18 15:21:50
+ProductName:		macOS
+ProductVersion:		27.0.1
+BuildVersion:		26A434
+Darwin Joes-Mini.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:06:15 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T8152 arm64
+Apple clang version 17.0.0 (clang-1700.6.4.2)
+@(#)PROGRAM:ld PROJECT:ld-1230.1
+26.2
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+=== bin/probe-sdk262 baseline
+RESULT mode=baseline pid=57971
+RESULT dyld_sdk=26.2.0
+RESULT dyld_minos=14.0.0
+RESULT sandboxed=0
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=OK bytes=15
+RESULT write_tmp=OK
+RESULT net_connect=OK
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=OK (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk262 baseline exit=0
+=== bin/probe-sdk262 custom-init
+RESULT mode=custom-init pid=57973
+RESULT dyld_sdk=26.2.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk262 custom-init exit=0
+=== bin/probe-sdk262 custom-params
+RESULT mode=custom-params pid=57975
+RESULT dyld_sdk=26.2.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_with_parameters_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk262 custom-params exit=0
+=== bin/probe-sdk262 named-pure
+RESULT mode=named-pure pid=57977
+RESULT dyld_sdk=26.2.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_named_pure_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=FAIL errno=1 (Operation not permitted)
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk262 named-pure exit=0
+=== bin/probe-sdk262 named-nonet
+RESULT mode=named-nonet pid=57979
+RESULT dyld_sdk=26.2.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_named_nonet_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=OK bytes=15
+RESULT write_tmp=OK
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=OK (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk262 named-nonet exit=0
+=== bin/probe-sdk262 mach
+RESULT mode=mach pid=57981
+RESULT dyld_sdk=26.2.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_mach_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk262 mach exit=0
+=== bin/probe-sdk27-ld baseline
+RESULT mode=baseline pid=57983
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandboxed=0
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=OK bytes=15
+RESULT write_tmp=OK
+RESULT net_connect=OK
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=OK (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-ld baseline exit=0
+=== bin/probe-sdk27-ld custom-init
+RESULT mode=custom-init pid=57985
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-ld custom-init exit=0
+=== bin/probe-sdk27-ld custom-params
+RESULT mode=custom-params pid=57987
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_with_parameters_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-ld custom-params exit=0
+=== bin/probe-sdk27-ld named-pure
+RESULT mode=named-pure pid=57989
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+./run.sh: line 24: 57989 Killed: 9               "$b" "$m" "$ALLOWED" "$DENIED" "$TMPD"
+STATUS bin/probe-sdk27-ld named-pure exit=137 signal=9 (KILL)
+=== bin/probe-sdk27-ld named-nonet
+RESULT mode=named-nonet pid=57993
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+./run.sh: line 24: 57993 Killed: 9               "$b" "$m" "$ALLOWED" "$DENIED" "$TMPD"
+STATUS bin/probe-sdk27-ld named-nonet exit=137 signal=9 (KILL)
+=== bin/probe-sdk27-ld mach
+RESULT mode=mach pid=57997
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_mach_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-ld mach exit=0
+=== bin/probe-sdk27-min27 baseline
+RESULT mode=baseline pid=57999
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=27.0.0
+RESULT sandboxed=0
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=OK bytes=15
+RESULT write_tmp=OK
+RESULT net_connect=OK
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=OK (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-min27 baseline exit=0
+=== bin/probe-sdk27-min27 custom-init
+RESULT mode=custom-init pid=58001
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=27.0.0
+RESULT sandbox_init_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-min27 custom-init exit=0
+=== bin/probe-sdk27-min27 custom-params
+RESULT mode=custom-params pid=58003
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=27.0.0
+RESULT sandbox_init_with_parameters_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-min27 custom-params exit=0
+=== bin/probe-sdk27-min27 named-pure
+RESULT mode=named-pure pid=58005
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=27.0.0
+./run.sh: line 24: 58005 Killed: 9               "$b" "$m" "$ALLOWED" "$DENIED" "$TMPD"
+STATUS bin/probe-sdk27-min27 named-pure exit=137 signal=9 (KILL)
+=== bin/probe-sdk27-min27 named-nonet
+RESULT mode=named-nonet pid=58009
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=27.0.0
+./run.sh: line 24: 58009 Killed: 9               "$b" "$m" "$ALLOWED" "$DENIED" "$TMPD"
+STATUS bin/probe-sdk27-min27 named-nonet exit=137 signal=9 (KILL)
+=== bin/probe-sdk27-min27 mach
+RESULT mode=mach pid=58013
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=27.0.0
+RESULT sandbox_init_mach_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-min27 mach exit=0
+=== bin/probe-sdk27-vtool baseline
+RESULT mode=baseline pid=58015
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandboxed=0
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=OK bytes=15
+RESULT write_tmp=OK
+RESULT net_connect=OK
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=OK (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-vtool baseline exit=0
+=== bin/probe-sdk27-vtool custom-init
+RESULT mode=custom-init pid=58017
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-vtool custom-init exit=0
+=== bin/probe-sdk27-vtool custom-params
+RESULT mode=custom-params pid=58019
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_with_parameters_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-vtool custom-params exit=0
+=== bin/probe-sdk27-vtool named-pure
+RESULT mode=named-pure pid=58021
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+./run.sh: line 24: 58021 Killed: 9               "$b" "$m" "$ALLOWED" "$DENIED" "$TMPD"
+STATUS bin/probe-sdk27-vtool named-pure exit=137 signal=9 (KILL)
+=== bin/probe-sdk27-vtool named-nonet
+RESULT mode=named-nonet pid=58025
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+./run.sh: line 24: 58025 Killed: 9               "$b" "$m" "$ALLOWED" "$DENIED" "$TMPD"
+STATUS bin/probe-sdk27-vtool named-nonet exit=137 signal=9 (KILL)
+=== bin/probe-sdk27-vtool mach
+RESULT mode=mach pid=58029
+RESULT dyld_sdk=27.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_mach_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk27-vtool mach exit=0
+=== bin/probe-sdk28-ld baseline
+RESULT mode=baseline pid=58031
+RESULT dyld_sdk=28.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandboxed=0
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=OK bytes=15
+RESULT write_tmp=OK
+RESULT net_connect=OK
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=OK (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk28-ld baseline exit=0
+=== bin/probe-sdk28-ld custom-init
+RESULT mode=custom-init pid=58033
+RESULT dyld_sdk=28.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk28-ld custom-init exit=0
+=== bin/probe-sdk28-ld custom-params
+RESULT mode=custom-params pid=58035
+RESULT dyld_sdk=28.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_with_parameters_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=FAIL kr=0x44c (Permission denied) (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk28-ld custom-params exit=0
+=== bin/probe-sdk28-ld named-pure
+RESULT mode=named-pure pid=58037
+RESULT dyld_sdk=28.0.0
+RESULT dyld_minos=14.0.0
+./run.sh: line 24: 58037 Killed: 9               "$b" "$m" "$ALLOWED" "$DENIED" "$TMPD"
+STATUS bin/probe-sdk28-ld named-pure exit=137 signal=9 (KILL)
+=== bin/probe-sdk28-ld named-nonet
+RESULT mode=named-nonet pid=58041
+RESULT dyld_sdk=28.0.0
+RESULT dyld_minos=14.0.0
+./run.sh: line 24: 58041 Killed: 9               "$b" "$m" "$ALLOWED" "$DENIED" "$TMPD"
+STATUS bin/probe-sdk28-ld named-nonet exit=137 signal=9 (KILL)
+=== bin/probe-sdk28-ld mach
+RESULT mode=mach pid=58045
+RESULT dyld_sdk=28.0.0
+RESULT dyld_minos=14.0.0
+RESULT sandbox_init_mach_rc=0 err=(null)
+RESULT sandboxed=1
+RESULT read_allowed=OK bytes=16
+RESULT read_denied=FAIL errno=1 (Operation not permitted)
+RESULT write_tmp=FAIL errno=1 (Operation not permitted)
+RESULT net_connect=FAIL errno=1 (Operation not permitted)
+RESULT mach_allowed_svc=OK (com.apple.system.notification_center)
+RESULT mach_denied_svc=FAIL kr=0x44c (Permission denied) (com.apple.cfprefsd.daemon)
+RESULT compute=OK x=14884097605143612481
+RESULT reached_end=1
+STATUS bin/probe-sdk28-ld mach exit=0
+=== sandbox-exec /bin/cat denied (allow default + deny one literal)
+cat: ./fixtures/denied.txt: Operation not permitted
+STATUS sandbox-exec-cat-denied exit=1
+=== sandbox-exec /bin/cat allowed (same profile)
+allowed fixture
+STATUS sandbox-exec-cat-allowed exit=0
+=== sandbox-exec -n pure-computation /usr/bin/true
+./run.sh: line 48: 58051 Killed: 9               sandbox-exec -n pure-computation /usr/bin/true
+STATUS sandbox-exec-named-pure exit=137 signal=9 (KILL)
+=== sandbox-exec deny-default bin/probe-sdk262 checks
+./run.sh: line 50: 58055 Abort trap: 6           sandbox-exec -p "$SBX_RUNTIME" "$b" checks "$ALLOWED" "$DENIED" "$TMPD"
+STATUS sandbox-exec bin/probe-sdk262 exit=134 signal=6 (ABRT)
+=== sandbox-exec deny-default bin/probe-sdk27-ld checks
+./run.sh: line 50: 58059 Abort trap: 6           sandbox-exec -p "$SBX_RUNTIME" "$b" checks "$ALLOWED" "$DENIED" "$TMPD"
+STATUS sandbox-exec bin/probe-sdk27-ld exit=134 signal=6 (ABRT)
+=== sandbox-exec deny-default bin/probe-sdk27-min27 checks
+./run.sh: line 50: 58063 Abort trap: 6           sandbox-exec -p "$SBX_RUNTIME" "$b" checks "$ALLOWED" "$DENIED" "$TMPD"
+STATUS sandbox-exec bin/probe-sdk27-min27 exit=134 signal=6 (ABRT)
+# end 2026-10-18 15:21:50
+=== log show (Sandbox / kernel sandbox lines since start)
+Timestamp               Ty Process[PID:TID]
+2026-10-18 15:21:50.314 Df syspolicyd[734:35b1a07] [com.apple.syspolicy.exec:default] GK evaluateScanResult: 2, PST: (path: 5dcda0268cecbf87), (team: (null)), (id: probe-sdk262), (bundle_id: NOT_A_BUNDLE), 0, 0, 1, 0, 0, 0, 0
+2026-10-18 15:21:50.325 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk262[57973], error = 159: Sandbox restriction
+2026-10-18 15:21:50.325 Df launchd[1:35b20f9] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk262[57973], error = 159: Sandbox restriction
+2026-10-18 15:21:50.333 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk262[57975], error = 159: Sandbox restriction
+2026-10-18 15:21:50.333 Df launchd[1:35b20f9] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk262[57975], error = 159: Sandbox restriction
+2026-10-18 15:21:50.337 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk262[57977], error = 159: Sandbox restriction
+2026-10-18 15:21:50.337 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk262[57977], error = 159: Sandbox restriction
+2026-10-18 15:21:50.350 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk262[57981], error = 159: Sandbox restriction
+2026-10-18 15:21:50.422 Df syspolicyd[734:35b2040] [com.apple.syspolicy.exec:default] GK evaluateScanResult: 2, PST: (path: 36a41f404321d955), (team: (null)), (id: probe-sdk27-ld), (bundle_id: NOT_A_BUNDLE), 0, 0, 1, 0, 0, 0, 0
+2026-10-18 15:21:50.431 Df launchd[1:35b20f9] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk27-ld[57985], error = 159: Sandbox restriction
+2026-10-18 15:21:50.431 Df launchd[1:35b20f9] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-ld[57985], error = 159: Sandbox restriction
+2026-10-18 15:21:50.439 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk27-ld[57987], error = 159: Sandbox restriction
+2026-10-18 15:21:50.439 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-ld[57987], error = 159: Sandbox restriction
+2026-10-18 15:21:50.451 Df launchd[1:35b20f9] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-ld[57997], error = 159: Sandbox restriction
+2026-10-18 15:21:50.521 Df syspolicyd[734:35b1a07] [com.apple.syspolicy.exec:default] GK evaluateScanResult: 2, PST: (path: b1857663549efc35), (team: (null)), (id: probe-sdk27-min27), (bundle_id: NOT_A_BUNDLE), 0, 0, 1, 0, 0, 0, 0
+2026-10-18 15:21:50.531 Df launchd[1:35b20fe] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk27-min[58001], error = 159: Sandbox restriction
+2026-10-18 15:21:50.531 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-min[58001], error = 159: Sandbox restriction
+2026-10-18 15:21:50.539 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk27-min[58003], error = 159: Sandbox restriction
+2026-10-18 15:21:50.539 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-min[58003], error = 159: Sandbox restriction
+2026-10-18 15:21:50.551 Df launchd[1:35b20fa] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-min[58013], error = 159: Sandbox restriction
+2026-10-18 15:21:50.555 Df amfid[29155:3579e41] ./bin/probe-sdk27-vtool not valid: Error Domain=AppleMobileFileIntegrityError Code=-423 "The file is adhoc signed or signed by an unknown certificate chain" UserInfo={NSURL=file://./bin/probe-sdk27-vtool, NSLocalizedDescription=The file is adhoc signed or signed by an unknown certificate chain}
+2026-10-18 15:21:50.585 Df osanalyticshelper[969:3503550] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk27-ld-2026-10-18-152150.ips
+2026-10-18 15:21:50.588 Df osanalyticshelper[969:3509313] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk27-ld-2026-10-18-152150.000.ips
+2026-10-18 15:21:50.589 Df osanalyticshelper[969:3503550] (OSAnalytics) Saved type '309(<private>)' report (1 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.ips
+2026-10-18 15:21:50.589 Df osanalyticshelper[969:3503550] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.ips
+2026-10-18 15:21:50.589 Df ReportCrashService[57995:35b22a6] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.ips
+2026-10-18 15:21:50.589 Df ReportCrashService[57995:35b22a6] no MetricKit for process probe-sdk27-ld type 309 bundleId (null)
+2026-10-18 15:21:50.589 Df ReportCrashService[57995:35b22a6] logGenerationTiming: RCS elapsedTime=0.097 for probe-sdk27-ld[309]
+2026-10-18 15:21:50.590 Df osanalyticshelper[969:3509313] (OSAnalytics) Saved type '309(<private>)' report (1 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.000.ips
+2026-10-18 15:21:50.590 Df osanalyticshelper[969:3509313] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.000.ips
+2026-10-18 15:21:50.590 Df ReportCrashService[57991:35b22a5] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.000.ips
+2026-10-18 15:21:50.590 Df ReportCrashService[57991:35b22a5] no MetricKit for process probe-sdk27-ld type 309 bundleId (null)
+2026-10-18 15:21:50.590 Df ReportCrashService[57991:35b22a5] logGenerationTiming: RCS elapsedTime=0.098 for probe-sdk27-ld[309]
+2026-10-18 15:21:50.592 Df ReportCrash[34358:35b2294] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.ips'
+2026-10-18 15:21:50.592 Df ReportCrash[34358:35b2294] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk27-ld[309] elapsedTime=0.097
+2026-10-18 15:21:50.592 Df ReportCrash[34358:3590c79] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.000.ips'
+2026-10-18 15:21:50.592 Df ReportCrash[34358:3590c79] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk27-ld[309] elapsedTime=0.098
+2026-10-18 15:21:50.620 Df syspolicyd[734:35b1a08] [com.apple.syspolicy.exec:default] GK evaluateScanResult: 2, PST: (path: b3d14c8da5b780bc), (team: (null)), (id: probe-sdk27-vtool-5555494456ae1cc33cd83b599260ff7d9638a46a), (bundle_id: NOT_A_BUNDLE), 0, 0, 1, 0, 0, 0, 0
+2026-10-18 15:21:50.632 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk27-vto[58017], error = 159: Sandbox restriction
+2026-10-18 15:21:50.632 Df launchd[1:3575d84] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-vto[58017], error = 159: Sandbox restriction
+2026-10-18 15:21:50.639 Df launchd[1:35b20fa] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk27-vto[58019], error = 159: Sandbox restriction
+2026-10-18 15:21:50.640 Df launchd[1:35b20fa] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-vto[58019], error = 159: Sandbox restriction
+2026-10-18 15:21:50.652 Df launchd[1:35b20fa] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk27-vto[58029], error = 159: Sandbox restriction
+2026-10-18 15:21:50.664 Df osanalyticshelper[969:35b22e9] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk27-min27-2026-10-18-152150.0002.ips
+2026-10-18 15:21:50.666 Df osanalyticshelper[969:35b22e9] (OSAnalytics) Saved type '309(<private>)' report (1 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk27-min27-2026-10-18-152150.0002.ips
+2026-10-18 15:21:50.666 Df osanalyticshelper[969:35b22e9] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-min27-2026-10-18-152150.0002.ips
+2026-10-18 15:21:50.667 Df ReportCrashService[58011:35b22e3] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-min27-2026-10-18-152150.0002.ips
+2026-10-18 15:21:50.667 Df ReportCrashService[58011:35b22e3] no MetricKit for process probe-sdk27-min27 type 309 bundleId (null)
+2026-10-18 15:21:50.667 Df ReportCrashService[58011:35b22e3] logGenerationTiming: RCS elapsedTime=0.084 for probe-sdk27-min27[309]
+2026-10-18 15:21:50.668 Df osanalyticshelper[969:3509313] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk27-min27-2026-10-18-152150.0003.ips
+2026-10-18 15:21:50.669 Df ReportCrash[34358:35b22c4] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk27-min27-2026-10-18-152150.0002.ips'
+2026-10-18 15:21:50.669 Df ReportCrash[34358:35b22c4] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk27-min27[309] elapsedTime=0.084
+2026-10-18 15:21:50.669 Df osanalyticshelper[969:3509313] (OSAnalytics) Saved type '309(<private>)' report (2 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk27-min27-2026-10-18-152150.0003.ips
+2026-10-18 15:21:50.669 Df osanalyticshelper[969:3509313] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-min27-2026-10-18-152150.0003.ips
+2026-10-18 15:21:50.669 Df ReportCrashService[58007:35b22df] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-min27-2026-10-18-152150.0003.ips
+2026-10-18 15:21:50.669 Df ReportCrashService[58007:35b22df] no MetricKit for process probe-sdk27-min27 type 309 bundleId (null)
+2026-10-18 15:21:50.669 Df ReportCrashService[58007:35b22df] logGenerationTiming: RCS elapsedTime=0.086 for probe-sdk27-min27[309]
+2026-10-18 15:21:50.671 Df ReportCrash[34358:35b2299] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk27-min27-2026-10-18-152150.0003.ips'
+2026-10-18 15:21:50.671 Df ReportCrash[34358:35b2299] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk27-min27[309] elapsedTime=0.086
+2026-10-18 15:21:50.737 Df syspolicyd[734:35b1a07] [com.apple.syspolicy.exec:default] GK evaluateScanResult: 2, PST: (path: 36a427585c2cdc56), (team: (null)), (id: probe-sdk28-ld), (bundle_id: NOT_A_BUNDLE), 0, 0, 1, 0, 0, 0, 0
+2026-10-18 15:21:50.745 Df launchd[1:35b20ec] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk28-ld[58033], error = 159: Sandbox restriction
+2026-10-18 15:21:50.745 Df launchd[1:35b20ec] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk28-ld[58033], error = 159: Sandbox restriction
+2026-10-18 15:21:50.752 Df launchd[1:35b20fa] [gui/501 [100015]:] denied lookup: name = com.apple.system.notification_center, flags = 0x1, requestor = probe-sdk28-ld[58035], error = 159: Sandbox restriction
+2026-10-18 15:21:50.752 Df launchd[1:35b20fa] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk28-ld[58035], error = 159: Sandbox restriction
+2026-10-18 15:21:50.761 Df osanalyticshelper[969:35b22e9] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk27-vtool-2026-10-18-152150.0004.ips
+2026-10-18 15:21:50.763 Df osanalyticshelper[969:35b22e9] (OSAnalytics) Saved type '309(<private>)' report (1 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk27-vtool-2026-10-18-152150.0004.ips
+2026-10-18 15:21:50.763 Df osanalyticshelper[969:35b22e9] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-vtool-2026-10-18-152150.0004.ips
+2026-10-18 15:21:50.763 Df ReportCrashService[58023:35b231a] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-vtool-2026-10-18-152150.0004.ips
+2026-10-18 15:21:50.763 Df ReportCrashService[58023:35b231a] no MetricKit for process probe-sdk27-vtool type 309 bundleId (null)
+2026-10-18 15:21:50.763 Df ReportCrashService[58023:35b231a] logGenerationTiming: RCS elapsedTime=0.077 for probe-sdk27-vtool[309]
+2026-10-18 15:21:50.765 Df osanalyticshelper[969:3509313] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk27-vtool-2026-10-18-152150.0005.ips
+2026-10-18 15:21:50.766 Df launchd[1:35b20fa] [gui/501 [100015]:] denied lookup: name = com.apple.cfprefsd.daemon, flags = 0x1, requestor = probe-sdk28-ld[58045], error = 159: Sandbox restriction
+2026-10-18 15:21:50.766 Df ReportCrash[34358:35b22ca] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk27-vtool-2026-10-18-152150.0004.ips'
+2026-10-18 15:21:50.766 Df ReportCrash[34358:35b22ca] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk27-vtool[309] elapsedTime=0.077
+2026-10-18 15:21:50.767 Df osanalyticshelper[969:3509313] (OSAnalytics) Saved type '309(<private>)' report (2 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk27-vtool-2026-10-18-152150.0005.ips
+2026-10-18 15:21:50.767 Df osanalyticshelper[969:3509313] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-vtool-2026-10-18-152150.0005.ips
+2026-10-18 15:21:50.767 Df ReportCrashService[58027:35b231b] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-vtool-2026-10-18-152150.0005.ips
+2026-10-18 15:21:50.767 Df ReportCrashService[58027:35b231b] no MetricKit for process probe-sdk27-vtool type 309 bundleId (null)
+2026-10-18 15:21:50.767 Df ReportCrashService[58027:35b231b] logGenerationTiming: RCS elapsedTime=0.081 for probe-sdk27-vtool[309]
+2026-10-18 15:21:50.769 Df ReportCrash[34358:35b22fb] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk27-vtool-2026-10-18-152150.0005.ips'
+2026-10-18 15:21:50.769 Df ReportCrash[34358:35b22fb] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk27-vtool[309] elapsedTime=0.081
+2026-10-18 15:21:50.870 Df osanalyticshelper[969:3509313] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk27-ld-2026-10-18-152150.0006.ips
+2026-10-18 15:21:50.872 Df osanalyticshelper[969:3509313] (OSAnalytics) Saved type '309(<private>)' report (3 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.0006.ips
+2026-10-18 15:21:50.872 Df osanalyticshelper[969:3509313] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.0006.ips
+2026-10-18 15:21:50.872 Df ReportCrashService[58061:35b2386] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.0006.ips
+2026-10-18 15:21:50.872 Df ReportCrashService[58061:35b2386] no MetricKit for process probe-sdk27-ld type 309 bundleId (null)
+2026-10-18 15:21:50.872 Df ReportCrashService[58061:35b2386] logGenerationTiming: RCS elapsedTime=0.032 for probe-sdk27-ld[309]
+2026-10-18 15:21:50.873 Df osanalyticshelper[969:3509313] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk262-2026-10-18-152150.0007.ips
+2026-10-18 15:21:50.874 Df ReportCrash[34358:35b235b] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk27-ld-2026-10-18-152150.0006.ips'
+2026-10-18 15:21:50.874 Df ReportCrash[34358:35b235b] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk27-ld[309] elapsedTime=0.032
+2026-10-18 15:21:50.874 Df osanalyticshelper[969:3509313] (OSAnalytics) Saved type '309(<private>)' report (1 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk262-2026-10-18-152150.0007.ips
+2026-10-18 15:21:50.874 Df osanalyticshelper[969:3509313] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk262-2026-10-18-152150.0007.ips
+2026-10-18 15:21:50.874 Df ReportCrashService[58057:35b2387] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk262-2026-10-18-152150.0007.ips
+2026-10-18 15:21:50.874 Df ReportCrashService[58057:35b2387] no MetricKit for process probe-sdk262 type 309 bundleId (null)
+2026-10-18 15:21:50.874 Df ReportCrashService[58057:35b2387] logGenerationTiming: RCS elapsedTime=0.035 for probe-sdk262[309]
+2026-10-18 15:21:50.876 Df ReportCrash[34358:35b2353] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk262-2026-10-18-152150.0007.ips'
+2026-10-18 15:21:50.876 Df ReportCrash[34358:35b2353] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk262[309] elapsedTime=0.035
+2026-10-18 15:21:50.881 Df osanalyticshelper[969:3503550] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk28-ld-2026-10-18-152150.0008.ips
+2026-10-18 15:21:50.883 Df osanalyticshelper[969:3503550] (OSAnalytics) Saved type '309(<private>)' report (1 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk28-ld-2026-10-18-152150.0008.ips
+2026-10-18 15:21:50.883 Df osanalyticshelper[969:3503550] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk28-ld-2026-10-18-152150.0008.ips
+2026-10-18 15:21:50.883 Df ReportCrashService[58043:35b2362] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk28-ld-2026-10-18-152150.0008.ips
+2026-10-18 15:21:50.883 Df ReportCrashService[58043:35b2362] no MetricKit for process probe-sdk28-ld type 309 bundleId (null)
+2026-10-18 15:21:50.883 Df ReportCrashService[58043:35b2362] logGenerationTiming: RCS elapsedTime=0.084 for probe-sdk28-ld[309]
+2026-10-18 15:21:50.885 Df ReportCrash[34358:35b233a] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk28-ld-2026-10-18-152150.0008.ips'
+2026-10-18 15:21:50.885 Df ReportCrash[34358:35b233a] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk28-ld[309] elapsedTime=0.084
+2026-10-18 15:21:50.887 Df osanalyticshelper[969:3503550] (OSAnalytics) creating type 309 as ~/Library/Logs/DiagnosticReports/.probe-sdk28-ld-2026-10-18-152150.0009.ips
+2026-10-18 15:21:50.888 Df osanalyticshelper[969:3503550] (OSAnalytics) Saved type '309(<private>)' report (2 of max 25) at ~/Library/Logs/DiagnosticReports/probe-sdk28-ld-2026-10-18-152150.0009.ips
+2026-10-18 15:21:50.889 Df osanalyticshelper[969:3503550] xpc log creation type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk28-ld-2026-10-18-152150.0009.ips
+2026-10-18 15:21:50.889 Df ReportCrashService[58039:35b2361] (OSAnalytics) client log create type 309 result success: ~/Library/Logs/DiagnosticReports/probe-sdk28-ld-2026-10-18-152150.0009.ips
+2026-10-18 15:21:50.889 Df ReportCrashService[58039:35b2361] no MetricKit for process probe-sdk28-ld type 309 bundleId (null)
+2026-10-18 15:21:50.889 Df ReportCrashService[58039:35b2361] logGenerationTiming: RCS elapsedTime=0.090 for probe-sdk28-ld[309]
+2026-10-18 15:21:50.890 Df ReportCrash[34358:35b2305] [com.apple.ReportCrash:postReportOps] recordCrashEvent; isBeta false, log: '~/Library/Logs/DiagnosticReports/probe-sdk28-ld-2026-10-18-152150.0009.ips'
+2026-10-18 15:21:50.890 Df ReportCrash[34358:35b2305] [com.apple.ReportCrash:postReportOps] logGenerationTiming: sending CA event for probe-sdk28-ld[309] elapsedTime=0.090
+2026-10-18 15:21:51.199 E  kernel[0:35b23e4] (Sandbox) System Policy: SystemUIServer(1325) deny(1) system-privilege 1009
+2026-10-18 15:21:51.224 E  kernel[0:35b1e81] (Sandbox) System Policy: SystemUIServer(1325) deny(1) file-read-data /Volumes/.timemachine/9FC9488D-F94F-4839-B8E9-770536D51308/2026-10-16-005446.backup
+2026-10-18 15:21:51.225 E  kernel[0:35b1e81] (Sandbox) System Policy: SystemUIServer(1325) deny(1) file-read-data /Volumes/Public
+2026-10-18 15:21:51.225 E  kernel[0:35b1e81] (Sandbox) System Policy: SystemUIServer(1325) deny(1) system-privilege 1009
+2026-10-18 15:21:51.226 E  kernel[0:35b1e81] (Sandbox) System Policy: SystemUIServer(1325) deny(1) file-read-data /Volumes/homes
+2026-10-18 15:21:51.226 E  kernel[0:35b1e81] (Sandbox) System Policy: SystemUIServer(1325) deny(1) system-privilege 1009
+2026-10-18 15:21:51.226 E  kernel[0:35b1e81] (Sandbox) System Policy: SystemUIServer(1325) deny(1) file-read-data /Volumes/home
+2026-10-18 15:21:51.226 E  kernel[0:35b1e81] (Sandbox) System Policy: SystemUIServer(1325) deny(1) system-privilege 1009
+2026-10-18 15:21:51.229 E  kernel[0:35368c5] (Sandbox) Sandbox: mds_stores(875) deny(1) system-info vfs.disk-space
+2026-10-18 15:21:51.247 E  kernel[0:35762cc] (Sandbox) Sandbox: ecosystemanalyticsd(45202) deny(1) mach-lookup com.apple.bird
+2026-10-18 15:21:51.250 E  kernel[0:352f692] (Sandbox) Sandbox: ecosystemanalyticsd(45202) deny(1) system-info vfs.disk-space
+2026-10-18 15:21:51.251 E  kernel[0:35a3e39] (Sandbox) 1 duplicate report for Sandbox: ecosystemanalyticsd(45202) deny(1) system-info vfs.disk-space
+2026-10-18 15:21:51.251 E  kernel[0:35a3e39] (Sandbox) Sandbox: ecosystemanalyticsd(45202) deny(1) user-preference-read kcfpreferencesanyapplication
+2026-10-18 15:21:51.258 E  kernel[0:35b20ee] (Sandbox) Sandbox: ecosystemd(59210) deny(1) mach-lookup com.apple.bird
+2026-10-18 15:21:51.258 E  kernel[0:351417a] (Sandbox) Sandbox: ecosystemd(59210) deny(1) file-read-data /Library/PrivilegedHelperTools
+2026-10-18 15:21:51.258 E  kernel[0:351417a] (Sandbox) 3 duplicate reports for Sandbox: ecosystemd(59210) deny(1) file-read-data /Library/PrivilegedHelperTools
+2026-10-18 15:21:51.258 E  kernel[0:351417a] (Sandbox) Sandbox: ecosystemd(59210) deny(1) file-read-data /Library/PrivilegedHelperTools/com.piriform.ccleaner.CCleanerAgent
+2026-10-18 15:21:51.275 E  kernel[0:3529594] (Sandbox) 1 duplicate report for Sandbox: ecosystemd(59210) deny(1) file-read-data /Library/PrivilegedHelperTools/com.piriform.ccleaner.CCleanerAgent
+2026-10-18 15:21:51.275 E  kernel[0:3529594] (Sandbox) Sandbox: tccd(634) deny(1) system-info vfs.disk-space
+2026-10-18 15:21:51.310 E  kernel[0:35b2435] (Sandbox) 3 duplicate reports for Sandbox: tccd(634) deny(1) system-info vfs.disk-space
+2026-10-18 15:21:51.310 Df kernel[0:35b2435] (Sandbox) Sandbox: ReportCrashService(58106) allow system-info vfs.disk-space
+2026-10-18 15:21:51.337 Df kernel[0:3558f44] (Sandbox) 61 duplicate reports for Sandbox: ReportCrashService(58106) allow system-info vfs.disk-space
+2026-10-18 15:21:51.337 E  kernel[0:3558f44] (Sandbox) Sandbox: mds_stores(875) deny(1) system-info vfs.disk-space
+2026-10-18 15:21:51.345 Df kernel[0:35b2435] (Sandbox) Sandbox: ReportCrashService(58106) allow system-info vfs.disk-space
+=== crash reports since start
