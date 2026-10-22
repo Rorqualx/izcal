@@ -22,7 +22,7 @@ Reviews that fed the specs are also in `reports/`; the evidence behind every rep
 |---|---|
 | `reports/`, `research_notes/` | Specifications, reviews and their sources |
 | `m0/` | Milestone M0. Start with `m0/M0_SUMMARY.md` |
-| `m0/rusty_v8` | The `rusty_v8` fork (submodule, [Rorqualx/rusty_v8-izcal](https://github.com/Rorqualx/rusty_v8-izcal), branch `hgba`). It carries the `cppgc` APIs and the predictable platform, and its CI builds V8 from source (`.github/workflows/izcal-v8-build.yml`) |
+| `m0/` | M0 measurement results and logs, plus `m0/spike-archive/` for the spikes' results. The fork and the spike code were removed from the tree on 21 October 2026 (they remain in git history) |
 | `m0/spike-sandbox`, `m0/v8-cppgc-ext-sandbox`, `m0/determinism-probe`, `m0/fork-api-verify` | M0 spikes and probes, built against the fork |
 | `m0/linux`, `m0/windows` | Per-platform M0 results and logs |
 | `m0/ci` | CI notes and the local runner used to test the workflow |
