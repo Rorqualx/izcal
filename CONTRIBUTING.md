@@ -1,6 +1,6 @@
 # Contributing to Izcal
 
-This covers both repositories: the project, [Rorqualx/izcal](https://github.com/Rorqualx/izcal) (branch `main`), and the `rusty_v8` fork, [Rorqualx/rusty_v8-izcal](https://github.com/Rorqualx/rusty_v8-izcal) (branch `hgba`, checked out at `m0/rusty_v8`). The git hooks and CI enforce every rule below that a machine can check. The hooks catch problems early, and CI catches anything committed with `--no-verify`.
+This covers the project repository, [Rorqualx/izcal](https://github.com/Rorqualx/izcal) (branch `main`); the accepted specification corpus lives on branch `spec/phase2c`. The git hooks and CI enforce every rule below that a machine can check. The hooks catch problems early, and CI catches anything committed with `--no-verify`. *(Historical: until 21 October 2026 this file also covered the `rusty_v8` fork at `m0/rusty_v8`; the fork material was removed from the tree that day and survives in git history.)*
 
 ## Setup
 
