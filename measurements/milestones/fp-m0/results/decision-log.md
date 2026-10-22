@@ -6,3 +6,18 @@ Started 22 October 2026. Every entry that sets or moves a † threshold is recor
 |---|---|---|---|---|
 | 2026-10-22 | Smoke run, harness check (not a threshold) | Chrome 155, macOS, main process only, one blank tab, 12 samples over 1 min: phys_footprint 120–126 MB, peak 141 MB. Caveat: main process only; the tree-wide matrix (all browser processes) is the next step, and the harness will gain a tree-sum mode before the real matrix runs | — | Harness works; tree-sum mode queued |
 | 2026-10-22 | Harness correctness (review findings, not a threshold) | The advisory AI review found three harness defects: an unreachable pgrep fallback, a README usage mismatch, and TSV columns not matching the header. All three fixed (sample-footprint.sh v2): the fallback runs, the README states app-name/PID usage and the single-process scope, and the TSV carries five declared columns (t, sample, pid, phys_footprint_MB, peak_MB). Validated: 4 samples at 126/168 MB, clean columns | — | v2 harness is the canonical sampler; tree-sum mode still queued |
+
+## The first matrix (22 October 2026, macOS, rig local) — v4, shipped
+
+Methodology: fresh disposable profiles per browser; Chrome tabs created through its DevTools endpoint (`/json/new`, renderer-backed targets — direct launches create no windows in this environment, which invalidated v1) and **verified by page count** (1, 11 and 41 pages for the 1/10/30-tab loads); Firefox tabs by direct invocation with the process-tree growth from v1 as the tab-opening evidence, its page-count check queued (Firefox's debugger endpoint does not serve Chrome-style `/json/list` under the 2026 flags tried); tree sampling walks the process tree by parentage with a final `sort -u` dedup and **normalizes the footprint unit** (the CLI prints KB/B for small processes; v3 dropped the unit and inflated rows — the v3 TSVs are discarded and the v3 "startup spike" was a misparse, not a spike); 2-minute samples, steady state = the last 12 samples. All loads are example.com tabs.
+
+| Load | Chrome 155 | Firefox |
+|---|---|---|
+| Blank | **162 MB** (5 procs) | **639 MB** (11 procs) |
+| 1 tab | 276 MB (7) | 703 MB (12) |
+| 10 tabs | 644 MB (17) | 782 MB (15) |
+| 30 tabs | **1,729 MB** (47) | **840 MB** (15) |
+
+**Reading (first, provisional):** Chrome starts ~4x cheaper but pays ~52 MB per same-site tab (one renderer per tab); Firefox's floor is ~640 MB with same-site tabs nearly free (~7 MB each, shared content processes). For FP-1's budgets the load-bearing rows are the **blank floor** (the incumbent floor Izcal's own floor must be argued against) and the **30-tab slope** (FP-S30's target). Neither is a threshold — they are FP-M0's incumbent observations, the baseline the substrate floor will be compared against.
+
+**Caveats recorded:** same-site-only tabs (cross-site mixes come later); one machine (Apple silicon, macOS 26); Firefox's page-count verification queued (its rows rest on v1's process-growth evidence plus the unit-corrected sampler); Safari queued (single-instance model). **Discarded versions:** v1 (Chrome opened no windows; invalid loads), v2 (`local -A` is not bash-3.2), v3 (unit-suffix drop corrupted KB-scale rows; the data was discarded, the methodology kept).
