@@ -1,0 +1,19 @@
+# hueyj: Linux x86_64, cargo 1.98.1 (797e8a9bc 2026-08-05), proptest 1.12.0
+out/env42_1.default    n=256  sha=66b98f4f90cbe3e7
+out/env42_2.default    n=256  sha=66b98f4f90cbe3e7
+out/env42_xs.default   n=256  sha=9024ec8c1090fd6f
+out/env43.default      n=256  sha=d354bc1e29b61bb4
+out/random1.default    n=256  sha=cb9775bb3c23b65b
+out/random2.default    n=256  sha=8d332bb2086dc092
+out/env42_1.fixed      n=256  sha=66b98f4f90cbe3e7
+out/env42_2.fixed      n=256  sha=66b98f4f90cbe3e7
+out/env42_xs.fixed     n=256  sha=9024ec8c1090fd6f
+out/env43.fixed        n=256  sha=d354bc1e29b61bb4
+out/random1.fixed      n=256  sha=8b0ab50bb572bfdb
+out/random2.fixed      n=256  sha=8b0ab50bb572bfdb
+out/env42_1.failing    n=256  sha=66b98f4f90cbe3e7
+out/env42_2.failing    n=256  sha=66b98f4f90cbe3e7
+out/env42_xs.failing   n=256  sha=9024ec8c1090fd6f
+out/env43.failing      n=256  sha=d354bc1e29b61bb4
+out/random1.failing    n=256  sha=b0b75168eb78060a
+out/random2.failing    n=256  sha=d2e010cc82c63e36

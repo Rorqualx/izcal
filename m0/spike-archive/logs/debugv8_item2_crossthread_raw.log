@@ -1,3 +1,0 @@
-item2: secs=20 racy_control=false cycles=3120 cycles_with_marking_active=3073 inserts=30969 removes=10660 worker_traversals=49920 finalized_total=36650 finalized_during_worker_phases=0 removed_nodes_finalized=36650
-errors=[]
-RESULT PASS
