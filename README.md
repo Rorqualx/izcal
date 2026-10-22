@@ -31,7 +31,7 @@ Reviews that fed the specs are also in `reports/`; the evidence behind every rep
 ## Getting the code
 
 ```
-git clone --recurse-submodules https://github.com/Rorqualx/izcal.git
+git clone https://github.com/Rorqualx/izcal.git
 cd izcal && tools/setup-hooks.sh
 ```
 

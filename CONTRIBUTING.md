@@ -5,7 +5,7 @@ This covers both repositories: the project, [Rorqualx/izcal](https://github.com/
 ## Setup
 
 ```
-git clone --recurse-submodules https://github.com/Rorqualx/izcal.git
+git clone https://github.com/Rorqualx/izcal.git
 cd izcal
 tools/setup-hooks.sh
 ```

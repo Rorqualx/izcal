@@ -2,7 +2,7 @@
 
 Safe Rust bindings for the cppgc (Oilpan) APIs that **rusty_v8 152.2.0 (V8 15.2.124.1)** does not expose.
 
-They go through a small C++ shim, [`src/binding.cc`](src/binding.cc), which `build.rs` compiles against rusty_v8's own V8 headers and Chromium libc++ (`std::__Cr`). The defines are the ABI-relevant ones the prebuilt `librusty_v8.a` was built with.
+They go through a small C++ shim, `src/binding.cc`, which `build.rs` compiles against rusty_v8's own V8 headers and Chromium libc++ (`std::__Cr`). The defines are the ABI-relevant ones the prebuilt `librusty_v8.a` was built with.
 
 - Only `extern "C"` functions and opaque pointers cross the boundary.
 - No mangled C++ symbol is linked from Rust.
