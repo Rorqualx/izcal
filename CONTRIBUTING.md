@@ -1,11 +1,11 @@
 # Contributing to Izcal
 
-This covers both repositories: the project, [Rorqualx/izcal](https://github.com/Rorqualx/izcal) (branch `main`), and the `rusty_v8` fork, [Rorqualx/rusty_v8-izcal](https://github.com/Rorqualx/rusty_v8-izcal) (branch `hgba`, checked out at `m0/rusty_v8`). The git hooks and CI enforce every rule below that a machine can check. The hooks catch problems early, and CI catches anything committed with `--no-verify`.
+This covers the project repository, [Rorqualx/izcal](https://github.com/Rorqualx/izcal) (branch `main`); the accepted specification corpus lives on branch `spec/phase2c`. The git hooks and CI enforce every rule below that a machine can check. The hooks catch problems early, and CI catches anything committed with `--no-verify`. *(Historical: until 21 October 2026 this file also covered the `rusty_v8` fork at `m0/rusty_v8`; the fork material was removed from the tree that day and survives in git history.)*
 
 ## Setup
 
 ```
-git clone --recurse-submodules https://github.com/Rorqualx/izcal.git
+git clone https://github.com/Rorqualx/izcal.git
 cd izcal
 tools/setup-hooks.sh
 ```
@@ -14,9 +14,9 @@ tools/setup-hooks.sh
 
 ## Branches
 
-- **`main` (project) and `hgba` (fork) are protected.** They change only through pull requests. The hooks refuse commits on them and pushes to them, and GitHub branch protection refuses pushes too.
+- **`main` is protected.** It changes only through pull requests. The hooks refuse commits on it and pushes to it, and GitHub branch protection refuses pushes too.
 - **Work on a feature branch**, named `<type>/<topic>` with types `feat`, `fix`, `docs`, `spec`, `spike`, `ci`, `build`, `chore` and `rebase`. Examples: `spec/s4e-backport-rule`, `fix/windows-teardown`.
-- Keep branches short-lived: one topic, merged or closed within days. Rebase on the latest `main` or `hgba` rather than merging it in.
+- Keep branches short-lived: one topic, merged or closed within days. Rebase on the latest `main` rather than merging it in.
 
 ## Worktrees
 
@@ -28,14 +28,7 @@ Use one worktree per branch, and one per agent session when several Claude Code 
   git worktree add ../izcal-wt/<topic> -b <type>/<topic> origin/main
   ```
 
-  A new worktree has no fork checkout. Run `git -C ../izcal-wt/<topic> submodule update --init m0/rusty_v8` (not `--recursive`) only if the work needs the fork's sources, and then rerun `tools/setup-hooks.sh` in that worktree.
-- **Fork:** create the worktree from the fork itself, so it shares the fork's hooks setting:
-
-  ```
-  git -C m0/rusty_v8 worktree add ../../rusty_v8-wt/<topic> -b <type>/<topic> izcal/hgba
-  ```
-
-  Each fork worktree builds its own V8: about 2 GB of output and 17–30 minutes per configuration. Disk is not a constraint, but time is, so set `SCCACHE=sccache`. When the work does not change V8 or the fork's C++, point `RUSTY_V8_ARCHIVE` at an existing archive instead of rebuilding.
+  A new worktree needs only `tools/setup-hooks.sh`. *(Historical: fork worktrees and submodule checkouts applied until the fork material was removed on 21 October 2026.)*
 - **Cleanup**, after the branch is merged. Check that the worktree has nothing uncommitted (`git -C <worktree> status`) and that its branch is merged, then:
 
   ```
@@ -82,16 +75,13 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 ## Merging
 
 - **Project (`main`): squash merge.** The pull request title becomes the commit subject, so it follows the commit-message format.
-- **Fork (`hgba`): rebase merge.** Never squash, so each commit stays individually rebasable and upstreamable (S-4e).
-- Delete the branch after merging. GitHub does this automatically.
-- **Submodule pointer bumps:** after a fork pull request merges, bump `m0/rusty_v8` in the project with its own pull request (`build: bump rusty_v8 fork to <sha>`). The pointer must name a commit on the fork's `hgba`. `pre-push` refuses a pointer the fork's remote does not have.
+*(Historical: the fork's rebase-merge, submodule-pointer, CI-matrix and release-tag rules applied until the fork material was removed on 21 October 2026.)*
 
 ## Pushing
 
 - **Feature branches:** push freely. `git push --force-with-lease` is fine on your own branch, never on someone else's.
 - **Protected branches:** never pushed directly. The `IZCAL_ALLOW_PROTECTED=1` override exists only for repository administration, and GitHub's protection refuses the push anyway.
-- **CI cost:** every push to `hgba` (that is, every merged fork pull request) runs the full V8 build matrix (`izcal-v8-build`, six jobs, about 6–9 runner-hours). Batch fork changes into one pull request when you can.
-- **Release tags** `v<upstream>-izcal.<n>` are pushed only by the `rusty_v8` owner, after S-4e step 3 passes. `pre-push` requires `IZCAL_RELEASE=1` for them.
+*(Historical: the fork's CI matrix and release-tag rules applied until the fork material was removed on 21 October 2026.)*
 
 ## The S-4e upstream rebase (fork only)
 
@@ -131,4 +121,4 @@ Izcal is a new engine written from the ground up: it neither copies another brow
 
 ## Large files and artifacts
 
-Build outputs and V8 archives never go into git (`.gitignore`, and the `size` and `binary` checks). Publish archives as release assets of the fork: `izcal-v8-build` does this for tags. Commit their `SHA256SUMS`, `args.gn` and binding files instead.
+Build outputs and V8 archives never go into git (`.gitignore`, and the `size` and `binary` checks). The historical V8 archive checksums stay committed in `m0/archives/SHA256SUMS`.
