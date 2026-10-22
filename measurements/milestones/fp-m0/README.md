@@ -14,7 +14,7 @@ Plus the black-box observations 0.3.1 added: which OS counters each incumbent's 
 
 ## The harness
 
-`harness/sample-footprint.sh <app-name|pid> <url-or-empty> <minutes> [label]` — launches the target by app name (anchored to /Applications) or attaches to a PID, waits for idle, and samples **one process** every 5 s (macOS: `footprint` CLI; Linux: `/proc/<pid>/status` + `smaps_rollup`; Windows: PowerShell commit-charge counters via the rig). Output: a dated TSV in `results/` with per-sample columns (t, sample, pid, phys_footprint_MB, peak_MB). **Tree-sum mode** (sampling the full process tree of a browser, not just the main process) is the next harness change, queued before the real matrix; the smoke rows in `results/` are main-process-only and say so.
+`harness/sample-footprint.sh <app-name|pid> <url-or-empty> <minutes> [label]` — single-process sampler (the smoke-validation tool; superseded for browsers by the tree sampler). `harness/sample-tree.sh <pgrep-patterns> <minutes> <label>` — the tree sampler: roots match the patterns, then the walk follows parentage breadth-first with a final dedup; columns are t, sample, nprocs, total_phys_MB, total_peak_MB, max_single_MB. `harness/run-matrix.sh` — the macOS incumbent matrix (Chrome via its DevTools `/json/new` endpoint with verified page counts; Firefox by direct invocation; both in disposable profiles). Both samplers are bash-3.2-portable (no `local -A`, no `seq`). Linux and Windows flavours of the samplers come with their rig runs.
 
 ## Decision-log discipline
 
