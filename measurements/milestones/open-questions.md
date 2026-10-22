@@ -49,13 +49,15 @@ log then records it, per the footprint spec's item-by-item rule.
 
 - **FP open question 17**: which OS counters each incumbent's reported
   footprint follows (macOS counter mapping — extend the matrix), macOS
-  accounting after `MADV_FREE_REUSABLE` (a small standalone probe — in
-  this folder), HTTP-cache sizing (black-box observation), Linux PSI
-  reactions (the .185 rig).
+  accounting after `MADV_FREE_REUSABLE` (done 22 Oct — the probe releases
+  the phys_footprint charge), HTTP-cache sizing (black-box observation),
+  Linux PSI reactions (the .185 rig).
 - **The cross-site tab mix** (the matrix's stated caveat): 30 tabs across
-  distinct domains, Chrome and Firefox.
-- **The Linux and Windows matrix legs** (booked rigs), **Safari** (a
-  dedicated session).
+  distinct domains, Chrome and Firefox — **done 22 Oct, macOS**.
+- **The Linux matrix leg** — **done 22 Oct, rig hueyj** (chromium and
+  Firefox v3, both counters recorded; results in fp-m0/results/linux/).
+  **The Windows leg** — Edge done 22 Oct; Firefox v3 in progress
+  (rig253). **Safari** (a dedicated session).
 
 The tracker updates whenever a Q- closes or a new Q- is filed; the specs
 remain the source of truth for each question's wording and gate.
