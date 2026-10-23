@@ -14,8 +14,8 @@ set -u
 cd "$(dirname "$0")" || exit 1
 CPROF=$(mktemp -d /tmp/fp-m0-psi.XXXXXX)
 PORT=9361
-out="/tmp/fp-m0-linux/results/$(date +%Y-%m-%d)-psi-probe.tsv"
-mkdir -p /tmp/fp-m0-linux/results
+out="$HOME/fp-m0-psi/$(date +%Y-%m-%d)-psi-probe.tsv"
+mkdir -p "$HOME/fp-m0-psi"   # $HOME survives a reboot; /tmp did not on 22 Oct
 
 tree_pids() {
   local roots; roots=$(pgrep -f "$1" | sort -u | grep -v "^$$$")

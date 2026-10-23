@@ -93,8 +93,16 @@ FP-M0 open question 17, the HTTP-cache part: each incumbent's HTTP-cache size ag
 
 **Reading:** against ~979 GB free disk, both incumbents' measured caches are tiny — Chrome ~0.0008%, Firefox ~0.005% — nowhere near the naive "1% of disk" guess. The 1% rule's derivation (the spec's Section 7.1 note) is confirmed as an upper-bound prior, not an observed default. Caveat recorded: the load's per-response cacheability was not controlled (example.com serves `max-age=0`-style headers) and the Chrome figure is a 60-s settle (the 3-min run measured the wrong path and was discarded); a cache-planted local server run is the follow-up if any budget needs the per-response breakdown. Probe: `harness/http-cache-probe.sh`.
 
-## Linux PSI probe (22 October 2026, rig hueyj) — partial, rig rebooted
+## Linux PSI probe (22 October 2026, rig hueyj) — the reaction, measured
 
-The probe ran its baseline and load phases: chromium reached 11 verified pages, then mid-run its process tree was **SIGKILLed** (the `Killed` job notice in the probe log — the reaction question's first black-box answer: under a 16 GB anonymous allocation the incumbent did not shed load; it was killed outright). During the pressure window hueyj's sshd wedged (TCP accepted at first, handshakes stalled, then connection refused) and the rig went down; it came back rebooted ~18:07 and the probe's TSV did not survive (`/tmp` is wiped on boot). The pressure-phase rows are lost; the SIGKILL observation above stands from the probe log.
+Two runs. **First run (single 16 GB shot):** chromium reached 11 verified pages, then mid-run its process tree was **SIGKILLed** — and the shot took the rig down (sshd wedged, reboot ~18:07; the TSV died with `/tmp`). **Second run (staircase 8 → 12 → 16 GiB, ~60 s each, bail-out below 1 GiB avail, TSV in `$HOME`):** 56 rows, 10-tab chromium (19 procs), every 5 s:
 
-**Lesson recorded in the harness:** the single 16 GB shot was too aggressive for the rig's live headroom — it took the rig down. A rerun staircases 8 → 12 → 16 GB (~60 s each) with a bail-out row, and is queued pending the owner's go after this incident. Probe: `harness/psi-probe.sh`.
+| Phase | Browser total | nprocs | PSI some avg10 (peak) | MemAvail |
+|---|---|---|---|---|
+| Baseline | **2,049 MB** | 19 | 0.00 | 19.2 GB |
+| 8 GiB hold | 2,064 MB (no reaction) | 19 | 0.41 | 10.8 GB |
+| 12 GiB hold | **2,064 → ~550 MB (−73%)** | 19 (no kills) | 13.8 | 10.2 GB |
+| 16 GiB hold | ~450–490 MB | 19 | 16.5 | 10.0 GB |
+| Recovery (60 s) | **~545 MB — stays shed** | 19 | 0.02 | 19.2 GB |
+
+**Reading (Q-17's PSI part):** chromium reacts to memory pressure before the OOM killer — at the 12 GiB step it shed ~73% of its resident set in one step while keeping every process, and it does not re-inflate after the pressure passes (the shed pages stay shed). The 8 GiB step produced no reaction (no pressure on the browser's share). The first run's outright SIGKILL was the single-shot's fault — an instantaneous 16 GB touch storm leaves no time to react — which is why the staircase is the harness's canonical shape. The TSV: `results/linux/2026-10-22-psi-probe.tsv`; the probe: `harness/psi-probe.sh`.
