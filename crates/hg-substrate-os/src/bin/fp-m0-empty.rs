@@ -10,9 +10,16 @@
 //! Start-up order: apply the sandbox, probe the achieved tier, spawn
 //! the two threads, report the ready line over fd 3, then wait for the
 //! supervisor.
-#![expect(
-    unsafe_code,
-    reason = "G5: src/bin/fp-m0-empty.rs (the pre-opened fd 3)"
+// Windows: the GUI subsystem, so the sandboxed process gets no console
+// and no conhost.exe (a console host costs ~1 MB private and ~6 MB
+// working set per process; FP-M0 decision log, 23 October).
+#![cfg_attr(windows, windows_subsystem = "windows")]
+#![cfg_attr(
+    unix,
+    expect(
+        unsafe_code,
+        reason = "G5: src/bin/fp-m0-empty.rs (the pre-opened fd 3; unix only)"
+    )
 )]
 
 #[cfg(unix)]
@@ -63,10 +70,7 @@ fn main() {
         "sandbox=applied {probe} threads=2 pid={}\n",
         std::process::id(),
     );
-    // The tier line goes to stderr too: the supervisor's pipe read
-    // returned EOF on the first Windows run (recorded; the pipe
-    // handoff is the follow-up), so stderr is the reliable channel
-    // for the harness here.
+    // The tier line also goes to stderr, for the harness log.
     eprint!("{line}");
     if let Err(e) = ipc.write_all(line.as_bytes()) {
         eprintln!("fp-m0-empty: ready write failed: {e}");
@@ -79,24 +83,13 @@ fn main() {
 }
 
 /// The Windows main: the child starts restricted from birth (the
-/// supervisor created it under the untrusted token), probes its tier,
-/// spawns the two threads, reports over the inherited pipe handle
-/// passed as argv[1], and waits.
+/// supervisor created it under the untrusted token, with no console),
+/// probes its tier, spawns the two threads, reports over its stdout —
+/// the pipe the supervisor passed as the IPC endpoint, the one handle
+/// path CreateProcessWithTokenW carries — and waits.
 #[cfg(windows)]
 fn main() {
     use std::io::Write;
-    use std::os::windows::io::FromRawHandle;
-    use std::os::windows::io::RawHandle;
-
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        eprintln!("fp-m0-empty: missing pipe handle argument");
-        std::process::exit(1);
-    }
-    let handle: RawHandle = args[1].parse::<usize>().unwrap_or(0) as RawHandle;
-    // SAFETY: the handle is the supervisor's inherited pipe end; the
-    // supervisor guarantees it is valid for this process.
-    let mut ipc = unsafe { std::fs::File::from_raw_handle(handle) };
 
     let probe = probe_line();
 
@@ -118,14 +111,11 @@ fn main() {
         "sandbox=applied {probe} threads=2 pid={}\n",
         std::process::id(),
     );
-    // The tier line goes to stderr too: the supervisor's pipe read
-    // returned EOF on the first Windows run (recorded; the pipe
-    // handoff is the follow-up), so stderr is the reliable channel
-    // for the harness here.
-    eprint!("{line}");
-    if let Err(e) = ipc.write_all(line.as_bytes()) {
-        eprintln!("fp-m0-empty: ready write failed: {e}");
-    }
+    // The ready line is the only output. A failed write cannot be
+    // reported (stderr is null); the supervisor reports the missing
+    // line and the child's state instead (SEC-8).
+    let mut ipc = std::io::stdout().lock();
+    let _ = ipc.write_all(line.as_bytes()).and_then(|()| ipc.flush());
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));

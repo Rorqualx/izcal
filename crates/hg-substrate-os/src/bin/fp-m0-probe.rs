@@ -1,7 +1,7 @@
 //! FP-M0 half B: the supervisor that drives the empty-process probe.
 //!
 //! Spawns `fp-m0-empty` with the IPC endpoint pre-opened (fd 3 on unix,
-//! an inherited pipe handle on Windows — the security-scope 6.7
+//! a pipe passed as the child's stdout on Windows — the security-scope 6.7
 //! pattern: the child opens nothing after lockdown), times
 //! spawn-to-ready, prints the child's ready line and pid, and keeps
 //! the child alive for the external harness (which samples any PID).
@@ -149,7 +149,7 @@ fn main() {
     unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
 }
 
-/// The Windows supervisor: creates the IPC pipe (inheritable), the
+/// The Windows supervisor: creates the IPC pipe (the child's stdout), the
 /// restricted untrusted token and the job, starts the child under the
 /// token suspended so the job assignment completes before it runs
 /// (fatal on failure), resumes it, times spawn-to-ready, prints the
@@ -160,8 +160,7 @@ fn main() {
     use std::ptr;
     use std::time::Instant;
 
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, SetHandleInformation};
-    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::Storage::FileSystem::ReadFile;
     use windows_sys::Win32::System::Pipes::CreatePipe;
     use windows_sys::Win32::System::Threading::{
@@ -171,29 +170,20 @@ fn main() {
 
     use hg_substrate_os::sandbox::windows::{assign_job, job_object, restricted_token};
 
-    // 1. The IPC pipe, inheritable (the child receives the write end).
-    let sa = SECURITY_ATTRIBUTES {
-        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: ptr::null_mut(),
-        bInheritHandle: 1,
-    };
+    // 1. The IPC pipe. The child receives the write end as its stdout:
+    // CreateProcessWithTokenW starts the child through the Secondary
+    // Logon service, which passes the three STARTUPINFO std handles
+    // and no other handle (an inherited handle named on the command
+    // line was invalid in the child; FP-M0 decision log, 23 October).
     let mut read_h: HANDLE = ptr::null_mut();
     let mut write_h: HANDLE = ptr::null_mut();
-    // SAFETY: the out-handles are valid; the attributes request
-    // inheritance for the child's copy of the write end.
-    if unsafe { CreatePipe(&mut read_h, &mut write_h, &sa, 0) } == 0 {
+    // Neither end is inheritable: the service duplicates the stdout
+    // handle into the child itself, so no inheritable handle of ours
+    // exists for any process to pick up (I-2).
+    // SAFETY: the out-handles are valid; null attributes give
+    // default security and no inheritance.
+    if unsafe { CreatePipe(&mut read_h, &mut write_h, ptr::null(), 0) } == 0 {
         eprintln!("fp-m0-probe: CreatePipe failed");
-        exit(1);
-    }
-    // The child must inherit only the write end (I-2: a handle passed
-    // further than needed). Clear the read end's inherit flag.
-    // SAFETY: read_h is the just-created pipe handle; the flag change
-    // applies to this process's copy only.
-    if unsafe {
-        SetHandleInformation(read_h, 1 /* HANDLE_FLAG_INHERIT */, 0)
-    } == 0
-    {
-        eprintln!("fp-m0-probe: SetHandleInformation failed");
         exit(1);
     }
 
@@ -213,13 +203,12 @@ fn main() {
         }
     };
 
-    // 3. The child command line: the exe next to this one plus the
-    // inherited pipe handle.
+    // 3. The child command line: the exe next to this one.
     let exe = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("fp-m0-empty.exe")))
         .expect("exe path");
-    let mut cmdline: Vec<u16> = format!("\"{}\" {}", exe.display(), write_h as usize)
+    let mut cmdline: Vec<u16> = format!("\"{}\"", exe.display())
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
@@ -232,6 +221,10 @@ fn main() {
     // SAFETY: a zeroed struct is the documented initial state.
     let mut si: STARTUPINFOW = unsafe { std::mem::zeroed() };
     si.cb = size_of::<STARTUPINFOW>() as u32;
+    // The pipe is the child's stdout, the IPC endpoint; stdin and
+    // stderr are null, so the child holds no other handle of ours.
+    si.dwFlags = 0x100; // STARTF_USESTDHANDLES
+    si.hStdOutput = write_h;
     // SAFETY: a zeroed struct is the documented initial state.
     let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
     let started = Instant::now();
@@ -246,16 +239,24 @@ fn main() {
     // SE_INCREASE_QUOTA_NAME (1314) from a non-admin caller. The
     // child starts suspended so the job assignment below completes
     // BEFORE it runs — its mitigation claim is true when it reports.
+    //
+    // No console window: creating one for a console-subsystem child
+    // under the restricted token fails in the loader with
+    // STATUS_DLL_INIT_FAILED (0xC0000142) before main — the "loader
+    // stall" (FP-M0 decision log, 23 October). fp-m0-empty is built
+    // for the GUI subsystem, so it gets no console at all;
+    // CREATE_NO_WINDOW keeps any console-subsystem child windowless.
     const CREATE_SUSPENDED: u32 = 0x4;
-    // SAFETY: valid exe path, command line and startup info;
-    // inheritance is on so the child gets the write end.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    // SAFETY: valid exe path, command line and startup info; the
+    // write end reaches the child as its stdout.
     let rc = unsafe {
         CreateProcessWithTokenW(
             token.as_handle(),
             0,
             exe_w.as_ptr(),
             cmdline.as_mut_ptr(),
-            CREATE_SUSPENDED,
+            CREATE_SUSPENDED | CREATE_NO_WINDOW,
             ptr::null(),
             ptr::null(),
             &si,
@@ -304,6 +305,20 @@ fn main() {
             "fp-m0-probe: {}",
             String::from_utf8_lossy(&buf[..n as usize])
         );
+    } else {
+        // No ready line: the pipe closed. Report how the child ended,
+        // never silently (SEC-8).
+        use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+        // SAFETY: pi.hProcess is the child's process handle, valid
+        // until this process exits; the wait is bounded.
+        let waited = unsafe { WaitForSingleObject(pi.hProcess, 2000) };
+        let mut code: u32 = 0;
+        // SAFETY: valid process handle and out-pointer.
+        let ok = unsafe { GetExitCodeProcess(pi.hProcess, &mut code) };
+        println!(
+            "fp-m0-probe: no ready line; child wait={waited:#x} exit-code-ok={ok} exit-code={code:#010x}"
+        );
+        exit(1);
     }
 
     // 5. Hold the child for the harness; the measurement kills us.
