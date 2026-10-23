@@ -19,6 +19,7 @@ mod clock;
 mod entropy;
 mod executor;
 mod memory;
+pub mod prng;
 
 use std::sync::Arc;
 

@@ -57,16 +57,28 @@ pub fn process_hash_key_is_set() -> bool {
     PROCESS_KEY.get().is_some()
 }
 
-/// Builds [`ProcessHasher`]s with the process's key.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ProcessHasherBuilder;
+/// Builds [`ProcessHasher`]s with the process's key, as it was when the
+/// builder (and so its map) was created. A map keeps one key for its
+/// whole life, so setting the process key later cannot strand entries
+/// hashed under the old one.
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessHasherBuilder {
+    k0: u64,
+    k1: u64,
+}
+
+impl Default for ProcessHasherBuilder {
+    fn default() -> Self {
+        let (k0, k1) = PROCESS_KEY.get().copied().unwrap_or((0, 0));
+        Self { k0, k1 }
+    }
+}
 
 impl BuildHasher for ProcessHasherBuilder {
     type Hasher = ProcessHasher;
 
     fn build_hasher(&self) -> ProcessHasher {
-        let (k0, k1) = PROCESS_KEY.get().copied().unwrap_or((0, 0));
-        ProcessHasher::with_keys(k0, k1)
+        ProcessHasher::with_keys(self.k0, self.k1)
     }
 }
 
@@ -230,5 +242,17 @@ mod tests {
         s.insert(5);
         assert_eq!(m.get("a"), Some(&1));
         assert!(s.contains(&5));
+    }
+
+    #[test]
+    fn a_map_keeps_its_key_when_the_process_key_is_set_later() {
+        let mut m: HashMap<u64, u64> = HashMap::default();
+        for i in 0..64 {
+            m.insert(i, i);
+        }
+        // Another test may have set it first; either way a key is set now.
+        let _ = set_process_hash_key(0x0123_4567_89ab_cdef, 0xfedc_ba98_7654_3210);
+        assert!(process_hash_key_is_set());
+        assert!((0..64).all(|i| m.get(&i) == Some(&i)));
     }
 }

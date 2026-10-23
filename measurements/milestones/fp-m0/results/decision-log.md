@@ -280,3 +280,19 @@ That is twice FP-18's whole-browser budget from an empty process. **The fix:** t
 Bookings: `rig check --kind exclusive` OK on local (15:37:27, 15:38:53), hueyj (15:41:07) and rig253 (15:57:55, -06:00). The first Windows pass ran after its booking had already ended (the check passed, the rig was free); the table's Windows row is from the booked rerun, which matched it. The supervisor (`fp-m0-probe`) still sleeps 1 s in its hold loop; it is test harness only, and only the sandboxed child is counted.
 
 **FP-M0 idle-wakeup row, the empty process:** **0 wakeups/s on macOS, Linux and Windows.**
+
+## Idle wakeups with the real substrate running (23 October 2026, M1 phase B)
+
+**The question:** the empty process reached 0 wakeups by parking its own threads. Does the OS substrate (`hg-substrate-os::os_substrate`: worker pool, `MayBlock` pool, timer thread) keep that once all its threads exist?
+
+**The probe:** `substrate-idle` starts the substrate with `Threads::for_this_machine()`, runs one task and one 50 ms timer so every pool has been used, then idles. The idle workers wait on a condition variable with no timeout, and with no timers pending the timer thread does too. Same counters and 60 s windows as the section above; Windows waits 40 s after launch, as before.
+
+| OS (rig) | Substrate threads (+ main) | Idle wakeups |
+|---|---|---|
+| macOS 26 (local) | 15 (+1) | **0.000/s** interrupt and package-idle wakeups, 0 CPU, two 60 s windows |
+| Linux (hueyj) | 11 (+1) | **0.000/s** voluntary and involuntary switches, 0 CPU, two 60 s windows |
+| Windows (rig253) | 19 (+1) | **0.000/s** context switches, 0 CPU, no threads started or exited, two 60 s windows |
+
+Bookings: light bookings on each rig (a count of wakeups, not a timing run). The Linux run used the tree from just before one last executor change (`Drop` no longer joins the thread it runs on), which does not touch the idle path.
+
+**FP-M0 idle-wakeup row, the substrate at rest:** **0 wakeups/s on macOS, Linux and Windows.**
