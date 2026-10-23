@@ -218,8 +218,42 @@ So **creating a console window for the child under the restricted token is what 
 
 **The tier line now arrives, and it shows two things to fix (follow-ups, not silent):**
 1. **The must-deny probe cannot answer.** Opening the SAM hive fails with **error 32 (ERROR_SHARING_VIOLATION)** for every caller, sandboxed or not — the system holds it open exclusively. The probe now prints `file-read=failed-<code>` for any failure other than access denied, so this reads `failed-32`, never `denied`.
-2. **The current Windows tier does not block reads of user files.** A one-off diagnostic build pointed the probe at a file the user created in `Documents`: **`file-read=ALLOWED`** under the Untrusted, DISABLE_MAX_PRIVILEGE | SANDBOX_INERT token (also `ALLOWED` for `drivers\etc\hosts`). The Untrusted label stops writes up, not reads; read denial needs restricting SIDs on the token or an AppContainer. That joins the Windows-tier follow-up list (AppContainer, win32k lockdown, ACG, the environment scrub) together with a must-deny target that answers: a supervisor-created canary the user can read.
+2. **The current Windows tier does not block reads of user files.** *(Fixed later the same day by the AppContainer tier, below.)* A one-off diagnostic build pointed the probe at a file the user created in `Documents`: **`file-read=ALLOWED`** under the Untrusted, DISABLE_MAX_PRIVILEGE | SANDBOX_INERT token (also `ALLOWED` for `drivers\etc\hosts`). The Untrusted label stops writes up, not reads; read denial needs restricting SIDs on the token or an AppContainer. That joins the Windows-tier follow-up list (AppContainer, win32k lockdown, ACG, the environment scrub) together with a must-deny target that answers: a supervisor-created canary the user can read.
 
 **FP-2's running blocker sum:** macOS 26 — 4,096–4,144 KB phys_footprint; Linux (hueyj) — 2,148–2,152 KB VmRSS + 0 swap; **Windows (rig253) — 796 KB private / 4,552–4,568 KB working set steady, 880 KB / 4,612 KB in the first ~30 s** (replaces the 372–376 KB loader-failure figure).
 
 **Windows TSVs and the BOM.** Windows PowerShell's `-Encoding utf8` writes a byte-order mark, so every Windows TSV from `sample-tree-windows.ps1` began with one and its first column read as `\ufefft`. The sampler now writes UTF-8 without a BOM. The BOM was removed from the 11 existing Windows TSVs (22 and 23 October); no data changed.
+
+## Half B, Windows leg — AppContainer: user files are now denied (23 October 2026, rig253)
+
+**The gap:** under the previous tier (Untrusted integrity, privilege-stripped token, job) a canary file in the user's Documents read `ALLOWED`. The Untrusted label blocks writes up, not reads. Security scope 6.7's utility row already names the missing piece: **AppContainer without capabilities**.
+
+**Measured first, with a throwaway supervisor/child pair** (documented APIs only; the pair and its AppContainer profile were deleted afterwards):
+
+| Question | Measured |
+|---|---|
+| AppContainer, no capabilities: user file? SAM? | **denied (5)** and **denied (5)**; `hosts` and `kernel32.dll` stay readable (system files grant ALL APPLICATION PACKAGES read) |
+| Launch with only a derived AppContainer SID | fails, ERROR_FILE_NOT_FOUND (2): **a registered profile is required** (`CreateAppContainerProfile`) |
+| `CreateProcessAsUserW` with our restricted token + the AppContainer attribute | **works**, and the token is honored (1 privilege in the child vs 2 without it). Made from the process token directly; the old duplicate-first token failed with 1314 |
+| `CreateProcessWithTokenW` + the attribute list | rejected, error 87 |
+| Integrity | Windows forces **Low** for an AppContainer; the child can **lower itself to Untrusted** (verified), and reads stay denied |
+| Does the exe need an ACE for the container? | **No**: a fresh copy with no container ACE launched |
+
+**The tier now** (`src/sandbox/windows.rs`): the supervisor registers the AppContainer profile `izcal.fp-m0.empty` (per user, persistent, as an installed app's would be), and builds the lockdown token, a restricted version of its own token with every privilege but SeChangeNotify removed. It then starts the child with `CreateProcessAsUserW` in the AppContainer (no capabilities), suspended, with a handle list that allows only the stdout pipe through, and assigns it to the kill-on-close job before resuming it. The child's first step in `main` lowers it to Untrusted (`sandbox::apply`). **SANDBOX_INERT is dropped:** the old module comment said it fixed the token as a sandbox token; per its documentation it turns AppLocker and Software Restriction Policy checks *off*.
+
+**The tier probe reports what it observes, not a fixed claim.** Before this change the mitigation list was a constant string, so a child started outside the supervisor still claimed every mitigation (SEC-8). It now reads its own token (integrity, AppContainer flag, privilege count) and its job (kill-on-close required). The supervisor creates a canary file in the user's temp folder, passes its path, and deletes it once the child has reported.
+
+| Child | Probe line |
+|---|---|
+| sandboxed | `integrity=untrusted appcontainer=yes privileges=1 user-file-read=denied sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)` |
+| same binary, no sandbox (negative control) | `integrity=untrusted appcontainer=no privileges=24 user-file-read=ALLOWED sam-read=failed-32 mitigations=job+untrusted (not-applied:appcontainer,lockdown,win32k,acg,cig,cet)` |
+
+The control shows the probe does report `ALLOWED` when a read is allowed. Its `job` is the SSH session's job, which also has kill-on-close, so that claim is true.
+
+**Re-measured** (exclusive booking, `rig check` OK at 15:19:21 and 15:21:34 -06:00; rig253's clock is Pacific):
+- **Floor:** 880 KB private / 4,668 KB working set for the first ~30 s, then a steady **792 KB private / 4,620 KB working set**, one process. TSV: `results/windows/2026-10-23-halfb-win-appcontainer.tsv`.
+- **Spawn-to-ready, 100 runs:** 0 failures; min 6.36, **p50 7.774, p90 8.705, p99 10.415**, max 14.840 ms (nearest-rank); 2 runs over 10 ms. Raw: `results/windows/2026-10-23-halfb-win-appcontainer-spawn.tsv`. The p99 is still just above the 10 ms† gate: **keep a spare process on Windows.**
+
+**FP-2's running blocker sum:** macOS 26 — 4,096–4,144 KB phys_footprint; Linux (hueyj) — 2,148–2,152 KB VmRSS + 0 swap; **Windows (rig253) — 792 KB private / 4,620 KB working set steady** (AppContainer tier; replaces 796 / 4,552–4,568).
+
+**Still open on Windows (named, not silent):** win32k lockdown, ACG, CIG and CET (the rest of 6.7's utility row); the environment scrub; and the alternate desktop that 6.7's renderer row adds.

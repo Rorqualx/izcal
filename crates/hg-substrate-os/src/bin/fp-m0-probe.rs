@@ -149,51 +149,87 @@ fn main() {
     unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
 }
 
-/// The Windows supervisor: creates the IPC pipe (the child's stdout), the
-/// restricted untrusted token and the job, starts the child under the
-/// token suspended so the job assignment completes before it runs
-/// (fatal on failure), resumes it, times spawn-to-ready, prints the
-/// child's ready line, and holds it for the harness. Any other outcome
-/// (an error line, a closed pipe, no line within the deadline) prints
-/// one `FAILED` line with the child's state and exits 1.
+/// The Windows supervisor: creates the IPC pipe (the child's stdout), a
+/// canary file of the user's for the tier probe, the lockdown token,
+/// the AppContainer and the job; starts the child suspended in the
+/// AppContainer under the token, so the job assignment completes before
+/// it runs (fatal on failure); resumes it, times spawn-to-ready, prints
+/// the child's ready line, and holds it for the harness. Any other
+/// outcome (an error line, a closed pipe, no line within the deadline)
+/// prints one `FAILED` line with the child's state and exits 1.
 #[cfg(windows)]
 fn main() {
     use std::mem::size_of;
     use std::ptr;
     use std::time::Instant;
 
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, SetHandleInformation};
+    use windows_sys::Win32::Security::{SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES};
     use windows_sys::Win32::Storage::FileSystem::ReadFile;
     use windows_sys::Win32::System::Pipes::CreatePipe;
     use windows_sys::Win32::System::Threading::{
-        CreateProcessWithTokenW, PROCESS_INFORMATION, ResumeThread, STARTUPINFOW, Sleep,
-        TerminateProcess,
+        CREATE_NO_WINDOW, CREATE_SUSPENDED, CreateProcessAsUserW, DeleteProcThreadAttributeList,
+        EXTENDED_STARTUPINFO_PRESENT, InitializeProcThreadAttributeList,
+        LPPROC_THREAD_ATTRIBUTE_LIST, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+        PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, PROCESS_INFORMATION, ResumeThread,
+        STARTF_USESTDHANDLES, STARTUPINFOEXW, Sleep, TerminateProcess, UpdateProcThreadAttribute,
     };
 
-    use hg_substrate_os::sandbox::windows::{assign_job, job_object, restricted_token};
+    use hg_substrate_os::sandbox::windows::{
+        app_container, assign_job, job_object, restricted_token,
+    };
 
-    // 1. The IPC pipe. The child receives the write end as its stdout:
-    // CreateProcessWithTokenW starts the child through the Secondary
-    // Logon service, which passes the three STARTUPINFO std handles
-    // and no other handle (an inherited handle named on the command
-    // line was invalid in the child; FP-M0 decision log, 23 October).
+    // 1. The IPC pipe. The write end becomes the child's stdout. It is
+    // inheritable so CreateProcessAsUserW can pass it, and the
+    // handle-list attribute below limits inheritance to that one
+    // handle (I-2); the read end is not inheritable.
+    let sa = SECURITY_ATTRIBUTES {
+        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: ptr::null_mut(),
+        bInheritHandle: 1,
+    };
     let mut read_h: HANDLE = ptr::null_mut();
     let mut write_h: HANDLE = ptr::null_mut();
-    // Neither end is inheritable: the service duplicates the stdout
-    // handle into the child itself, so no inheritable handle of ours
-    // exists for any process to pick up (I-2).
-    // SAFETY: the out-handles are valid; null attributes give
-    // default security and no inheritance.
-    if unsafe { CreatePipe(&mut read_h, &mut write_h, ptr::null(), 0) } == 0 {
+    // SAFETY: the out-handles are valid; the attributes make both ends
+    // inheritable, and the read end's flag is cleared next.
+    if unsafe { CreatePipe(&mut read_h, &mut write_h, &sa, 0) } == 0 {
         eprintln!("fp-m0-probe: CreatePipe failed");
         exit(1);
     }
+    // SAFETY: read_h is the just-created pipe handle; the flag change
+    // applies to this process's copy only.
+    if unsafe {
+        SetHandleInformation(read_h, 1 /* HANDLE_FLAG_INHERIT */, 0)
+    } == 0
+    {
+        eprintln!("fp-m0-probe: SetHandleInformation failed");
+        exit(1);
+    }
 
-    // 2. The restricted token and the job.
+    // 2. The canary: a file of the user's, in the user's temp folder,
+    // that the child must not be able to read (the AppContainer's job).
+    let canary = std::env::temp_dir().join(format!("fp-m0-canary-{}.txt", std::process::id()));
+    if let Err(e) = std::fs::write(&canary, b"izcal fp-m0 canary\n") {
+        eprintln!("fp-m0-probe: canary {}: {e}", canary.display());
+        exit(1);
+    }
+    let remove_canary = || {
+        let _ = std::fs::remove_file(&canary);
+    };
+
+    // 3. The lockdown token, the AppContainer (no capabilities) and the
+    // job.
     let token = match restricted_token() {
         Ok(t) => t,
         Err(e) => {
             eprintln!("fp-m0-probe: token: {e}");
+            exit(1);
+        }
+    };
+    let container = match app_container("izcal.fp-m0.empty", "Izcal FP-M0 empty process") {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("fp-m0-probe: appcontainer: {e}");
             exit(1);
         }
     };
@@ -205,12 +241,62 @@ fn main() {
         }
     };
 
-    // 3. The child command line: the exe next to this one.
+    // 4. The attribute list: the AppContainer with no capabilities, and
+    // the one handle the child may inherit.
+    let mut caps = SECURITY_CAPABILITIES {
+        AppContainerSid: container.as_psid(),
+        Capabilities: ptr::null_mut(),
+        CapabilityCount: 0,
+        Reserved: 0,
+    };
+    let mut inherit = [write_h];
+    let mut attr_size: usize = 0;
+    // SAFETY: the documented size query: a null list returns the size
+    // needed for two attributes (the call reports failure by design).
+    unsafe { InitializeProcThreadAttributeList(ptr::null_mut(), 2, 0, &mut attr_size) };
+    let mut attr_mem = vec![0u64; attr_size.div_ceil(8)];
+    let attrs = attr_mem.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
+    // SAFETY: `attr_mem` is at least `attr_size` bytes and 8-aligned,
+    // and lives until DeleteProcThreadAttributeList below.
+    let ok_init = unsafe { InitializeProcThreadAttributeList(attrs, 2, 0, &mut attr_size) };
+    // SAFETY: `caps` lives until process creation; size is the struct's.
+    let ok_caps = unsafe {
+        UpdateProcThreadAttribute(
+            attrs,
+            0,
+            PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
+            &mut caps as *mut _ as *mut _,
+            size_of::<SECURITY_CAPABILITIES>(),
+            ptr::null_mut(),
+            ptr::null(),
+        )
+    };
+    // SAFETY: `inherit` holds one valid handle and lives until process
+    // creation; size is one HANDLE.
+    let ok_list = unsafe {
+        UpdateProcThreadAttribute(
+            attrs,
+            0,
+            PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+            inherit.as_mut_ptr() as *mut _,
+            size_of::<HANDLE>(),
+            ptr::null_mut(),
+            ptr::null(),
+        )
+    };
+    if ok_init == 0 || ok_caps == 0 || ok_list == 0 {
+        eprintln!("fp-m0-probe: attribute list failed ({ok_init}{ok_caps}{ok_list})");
+        remove_canary();
+        exit(1);
+    }
+
+    // 5. The child command line: the exe next to this one, then the
+    // canary path for the tier probe.
     let exe = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("fp-m0-empty.exe")))
         .expect("exe path");
-    let mut cmdline: Vec<u16> = format!("\"{}\"", exe.display())
+    let mut cmdline: Vec<u16> = format!("\"{}\" \"{}\"", exe.display(), canary.display())
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
@@ -221,56 +307,53 @@ fn main() {
         .collect();
 
     // SAFETY: a zeroed struct is the documented initial state.
-    let mut si: STARTUPINFOW = unsafe { std::mem::zeroed() };
-    si.cb = size_of::<STARTUPINFOW>() as u32;
+    let mut si: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
+    si.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
     // The pipe is the child's stdout, the IPC endpoint; stdin and
-    // stderr are null, so the child holds no other handle of ours.
-    si.dwFlags = 0x100; // STARTF_USESTDHANDLES
-    si.hStdOutput = write_h;
+    // stderr are null.
+    si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    si.StartupInfo.hStdOutput = write_h;
+    si.lpAttributeList = attrs;
     // SAFETY: a zeroed struct is the documented initial state.
     let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
     let started = Instant::now();
 
-    // The child's environment: inherited for now. Both the hand-built
-    // and the filtered-from-GetEnvironmentStringsW blocks made every
-    // CreateProcess* variant fail ERROR_INVALID_PARAMETER (87) on
-    // rig253 — recorded in the FP-M0 decision log; the scrub is a
-    // Windows-tier follow-up alongside AppContainer/win32k/ACG.
+    // The child's environment: inherited (a null block). The scrub is a
+    // Windows-tier follow-up alongside win32k lockdown, ACG, CIG, CET.
     //
-    // CreateProcessWithTokenW, not AsUser: the latter demands
-    // SE_INCREASE_QUOTA_NAME (1314) from a non-admin caller. The
-    // child starts suspended so the job assignment below completes
-    // BEFORE it runs — its mitigation claim is true when it reports.
-    //
-    // No console window: creating one for a console-subsystem child
-    // under the restricted token fails in the loader with
-    // STATUS_DLL_INIT_FAILED (0xC0000142) before main — the "loader
-    // stall" (FP-M0 decision log, 23 October). fp-m0-empty is built
-    // for the GUI subsystem, so it gets no console at all;
-    // CREATE_NO_WINDOW keeps any console-subsystem child windowless.
-    const CREATE_SUSPENDED: u32 = 0x4;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    // SAFETY: valid exe path, command line and startup info; the
-    // write end reaches the child as its stdout.
+    // The child starts suspended so the job assignment below completes
+    // BEFORE it runs — its mitigation claim is true when it reports. No
+    // console window: creating one under the sandbox fails in the
+    // loader with STATUS_DLL_INIT_FAILED (0xC0000142); fp-m0-empty is a
+    // GUI-subsystem binary, and CREATE_NO_WINDOW covers any
+    // console-subsystem child (FP-M0 decision log, 23 October).
+    // SAFETY: valid token, exe path, command line and extended startup
+    // info; inheritance is on and limited to `inherit` by the list.
     let rc = unsafe {
-        CreateProcessWithTokenW(
+        CreateProcessAsUserW(
             token.as_handle(),
-            0,
             exe_w.as_ptr(),
             cmdline.as_mut_ptr(),
-            CREATE_SUSPENDED | CREATE_NO_WINDOW,
             ptr::null(),
             ptr::null(),
-            &si,
+            1,
+            EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW,
+            ptr::null(),
+            ptr::null(),
+            &si.StartupInfo,
             &mut pi,
         )
     };
+    // SAFETY: GetLastError reads the thread's error slot only; read
+    // before the cleanup calls can overwrite it.
+    let create_err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+    // SAFETY: the list was initialized above and is no longer needed.
+    unsafe { DeleteProcThreadAttributeList(attrs) };
     // SAFETY: the parent's copy of the write end is no longer needed.
     unsafe { CloseHandle(write_h) };
     if rc == 0 {
-        // SAFETY: GetLastError reads the thread's error slot only.
-        let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-        eprintln!("fp-m0-probe: CreateProcessWithTokenW failed: error={err}");
+        eprintln!("fp-m0-probe: CreateProcessAsUserW failed: error={create_err}");
+        remove_canary();
         exit(1);
     }
     // SAFETY: pi.hProcess is the just-created child process handle.
@@ -281,15 +364,17 @@ fn main() {
         // SAFETY: the child is suspended and never ran; killing it
         // here is the clean teardown.
         unsafe { TerminateProcess(pi.hProcess, 1) };
+        remove_canary();
         exit(1);
     }
     // SAFETY: pi.hThread is the suspended child's primary thread.
     if unsafe { ResumeThread(pi.hThread) } == u32::MAX {
         eprintln!("fp-m0-probe: ResumeThread failed");
+        remove_canary();
         exit(1);
     }
 
-    // 4. The ready line, with a deadline. A reader thread does the
+    // 6. The ready line, with a deadline. A reader thread does the
     // blocking read so a child that neither writes nor exits is
     // reported as stuck instead of hanging the supervisor (SEC-8).
     // Every outcome other than a ready line prints the child's state
@@ -319,7 +404,10 @@ fn main() {
         exit(1);
     }
 
-    match rx.recv_timeout(READY_DEADLINE) {
+    let outcome = rx.recv_timeout(READY_DEADLINE);
+    // The child has probed (or failed); the canary is no longer needed.
+    remove_canary();
+    match outcome {
         Ok(bytes) if bytes.starts_with(b"sandbox=applied") => {
             println!(
                 "fp-m0-probe: child pid={} spawn-to-ready={:.3} ms",
@@ -372,7 +460,7 @@ fn main() {
         }
     }
 
-    // 5. Hold the child for the harness; the measurement kills us.
+    // 7. Hold the child for the harness; the measurement kills us.
     loop {
         // SAFETY: a fixed 1-second sleep with no return value.
         unsafe { Sleep(1000) };

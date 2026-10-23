@@ -32,8 +32,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(unix)]
-use hg_substrate_os::sandbox::apply;
-use hg_substrate_os::sandbox::probe_line;
+use hg_substrate_os::sandbox::{apply, probe_line};
 use hg_substrate_os::thread;
 
 #[cfg(unix)]
@@ -82,11 +81,11 @@ fn main() {
     }
 }
 
-/// The Windows main: the child starts restricted from birth (the
-/// supervisor created it under the untrusted token, with no console),
-/// probes its tier, spawns the two threads, reports over its stdout —
-/// the pipe the supervisor passed as the IPC endpoint, the one handle
-/// path CreateProcessWithTokenW carries — and waits.
+/// The Windows main: the supervisor started this process in an
+/// AppContainer under the lockdown token, in its job, with no console.
+/// It lowers itself to Untrusted, probes its tier, spawns the two
+/// threads, reports over its stdout (the pipe the supervisor passed as
+/// the IPC endpoint) and waits.
 #[cfg(windows)]
 fn main() {
     use std::io::Write;
@@ -105,7 +104,17 @@ fn main() {
     }
     std::panic::set_hook(Box::new(|info| fail(&format!("panic: {info}"))));
 
-    let probe = probe_line();
+    // 1. Lock down first: lower from the AppContainer's Low integrity
+    // to Untrusted before anything else runs.
+    if let Err(e) = hg_substrate_os::sandbox::apply() {
+        fail(&format!("sandbox failed to apply: {e}"));
+    }
+
+    // 2. The tier probe; argv[1] is the supervisor's canary, a file of
+    // the user's that the AppContainer must keep this process from
+    // reading.
+    let canary = std::env::args_os().nth(1).map(std::path::PathBuf::from);
+    let probe = hg_substrate_os::sandbox::windows::probe_line(canary.as_deref());
 
     let done = Arc::new(AtomicBool::new(false));
     let mut handles = Vec::new();
