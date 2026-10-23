@@ -1,11 +1,12 @@
 //! FP-M0 half B: the supervisor that drives the empty-process probe.
 //!
-//! Spawns `fp-m0-empty` with the IPC endpoint pre-opened (fd 3 — the
-//! security-scope 6.7 pattern: the child opens nothing after lockdown),
-//! times spawn-to-ready, prints the child's ready line and pid, and
-//! keeps the child alive for the external harness (`footprint` / the
-//! FP-M0 tree sampler, which samples any PID). SIGINT/SIGTERM kill the
-//! child and exit.
+//! Spawns `fp-m0-empty` with the IPC endpoint pre-opened (fd 3 on unix,
+//! an inherited pipe handle on Windows — the security-scope 6.7
+//! pattern: the child opens nothing after lockdown), times
+//! spawn-to-ready, prints the child's ready line and pid, and keeps
+//! the child alive for the external harness (which samples any PID).
+//! SIGINT/SIGTERM kill the unix child and exit; the Windows pair is
+//! killed by the measurement.
 #![expect(
     unsafe_code,
     reason = "G5: src/bin/fp-m0-probe.rs (posix_spawn + signals)"
@@ -90,9 +91,6 @@ fn main() {
     // SAFETY: `child_fd` is the socketpair end the child must not keep
     // under its original number; the close applies to the child only.
     unsafe { posix_spawn_file_actions_addclose(&mut actions, child_fd) };
-    // SAFETY: `argv` is a null-terminated array of valid C strings;
-    // `pid` is a valid out-pointer; `actions` holds the two prepared
-    // actions. The call only creates the child process.
     // The child's environment: minimal and scrubbed — the supervisor's
     // own environment (DYLD_* linker variables included) acts at exec,
     // before the child's sandbox applies, and must not leak through
@@ -153,22 +151,22 @@ fn main() {
 
 /// The Windows supervisor: creates the IPC pipe (inheritable), the
 /// restricted untrusted token and the job, starts the child under the
-/// token with the pipe handle on its command line, times spawn-to-
-/// ready, prints the ready line, and keeps the child alive for the
-/// harness (the measurement kills the pair).
+/// token suspended so the job assignment completes before it runs
+/// (fatal on failure), resumes it, times spawn-to-ready, prints the
+/// child's ready line, and holds it for the harness.
 #[cfg(windows)]
 fn main() {
     use std::mem::size_of;
     use std::ptr;
     use std::time::Instant;
 
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, SetHandleInformation};
     use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
     use windows_sys::Win32::Storage::FileSystem::ReadFile;
     use windows_sys::Win32::System::Pipes::CreatePipe;
-    use windows_sys::Win32::System::ProcessStatus::GetProcessMemoryInfo;
     use windows_sys::Win32::System::Threading::{
-        CreateProcessAsUserW, PROCESS_INFORMATION, STARTUPINFOW, Sleep,
+        CreateProcessWithTokenW, PROCESS_INFORMATION, ResumeThread, STARTUPINFOW, Sleep,
+        TerminateProcess,
     };
 
     use hg_substrate_os::sandbox::windows::{assign_job, job_object, restricted_token};
@@ -191,14 +189,10 @@ fn main() {
     // further than needed). Clear the read end's inherit flag.
     // SAFETY: read_h is the just-created pipe handle; the flag change
     // applies to this process's copy only.
-    let inherit_cleared = unsafe {
-        windows_sys::Win32::Foundation::SetHandleInformation(
-            read_h,
-            windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT,
-            0,
-        )
-    };
-    if inherit_cleared == 0 {
+    if unsafe {
+        SetHandleInformation(read_h, 1 /* HANDLE_FLAG_INHERIT */, 0)
+    } == 0
+    {
         eprintln!("fp-m0-probe: SetHandleInformation failed");
         exit(1);
     }
@@ -235,24 +229,33 @@ fn main() {
         .chain(std::iter::once(0))
         .collect();
 
-    // 4. Start the child under the token.
     // SAFETY: a zeroed struct is the documented initial state.
     let mut si: STARTUPINFOW = unsafe { std::mem::zeroed() };
     si.cb = size_of::<STARTUPINFOW>() as u32;
     // SAFETY: a zeroed struct is the documented initial state.
     let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
     let started = Instant::now();
-    // SAFETY: the exe path, command line and startup info are valid
-    // for the call; inheritance is on so the child gets the write end.
+
+    // The child's environment: inherited for now. Both the hand-built
+    // and the filtered-from-GetEnvironmentStringsW blocks made every
+    // CreateProcess* variant fail ERROR_INVALID_PARAMETER (87) on
+    // rig253 — recorded in the FP-M0 decision log; the scrub is a
+    // Windows-tier follow-up alongside AppContainer/win32k/ACG.
+    //
+    // CreateProcessWithTokenW, not AsUser: the latter demands
+    // SE_INCREASE_QUOTA_NAME (1314) from a non-admin caller. The
+    // child starts suspended so the job assignment below completes
+    // BEFORE it runs — its mitigation claim is true when it reports.
+    const CREATE_SUSPENDED: u32 = 0x4;
+    // SAFETY: valid exe path, command line and startup info;
+    // inheritance is on so the child gets the write end.
     let rc = unsafe {
-        CreateProcessAsUserW(
+        CreateProcessWithTokenW(
             token.as_handle(),
+            0,
             exe_w.as_ptr(),
             cmdline.as_mut_ptr(),
-            ptr::null(),
-            ptr::null(),
-            1,
-            0,
+            CREATE_SUSPENDED,
             ptr::null(),
             ptr::null(),
             &si,
@@ -262,27 +265,39 @@ fn main() {
     // SAFETY: the parent's copy of the write end is no longer needed.
     unsafe { CloseHandle(write_h) };
     if rc == 0 {
-        eprintln!("fp-m0-probe: CreateProcessAsUserW failed");
+        // SAFETY: GetLastError reads the thread's error slot only.
+        let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+        eprintln!("fp-m0-probe: CreateProcessWithTokenW failed: error={err}");
         exit(1);
     }
     // SAFETY: pi.hProcess is the just-created child process handle.
+    // Fatal on failure: the child must never claim a mitigation it
+    // does not have (SEC-8: silent reduced modes are forbidden).
     if let Err(e) = unsafe { assign_job(&job, pi.hProcess) } {
-        eprintln!("fp-m0-probe: job assign: {e}");
+        eprintln!("fp-m0-probe: job assign failed: {e}");
+        // SAFETY: the child is suspended and never ran; killing it
+        // here is the clean teardown.
+        unsafe { TerminateProcess(pi.hProcess, 1) };
+        exit(1);
+    }
+    // SAFETY: pi.hThread is the suspended child's primary thread.
+    if unsafe { ResumeThread(pi.hThread) } == u32::MAX {
+        eprintln!("fp-m0-probe: ResumeThread failed");
+        exit(1);
     }
 
-    // 5. The ready line (blocking read on the pipe).
+    // 4. The ready line (blocking read on the pipe).
     let mut buf = [0u8; 512];
     let mut n: u32 = 0;
     // SAFETY: the buffer is valid for the read; the read blocks until
     // the child writes or the pipe closes.
     unsafe { ReadFile(read_h, buf.as_mut_ptr(), 512, &mut n, ptr::null_mut()) };
-    let elapsed = started.elapsed();
     // SAFETY: the read end is ours and no longer needed.
     unsafe { CloseHandle(read_h) };
     println!(
         "fp-m0-probe: child pid={} spawn-to-ready={:.3} ms",
         pi.dwProcessId,
-        elapsed.as_secs_f64() * 1e3
+        started.elapsed().as_secs_f64() * 1e3
     );
     if n > 0 {
         print!(
@@ -291,8 +306,7 @@ fn main() {
         );
     }
 
-    // 6. Hold the child for the harness; the measurement kills us.
-    let _ = GetProcessMemoryInfo; // the harness reads counters itself
+    // 5. Hold the child for the harness; the measurement kills us.
     loop {
         // SAFETY: a fixed 1-second sleep with no return value.
         unsafe { Sleep(1000) };

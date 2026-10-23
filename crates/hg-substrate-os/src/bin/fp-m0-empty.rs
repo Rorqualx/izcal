@@ -63,6 +63,11 @@ fn main() {
         "sandbox=applied {probe} threads=2 pid={}\n",
         std::process::id(),
     );
+    // The tier line goes to stderr too: the supervisor's pipe read
+    // returned EOF on the first Windows run (recorded; the pipe
+    // handoff is the follow-up), so stderr is the reliable channel
+    // for the harness here.
+    eprint!("{line}");
     if let Err(e) = ipc.write_all(line.as_bytes()) {
         eprintln!("fp-m0-empty: ready write failed: {e}");
     }
@@ -113,6 +118,11 @@ fn main() {
         "sandbox=applied {probe} threads=2 pid={}\n",
         std::process::id(),
     );
+    // The tier line goes to stderr too: the supervisor's pipe read
+    // returned EOF on the first Windows run (recorded; the pipe
+    // handoff is the follow-up), so stderr is the reliable channel
+    // for the harness here.
+    eprint!("{line}");
     if let Err(e) = ipc.write_all(line.as_bytes()) {
         eprintln!("fp-m0-empty: ready write failed: {e}");
     }
