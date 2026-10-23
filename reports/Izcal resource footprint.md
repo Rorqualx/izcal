@@ -1,0 +1,1174 @@
+# Izcal resource footprint
+
+*Design and budget specification for Izcal's memory, CPU and wakeup, energy, disk and GPU-memory use across the whole browser. Date: 19 October 2026. Status: draft 0.3, owner decisions recorded. Research notes: `research_notes/Izcal resource footprint/` (`frame.md`, `history_postmortems.md`, `breakdown_measurement.md`, `os_mechanisms.md`, `compact_engine_data.md`, `gaps_opportunities.md`; phase 8: `factcheck.md`, `critique.md`); footprint evidence also from `research_notes/Izcal JavaScript engine/` (`gc_memory.md`, `execution_performance.md`). Relates to: HGBA-2 2.3.1 P1, P2, P3, P4, P6, M-1, I-1, I-2, I-6, Section 4.6, S-3, BF-1, X-4; HGBA-3 B1, B4, B5, B7, B9, B10, DET-1, INC-3, PRIV-2; Stage 1 design Sections 1, 3, 5, 6, 7.6, 8.1, 8.3, 13.3 (RES-1 to RES-5, which this spec replaces); security scope 0.3 Sections 6.3, 6.3a, 6.5, 6.7, 6.10, 6.13, IPC-R1, IPC-R7, IPC-R15, SEC-16, SEC-34, Q-SEC-13; coding standard 0.3.1 CS-PF-1, CS-PF-3 to CS-PF-6, CS-PF-8, CS-T12; DevTools spec 0.3 (Section 6.5, 6.6, Stage 2 views); shell UI design R13; JavaScript engine spec draft 0.2 (`reports/Izcal JavaScript engine.md`: JS-D4, JS-D12, JS-D15, JS-D17, JS-D20, Sections 6.1, 6.2, 6.5, 6.6, 6.7, 6.8, 6.10, 6.11, 6.12, 6.13, 6.15, JS-17, JS-22, JS-30, JS-32, JS-42, JS-60).*
+
+*Revision 0.3.1 (19 October 2026): M-1 2.3.1 source-evidence pass: 70 links removed or replaced (13 in this spec, 57 in its research notes), plus the unlinked claims and incumbent priors that came from engine source; another engine's source code (code files, headers, commits, diffs, code reviews) is never evidence. Facts with a published prose source now cite it (Chromium's prose docs, Apple, Android and WebKitGTK documentation, Chrome's developer documentation, the Mozilla wiki, press coverage, bug discussions). Values that only engine source gave are removed or become black-box measurements: FP-M0 now also observes which OS counters each incumbent's reported footprint follows, per-element memory cost, reaction to Linux PSI, macOS accounting after `MADV_FREE_REUSABLE`, and HTTP-cache sizing (open question 17); FP-M3 measures attribute-set sharing on the corpus. Incumbent priors in Section 7.1 that came from source are replaced or dropped; the HTTP cache's 1% rule now states its derivation. No decision, target or threshold changed. Status stays draft 0.3, owner decisions recorded. Per-item log: `research_notes/Izcal resource footprint/source_evidence_pass.md`.*
+
+*Revision 0.3.2 (22 October 2026): FP-M0's incumbent half completes (the matrix on macOS, Linux and Windows; the PSI staircase; cache sizing; per-element and soft-limit observations — the measurements branch's `measurements/milestones/fp-m0/`, results and decision log). Open question 17 closes on its measured parts, item by item in Section 11.1: the three-OS counter mapping, the per-element variant, Chromium's PSI reaction, `MADV_FREE_REUSABLE` accounting, macOS cache sizing and the soft limit on the local device. The parts still open — the per-attribute-set variant, Firefox's PSI reaction, `MADV_FREE_REUSE`, cache sizing on Linux and Windows, the soft limit on the other lab devices — stay in 11.1 with their FP-M0 gates. No decision, target or threshold changed; the 1% cache rule keeps its 0.3.1 derivation and the observation (7.8 MB and 44 MB against ~979 GB free) confirms it as an upper bound, not an observed default. Status stays draft 0.3.*
+
+*Revision 0.3 (19 October 2026): the owner accepted every recommendation in Section 9.3 (FP-D1 to FP-D19), including FP-D13's full locale and codec set in every build and FP-D16 and FP-D17, which resolve the conflicts with HGBA-2 Section 4.6 and Stage 1. The amendments of Section 9.4 are still to be applied in the documents they amend.*
+
+*Revision 0.2 (19 October 2026): phase 8 applied. The fact-check checked 102 claims (75 correct, 16 partly correct, 5 wrong, 6 unverifiable) and 111 links (0 dead) and listed 12 must-fix items; all are applied, together with every "Partly" correction. The design critique raised 38 findings (9 High, 19 Medium, 10 Low) and 20 reconciliation items with the JavaScript engine spec (R1–R20); every one is applied, three in a different form than proposed (H7, M16, L5), none rejected (Appendix A). The spec is reconciled with the JavaScript engine spec draft 0.2, which now owns the DOM representation (JS-D4), the heap and agent structure (JS-D17), the heap image format (`hg-js-snapshot`) and engine-internal design; this spec keeps the numbers and the browser-wide mechanisms and cites JS IDs instead of restating their designs. What changed: **FP-D2 is now requirements on JS-D4** (one copy of node structure, outside the cage); **F_fixed is a process part plus a per-agent part**, with a new per-agent target (FP-34) and the line items summing to the 4 MiB† total; **derived data has two classes**, and heap-resident engine data is never flushed on the Critical path; **no staging by schedule**: the suspend spike and per-site user controls are gated on measurements (FP-31, FP-30), never on dates; **security is never traded for footprint**: no page-triggered downloads of web-observable data (FP-D13), the code generator stays out of jitless processes, font and filter-list parsing moves from the broker to a utility process, glyph atlases are partitioned (FP-D14), in-process caches are keyed by partition, a shared-resource channel analysis is added (Section 6.18.1), attribution history gets retention and clearing rules (FP-D18), and FP-D8's reversal trigger no longer turns isolation off; **canonical measures** become canonical touched and canonical committed bytes, gated per ISA and per tier ceiling; the engine numbers the JS spec asks for are supplied (Section 6.20: heap limits, growth knob, CPU budgets, locale data, reservations); the two spec conflicts become decisions FP-D16 (a regenerable-cache class in HGBA-2 4.6, shared with the JS spec) and FP-D17 (Stage 1 "site instance" wording against I-1). New targets FP-34 to FP-39 and decisions FP-D13 to FP-D19. The scenario S-30 is renamed FP-S30. Earlier revision lines are kept below. A follow-up pass added the code-cache builder process (JS-D21) as a budgeted process kind, FP-39.*
+
+*Revision 0.1 (19 October 2026): first draft. Phases 4–7 of the first-principles-spec method.*
+
+Izcal's footprint is decided by one equation: **total = baseline services + Σ processes (process fixed cost + Σ agents per-agent cost) + per-page content + GPU memory**. Site isolation (I-1) fixes the process count, and every browser that weakened isolation on small devices did so because the fixed cost per process was too large to multiply ([Reis et al., USENIX Security 2019](https://www.usenix.org/system/files/sec19-reis.pdf); [Chromium process model](https://chromium.googlesource.com/chromium/src/+/main/docs/process_model_and_site_isolation.md)). The central idea of this spec is therefore to **make process-per-site cheap rather than make it rarer**: an empty site process costs at most **4 MiB†** of OS-charged memory, because start-up state is a **read-only, position-independent engine image** mapped from disk and shared by every process without sharing heap layout or any writable byte, and because nothing in a site process is written at start-up that does not have to be. Per-page content is held in **one copy** (JS-D4's node columns, text stored once), with narrow references and rare data in side tables. Everything derived from the DOM and style sheets is **discardable and rebuildable**, ranked by measured bytes per millisecond of rebuild, released without memory and without racing a running script, and checked after rebuild by DET-1 hashes. A hidden page gets **no wakeups** unless it holds a declared, user-visible reason. Reclaiming memory **never needs memory**. Every byte, CPU nanosecond, wakeup and joule is charged to a site, frame, script and cause, shown to the user, kept no longer than the user's history, and checked deterministically in CI under B1. **No footprint mechanism may weaken isolation or create a cross-site channel**: where sharing would, the spec partitions and pays the cost. The decisions that matter most for the owner are: no fork server on any OS (FP-D1); one process per (site, container), split on a budget only at agent-cluster boundaries (FP-D3); freeze-by-default for hidden pages (FP-D4); one installed set of web-observable data, never downloaded because a page asked (FP-D13); and one regenerable-cache class for every on-disk engine image (FP-D16).
+
+## 1. The problem and who has it
+
+Browsers are among the largest consumers of memory, wakeups and battery on users' machines. About a quarter of participants in one part of a CMU tab study said their browser or computer had crashed because of too many tabs ([CMU News](https://www.cmu.edu/news/stories/archives/2021/may/overcoming-tab-overload.html)). A tab-suspending extension with more than two million installs was sold and became malware, and Google deactivated it on users' computers ([The Hacker News](https://thehackernews.com/2021/02/warning-hugely-popular-great-suspender.html)): users had handed footprint control to third-party code.
+
+| Who | What they need |
+|---|---|
+| **Users** with many tabs on 4–16 GB machines and on battery | Tabs that stay alive without crashing the machine, background tabs that cost nothing, an answer to "why is this tab heavy?" that does not become a record of their browsing |
+| **Izcal's engineers and agents** | Budgets per process, per agent, per component and per page that a PR can be measured against, deterministically, and attribution that says where every byte went |
+| **Site isolation** (HGBA-2 P1, I-1) | A per-process cost low enough that the isolation boundary is never weakened for memory, on any device class, and no shared footprint mechanism that opens a channel across sites |
+| **Web developers** | Signals that tell them their page is heavy and why, within privacy limits |
+
+Izcal owns every component that does engine work (HGBA-2 2.3.0, M-1 part 1): its own JS engine and GC (`reports/Izcal JavaScript engine.md`), DOM, style system, layout, text stack and renderer on Metal, Vulkan and Direct3D 12. Footprint can be designed in from the first line, not reclaimed a decade later. The existing resource targets (Stage 1 RES-1 to RES-5) are relative to Chrome and were set when Izcal would inherit V8, Stylo and WebRender footprints. This spec replaces them with absolute budgets.
+
+**Ownership between this spec and the JS engine spec.** The JS engine spec owns the DOM representation (JS-D4), the heap and agent structure (JS-D17, one cage per process with per-agent heaps), the heap image format (`hg-js-snapshot`), the flushing and shrink mechanisms inside the engine (JS 6.5) and time accounting (JS 6.10). This spec owns every **number** those mechanisms are held to (budgets, limits, thresholds, retention), and the **browser-wide mechanisms**: the ledger, the substrate memory interface (shared trait set), the pressure ladder, the background policy, image and GPU memory, disk budgets, attribution and the lab.
+
+**Success, measurably:** the budgets of Section 8 met on the reference device classes, with full I-1 and origin keying on every desktop class down to 4 GB; zero wakeups from hidden pages without a declared reason; an unexplained remainder (OS-charged minus attributed bytes) of at most 5%† per process; zero detectable cross-partition differences in the footprint probing suite (FP-36); and footprint gated in CI by deterministic counts that the device lab confirms.
+
+## 2. History: what came before and why it was built that way
+
+The full chronology, with sources, is in `history_postmortems.md`. The rows below are those a decision in this spec rests on.
+
+| Year | Project | What it did | Why that way | Fate and why |
+|---|---|---|---|---|
+| 1996–2008 | Single-process browsers | All pages in one process | Pages "had little or no active code," so one process kept "resource usage low" ([Reis 2008](https://blog.chromium.org/2008/09/multi-process-architecture.html)) | Replaced by multi-process for robustness and security |
+| 2008 | Chrome | One process per site instance, capped at 20 renderers, then reuse across sites | Memory on 2008 machines ([Reis 2008](https://blog.chromium.org/2008/09/multi-process-architecture.html)) | The cap forced cross-site sharing; Site Isolation later consolidated only same-site main frames, and only after a soft limit ([Reis et al. 2019](https://www.usenix.org/system/files/sec19-reis.pdf) §4.1.1) |
+| 2011 | Firefox MemShrink (Firefox 7) | Fixed fragmentation, GC and image heuristics | OOM on 32-bit Windows and swapless phones | Resident after closing tabs fell 669 → 321 MB; peak fell only 8.7%: **memory given back** was the win ([Nethercote](https://blog.mozilla.org/nnethercote/2011/08/09/firefox-7-is-lean-and-fast-2/)) |
+| 2012 | Firefox 15 | Severed add-on references to closed pages | Per-compartment reporting made leaks visible | Mean ghost windows fell from 3–4 to under 1: **measure, then fix structurally** ([Nethercote](https://blog.mozilla.org/nnethercote/2012/07/19/firefox-15-plugs-the-add-on-leaks/)) |
+| 2011 | ChromeOS OOM design | Discard tabs at a user-space "soft wall" before the kernel's | 1–2 GB, no swap; "it takes memory to free memory" | Kill-a-tab chosen over compression in the 2011 design; ChromeOS later shipped zram ([Chromium](https://www.chromium.org/chromium-os/chromiumos-design-docs/out-of-memory-handling)) |
+| 2020–2021 | Chrome background throttling (87, 88) | Timer budgets, then one wake-up per minute for hidden pages after 5 minutes | Timers were ">40% of the work in background tabs" | Up to 5× less CPU, up to 1.25 h more battery (internal tests) ([M87](https://blog.chromium.org/2020/11/tab-throttling-and-more-performance.html); [Chrome 88](https://developer.chrome.com/blog/timer-throttling-in-chrome-88)) |
+| 2018 | Chrome Site Isolation | Process per site, including cross-site iframes | Spectre | +50% processes, +9–13% total memory in the field; up to 89% on one iframe-heavy page ([Reis et al.](https://www.usenix.org/system/files/sec19-reis.pdf) §5.3.2) |
+| 2018–2020 | Firefox Fission MemShrink | Cut the empty content process, tracking every kilobyte (`[overhead:30K]`) | Fission multiplied processes | Resident unique (USS): Linux 34.3 → 19.5 MB, Windows 21.5 → 11.5 MB ([Fission/Memory](https://wiki.mozilla.org/Project_Fission/Memory); [Bone](https://paul.bone.id.au/blog/2020/09/25/memshrink/)) |
+| 2019 | Chrome on Android | Isolation only for sites users log into, only on devices with at least 2 GB | "Protecting fewer sites to keep overhead low"; about 3–5% total memory overhead | Isolation weakened where the fixed cost was too large ([Google Security Blog](https://security.googleblog.com/2019/10/improving-site-isolation-for-stronger.html); [Chromium Blog](https://blog.chromium.org/2019/10/recent-site-isolation-improvements.html)) |
+| 2019 | V8 Lite → lazy V8 | A lite mode, then laziness by default | Low-memory Android | Lite mode cost +120% V8 CPU; V8 7.1 → 7.8's memory work (lazy feedback, lazy source positions, bytecode flushing) cut the heap 18% on average ([V8](https://v8.dev/blog/v8-lite)) |
+| 2020 | Chrome heavy-ad intervention | Unload non-interacted ad frames above 99.9th-percentile thresholds | 0.3% of ads used 27% of ad network data and 28% of ad CPU | Shipped in Chrome 85 with noised thresholds ([Chromium Blog](https://blog.chromium.org/2020/05/resource-heavy-ads-in-chrome.html); [Chrome for Developers](https://developer.chrome.com/blog/heavy-ad-interventions)) |
+| 2019 | Never-Slow Mode | A prototype of byte budgets per interaction and task pausing, behind a flag | Make slow pages impossible | Never shipped. Press coverage of the work-in-progress change lists per-interaction wire-size budgets for scripts, images, stylesheets and fonts, and long tasks over 200 ms pausing the page, and reports its author's warning that it could silently break content ([BleepingComputer, 2019](https://www.bleepingcomputer.com/news/google/google-working-on-chrome-never-slow-mode-for-faster-browsing/)). No reason for not pursuing it is published |
+| 2021 | PartitionAlloc-Everywhere | Own allocator for all of Chrome | Allocator slack | On Windows, up to −22% browser process, −8% renderer, −3% GPU (vendor "up to") ([M89](https://blog.chromium.org/2021/03/advanced-memory-management-and-more.html)) |
+| 2021 | Firefox 93 tab unloading | Unload LRU tabs near commit exhaustion | Fewer OOM crashes | Total browser and content crashes fell significantly; among the remaining crashes the OOM share rose. Mozilla's examples of why: unloading "requires a garbage collection pass", and the memory-pressure event fired only after all tabs were unloaded ([Mozilla Hacks](https://hacks.mozilla.org/2021/10/tab-unloading-in-firefox-93/)) |
+| 2022 | Edge sleeping tabs | Freeze without reload before discard | Discard loses state | A sleeping tab saves 83% of its memory on average and resumes without reload ([Edge 105](https://blogs.windows.com/msedgedev/2022/12/06/sleeping-tabs-edge-105-sleep-before-discarding/)) |
+| 2019–2023 | Slack, Teams | Slack moved from one Electron process per workspace to one process for all; Teams moved to a shared runtime | Electron | Memory gains described without a published percentage; Teams claims 50% less power for video ([Slack](https://slack.engineering/rebuilding-slack-on-the-desktop/); [Microsoft](https://techcommunity.microsoft.com/t5/microsoft-teams-blog/microsoft-teams-advantages-of-the-new-architecture/ba-p/3775704)) |
+
+**Technology mismatches: assumptions that no longer hold.**
+
+| Assumption baked into existing designs | Why it no longer holds for Izcal |
+|---|---|
+| A process's start-up cost is the price of a process | It is mostly *writes*: relocations, library init, heap set-up. Almost half of an empty Chrome renderer's footprint on macOS was relocated binary data (12 of 27 MB, `__DATA_CONST`, n=1, `breakdown_measurement.md` 3.4). An engine written from scratch can choose not to write |
+| Sharing start-up state needs a fork server | A fork server shares heap and data layout too ([Chromium zygote](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/linux/zygote.md); [Morula](https://tc.gtisc.gatech.edu/cs8803/2014/r/morula.pdf)). A file-backed read-only image shares bytes without sharing that layout, on every OS |
+| The DOM and the GC heap belong to different owners | That forced a second copy (Stage 1's `cppgc` DOM plus data plane). Izcal now writes both, and JS-D4 stores the DOM once |
+| One JS heap per process | Izcal's engine has one heap per **agent** inside one cage per process (JS-D17); budgets are per process and per agent |
+| Pages run by default; throttling is added later | Every vendor retrofitted throttle → freeze → sleep → discard on an engine whose pages run by default ([Page Lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)). Izcal can make "hidden" mean "not running" from the start |
+| Footprint is measured once, after a forced GC | Telemetry benchmarks take one dump after a forced GC ([memory benchmarks](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory-infra/memory_benchmarks.md)), hiding peaks and GC slack |
+| Memory measurement is noisy and so cannot gate a PR | Under B1, allocation, peak live bytes and wakeups are deterministic counts |
+| 4 KiB pages | Apple silicon uses 16 KiB pages; Android 15 and later support 16 KiB-page devices and apps must support them ([Android](https://developer.android.com/guide/practices/page-sizes); `os_mechanisms.md` 8.2), so every per-page granularity costs four times as much there |
+
+## 3. Today: the landscape and its gaps
+
+- **Every browser's "footprint" is a different quantity per OS.** Each OS bills a different quantity: `phys_footprint` (dirty plus compressed) on macOS ([WWDC 2018](https://developer.apple.com/videos/play/wwdc2018/416/)), commit charge on Windows, anonymous resident plus swap on Linux ([proc](https://docs.kernel.org/filesystems/proc.html)), so one browser-level "private memory footprint" ([Chromium memory docs](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory/README.md)) means something different on each. A metric built only from private anonymous memory charges shared IPC and GPU transfer buffers to no one (`breakdown_measurement.md` 1.5); which OS counters each incumbent's figure follows is observed black-box at FP-M0, not read from source. Firefox's "heap-unclassified" is typically 10–20% of explicit memory ([about:memory](https://firefox-source-docs.mozilla.org/performance/memory/about_colon_memory.html)).
+- **Users see process-level numbers, not causes.** Task managers map to sites only because of how processes are allocated. No browser says "this tab is heavy because of script X from origin Y," although ads are more than 15% of page-load work and about 88% of that is JavaScript ([adPerf](https://arxiv.org/abs/2002.05666)), and 92% of pages load third parties ([Web Almanac 2024](https://almanac.httparchive.org/en/2024/third-parties)). Energy is shown as a CPU proxy or only in the OS (`gaps_opportunities.md` 3.4–3.7).
+- **What the browser did is invisible.** Discard, freeze and throttle decisions have unpublished thresholds and unpublished savings, except Chrome's 2020 numbers. Chrome 133's freezing of "CPU-intensive" background tabs has no published threshold ([Chrome for Developers](https://developer.chrome.com/blog/freezing-on-energy-saver)).
+- **Every shipping discard reloads.** No shipping browser restores a live page heap from disk; bfcache keeps snapshots in memory only (`gaps_opportunities.md` 2.7, 9E; absence searched once, not proven).
+- **Developers have no cross-engine field signal.** `measureUserAgentSpecificMemory` is Chromium-only, needs cross-origin isolation and measures during GC with a timeout of about 20 s ([web.dev](https://web.dev/articles/monitor-total-page-memory-usage)). Crash reports with an `oom` reason are a Chromium-only WICG draft ([WICG](https://wicg.github.io/crash-reporting/)). The one cross-engine energy signal, the Battery Status API, was removed from Firefox for fingerprinting ([Bugzilla 1313580](https://bugzil.la/1313580)).
+- **The best OS signal is absent from published browser designs.** No browser documentation we found describes reacting to Linux PSI, although PSI reports measured stall time with pollable triggers ([kernel.org](https://docs.kernel.org/accounting/psi.html)). Whether Chrome and Firefox react to PSI pressure on desktop Linux is observed black-box at FP-M0 (open question 17).
+- **No published per-category breakdown of renderer memory over a real-site corpus exists** (fonts, style, layout, IPC, canvas, media), and no modern per-component energy split of desktop browsing (`breakdown_measurement.md` 2.9, 6.10). Izcal has to produce both.
+- **Shared footprint mechanisms are rarely analysed as channels.** Shared caches, shared budgets and shared clean pages all carry information between their users; the OS page cache alone is an unprivileged side channel with 4 KiB resolution ([Gruss et al., 2019](https://arxiv.org/abs/1901.01161)).
+
+What Izcal can expose that no one does: causal attribution from engine components it owns (allocation by realm and script, DOM by frame, network bytes by initiator, GPU memory by site); deterministic footprint replays (B1); per-site measured energy; and a published record of every intervention with its measured effect.
+
+## 4. First principles
+
+### 4.1 Users' real tasks
+
+| Task | What it requires of the browser |
+|---|---|
+| Keep many tabs "open" as a to-do list and come back to them | Hidden tabs cost near zero; returning restores state, ideally without a reload |
+| Run the browser beside heavy applications | A small baseline and per-process cost; memory returned promptly when tabs close |
+| Work on battery | No wakeups from pages the user is not watching; timers coalesced; background work on efficiency cores |
+| Use a 4–8 GB machine without the browser falling over | Pressure handled early and in a fixed order, never by killing the visible tab or the browser |
+| Find out why the machine is slow | Cause, not just total: which site, which frame, which script, what kind of cost, over what time; and the record forgotten with the user's history |
+| (Developer) Ship a page that is not heavy | A reproducible measurement and an explanation, without leaking other origins' data |
+
+### 4.2 Platform primitives per OS
+
+From `os_mechanisms.md`; the per-OS matrix is its Section 13.
+
+| Need | macOS | Linux | Windows | Android (Stage 2) |
+|---|---|---|---|---|
+| **Charged memory** (what the OS bills and kills on) | `phys_footprint`: dirty + compressed ([WWDC 2018](https://developer.apple.com/videos/play/wwdc2018/416/)) | Anonymous RSS + swap; memcg charge per cgroup ([proc](https://docs.kernel.org/filesystems/proc.html); [cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html)) | Commit charge (`PrivateUsage`) ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-process_memory_counters_ex)) | PSS; lmkd on PSI ([AOSP](https://source.android.com/docs/core/perf/lmkd)) |
+| Share read-only bytes across processes | dyld shared cache; chained fixups and page-in linking ([Emerge](https://www.emergetools.com/blog/posts/iOS15LaunchTime)) | File-backed mappings; sealed memfd ([memfd_create](https://man7.org/linux/man-pages/man2/memfd_create.2.html)) | Relocated image pages shared ([Chen](https://devblogs.microsoft.com/oldnewthing/20160413-00/?p=93301)); section objects ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-createfilemappingw)) | RELRO sharing, ashmem/memfd |
+| Fork server | None for sandboxed children | Zygote possible; shares layout | None | App zygote |
+| Release memory so the **charge** drops | `MADV_FREE_REUSABLE` ([xnu `sys/mman.h`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/mman.h); its effect on `phys_footprint` measured at FP-M0); purgeable VM objects | `MADV_DONTNEED`, `MADV_REMOVE`; not `MADV_FREE`, which hides savings ([Go 1.16](https://go.dev/doc/go1.16)) | Only decommit releases commit; Offer/Discard/`MEM_RESET` do not ([Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory/key_concepts.md)) | ashmem unpin; memfd |
+| Release **resident** RAM, keep contents | OS compressor and swap, automatic | `MADV_COLD`, `MADV_PAGEOUT` (Linux 5.4; anonymous pages are swapped out) ([madvise](https://man7.org/linux/man-pages/man2/madvise.2.html)) | Working-set trim; commit unchanged ([Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory/key_concepts.md)) | zram |
+| Pressure signal | Dispatch memory pressure: normal, warning, critical ([Apple](https://developer.apple.com/documentation/dispatch/dispatchsource/memorypressureevent)) | PSI triggers; cgroup `memory.high`, `memory.low` | Resource notification ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-creatememoryresourcenotification)); commit headroom | `onTrimMemory` (2 levels since API 34) |
+| Background CPU | QoS classes ([Apple](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/PrioritizeWorkAtTheTaskLevel.html)); App Nap, which applies per app, not per child process ([Apple](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/AppNap.html)) | uclamp, cgroups, timer slack ([uclamp](https://docs.kernel.org/scheduler/sched-util-clamp.html); [PR_SET_TIMERSLACK](https://man7.org/linux/man-pages/man2/PR_SET_TIMERSLACK.2const.html)) | Apps may set only HighQoS or EcoQoS; Medium, Low and Utility are assigned by the OS ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/procthread/quality-of-service); [EcoQoS](https://devblogs.microsoft.com/performance-diagnostics/introducing-ecoqos/)) | cgroups, freezer |
+| Timer coalescing | Tolerance ≥10% of interval ([Apple](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/Timers.html)) | Timer slack | High timer resolution "can also prevent the CPU power management system from entering power-saving modes" ([timeBeginPeriod](https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod)) | As Linux |
+| GPU budget | Metal volatile resources, heaps, memoryless targets ([Metal](https://developer.apple.com/documentation/metal/reducing-the-memory-footprint-of-metal-apps)) | `VK_EXT_memory_budget` ([Vulkan](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceMemoryBudgetPropertiesEXT.html)) | DXGI budget and change events ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_4/nf-dxgi1_4-idxgiadapter3-queryvideomemoryinfo)); D3D12 residency ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/direct3d12/residency)) | Vulkan budget |
+| Page size | 16 KiB (Apple silicon) | 4 KiB; THP and mTHP ([kernel.org](https://docs.kernel.org/admin-guide/mm/transhuge.html)) | 4 KiB; large pages need a privilege | 4 KiB; 16 KiB-page devices supported from Android 15 |
+| OS compression | WKdm compressor ([Apple](https://www.apple.com/media/us/osx/2013/docs/OSX_Mavericks_Core_Technology_Overview.pdf)) | zram, zswap ([zram](https://docs.kernel.org/admin-guide/blockdev/zram.html)) | Compression store | zram |
+| Mapping limits | — | `vm.max_map_count`, default 65530 ([kernel.org](https://docs.kernel.org/admin-guide/sysctl/vm.html)) | — | As Linux |
+
+Two facts from the primitives shape the whole design. First, **"release" has three meanings**: resident, charged and discardable. Only charged memory decides OOM and kills, and only specific calls reduce it on each OS; paging out reduces resident memory but not the charge. Second, **every OS can share clean file-backed pages for free**: what is mapped from an uncompressed, read-only file is shared, evictable and never charged as private memory. Shared clean pages are also a side channel (Section 6.18.1), so what is shared is chosen, never incidental.
+
+### 4.3 Izcal's principles that bind this design
+
+- **P1 outranks P4, without exception.** Footprint never weakens site isolation, never opens a cross-site channel and never moves a parser to a more privileged process. No cross-site deduplication: content-based deduplication across security domains is an exploit primitive from JavaScript ([Dedup Est Machina](https://vusec.net/projects/dedup-est-machina)). No shared fork-server layout. Shared memory across renderer processes is read-only or same-site (I-6). Inside a process, content-derived caches are keyed by the HTTP-cache partition (top-level site, container), as I-1 (b) partitions the network state. Isolation is never the lever for a memory target.
+- **P2 outranks P4.** A background policy that breaks a page on the corpus is a compatibility regression, measured and fixed, not accepted.
+- **P3.** Memory pressure degrades performance, never correctness. Out-of-memory degrades the least important page, never the browser.
+- **P6.** Every number here is either sourced, or marked †, or a measurement milestone.
+- **M-1.** Every component in this spec is Izcal's own (Section 7), and every constant equal to an incumbent's is derived or set by measurement (Section 7.1).
+- **B1.** The footprint metrics that can be deterministic are deterministic, and gate PRs.
+- **Owner direction.** Staging only where a first-principles argument favours it; every held item in this spec names its gate (Section 9.1), never a date.
+
+### 4.4 Assumptions kept and broken
+
+| Assumption | Keep or break | Reason |
+|---|---|---|
+| One process per site, cross-site iframes included | **Keep** (I-1) | Security; the design makes it cheap instead |
+| Same-site documents may share a process | **Keep** | I-1 permits it; it is the only sharing that is safe and large, and inside it caches are still keyed by partition |
+| Process limits | **Break** the hard limit, keep none | "Site Isolation cannot support a hard process limit" ([Reis et al.](https://www.usenix.org/system/files/sec19-reis.pdf) §4.1.1); a small fixed cost removes the need |
+| Fork server or zygote to share start-up state | **Break** | Shares writable-state and heap layout; the engine image shares bytes without it |
+| A second, mirrored copy of the DOM for style and layout | **Break** (JS-D4, FP-D2) | It existed because `cppgc` was not Izcal's; the JS engine spec now stores node structure once, in columns outside the cage |
+| One heap per process | **Break** (JS-D17) | One heap per agent; F_fixed has a per-agent part (FP-34) |
+| Hidden pages run, throttled | **Break** (FP-D4) | Hidden means frozen by default; running hidden needs a declared reason derived from a user-visible activity class |
+| bfcache size is a number of entries | **Break** | Entries differ by orders of magnitude; the budget is bytes |
+| Discard means reload | **Break**, as a measured spike | OS page-out and suspend-to-disk may restore without reload (Sections 6.7, 6.9) |
+| Memory is measured by RSS | **Break** | RSS was 3.5–4.6× footprint for empty renderers on macOS (`breakdown_measurement.md` 8.1); budgets use the charged metric, and resident memory is reported beside it for frozen pages |
+| Footprint benchmarks take one dump after GC | **Break** | Time series: peak, settled, area under the curve, after-close return |
+| Precise resource numbers belong in web APIs | **Break** | Precise attribution belongs in browser UI and DevTools, which leak nothing across origins; web signals stay coarse |
+| Content blocking is a privacy feature | **Keep, and extend** | It is also the largest measured footprint lever: 20–40% battery on Android ([Varvello and Livshits](https://arxiv.org/abs/2009.03740)) |
+| Budgets on bytes over the wire | **Break** | First principles: a byte's cost to the user depends on what it causes (decode, script, layout, wakeups), so bytes are a poor proxy. The one prototype that tried byte budgets, Never-Slow Mode, never shipped and records no outcome, so it is not evidence either way |
+| Optional data is downloaded when a page needs it | **Break** (FP-D13) | Page-triggered downloads of shared installation state are a cross-site channel, a network leak, a fingerprint and a determinism break |
+| A memory win is a win | **Break** | Memory and CPU trade through allocator and GC parameters by construction (cache sizes, growth factors), so every memory change is gated on CPU too (CS-PF-4). Chrome's adoption and reversal of the Windows segment heap is consistent with this but is Low-confidence evidence (`history_postmortems.md` 8.2) and is not the basis of the rule |
+
+## 5. Lessons learned
+
+Ideas and evidence only (M-1). No code, no template.
+
+| Project | What happened | Lesson | How Izcal applies it |
+|---|---|---|---|
+| Chrome Site Isolation | +50% processes cost +9–13% memory; per-renderer private memory −51.5% at p50 ([Reis et al.](https://www.usenix.org/system/files/sec19-reis.pdf)) | Isolation's cost is processes × fixed overhead, not the workload | The empty site process is the headline budget (FP-2) |
+| Chrome on Android | Isolation limited to devices with ≥2 GB and to login sites ([Chromium Blog](https://blog.chromium.org/2019/10/recent-site-isolation-improvements.html)) | The fixed cost decides whether security is affordable | Full I-1 on 4 GB devices is a Stage 1 target, and at ≥2 GB† on Android devices (FP-8) |
+| Fission MemShrink | Content process USS 34.3 → 19.5 MB with per-kilobyte tracking; writable binary data was tracked because it is unshared ([Fission/Memory](https://wiki.mozilla.org/Project_Fission/Memory)) | Per-process cost yields to line-item budgets | A line-item budget for the empty process (Section 6.3) |
+| Chromium Linux zygote | Saves up to ~8 MB per process; renderers share the zygote's layout ([Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/linux/zygote.md)) | Fork sharing trades layout entropy for memory | No zygote; every child execs, and the image and heaps sit at per-process random addresses (FP-D1) |
+| Instagram, PEP 683 | Refcount and GC writes un-shared copy-on-write pages ([Instagram](https://medium.com/instagram-engineering/copy-on-write-friendly-python-garbage-collection-ad6ed5233ddf); [PEP 683](https://peps.python.org/pep-0683/)) | Shared data must be immutable at the machine level | Image objects are immortal and immutable, with mutable state in per-heap side tables (JS 6.1); image pages are mapped read-only, so a write faults (FP-3) |
+| Firefox 7 | Resident after close −52%, peak −8.7% | Memory returned matters more than peak | "Returned after close" is a target (FP-9) |
+| Firefox 15 | Leaks found once per-compartment reporting existed | Measurement precedes reduction | Attribution from day one; unexplained remainder gated (FP-10) |
+| Firefox 93 | Crashes fell overall, but the OOM share of the rest rose; unloading needed a GC and the pressure event fired late ([Mozilla Hacks](https://hacks.mozilla.org/2021/10/tab-unloading-in-firefox-93/)) | Reclaim must not need memory, and must start before the cliff | Allocation-free reclaim, forecast-based triggers (FP-15) |
+| ChromeOS OOM | "It takes memory to free memory" ([Chromium](https://www.chromium.org/chromium-os/chromiumos-design-docs/out-of-memory-handling)) | Closing a process is the one reclaim that always works | Kill order precomputed; killing is the last rung, never the first |
+| WebKit pressure handler | Graded in-process policies at fractions of a memory limit (conservative 0.33, strict 0.5 by default), polled every 30 s, with an optional kill threshold above them ([WebKitGTK](https://webkitgtk.org/reference/webkit2gtk/stable/struct.MemoryPressureSettings.html)) | Graded response, kill last | Broker-pushed levels with fixed per-level actions |
+| Chrome 87/88 throttling | Timers >40% of background work | Wakeups are the energy cost | Hidden ⇒ frozen; wakeups per site budgeted (FP-17) |
+| Edge sleeping tabs | 32% vs 83–85% savings depending on the denominator | A number without a denominator misleads | Every target names its denominator and statistic |
+| Heavy-ad intervention | Narrow, outlier-only, noised, announced, explained | Interventions work on outliers with explanation | The heavy-frame intervention keeps that shape and attributes by script (FP-29, FP-D7) |
+| Never-Slow Mode | An unshipped prototype with no published outcome | No postmortem exists; the absence of evidence is itself the lesson about citing it | Izcal's rules (no byte budgets on first-party content, every intervention shown) are derived from first principles (Section 4.4), not from this project |
+| The Great Suspender | Users relied on an extension that turned malicious | Footprint control is first-party work | Built into the engine and shell |
+| PartitionAlloc, jemalloc `bin-unused` | Allocator moved memory up to 22% on Windows; 9.21% of a small Firefox process was unused bins ([Bone](https://paul.bone.id.au/blog/2020/09/25/memshrink/)) | The allocator is a top-level design decision | Izcal's own allocator, designed for small processes (FP-D5) |
+| V8 Lite → lazy V8; Ignition | Lite cost CPU; laziness and flushing cut the heap 18% across 7.1 → 7.8 ([V8](https://v8.dev/blog/v8-lite)); bytecode cut memory over baseline code ([V8](https://v8.dev/blog/ignition-interpreter)) | Allocate metadata only when code proves hot | Lazy feedback and flushable bytecode at deterministic points (JS 6.5) |
+| V8 embedded builtins | Builtins in the read-only binary: median V8 heap −19%, renderer −4% ([V8](https://v8.dev/blog/embedded-builtins)) | Immutable engine state belongs in shared read-only pages | The engine image (Section 6.3) |
+| V8 and Oilpan pointer compression | V8 heap up to −43%; Oilpan −21% at p50 on Windows and −6% on Android, field reordering another −4% on average ([V8](https://v8.dev/blog/pointer-compression); [V8](https://v8.dev/blog/oilpan-pointer-compression)) | Reference width and padding dominate object size | 32-bit references everywhere inside a process (JS-D1); layout lint (CS-PF-1) |
+| WebKit two-tier rare data | A proposed split saved 104 B (136 → 32 B) per shadow-tree element that needed rare data only for its TreeScope; the patch caused assertion failures, reviewers objected to tier proliferation ("NodeRareDataBase2 next time?"), promotion between tiers thrashed, and the bug was closed RESOLVED INVALID ([WebKit bug 104202](https://bugs.webkit.org/show_bug.cgi?id=104202)) | Tiered rare data with promotion copies does not scale | One rare-data tier: side tables keyed by node slot, no promotion copies (Section 6.4) |
+| WebKit shared attribute sets | Elements with identical immutable attributes share one attribute-data object ([WebKit bug 102845](https://bugs.webkit.org/show_bug.cgi?id=102845)); the hit rate on Izcal's corpus is measured at FP-M3 | Parsed markup repeats | Hash-consed immutable attribute sets, copy-on-write on mutation, within a partition |
+| Firefox visible-image decode | Settled memory 3 GiB → 0.6 GiB on an image-heavy page, peak still ~2.8 GiB at load ([Nethercote](https://blog.mozilla.org/nnethercote/2013/03/07/memshrink-progress-week-89-90/)); scaled IDCT cut peak 3.3–20.5× in a standalone benchmark (Firefox pref default off) ([bug 2033250](https://bugzilla.mozilla.org/show_bug.cgi?id=2033250)) | Decoded pixels should exist only at display size and only near the viewport; downscaled decode is what cuts the peak | Decode on demand, at display size (Section 6.5) |
+| Brave, adPerf, Varvello | Blocking cut memory 33–66% (vendor) and battery 20–40% ([Brave](https://brave.com/blog/memory-savings-in-brave/); [arXiv](https://arxiv.org/abs/2009.03740)) | Third-party content dominates | Blocking is a measured footprint control (Section 6.11) |
+| Slack, Teams | Private runtime copies per workspace replaced by shared runtime | Share runtime pages; lazy, partial data | One engine image per installation; lazy realms |
+| Dedup Est Machina | Cross-domain page deduplication exploited from JS | Content dedup across sites is unsafe | Share only data Izcal built, never content |
+| Page cache attacks | Unprivileged monitoring of other processes' accesses to shared file pages ([Gruss et al.](https://arxiv.org/abs/1901.01161)) | Shared clean pages are a channel too | Image residency analysed as a channel (Section 6.18.1) |
+| Go 1.16 `MADV_FREE` reversal | Lazy release hid savings from tools | Release calls must reduce what the OS charges | Per-OS release mapping (Section 6.7) |
+
+## 6. Design
+
+### 6.1 The footprint model
+
+**F = B + Σ_processes (F_proc + Σ_agents F_agent) + Σ_pages C(page) + G**, where:
+
+| Term | Meaning | Lever | Budget |
+|---|---|---|---|
+| **B** | Baseline services: broker, spawner (Linux), shell renderer, GPU service (CPU side), network service, storage service, crash handler | Lazy start, shared image, small allocator | FP-1 |
+| **F_proc** | What an empty site process costs before its first agent, charged: page tables and reservations, loader, OS stacks, allocator, engine process state (one cage and trusted region per process, JS-D17), IPC, substrate, reclaim reserve | Engine image, relocation-free code, thread budget, few mappings | FP-2, FP-3 |
+| **F_agent** | What each agent heap costs (a window event loop, a dedicated worker or a worklet, JS 6.0): heap state, initial nursery, stack segment, one realm, an empty document for window agents | Lazy intrinsics, small initial nursery, lazy wrappers | FP-2 (first agent), FP-34 (each further one), FP-4 (same-agent frames) |
+| **N_p** | Number of site processes = distinct (site, container) keys, plus cross-site iframes' keys, plus at most one spare | I-1 fixes it; blocking removes ad iframes; same-site consolidation | FP-6, FP-7 |
+| **C(page)** | Content: JS heap, DOM, style, layout, paint data, decoded images, text, caches | One copy, narrow references, discardable derived data | FP-5, FP-11, FP-13 |
+| **G** | GPU memory: swapchains, tiles, textures, per-partition glyph atlases | Per-site accounting, hidden tabs release | FP-14 |
+
+The model makes the stakes concrete. Chrome's field data puts 41.9 unique sites open at p99 ([Reis et al.](https://www.usenix.org/system/files/sec19-reis.pdf) §5.2). At the 27 MB measured for one empty Chrome renderer on macOS (n=1, `breakdown_measurement.md` 3.3), the fixed term alone is about 1.1 GB for that user. At FP-2's 4 MiB†, it is about 168 MiB, small enough to keep full isolation and to turn on origin keying everywhere (FP-D8).
+
+**Process count is a term to minimise only within a site.** Izcal reduces N_p by consolidating same-site documents (FP-D3), by never starting processes for blocked frames, and by exiting idle processes, never by putting two sites in one process. Same-site tabs in one process pay F_proc once but each pays F_agent, because each browsing context group is its own agent (JS 6.0).
+
+### 6.2 What "footprint" means, per OS, and how it reconciles with Izcal's own attribution
+
+**Charged memory** is the budget metric, because it is what the OS bills, compresses, swaps and kills on. Its per-OS definition is derived from what only this process's existence keeps alive, not from any browser's metric: private anonymous memory, wherever it currently lives (resident, compressed or swapped), plus shared regions the process owns. Clean file-backed pages are excluded because the OS can drop them at no cost.
+
+| OS | Charged memory per process (budget metric) | Also reported, never budgeted | Notes |
+|---|---|---|---|
+| macOS | `phys_footprint` (dirty + compressed, including owned graphics memory) minus owned graphics memory, which is reported under G | RSS; clean file-backed pages; resident private memory | Apple's own definition ([WWDC 2018](https://developer.apple.com/videos/play/wwdc2018/416/)); graphics memory is charged to the owning process (`breakdown_measurement.md` 3.3), so the GPU service's footprint is split to avoid counting G twice |
+| Linux | Private anonymous resident + swapped (`RssAnon + VmSwap`), plus each Izcal-owned shared region charged **once** to its ledger owner | PSS of file-backed pages (the engine image, code); resident private memory; zram-compressed size where readable | Derived from the kernel's definitions above, not from any browser's metric; `VmSwap` reports uncompressed size and overstates RAM on zram (`breakdown_measurement.md` 1.5); per-site cgroups, where delegated, add memcg `memory.current` as a cross-check |
+| Windows | Commit charge (`PrivateUsage`) | Private working set | Commit decides OOM; working-set trims do not release commit ([Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory/key_concepts.md)) |
+| Android (Stage 2) | PSS of anonymous and Izcal shared regions | — | lmkd's own basis |
+
+**Resident memory beside charged memory.** Charged memory counts paged-out memory as still charged, so a metric of charged memory alone could never credit OS page-out of a frozen process (Section 6.7). For frozen pages and the FP-S30 scenario, resident private memory is reported next to charged memory, and FP-6 states both.
+
+**Whole-browser footprint** = Σ charged memory over all Izcal processes + G. **Shared memory is charged once**, to the process the ledger names as its owner, never to every mapper (Chromium counts each region toward exactly one process for the same reason, [Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory/key_concepts.md)). Clean file-backed pages (code, the engine image, fonts) are reported as **shared, not charged**, with their PSS on Linux.
+
+**The ledger (`hg-ledger`).** Every region Izcal maps comes from the substrate's memory interface (Section 6.3) and carries a **tag**: process, category (JS heap, DOM columns, DOM text, style, layout, paint, image, text shaping, network buffer, IPC, GPU staging, allocator metadata, allocator free space, derived cache, engine runtime, trusted region, machine code, thread stack, stack segment), and where known (site, container), partition, agent, frame and realm. Allocator slack is a category, so it is attributed, not unexplained. Region tags cannot divide one agent heap's blocks among the scripts that allocated into them; per-script attribution of heap allocation comes from the engine's allocation-site counters (Section 6.14, JS 6.10). On Linux, regions are also named in the kernel with `PR_SET_VMA_ANON_NAME` (Linux 5.17, needs `CONFIG_ANON_VMA_NAME`, [man PR_SET_VMA](https://man7.org/linux/man-pages/man2/PR_SET_VMA.2const.html)) and on macOS with VM tags, so OS tools agree with the ledger.
+
+**Reconciliation.** For each process: **unexplained remainder U = charged − (ledger committed bytes + known OS overheads)**, where known overheads are page tables and loader data measured per OS. U is the "heap-unclassified" of this design. It is reported per process and per release, and gated: **U ≤ 5%†** for Izcal-only processes, **≤ 15%†** for the GPU service, whose drivers allocate outside Izcal's control (FP-10). A rise in U is a bug, as heap-unclassified was for Firefox ([Fission/Memory](https://wiki.mozilla.org/Project_Fission/Memory)).
+
+**Time series, not a dump.** Every lab measurement samples charged memory per process through the run and reports **peak**, **settled** (median over the last 30 s† of a 60 s† quiet period), **area under the curve** (MiB·s) and **returned after close** (Section 8 defines each per target). Medians of 5† runs; first-run and warm profiles reported separately. The 3× drift seen in one Chrome GPU-process reading minutes apart (`breakdown_measurement.md` 7.5) is why single readings are never used.
+
+**Canonical measures (deterministic).** In simulation (B1), the substrate's memory interface and Izcal's allocators count two quantities in **16 KiB canonical granules** on every OS:
+
+| Measure | Counts | Predicts on devices |
+|---|---|---|
+| **Canonical committed bytes (CC)** | Granules committed through `Memory::commit` and not yet decommitted | Windows commit charge |
+| **Canonical touched bytes (CT)** | Granules an allocator has handed to use since their last purge (an `hg-alloc` span, a GC block or line range, a derived-store arena chunk), plus the nursery's bump high-water and each stack segment's high-water since their last trim | Linux and macOS charged memory, which counts touched pages, not commits |
+
+Both are bit-identical across runs, and across macOS, Linux and Windows simulation builds **on one ISA**. **Machine code** (the code region, and trusted-region entries whose size depends on the ISA) is a separate category, reported per ISA and per tier ceiling and excluded from the cross-ISA comparison. Without code, CT and CC depend on no ISA-specific quantity except type layouts, which are identical on Izcal's two 64-bit ISAs by construction (checked by CS-PF-1 size asserts on both); FP-24 verifies cross-ISA identity rather than assuming it. Neither measure drives a JS-observable decision: GC debt is counted separately in the engine's canonical allocation units, and engine-internal allocation never counts toward it (JS 6.5). They are the CI metrics (Section 6.16); charged memory on devices is the lab metric; FP-33 checks that the first predicts the second.
+
+### 6.3 The minimal per-process fixed cost
+
+A site process must do very little before it can receive a page. This section lists what it may write. Everything else is shared, lazy, or absent.
+
+**Line-item budget for an empty site process** (charged memory, settled, one window agent with an `about:blank` document, all OSes, Full and Jitless tier ceilings reported separately):
+
+| Line item | Budget† | How the design gets there |
+|---|---|---|
+| Page tables, VM metadata and reservations | 0.5 MiB | Few, large mappings (Section 6.20.6): one cage reservation of 16 GB† (JS-D17), one trusted-region reservation, one buffer-region reservation, one allocator reservation, the image mappings; untouched reservations cost VM metadata, not page tables; 16 KiB granules |
+| Loader and relocation dirty pages | 0.125 MiB | Relocation-free code and data (below) |
+| OS thread stacks (touched) | 0.25 MiB | Two threads at idle; script runs on engine stack segments (JS 6.6), so the script thread's OS stack holds only Rust frames |
+| Allocator metadata and retained free space | 0.25 MiB | Own allocator with per-role caches and activity-armed return (below) |
+| **Engine line** (JS-32) | **1.0 MiB** | Sub-items below; the JS engine spec owns the mechanisms, this spec the numbers |
+| — engine process state | 0.25 MiB | Cage and trusted-region metadata, code, buffer and external tables, process hash key, tier-ceiling state |
+| — first agent heap state | 0.25 MiB | `Mutator`, root scopes, release list, block metadata; the probe table is allocated on first megamorphic miss |
+| — initial nursery commit | 0.125 MiB | Nursery starts at 128 KiB† and grows with the growth knob (Section 6.20.2); decommitted on freeze |
+| — first stack segment (touched) | 0.0625 MiB | Segments are charged only for touched pages (JS 6.6) |
+| — first realm, intrinsics untouched | 0.0625 MiB | Intrinsics and interface objects created from image descriptors on first use (JS 6.1) |
+| — engine slack | 0.25 MiB | — |
+| Document, DOM and style state for `about:blank` | 0.25 MiB | UA style data in the image; empty node columns |
+| IPC endpoints and buffers | 0.25 MiB | Buffers sized for the common message and shrunk after a peak (Chromium saved 2–10 MB in its **browser** process by shrinking IPC buffers after large messages, [Chromium memory achievements](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory/achievements.md); the renderer figure is Izcal's own †) |
+| Substrate, scheduler, logging, ledger | 0.25 MiB | Fixed-size rings |
+| Emergency reclaim reserve | 0.125 MiB | Pre-committed, so reclaim never allocates (Section 6.7) |
+| Margin | 1.0 MiB | Held until FP-M0 measures the OS and sandbox floor |
+| **Total** | **≤ 4 MiB (FP-2)** | 0.5 + 0.125 + 0.25 + 0.25 + 1.0 + 0.25 + 0.25 + 0.25 + 0.125 + 1.0 = 4.0. For comparison, Firefox's best published empty content process is 11.5 MB **USS** on Windows ([Bone](https://paul.bone.id.au/blog/2020/09/25/memshrink/)), a different metric; Chrome's measured macOS figure is 27 MB (n=1) |
+
+This is a first-principles budget, not a measurement. FP-M0 builds an empty process on Izcal's substrate, with the full sandbox of security scope 6.7, on all three OSes to measure the floor that Izcal does not control (page tables, loader, sandbox set-up, OS framework init) before any engine code exists. **FP-2's ship blocker is then set as that measured floor plus Izcal's own line items** (everything above except the margin), recorded in the decision log item by item, never as a lump.
+
+**Per-agent cost (F_agent, FP-34).** A further agent in an existing process (a window agent with an empty document, or a dedicated worker with an empty script) adds: agent heap state 0.25 MiB, nursery 0.125 MiB, stack segment 0.0625 MiB, one realm 0.0625 MiB and, for a window agent, an empty document 0.25 MiB: **≤ 768 KiB†** in total. A dedicated worker also adds its own OS thread (JS 6.12), and its cost is charged to the page that created it.
+
+**The engine image (`hg-image`) and the image inventory.** `hg-image` owns **one image inventory** shared with the JS engine spec (JS 6.11): one file set per installation, each file with an owner and the list of process kinds that map it, every file read-only by protection, position-independent, signed (SEC-16) and free of site data and secrets.
+
+| File | Contents | Owner | Mapped by |
+|---|---|---|---|
+| **Engine image** | Izcal's own Unicode tables and CLDR data compiled by `hg-cldr-build` (JS 6.13), sliced per locale and key; HTML, SVG and MathML element and attribute name tables and perfect hashes; CSS property tables; the UA style sheet, parsed, with selector maps and cascade data; the **JS section** (builtins' bytecode, immutable shapes, read-only roots, intrinsic and WebIDL descriptors, JS 6.1, 6.11) | `hg-image` (JS section: `hg-js-snapshot`) | Every renderer; the JS section at the start of its process's cage (JS 6.1) |
+| **UI image** | Izcal's UI code as AOT bytecode (JS 6.11) | `hg-js-snapshot` | Izcal-only renderers (shell, prompt, DevTools) only; never site renderers |
+| **Session image** | System font list and fallback tables, filtered views per PRIV-2 (below); the user's locale preferences | `hg-image`, built per session in a utility process | Renderers, as a sealed read-only shared region |
+| **Compiled filter automata** | Content-blocking and cosmetic-filter matchers (Section 6.11); not in the engine image because they change with list updates | `hg-content-block`, compiled in a utility process | Network service; per-site cosmetic subsets reach renderers |
+
+Firefox's UA style sheets and cached UA cascade data took about 460 KiB per content process, which was the target of its work to share them across processes ([bug 1474793](https://bugzil.la/1474793)). V8's snapshots cut context creation from 40 ms to under 2 ms on 2015 desktops ([V8](https://v8.dev/blog/custom-startup-snapshots)). ICU4X reports the per-locale slicing lever ([Unicode](https://blog.unicode.org/2025/10/icu4x-21-released.html)) but is excluded by M-1. FP-25's size budget covers every file in the inventory.
+
+Rules that make it work:
+1. **Position-independent, at a per-process random address.** Images contain offsets, never absolute addresses, so mapping them needs no relocation, and each sits at a **different random address in every process**; the JS section moves with the cage base, which is random per process (JS 6.1). So the image and every heap keep per-process randomization, which a zygote cannot give. Code is different: Windows reuses one randomized base per DLL per boot in every process, which is how it shares relocated pages ([Chen](https://devblogs.microsoft.com/oldnewthing/20160413-00/?p=93301)), and the macOS dyld shared cache slide is also per boot, so Izcal's own code layout is shared across processes on Windows and macOS with or without a zygote. FP-D1's security argument is therefore about writable state and heap layout, which a zygote would share and Izcal does not.
+2. **Read-only by protection, not convention.** Mapped `PROT_READ`; a write faults in debug and release. Mutable metadata that engines usually keep inside objects (mark bits, transition tables, fact cells, IC state, lazily computed fields) lives in **per-heap side tables** keyed by image offset; image objects are immortal, never traced into and never marked in place; hash structures in the image are perfect hashes over fixed key sets (JS 6.1, which adopts this rule). Hidden writes are what un-shared Instagram's pages ([Instagram](https://medium.com/instagram-engineering/copy-on-write-friendly-python-garbage-collection-ad6ed5233ddf)).
+3. **Copy on first write, per object, in the heap.** Script may modify `Array.prototype`. The first write to an intrinsic copies that one object into the realm's heap and updates the realm's indirection; the image page stays shared (JS 6.1).
+4. **File-backed and signed.** Clean, shared by every process of the installation, evictable by the OS under pressure at no cost, and verified like the binaries (SEC-16).
+5. **The session image is built outside the broker.** Font fallback tables need the coverage and name tables of every installed font, and user-installed fonts are attacker-reachable input; IPC-R15 forbids parsing web formats in the broker. A **utility process at the strictest tier** therefore parses the installed fonts and builds the session image once per session into a sealed, read-only shared region (sealed memfd on Linux, a read-only section handle on Windows, a read-only Mach memory entry on macOS, which `os_mechanisms.md` did not research; Section 11), and the broker only passes the sealed handle (IPC-R1) to renderers. It holds no site data. Firefox's shared font list saved about 500 KB per process but caused bugs when the parent rebuilt it mid-session (Low–Medium, `compact_engine_data.md` 9.1); Izcal's session image is immutable for the session, and a font installed mid-session produces a new image for new processes only. A page sees only the fonts PRIV-2's font normalization allows it to see: the renderer exposes a filtered view of the session image, never the full list.
+
+**Relocation-free code.** Almost half of an empty Chrome renderer's macOS footprint was `__DATA_CONST` that each process relocated (n=1). Izcal's own code avoids **pointer-bearing static data**: static tables use offsets or indices, never function or data pointers, and dispatch tables are built as relative-offset tables. Platform consequences: on Linux, PIE `.data.rel.ro` stays near empty; on macOS, chained fixups touch few pages; on Windows, relocated image pages are shared anyway ([Chen](https://devblogs.microsoft.com/oldnewthing/20160413-00/?p=93301)). A CI check reports the size of relocated data sections per binary, and FP-3 bounds start-up dirty pages.
+
+**Start-up writes.** A site process writes, in order: its stacks, allocator metadata, IPC endpoints, the ledger, the engine's process state, the first agent's heap state and realm roots, and the `about:blank` document. Nothing is initialised eagerly that a page might not use: no font parsing, no codec tables, no code region and no code-writer thread until the first compilation (JS 6.7), no worker threads until a parallel phase.
+
+**No fork server (FP-D1), and how each OS spawns a sandboxed child.** Every site process starts from a fresh `exec` of the renderer executable and maps the images; no process is ever forked from a pre-initialised template. The spawn path includes the full sandbox of security scope 6.7, and FP-27 is measured on it:
+- **Linux.** Security scope 6.7 gives renderers new user, PID, network and mount namespaces, which `posix_spawn` cannot create; a new PID namespace must come from the parent's `clone`/`clone3` ([man clone(2)](https://man7.org/linux/man-pages/man2/clone.2.html)). The broker therefore starts one small, single-threaded **spawner** process at launch (itself exec'd fresh, holding no content and no pre-initialised engine state). For each site process the spawner calls `clone3` with the namespace flags, and the child applies its seccomp filter and `execve`s the renderer, so every child gets a fresh address-space layout. The spawner's small address space keeps the clone's page-table copy cheap, which was the reason 0.1 cited `posix_spawn`'s `CLONE_VM | CLONE_VFORK` path ([man posix_spawn](https://man7.org/linux/man-pages/man3/posix_spawn.3.html)). It is not a fork server: children share nothing with it after `execve`. The spawner joins the broker's threat model (Section 9.4).
+- **macOS.** `posix_spawn` of the signed renderer executable; the sandbox profile is applied before any content arrives (security scope 6.7).
+- **Windows.** `CreateProcess` with the AppContainer token, the job object and the mitigation policies set at creation (security scope 6.7).
+
+Spawn latency is the cost: no primary measurement exists for a sandboxed child on macOS or Windows (`os_mechanisms.md` 14.1), so FP-M0 measures it on these paths. A **spare process** (sandboxed, never having run content, locked to a (site, container) on first assignment) hides it. Whether a spare is worth its F_fixed is derived per device, not copied: keep one spare only while FP-M0's measured spawn-to-ready exceeds 10 ms† and only at Normal pressure (Section 7.1).
+
+**Allocator (`hg-alloc`, FP-D5).** Izcal's own global allocator for Rust code, built for many small processes rather than one large one:
+- size-class spans of **16 KiB granules**, the largest page size Izcal runs on, so behaviour and canonical accounting are identical across OSes;
+- **per-role caches**: the script thread and active workers get a small thread cache; the control thread and idle workers get none (jemalloc's low-footprint guidance turns caches down for the same reason, [jemalloc TUNING](https://github.com/jemalloc/jemalloc/blob/dev/TUNING.md); glibc's many arenas are a known source of growth, [mallopt](https://man7.org/linux/man-pages/man3/mallopt.3.html));
+- empty spans returned to the OS by a **one-shot substrate timer armed by the free that emptied the span** (so a quiet process has no periodic timer, and the return schedule is deterministic in simulation), and immediately at Moderate pressure, using the per-OS call that reduces the charge (Section 6.7);
+- **partitioned by type class** for security, in separate reservations, an idea published for PartitionAlloc ([PartitionAlloc.md](https://chromium.googlesource.com/chromium/src/+/HEAD/base/allocator/partition_allocator/PartitionAlloc.md)), not a template;
+- every span carries a ledger tag, and per-bucket free space is reported (the Firefox `bin-unused` lesson).
+
+The JS heap is the JS engine's own collector (`hg-heap`), not `hg-alloc`; both sit on the same substrate memory interface (JS 6.15 G13).
+
+**The substrate memory interface: one trait set.** HGBA-3 B1 routes clocks, threads and randomness through the substrate. This spec and the JS engine spec propose **one** memory trait set in one Stage 1 Section 3.1 amendment (JS 6.15): `Memory` (`reserve`, `commit`, `decommit`, `purge` for discardable contents, `protect`, `map_image`, `map_shared(handle)`, each with a ledger tag) and `CodeMemory` (the W^X write window for code and the trusted region, used only by the code writer, JS 6.7). The production implementation lives in `hg-substrate-os` (G3) and makes the per-OS calls; the simulation implementation counts canonical bytes (Section 6.2). This is what makes footprint deterministic in CI.
+
+**Threads and stacks.** Thread count multiplies by the process count.
+
+| Thread | When it exists | Stack† | Why |
+|---|---|---|---|
+| Script thread | Always | OS stack 256 KiB reserve for Rust frames outside script; JS and Wasm run on **engine stack segments** charged per agent (JS 6.6) | One model for JS and Wasm, canonical stack limits; window agents of a process may share it (JS 6.12) |
+| Control thread | Always | 128 KiB | Receives IPC, pressure commands and freeze while script runs a long task; runs the reclaim path |
+| Worker pool | Created on the first parallel phase, decode or compile; each worker exits after 10 s† idle, by a one-shot timer armed when it goes idle | 256 KiB each | Shared by style, layout, image work, GC helpers, background compilation and off-thread parsing (JS 6.12); never a thread per subsystem; never the code-writer role |
+| Code writer | Created on the first compilation, Full and Baseline ceilings only (JS 6.7) | 128 KiB | A dedicated thread identity holding the W^X write window (`MAP_JIT` toggling is per thread); runs no decoder or other untrusted-input parser |
+| Dedicated Web Worker | Per worker the page creates | OS stack 256 KiB; engine segments | Its own agent heap and OS thread (JS 6.12); charged to the page (FP-34) |
+
+An idle empty site process has **two threads** (FP-32). On Windows, stacks are created with a reservation flag and a small initial commit, because committed stack counts against the commit limit before it is touched ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/procthread/thread-stack-size)). Pool size is at most min(cores − 1, 4)† per process, a fixed function of the device, so one process's pool size never depends on another process's demand (Section 6.18.1). Frozen processes run no pool work, so the active pools are those of visible and declared-reason pages; FP-32 measures the total.
+
+**16 KiB pages first.** Every structure that is released, protected or purged page by page (allocator spans, GC blocks, guard pages, discardable ranges, image sections, IPC rings, stack segments) is designed at 16 KiB granularity. On 4 KiB systems, a granule is four pages. Huge pages are opted into per region on Linux only where density is measured (JS code space, large dense heaps), because touching one byte under `enabled=always` can allocate 2 MB ([kernel.org](https://docs.kernel.org/admin-guide/mm/transhuge.html)).
+
+**Per-frame and per-realm cost.** A same-site iframe or opener popup **in the same agent** adds a document and a realm, not an agent heap. Budget: **≤ 128 KiB†** charged per additional empty same-agent frame, and ≤ 64 KiB† per realm with untouched intrinsics (FP-4). A same-site tab in a new browsing context group is a new agent and pays FP-34 instead.
+
+### 6.4 Compact page data
+
+#### One copy of the DOM: requirements on JS-D4 (FP-D2)
+
+Stage 1 kept the DOM twice: a `cppgc` node plus a Rust data plane (Stage 1 Sections 5.2, 5.4). HGBA-3's spike measured a toy DOM of about **430–440 B per node** plus a data plane of **about 150–175 B per node, 26–28% of the total** (HGBA-3 B4). Under 2.3.0 Izcal writes the GC and the DOM, so the mirror's reason is gone. The DOM representation is **decided by the JS engine spec's JS-D4**, which owns the heap; this spec states the footprint requirements it must meet, and JS-D4 (a) is recorded as meeting them (FP-D2):
+
+1. **One copy of node structure.** Links, tag, flags, attribute-set reference and style reference exist once. JS-D4 (a) stores them in **columnar node storage outside the cage**, indexed by a 32-bit node slot with a generation, traced by the one collector as a node space; the B4 data plane *is* those columns (JS 6.2).
+2. **Bytes per node counted across every copy:** columns, rare data, wrappers that exist, any remaining data-plane state; text counted separately. FP-11's budgets apply to that sum, and JS-M0's spike measures it (JS-D4).
+3. **Wrappers only for nodes script touches.** JS-D4 (a) creates the wrapper lazily and holds it strongly once created; untouched nodes cost no wrapper.
+4. **Workers never trace or write.** Style and layout workers read the columns only during a flush with the script thread blocked (B4, F1 quiescence), never read the cage (JS 6.2, 6.5).
+5. **One copy of text** (below).
+
+The node-size evidence, labelled: HGBA-3's toy DOM and data plane above are measurements; other engines' per-node cost is not cited from their source (M-1 part 3) and is measured black-box at FP-M0 (memory charged per million elements a page creates, in Chrome, Firefox and Safari, for information); the 95–115 B figure for Stage 1's two node cores is a researcher's **estimate of core fields before attributes and payload**, lower than the measured data plane alone because it excludes the attribute storage that was about 60% of it. FP-11's core budget of **48 B†** applies to JS-D4's columns.
+
+#### Narrow references
+
+Inside a process, references are **32 bits**: node slots, style-struct indices, fragment indices, and JS heap references as cage offsets (JS-D1; pointer compression cut V8's heap by up to 43%, and Oilpan's by 21% at p50 on Windows, [V8](https://v8.dev/blog/pointer-compression); [V8](https://v8.dev/blog/oilpan-pointer-compression)). Known HTML, SVG and MathML names are **16-bit static indices** into the image; unknown names are atoms. Handles crossing threads or stored by the semantic plane are **generational indices**, so a stale handle is detected, not aliased ([West, RustConf 2018](https://kyren.github.io/2018/09/14/rustconf-talk.html)). CS-PF-1's type-size asserts cover every per-node, per-box, per-fragment and per-style type on both ISAs, and a **field-order lint** reports types that would shrink if reordered (Oilpan found 4% this way).
+
+#### Rare data in side tables, one tier
+
+Fields most nodes never use (shadow root, custom-element state, event-listener lists, slot assignment, animations, intersection and resize observer registrations, `dataset` and `style` wrappers, `ElementInternals`) live in **side tables keyed by node slot**, reached through the 4-byte rare-data index (JS 6.2). There is **one tier**: an entry is created with the field that needs it and never promoted between record sizes, because WebKit's two-tier proposal thrashed on promotion and was rejected as unscalable ([bug 104202](https://bugs.webkit.org/show_bug.cgi?id=104202)). The same rule applies to computed style (rarely set property groups), layout boxes (out-of-flow, fragmentation and anchor state) and fragments.
+
+#### Sharing, within a site, keyed by partition
+
+A site process can hold the same site under several top-level sites (B embedded by A and by C, JS 6.0). Whether a cache entry exists is observable by timing, so every content-derived cache in a process is keyed by the **partition (top-level site, container)**, as I-1 (b) partitions the network state and JS-17 the code cache. B-in-A and B-in-C share nothing derived from content.
+
+| Shared thing | Scope | Mechanism |
+|---|---|---|
+| Attribute sets | Documents of one partition in the process | Hash-consed, immutable, copy-on-write on first script mutation; the parser interns |
+| Computed style groups | Documents of one partition | Pointer-shared immutable groups, a rule tree and a sharing cache, designed new in `hg-style` from the cascade algorithm (Stylo is evidence that three sharing layers work, [Mozilla Hacks](https://hacks.mozilla.org/2017/08/inside-a-super-fast-css-engine-quantum-css-aka-stylo/)); hit rate published |
+| Parsed style sheets | Documents of one partition | Keyed by (partition, URL, content hash); immutable after parse |
+| Verified bytecode | Agent heaps of one process, same code-cache key | Stored once in the trusted region and referenced by each agent heap; feedback, IC state and code stay per agent heap (JS 6.11); keyed by (top-level site, container, URL, hash, build) |
+| Decoded images | Documents of one partition | Keyed by (partition, URL, display size) |
+| Engine, UI and session images | All processes of the kinds that map them | Built by Izcal, identical for all, read-only by protection; **not** content |
+
+**The rule:** data derived from web content is shared only inside one (site, container) process and one partition. Across processes, Izcal shares only what it built itself, identical for every site and read-only by protection. No content hashing across processes, no KSM-style merging ([KSM](https://docs.kernel.org/admin-guide/mm/ksm.html)), no deduplication of anything a page supplied, including glyph rasters of web fonts (Section 6.6).
+
+#### Text
+
+DOM text is stored once, in an arena of immutable buffers outside the cage; a JS string obtained from the DOM is an **external string** over that buffer, and a script string assigned to the DOM is copied once into the arena (JS-D4, JS 6.2, 6.13). WebKit's 8-bit strings saved 3–5% of WebCore memory but lost the saving wherever an API forced the wide form (Medium, `compact_engine_data.md` 3.2). This spec budgets two published rates: bytes copied from script into the arena per corpus page, and the share of text stored in the wide form.
+
+#### Discardable, rebuildable derived data: two classes
+
+Every **derived store** registers with the process's memory manager and reports, continuously, its **bytes** and a **rebuild-cost estimate** (nanoseconds, measured from its own last rebuild, falling back to a per-store model calibrated in the lab). Stores fall into two classes, which the JS engine spec uses for its own data (JS 6.5):
+
+| Store | Derived from | Class | Released how |
+|---|---|---|---|
+| Computed style | DOM, style sheets | (a) own arena | Unmap; on a running page only after the safepoint handshake |
+| Layout fragments, inline item lists | DOM, computed style, constraint spaces | (a) | As above |
+| Display lists, paint chunks, property trees | Fragments | (a) | As above |
+| Raster tiles (GPU service) | Display lists | (a), GPU service | Release or mark volatile (Section 6.6) |
+| Decoded images | Encoded bytes | (a), discardable region | Purge unlocked regions (Section 6.5) |
+| Glyph rasters (GPU service) | Fonts | (a), GPU service | Release per partition |
+| Semantic tree (when AT is active) | DOM, style, fragments | (a) | As computed style |
+| Free heap blocks, unused stack-segment tails, empty large-object spaces, dead agent heaps | — | (a), engine | Released by the engine's allocation-free pressure hook (JS 6.5) |
+| Bytecode, IC programs, feedback, shapes, machine code | Source text | **(b) heap- or trusted-region-resident** | Flushed only at deterministic points: end of a canonical GC cycle, the freeze trim, navigation away; never on the Critical path (JS 6.5) |
+
+- **Class (a): stores in their own arenas.** Dropping one is unmapping or purging its regions: no traversal, no allocation, no GC. On a **frozen** or bfcache page, the control thread may drop them at any time, because no mutator runs. On a **running** page the script thread may be reading them (`getComputedStyle`, layout queries), so the control thread first posts a **safepoint request**; the script thread reaches a safepoint at its next interrupt check and acknowledges, and only then is the arena unmapped. The handshake allocates nothing (the request is a pre-allocated flag) and its latency is bounded by JS-42: **p99 ≤ 1 ms†, p99.9 ≤ 5 ms†**. Unmapping without the handshake would be a use-after-free in `unsafe` code that no type rule covers.
+- **Class (b): heap-resident engine data.** Flushing it takes a GC or a safepoint install, so it is never done under pressure. The freeze trim and navigation away schedule it; the flush-age numbers are this spec's (Section 6.20.3).
+
+The memory manager discards class (a) stores in descending order of **bytes freed per millisecond of rebuild** for the page's state (hidden, offscreen, visible), which is the measurement no engine publishes (`compact_engine_data.md` 14.1). Because every derived layer is a pure function of its inputs (DET-1, B5), **discard-then-rebuild must produce bit-identical DET-1 hashes**, and the engine's flushing of class (b) is invisible to script by construction (JS-42). The DST farm discards stores of both classes at random points and compares hashes (FP-12).
+
+#### Layout and paint
+
+Inline content is a flat, index-addressed item list per inline formatting context, an idea published for LayoutNG ([Chrome](https://developer.chrome.com/docs/chromium/renderingng-data-structures)). Fragments are immutable and cached by constraint space (Stage 1 Section 5.6); the cache holds **one fragment per box per constraint space** and evicts entries for offscreen, unchanged subtrees first. Property trees are sparse, one node per effect.
+
+The display list crosses to the GPU service in shared memory. IPC-R7 requires the GPU service to **copy, then validate** anything it parses (security scope 6.6), so the display list exists twice during a frame. P1 wins: the copy stays. The footprint consequence is managed instead: the renderer keeps only **chunk hashes** for invalidation after the GPU service acknowledges a frame, and drops its list; the GPU service drops its validated copy for hidden tabs.
+
+### 6.5 Images
+
+| Rule | Design | Evidence |
+|---|---|---|
+| **Encoded bytes once per partition** | Kept in the site process's resource store, shared by documents of one partition; the HTTP cache keeps its own copy on disk only | Chrome saved 15 MB on image-heavy sites by dropping duplicated encoded images ([Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory/achievements.md)) |
+| **Decode on demand** | Decode when the image is within a viewport margin (1 viewport† ahead in the scroll direction), never at load for offscreen images; discard decoded pixels for images more than 3 viewports† away | Firefox: settled 3 GiB → 0.6 GiB ([Nethercote](https://blog.mozilla.org/nnethercote/2013/03/07/memshrink-progress-week-89-90/)) |
+| **Downscale on decode** | Decode directly to display size × device pixel ratio; scaled inverse transforms where the codec has them (JPEG), streaming row decode into a downscaler otherwise, so peak memory is O(width × rows in flight) | Scaled IDCT cut peak RSS 84.4 → 4.1 MB on one JPEG in a standalone benchmark ([bug 2033250](https://bugzilla.mozilla.org/show_bug.cgi?id=2033250)); decoded RGBA is about 15× the median encoded size (derived from 2.1 bits per pixel, [Web Almanac 2024](https://almanac.httparchive.org/en/2024/media)) |
+| **One decoded copy** | Decoded into a discardable shared region whose size and pixel format the **GPU service fixes at creation**, so it is an opaque sampled buffer under IPC-R7's exemption ("the receiver fixed their size and format at creation"). On unified-memory GPUs the texture is created over that region; on discrete GPUs the CPU copy is dropped after upload | IPC-R7 (security scope 6.6) |
+| **Animated images** | Frames decoded as displayed; at most 2† decoded frames held | 32% of GIFs animated (chart value only, unverified in text; `breakdown_measurement.md` 2.8) |
+| **Where decoding runs** | FP-D11: a **decoder process per (site, container)**, as Stage 1 M7 places images in utility processes, unless the security owner rules that Izcal's Rust decoders add no risk in the renderer (Q-SEC-13). Never a pooled process that holds two sites' pixels. The decoder process exits after 10 s† idle; it is charged to its site (FP-38) | Stage 1 design 8.1 M7; security scope 6.10 |
+| **Canvas readback** | Pixels script reads (`getImageData`) are charged to the page and are not discardable while referenced | — |
+
+**Discardable memory per OS** (the decoded-image region and other caches):
+
+| OS | Mark discardable | Purge so the charge drops | Notes |
+|---|---|---|---|
+| macOS | Purgeable VM object, or unlock + `MADV_FREE_REUSABLE` | The OS purges; Izcal purges with `MADV_FREE_REUSABLE` | `MADV_FREE_REUSE` on relock, expected to keep `phys_footprint` accurate (advice values in [xnu `sys/mman.h`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/mman.h); the accounting effect is measured black-box at FP-M0 before this path is fixed); purgeable objects are multi-page, so small entries aggregate ([Apple](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/ManagingMemory/Articles/CachingandPurgeableMemory.html)) |
+| Linux | Unlock in the ledger | `MADV_REMOVE` on the shared region, `MADV_DONTNEED` on private | Not `MADV_FREE` ([Go 1.16](https://go.dev/doc/go1.16)) |
+| Windows | `OfferVirtualMemory` at Moderate | **Decommit** at Critical | Offer removes pages from the working set but releases no commit ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-offervirtualmemory); [Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/memory/key_concepts.md)) |
+| Android | ashmem unpin or memfd | Kernel purges unpinned | Stage 2 |
+| GPU | Metal `setPurgeableState(.volatile)`; D3D12 low residency priority; Vulkan: destroy | Driver discards (Metal) or Izcal destroys | Apple says volatile resources do not count toward the **iOS and tvOS** per-app memory limit ([Metal](https://developer.apple.com/documentation/metal/reducing-the-memory-footprint-of-metal-apps)); their effect on macOS `phys_footprint` is not documented (Q8) |
+
+Decoded images are incompressible to the OS compressors, which do well on pointer-rich heaps (`os_mechanisms.md` 4), so they are discarded rather than left for compression. A purge happens only on an unlocked region; a region being sampled or decoded into is locked, so purging never races its user.
+
+AVIF and JPEG XL decoder peak memory has no primary measurement (`compact_engine_data.md` 8.6). Izcal writes its own decoders, so tiled or streaming decode for those formats is measured before the decoders are specified (FP-M3).
+
+### 6.6 GPU memory
+
+Izcal's renderer runs on Metal, Vulkan and Direct3D 12 directly (2.3.0). Every GPU allocation in the GPU service carries a ledger tag: (site, container, partition, tab, kind), where kind is swapchain, tile, image texture, glyph atlas, canvas, WebGPU, video, or staging.
+
+| Rule | Design |
+|---|---|
+| **Budget from the API** | The service reads the OS budget (DXGI `QueryVideoMemoryInfo` and its change event; Vulkan `heapBudget`; on Metal, the device's recommended working set, flagged in Section 11) and reacts to **budget changes**, not only to system memory pressure. D3D12 budgets "fluctuate dramatically when the user switches away to another application" ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/direct3d12/residency)) |
+| **Per-site accounting** | Each site's GPU bytes are summed and shown in attribution (Section 6.14); no GPU API knows which tab owns a texture, so the service does |
+| **Visible tab** | Tiles cover the viewport plus a prepaint margin; budget ≤ 2.5 × viewport pixels × 4 B for tiles plus the visible images' textures (FP-14). Tile size is chosen by the graphics spec from measured invalidation waste, not copied: Chrome's tiles are about 256 × 256 px for software raster and about viewport width × ¼ viewport height for GPU raster ([How cc Works](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/how_cc_works.md); `compact_engine_data.md` 7.1) |
+| **Hidden tab** | After 30 s† hidden, every tile and image texture of the tab is released (re-raster is bounded and cheaper than holding them); within 30 s they are marked volatile or low residency first |
+| **Transient targets** | Metal memoryless and equivalent transient attachments for compositing passes ([Apple](https://developer.apple.com/documentation/metal/reducing-the-memory-footprint-of-metal-apps)) |
+| **Glyph atlases, partitioned (FP-D14)** | One atlas per **(site, container, partition)**, for web fonts and system fonts alike. Web fonts are bytes a page supplied and the page's text decides which glyphs exist, so a shared atlas would deduplicate content-derived data across sites and make occupancy and eviction a cache-timing channel. Each atlas starts at 256 KiB† and grows to at most 2 MiB†; atlases of hidden tabs are released with their tiles. The cost is re-rasterizing common glyphs per partition, measured at FP-M3 |
+| **Swapchains** | Two buffers by default, three only while an animation misses frames |
+| **WebGPU and canvas** | Charged to the page; a hidden tab's contexts follow the spec's context-loss rules only under Critical pressure |
+
+On unified-memory machines G is part of system RAM, so it is part of the same pressure policy. The atlas partition joins the GPU service's threat model (Section 9.4).
+
+### 6.7 Memory pressure: graded, early, and never needing memory to reclaim memory
+
+**Signals, per OS, all feeding one broker policy (`hg-memory`).** Every pressure signal is a recorded B1 input (JS 6.9).
+
+| OS | Primary signal | Secondary | Per-site enforcement (backstop) |
+|---|---|---|---|
+| Linux | PSI triggers on `/proc/pressure/memory` (unprivileged windows are multiples of 2 s, [kernel.org](https://docs.kernel.org/accounting/psi.html)) | Available memory | Where the session delegates cgroups: one cgroup per site process with `memory.low` for the visible tab and `memory.high` for hidden ones ([cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html)); absent delegation, the broker's own limits |
+| macOS | Dispatch memory-pressure source (Normal, Warn, Critical) | Free disk below a floor set at FP-M3 from the largest single write the ladder may need (Section 7.1) counts as Critical | Broker limits |
+| Windows | Commit headroom, read by a substrate timer that is armed only while headroom is below 25%† | Low-memory resource notification | A job object per site process with a memory limit |
+| All | **Forecast**: the broker extrapolates charged-memory growth and acts when it predicts crossing a level within 10 s†, not when it is crossed | — | — |
+
+**Levels and actions (the reclaim ladder).** Each rung runs only if the previous one did not restore headroom. HGBA-2 4.6's hot, warm, cold and frozen tiers map onto it: hot = visible-active, warm = visible-idle and hidden-with-reason, cold = hidden in grace, frozen = frozen, suspended or bfcache (Section 9.4).
+
+| Level | Action, in order | Cost to the user |
+|---|---|---|
+| **Moderate** | (1) Drop class (a) stores of frozen and bfcache pages, best bytes-per-rebuild first. (2) Run the engine's pressure hook (class (a) engine data) and return allocator free spans. (3) Evict bfcache entries beyond each (site, container)'s sub-budget, then oldest first (BF-1's rule: bfcache before live tabs). (4) **Page out** cold heaps of frozen processes where the platform permits (below) | None visible |
+| **Critical** | (5) Drop class (a) stores of offscreen parts of visible pages, after the safepoint handshake. (6) Suspend frozen pages to disk, if FP-31 passes (Section 6.9). (7) Discard frozen pages, most recently saved state kept by lifecycle events | A reload, or a restore, when the user returns |
+| **Emergency** | (8) Kill the lowest-ranked site processes | Lost state in those tabs |
+
+Class (b) data is never flushed on any rung; it was trimmed when the page froze.
+
+**OS page-out of frozen processes.** A frozen process's heap can be handed to the OS's own swap path: `MADV_COLD` and then `MADV_PAGEOUT` on Linux ([madvise](https://man7.org/linux/man-pages/man2/madvise.2.html)), a working-set trim on Windows; macOS pages out on its own. This restores without reload, needs no new file format or serializer and adds no parsing surface. It releases **resident** RAM but not the charge (swap and commit stay), which is why charged memory alone could not credit it (Section 6.2). Because page-out writes page content to the OS's swap, Izcal uses it only where swap is in memory (zram) or encrypted; whether each OS's default swap is encrypted is recorded per device at FP-M3 (Q14), never assumed. FP-D6 compares it with suspend-to-disk.
+
+**Never needs memory to reclaim memory.** Firefox 93's unloading needed a GC and its pressure event fired late ([Mozilla Hacks](https://hacks.mozilla.org/2021/10/tab-unloading-in-firefox-93/)). Izcal's reclaim path:
+- runs on the **control thread**, whose stack and data are pre-committed, and draws on a **pre-committed reserve** (FP-2 line item);
+- performs only OS calls on regions that are already mapped, and safepoint requests that are pre-allocated flags: unmap a class (a) arena, decommit or purge a range, page out a range. No traversal of the heap, no GC, no allocation, no IPC message larger than a pre-allocated slot;
+- discards whole pages by **process exit** when a page is the only page in its process, which returns everything at once (the ChromeOS lesson);
+- keeps a **kill ranking always current** in the broker, derived from the user-visible cost of losing state: visible main frame, then visible subframes in the viewport, then audible or capturing, then hidden with a declared reason, then frozen by last-visible time, then bfcache-only processes, then the spare. On Android Izcal gives its ranking to the OS.
+
+The test is direct: in simulation, the allocator is set to fail every allocation once Critical is entered, while a script thread keeps running a long task on a visible page, and the ladder must still restore the target headroom without a use-after-free (FP-15).
+
+**Runaway pages.** A hidden page whose process grows past **2 GiB†** charged is suspended or discarded. The threshold is fixed, not a fraction of RAM, so that whether a page was discarded never reveals the device's memory size (Section 6.18.1). While visible, the user is shown which page and why, with a "stop this page" action. The OS-enforced backstop (cgroup `memory.max` or the job-object limit) sits above that, at min(8 GiB, 50% of RAM)†; reaching it is a renderer crash, a bounded channel recorded in Section 6.18.1. A site gets a crash report with reason `oom` (WICG draft, [WICG](https://wicg.github.io/crash-reporting/)) **only when its own process crossed the runaway threshold**; a process killed by the ladder because other tabs used memory gets no report and nothing that distinguishes the kill from a navigation, because the report would tell the site about other sites' memory and the device's pressure. WebKit's optional kill threshold, a fraction of a configured memory limit, is the same kind of backstop, not a budget ([WebKitGTK](https://webkitgtk.org/reference/webkit2gtk/stable/struct.MemoryPressureSettings.html)).
+
+**OS compression is a tier, not an enemy.** Frozen pages keep their heaps; the OS compresses them (macOS WKdm, Windows store, zram), and pointer-rich heaps compress well while decoded pixels and JIT code do not (Meta assumes about 3× on production heaps, [Meta TMO](https://engineering.fb.com/2022/06/20/data-infrastructure/transparent-memory-offloading-more-memory-at-a-fraction-of-the-cost-and-power/)). So the freeze trim drops exactly the incompressible stores. Izcal measures the compressed footprint of a frozen tab per OS (FP-M3), because no published ratio for browser heaps exists.
+
+### 6.8 Background policy: hidden means no wakeups
+
+**Page states.** Visible-active, visible-idle, hidden (grace), **frozen**, suspended (Section 6.9), discarded. A page is hidden when it is not on screen (another tab, minimized, fully occluded).
+
+**Hidden ⇒ frozen, by default (FP-D4).** After a **30 s† grace period**, a hidden page with no declared reason is frozen: its task queues stop, timers do not fire, `requestAnimationFrame` does not run, and the engine fires the `freeze` event first and `resume` on return, following the Page Lifecycle model ([Chrome](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)). Freezing is a B1 input, on which the engine shrinks (JS 6.5: a full canonical cycle, class (b) flush per Section 6.20.3, nursery decommit, stack trim). During the grace period, timers are aligned to a 1 s† grid. HTML lets a user agent "wait a further implementation-defined length of time … to pad timeouts as needed to optimize the power usage of the device" ([HTML, run steps after a timeout](https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#run-steps-after-a-timeout)). A frozen page's process, if all its pages are frozen, gets **no scheduled wakeups at all**; it is woken only by the broker (resume, pressure, navigation) or by a declared reason's event.
+
+**Declared reasons, derived from user-visible activity classes.** A hidden page keeps running only if it is doing something the user would notice stopping. Six classes cover that, and each concrete reason belongs to one:
+
+| Activity class | Concrete reasons | Budget while hidden |
+|---|---|---|
+| **Output the user perceives** | Audible media; Picture-in-Picture video (muted or not); notifications shown | Media pipeline as needed; script timers aligned to 1 s†; ≤ 1% of a core† outside media |
+| **A live exchange the user is party to** | WebRTC with live tracks; capture permission in use; WebSocket or WebTransport with traffic in the last 60 s† | Timers aligned to 1 s†; ≤ 1% of a core† |
+| **A transfer the user started** | Download, upload, `fetch` with `keepalive` | No timers; completion events only |
+| **A visible context depends on it** | Web Locks or IndexedDB transaction another same-site page waits for; a SharedWorker, BroadcastChannel or MessagePort peer serving a visible same-site page | Until released, or while the visible page exchanges messages, ≤ 1% of a core† |
+| **Another principal is acting** | An agent task in progress (B9: agent tabs are hidden and active); a WebDriver or automation session; an attached DevTools session or recording | As the principal's session requires; charged to that principal, shown in its session view |
+| **The user says so** | "Keep this site running in the background," per site, in the site panel | As above, plus the user sees its cost |
+| — (events) | Push and notification events on a service worker | Per event, ≤ 30 s† CPU budget |
+
+Chrome's throttling exemptions (audio, WebRTC, locks, IndexedDB) are evidence that pages break without such reasons ([Chrome 88](https://developer.chrome.com/blog/timer-throttling-in-chrome-88); [Chrome 133](https://developer.chrome.com/blog/freezing-on-energy-saver)); Izcal's list is derived from the classes above, which is what adds the agent, automation, DevTools, Picture-in-Picture and cross-context cases. The P2 check is on Izcal's corpus: a compatibility suite of background scenarios (chat, mail, music, collaborative editors, dashboards, WPT run in background windows) records what breaks under freeze, and every break is fixed by a declared reason or a spec-anchored behaviour, not by weakening the default (FP-17).
+
+**Visible idle means idle too.** The engine has **no periodic timers of its own**: no GC heartbeat, no polling (JS 6.5). Every timer Izcal's own code arms (allocator return, pool idle exit, the Windows headroom check) is one-shot and armed by activity. IPC is event-driven. Frame production (`requestAnimationFrame`, compositor) requests vsync only while something changes. Idle GC work runs in frame gaps, never on a timer. Target: a visible static page leaves the whole browser at **≤ 1 wakeup/s†** (FP-18), Apple's threshold for investigating an idle app ([Apple](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/Timers.html)).
+
+**Timer policy.** Every timer the engine schedules carries a **tolerance** (substrate `post` gains a slack parameter, amendment to Stage 1 Section 3.1): at least 10% of the interval, minimum 1 ms visible, 1 s hidden. The broker publishes a **global wake grid**: grid instants are a **fixed function of time** (multiples of the tolerance class's period from a per-boot epoch), never derived from any process's demand, and each process aligns slack-tolerant timers to them, so the CPU wakes once for every process rather than once per process, and the grid carries no information between processes. OS X 10.9's coalescing was motivated by idle traces with timers firing across every 125 ms window from many processes ([Apple](https://www.apple.com/media/us/osx/2013/docs/OSX_Mavericks_Core_Technology_Overview.pdf)); a browser is many processes. Izcal never raises the system timer resolution while on battery; on Windows, high resolution "can also prevent the CPU power management system from entering power-saving modes" ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod)).
+
+**QoS, per process and per thread, by role and visibility:**
+
+| State | macOS | Windows | Linux |
+|---|---|---|---|
+| Visible, interactive | User-interactive QoS on the script and compositor threads | HighQoS (app-settable) | Default; `uclamp.min` raised only for input-to-frame work |
+| Visible, idle; hidden with reason | Utility QoS | EcoQoS for hidden ([Microsoft](https://devblogs.microsoft.com/performance-diagnostics/introducing-ecoqos/)); Utility, Low and Medium are assigned by the OS, not set by Izcal ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/procthread/quality-of-service)) | `uclamp.max` capped; timer slack raised |
+| Frozen | Background QoS | EcoQoS | `cpu.uclamp.max` low in the site's cgroup; large timer slack |
+| Background work (decode, compile, GC helpers) | Utility or background | EcoQoS | `uclamp.max` capped |
+
+Apple's target is utility or lower at least 90% of the time when the user is idle ([Apple](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/PrioritizeWorkAtTheTaskLevel.html)). On macOS, App Nap applies per app, so a browser's child processes need their own background policy ([Apple](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/AppNap.html)); Izcal uses public QoS only and records whether public API suffices as an open question (Section 11). Linux energy-aware scheduling needs `schedutil` and stops placing tasks above 80% utilisation ([kernel.org](https://docs.kernel.org/scheduler/sched-energy.html)), so uclamp is a request, measured on the reference devices, not a guarantee.
+
+**Pixel-optional stays for hidden running pages.** B7's pixel-optional mode skips raster and compositing for unobserved tabs. A frozen tab also skips style and layout until resumed; a hidden tab that runs (an agent task, automation, a declared reason) stays pixel-optional, running unpainted.
+
+### 6.9 Suspend-to-disk of live pages (spike, gated by FP-31)
+
+Every shipping "sleep" either keeps the page in memory or discards it and reloads (`gaps_opportunities.md` 2.7). Edge's sleep-before-discard keeps 17% of a tab's memory and resumes without reload ([Edge 105](https://blogs.windows.com/msedgedev/2022/12/06/sleeping-tabs-edge-105-sleep-before-discarding/)). Izcal can try the next rung: **serialize a frozen page and release all of its memory, including its swap and commit, then restore it without a reload.**
+
+**Ownership.** The heap image format is `hg-js-snapshot`'s, the one format for every engine image (JS 6.11); the JS engine supplies a serializable live heap at JS-M2. `hg-suspend` is the **lifecycle client**: it decides when to suspend and restore, owns the non-heap parts of the file (DOM columns, rare data, text arena, style sheets, scroll and form state, timer state), the quota and the security rules below, and drives the measurement. One owner per part, one gate, no schedule fallback.
+
+**What is serialized:** the page's agent heaps (all realms of the page's documents), the DOM columns, rare data and text arena, style sheets, the mutation-log position, timers and their remaining delays in virtual-clock terms, scroll and form state. **What is not:** every derived store (rebuilt on restore), the images (mapped), class (b) engine data (re-derived; bytecode may be kept if smaller than source, JS 6.11), and all external state, which the format records as references to re-derive: hash seeds and PRNG state are **re-seeded on restore** (JS 6.11).
+
+**Eligibility,** mirroring bfcache rules so the semantics are already defined: no open connections (frozen pages close them, Page Lifecycle guidance), no `SharedArrayBuffer` shared with another agent, no active media or capture, dedicated workers frozen with the page (or the page is ineligible), WebGL and WebGPU contexts handled as context loss on restore (a spec-defined event). Pages with `unload` handlers or `Cache-Control: no-store` follow the same policy Izcal applies to bfcache.
+
+**Time.** B1's virtual clock makes "time passed while suspended" an explicit input: on restore, the clock jumps, and timers fire as they would for a page frozen that long.
+
+**Security and privacy.** The file holds page content, the equivalent of a recording. It is encrypted and authenticated with the profile's OS-bound key (SEC-34, the REC-R2 rule for recordings), stored in the partition's storage, deleted when the tab closes or the site's data is cleared, and never synced or attached to crash reports. It is restored only into a **fresh process locked to the same (site, container)**; the broker never parses it; the restore parser runs in the renderer sandbox, re-verifies every bytecode and is fuzzed as a Tier 1 parser (JS 6.11, VER-1).
+
+**Persistence of a compromise.** A one-time renderer compromise that writes a crafted suspend file would otherwise survive process exit, browser restart and the closing of the exploit page; encryption does not help, because the writer is the attacker. The bound, under the regenerable-cache class (FP-D16):
+- the file is **single-use**: deleted when restored, so persistence ends at the first restore unless the page is suspended again;
+- it is **discarded** if the process that wrote it later crashed, failed a check or was killed for a bad message, and on any load failure, never repaired;
+- it is **bound to the engine build** and discarded across builds;
+- it has a **time-to-live of 7 days†**, after which the tab falls back to discarded state (a reload on return);
+- restoring it gives nothing a fresh load would not: the restored process has the same (site, container), sandbox and grants.
+
+**What it depends on.** The JS engine serializes an arbitrary live heap (closures, Wasm instances with their memories, weak collections with their semantics, pending promises and microtasks) through `hg-js-snapshot`. V8's snapshots serialize only engine-controlled start-up heaps (`gaps_opportunities.md` 9E, not re-checked). This is the largest requirement this spec places on the JS engine, and it is placed as a measured spike, not a commitment.
+
+**Kill criteria (FP-31).** On the corpus, after the spike: at least 60%† of hidden corpus pages eligible; median restore time ≤ 0.5× the page's warm reload time†; snapshot size median ≤ 1.5× the page's live heap and DOM bytes†; median restore time and released bytes better than the OS page-out rung's on at least one device class where swap or commit is the binding constraint (FP-D6); and **zero divergence**: the restored page's DOM serialization and JS-observable state hash equal the pre-suspend hash in 1,000 of 1,000 DST runs. Missing any one: the rung is removed from the ladder and discard stays the Critical action. Meeting all of them: the rung ships, whatever the stage.
+
+### 6.10 Process lifecycle and bfcache budgets
+
+**Process granularity (FP-D3).** One process per (site, container) by default, rather than per site instance below a soft limit; Firefox's `webIsolated=$SITE` is evidence that it is deployable ([Firefox](https://firefox-source-docs.mozilla.org/dom/ipc/process_model.html)), not the reason. The reason is the model: same-site tabs then pay F_proc once and share partition-keyed caches (Section 6.4), each paying only F_agent. The robustness cost of one process for many same-site tabs ("bloated processes that perform poorly," [Reis et al.](https://www.usenix.org/system/files/sec19-reis.pdf) §4.1.1) is handled by **splitting on a budget**: when a site process exceeds 1 GiB† charged, or one page monopolises its script thread for more than 5 s† repeatedly, new same-site browsing context groups go to a second process for that key. **A split happens only at agent-cluster boundaries**: a `SharedArrayBuffer` agent cluster always stays in one process (JS 6.0, 6.12). A crash takes down only that process's tabs. This also resolves the Stage 1 wording conflict (FP-D17).
+
+**Process exit.** A site process with no documents exits after a **30 s† keep-warm period** at Normal pressure, immediately otherwise. Exit returns everything, which makes "returned after close" exact at the process level; FP-9 measures the in-process case (navigation within a site), where the engine releases a destroyed agent's heap whole (JS 6.5) at navigation away.
+
+**Origin keying (HGBA-2 I-1 (c), FP-D8).** Subdomains of one site get separate processes. With FP-2 met, the cost of origin keying is about F_fixed per extra subdomain process, so this spec recommends enabling it on **every desktop device class**. If FP-7 then fails, the lever is F_fixed and content duplication, never isolation: origin keying stays on (FP-D8). The JS engine follows this decision (JS 6.7).
+
+**Iframe-heavy pages.** Each cross-site iframe is a process. Reis et al. measured up to 89% overhead on one page with 10 processes ([Reis et al.](https://www.usenix.org/system/files/sec19-reis.pdf) §5.3.2). Three things bound it in Izcal: F_fixed is small; blocked frames start no process (Section 6.11); and a cross-site frame's process is the same (site, container) process that frame's site already has, if any. FP-7 measures isolation overhead directly against a **measurement-only co-locating simulation build** that puts all frames of a page in one process. That build breaks I-1 by design, so it is excluded by a **build-graph rule**: the co-locating mode is a cargo feature that no release target may enable, checked on every release binary's feature set and loaded-library closure as G14 is (Section 9.4), never by convention.
+
+**bfcache.** BF-1 already decides that one policy owns bfcache and discard, and that bfcache entries go first. This spec adds:
+- **Budget in bytes, not entries.** Total bfcache charged memory ≤ 5%† of physical RAM and ≤ 256 MiB†, whichever is smaller; each (site, container) has a **fixed sub-budget of 64 MiB†**, and the global cap evicts another site's entries only at Moderate pressure or above (Section 6.18.1). Per-tab history keeps at most 3† entries, a prior to be set from the measured back-navigation distance distribution at FP-M3 (Section 7.1).
+- **Entries are frozen and trimmed.** Entering bfcache freezes the page and drops its class (a) stores, after the engine's freeze shrink, so an entry holds node columns, text and agent heaps only. Target: median entry ≤ 40%† of the page's visible settled size (FP-16).
+- **Time to live** 10 min†, a prior to be set from the measured return-time distribution at FP-M3 (Section 7.1). An entry alone in its process keeps the process at background QoS with no wakeups.
+
+**Spare process.** At most one, only at Normal pressure, only while measured spawn-to-ready exceeds 10 ms† (Section 6.3), never on DC-4 below 25%† available memory.
+
+### 6.11 Content blocking as a footprint lever
+
+The Stage 1 design uses Brave's `adblock` crate; 2.3.0 excludes it, so the matcher is Izcal's own (`hg-content-block`, tier P).
+
+- **Compiled lists, compiled outside the broker.** Filter lists are downloaded third-party text, and IPC-R15 forbids parsing web formats in the broker. They are compiled at list-update time in a **utility process at the strictest tier** into an **immutable, position-independent automaton file** (the image-inventory discipline of Section 6.3), mapped read-only by the network service; the broker only moves the sealed file. Compiled automata are members of the regenerable-cache class (FP-D16). Matching allocates nothing per request. Brave's Rust rewrite cut its blocker's memory about 75% (about 45 MB, Medium, `gaps_opportunities.md` 8.5); extension-side matching cost Adblock Plus 32% median overhead (Medium). Budgets: matcher ≤ 8 MiB† charged in the network service for the default lists; p99 match ≤ 20 µs† per request (FP-28).
+- **Cosmetic filters** reach each renderer as the **per-site subset** only, applied as a user-origin style sheet (Stage 1 Section 6), ≤ 256 KiB† per site process, with its parsed cascade shared across the documents of one partition. Sharing the cascade of one large injected user sheet across a process's documents saved 3.62 MiB per document in Firefox 41, measured on a 429-iframe page with AdBlock Plus's sheet ([Nethercote](https://blog.mozilla.org/nnethercote/?p=3097)).
+- **Blocked frames start no process.** A blocked cross-site ad iframe saves F_fixed plus its content plus its wakeups. The broker counts processes not started.
+- **Measured per site.** For every site, the attribution system (Section 6.14) records bytes not fetched, processes not started, and, in the lab, the with/without difference in memory, CPU and energy on the corpus. Independent evidence puts blocking at 20–40% battery on Android ([Varvello and Livshits](https://arxiv.org/abs/2009.03740)); real-time bidding sites cost a median 33.98% more energy (Medium, abstract only, [Pélissier et al.](https://hal-obspm.ccsd.cnrs.fr/IRISA-INSA-R/hal-05479340v1)). Izcal publishes its own measured numbers.
+
+List governance, breakage and the default list choice belong to the shell and policy work, not this spec.
+
+### 6.12 Binary and disk size
+
+| Item | Design | Budget |
+|---|---|---|
+| **Code** | Uncompressed, page-aligned (16 KiB) binaries, so code is mapped clean and shared; compressed only inside the installer. Packed executables decompress into private memory with no sharing (Low, `os_mechanisms.md` 12.4). PGO and an order file from the deterministic corpus (Stage 1 Section 7.1), which place start-up code together ([Android](https://android-developers.googleblog.com/2023/11/orderfiles-in-android.html)). **Library layout under G14:** everything shared by every renderer lives in one shared library; the code generator (`hg-codegen`, `hg-jit-baseline`, `hg-jit-opt`, compiled regex) lives only in the JIT renderer's executable or a library that only it loads, so a jitless process never maps it, checked on each binary's loaded-library closure (JS 6.8, 6.15 G14; security scope 6.7). Code is still on disk once | Installed code + images per architecture ≤ 120 MiB† (Chrome's arm64 slice is about 251 MB, Firefox's 131 MB, system WebKit's code about 126 MB, `compact_engine_data.md` 15), plus the web-observable data set below |
+| **Engine image** | One file, mapped, shared (Section 6.3) | ≤ 16 MiB† excluding CLDR data |
+| **Web-observable data set (FP-D13)** | CLDR, UCD and tz data for **every** locale, hyphenation dictionaries for every supported language, and every codec Izcal supports, shipped with the build and identical in every installation. Nothing web-observable is ever fetched because a page asked for it (JS 6.9, 6.13). Mapped clean, so untouched slices cost disk only, never memory | Measured at FP-M2 (Q-JS-6); placeholder ≤ 24 MiB† on disk |
+| **Optional components** | Only things no page can observe: developer symbols, extra UI languages for Izcal's own interface chosen in settings | Not in the installer |
+| **Installer** | Compressed | ≤ 50 MiB† per platform and architecture excluding the web-observable data set, plus that set's compressed size, which FP-D13 decides first (RES-4 was 120 MB†) (FP-25) |
+| **HTTP cache** | Explicit, user-visible budget rather than a size rule the user cannot see (incumbents' rules are observed black-box at FP-M0, open question 17) | 256 MiB† default, shrinks to 1% of free space below 25 GiB† free (1% of 25 GiB is 256 MiB, so the rule is continuous at the switch and the cache never takes more than 1% of the space a nearly full disk has left) |
+| **Code cache** | Regenerable-cache class (FP-D16), keyed by (top-level site, container, URL, hash, build) (JS 6.11); entries are written only by the code-cache builder process (JS-D21, FP-39), never by a renderer | 64 MiB†; entry time-to-live 14 days†; discarded with the writing process's failures |
+| **Suspend files** | Regenerable-cache class; single-use | ≤ 1 GiB† and ≤ 2%† of free space in total; ≤ 128 MiB† per (site, container); time-to-live 7 days† (FP-26) |
+
+CS-PF-8 already reports binary size per PR and requires a `Binary-Size:` reason above 256 KB of installer growth.
+
+### 6.13 Energy accounting per site and script
+
+Energy cannot be measured per site directly; it is **modelled from charged activities and calibrated per device** against meters.
+
+- **One accounting mechanism.** CPU time is read from thread CPU clocks **through the substrate** at task boundaries by the substrate executor, for every task in every Izcal process; within engine work, `hg-js-observe`'s time accounting subdivides the time per engine component and per script, realm and origin (JS 6.10). This spec consumes that mechanism and does not measure again; the always-on parts of both share **one overhead budget**, ≤ 0.5%† of corpus CPU time (FP-23 and JS-60 are the same bound).
+- **Activities charged in production:** CPU time per task attributed to (site, frame, realm, script, task source); wakeups, charged to the timer's or event's owner; GPU time per site, from timestamp queries around each site's passes in the GPU service; network bytes and connection setups per initiator, from the network service (radio setup cost roughly 12 J on 3G in one 2012 study, [Thiagarajan et al.](https://www.cs.columbia.edu/~nieh/teaching/e6998_s13/papers/boneh-www2012.pdf)); media decode time per element.
+- **Model:** energy ≈ Σ CPU time × per-core-type coefficient + wakeups × per-wake cost + GPU time × coefficient + radio cost per byte and per connection. Coefficients are fitted per reference device in the lab against the platform meters named in `breakdown_measurement.md` 9 (RAPL on Linux, `powermetrics` on macOS, the Energy Meter Interface on Windows; primary documentation not read, Section 11). Firefox's profiler power tracks show such meters are usable from a browser ([Mozilla](https://blog.mozilla.org/performance/2022/10/27/whats-new-with-the-firefox-profiler-q3-2022/)).
+- **Validation:** the model's per-corpus-page estimate must be within 15%† of the meter (FP-23). Until it is, the UI shows energy as a **share** ("this tab used 23% of Izcal's energy in the last hour"), not in joules.
+
+Energy is measured with external or OS meters, never inferred from CPU time alone, because radio and third-party activity dominate measured page energy (`breakdown_measurement.md` 6.6–6.7). Energy targets are stated per tier ceiling, because an emergency switch to jitless (UPD-R5) changes energy (JS-26).
+
+### 6.14 User-facing attribution and per-site controls
+
+**"Why is this tab heavy?"** The shell's per-site resource meter (Stage 1 Section 6; shell R13) becomes a causal view, in the site panel and in a whole-browser view:
+
+| Shows | Source | What it can claim |
+|---|---|---|
+| Memory by cause: script heap, page structure, images, GPU, caches the browser can drop, and "shared, not charged" | Ledger categories | Exact per category and per frame |
+| Which scripts and third parties **allocate**, by script origin, including third-party scripts in the first-party frame | Allocation-site counters in canonical units, always on (JS 6.10) | Bytes **allocated** per script; not bytes **retained** |
+| What **retains** memory (a detached DOM subtree, a leaked image) | Heap query in a replay host on a recorded session (JS 6.10), one action from the view | Exact retaining paths, on request |
+| CPU, wakeups and energy share | Section 6.13 | Per script, frame and site |
+| What Izcal did: frozen, images dropped, ad frame removed, suspended | The intervention log | — |
+| What it saved: blocked bytes and processes not started | Section 6.11 | — |
+
+Explanations are plain sentences with a link to detail ("This tab is using 410 MB, mostly decoded images (220 MB). Images out of view will be released when the tab is hidden.").
+
+**Attribution history is browsing history (FP-D18).** Per-site CPU, energy and memory over time, per-script third-party origins and a timestamped intervention log together reconstruct where the user went. So:
+- **Holder.** The history lives in the **storage service**, encrypted under the profile key, partitioned per container. The shell renderer ("untrusted; cross-site by design", security scope 6.3) receives through a broker-mediated endpoint only the rows on screen, never the store.
+- **Retention.** Per-minute detail 24 h†; per-hour aggregates and the intervention log 7 days†; nothing longer.
+- **Clearing.** Cleared with browsing history (all of it, or the cleared time range) and with a site's data (that site's rows); cleared per container with the container.
+- **Private windows.** Kept in memory only, shown while the window is open, dropped when it closes.
+- **Never leaves the device** unless the user exports it.
+
+**Interventions, attributed by script (FP-D7).** The heavy-ad intervention worked because it was narrow (ad frames only, never interacted), outlier-only (99.9th percentile), noised for privacy, announced, and explained in the frame ([Chromium Blog](https://blog.chromium.org/2020/05/resource-heavy-ads-in-chrome.html); [Chrome for Developers](https://developer.chrome.com/blog/heavy-ad-interventions)). Izcal keeps that shape but attributes by **script**, which its engine can do and Chrome's frame-level intervention could not (JS 6.8), and acts on the smallest unit that can be stopped without breaking page semantics:
+- **Scope:** scripts and cross-site frames classified as ads by the blocking lists (on sites where the user turned blocking off), not interacted with.
+- **Action on a cross-site ad frame:** the frame is replaced with an explanation (as Chrome's).
+- **Action on an ad script in a first-party frame:** its tasks are deprioritized and capped through the CPU budget the broker grants (Section 6.20.4); it is never killed, because first-party code may depend on it.
+- **Thresholds on user-visible cost**, never bytes alone: CPU seconds in a window, memory-time (MiB·s), and wakeups while hidden, each set at the 99.9th percentile of ad scripts and frames on a **calibration corpus** (FP-M5), with seeded noise.
+- **Replayable:** every intervention decision is a recorded B1 input, so replay reproduces it (JS 6.8), not only its noise.
+- **Reported and announced:** recorded in the intervention log, a Reporting API `intervention` report to the embedding site, announced in release notes one release before it is enforced.
+
+**What this spec avoids, from first principles.** No byte budgets on first-party content (bytes are a poor proxy for user cost, Section 4.4). No pausing or killing of first-party script. No intervention without UI. No silent breakage.
+
+**Per-site user controls (FP-D15).** Outcome controls the user can reason about: "keep this site running in the background" (a declared reason, Section 6.8) and "limit this site on battery" (its hidden CPU budget at the floor, its visible animations capped at the display's lowest refresh). Numbers in megabytes are shown, never asked for. Stage 1 design Section 6 says interventions "are engine defaults, not user budgets"; FP-D15 records whether user controls exist at all. "Limit this site on battery" acts on attribution, so it ships when the attribution it acts on is shown to be right (FP-30), a measurement gate, not a stage.
+
+### 6.15 Developer-facing signals within privacy limits
+
+Precise resource numbers about a page leak cross-origin information; that is why `measureUserAgentSpecificMemory` needs cross-origin isolation and heavy-ad thresholds are noised (`gaps_opportunities.md` 5.6). Izcal's split:
+
+| Signal | Where | Precision |
+|---|---|---|
+| Full attribution, every frame | DevTools, `devtools-user` principal (the person at the device, who already sees the whole-browser view in browser UI) | Exact |
+| Attribution for a scoped principal (automation, editor, agent) | DevTools sessions under DevTools spec 6.5 rule 1 | Only the granted origin set; out-of-set frames are **opaque**, with no totals, because a total about an out-of-set frame is out-of-set data |
+| **Deterministic footprint replay** | DevTools with a recorded session (B1) | Exact canonical bytes and wakeups per script and call site, reproducible |
+| Page Lifecycle `freeze` and `resume` events | Web | Exact (it is the page's own state) |
+| Reporting API `intervention` reports (heavy frame or script, freeze-breakage opt-in failures) | Web, to the reporting endpoint | Event only, no measurements |
+| Crash reports with `oom` reason | Web, delivered on a later load (WICG draft) | Event only, and only for the page's own runaway (Section 6.7) |
+| `measureUserAgentSpecificMemory` | Not implemented (FP-D10) | — |
+| Device, battery or pressure state | Never | — |
+
+### 6.16 Deterministic footprint checks in CI, and the device lab
+
+**In CI, under B1 (simulation substrate).** For each corpus page and each lifecycle script (load, settle, interact, hide, freeze, resume, navigate away, close), **per ISA and per tier ceiling**:
+- **canonical touched and committed bytes** per ledger category: peak, settled, and after-close return; deterministic because the substrate and allocators count 16 KiB granules and the engine's GC is paced in canonical allocation units (JS 6.5, 6.9); machine code reported separately;
+- **allocations** per operation (CS-PF-3), already a rule;
+- **wakeups** per process per virtual minute, counted by the simulated executor as idle-to-running transitions;
+- **hashes after discard-and-rebuild** of each derived store, both classes (FP-12);
+- **reclaim under failing allocation with a running script thread** (FP-15).
+
+Results are bit-identical across runs and across the three OSes on one ISA (FP-24). Cross-ISA identity of the non-code categories is checked, and JS-observable digests follow JS-D12. A PR that raises any canonical peak or settled value by more than 0.5%† on any corpus page, or adds a wakeup to an idle scenario, fails unless the PR body carries a `Footprint: <reason>` line, reviewed like `Perf:` and `Binary-Size:` (amendment to CS-PF, Section 9.4).
+
+**In the device lab.** On the reference device classes (Section 8.1), nightly: charged and resident memory per process as a time series (Section 6.2), G per OS API, the FP-S30 scenario, process counts, wakeups from OS tools, energy from meters, start-up times. Every run books the rig (`rig book … --kind exclusive` for timing and energy runs). FP-33 checks that CT predicts charged memory on Linux and macOS, and CC predicts commit on Windows, within ±10%†; if the prediction drifts, the CI gate is recalibrated before it is trusted again. CS-PF-5's backout-first rule applies to sustained lab regressions in FP metrics.
+
+**Corpus scenarios.** Unique sites per tab, as atsy did, so the process model behaves as in the field (`breakdown_measurement.md` 7.4); p90 pages included because they are about 4× the median ([Web Almanac 2025](https://almanac.httparchive.org/en/2025/page-weight)); an iframe-heavy set; an ad-heavy set with and without blocking; a long-running set (8 h† synthetic sessions of mail, chat and a single-page app); a background-compatibility set (Section 6.8); and a **cross-partition probing set** (FP-36).
+
+### 6.17 Integrations
+
+| With | What |
+|---|---|
+| **JavaScript engine spec** | Requirements met there: one-copy DOM (JS-D4, FP-D2); one memory trait set (JS 6.15); image inventory and immortal image objects (JS 6.1, 6.11); two derived-data classes, flushing at deterministic points, allocation-free pressure hook, safepoint handshake, shrink on freeze and navigation (JS 6.5, JS-42); one time-accounting mechanism and allocation-site counters (JS 6.10, JS-60); code writer as a dedicated thread (JS 6.7); `hg-js-snapshot` for the suspend spike (JS 6.11); regenerable-cache class (JS 6.11, FP-D16). Numbers supplied here: Section 6.20 and FP-2, FP-4, FP-34, FP-35 (cited by JS-30, JS-32) |
+| **DevTools** | Per-site memory view, cause attribution and deterministic footprint replay, sourced from the ledger and `hg-js-observe`; DevTools' recorded-session processes (DevTools spec 6.6) are charged and budgeted like site processes |
+| **Shell** | Site panel resource view, intervention log (rows from the storage service), background permission and battery limit per site, whole-browser view |
+| **Security** | Image integrity (SEC-16), suspend files and history (SEC-34), the spawner, utility jobs for fonts and filter lists, per-partition glyph atlases, per-site cgroups and job objects as resource limits, IPC-R1 read-only handles for the session image, the co-locating build rule, the shared-resource channel analysis (Section 6.18.1) |
+| **Agents (B9, B10)** | With AI off, nothing in this spec launches or computes anything for agents (AG-0). With AI on, an agent task is a declared reason, agent tabs run pixel-optional (B7), and their footprint is attributed to the agent principal |
+
+### 6.18 Security, privacy and consent
+
+- **No cross-site sharing of content-derived data**, in memory or on disk (Section 6.4), and none across partitions within a site process. The only cross-process shared data is Izcal-built and read-only by protection.
+- **Per-process randomization of what matters.** The images and every heap are mapped at per-process random addresses; there is no zygote. Code layout is per boot on Windows and macOS, as for every application on those systems (Section 6.3).
+- **No parsing in the broker.** Fonts and filter lists are parsed in utility processes; the broker moves sealed handles (IPC-R15).
+- **No code generator in jitless processes** (G14 on the loaded-library closure, Section 6.12).
+- **Attribution never reaches a page.** It is shown in browser UI and DevTools, kept under FP-D18's rules; telemetry about footprint is opt-in and aggregated under a privacy mechanism (FP-D9). Intervention thresholds are noised.
+- **Persistence through engine images is bounded** by the regenerable-cache class (FP-D16, Section 6.9).
+- **Freezing is not a fingerprinting signal** beyond what Page Lifecycle already exposes; declared reasons are user-visible.
+- **Per-site OS limits** (cgroups, job objects) add a resource boundary on top of the sandbox; they never replace a security boundary.
+
+#### 6.18.1 Shared-resource channels
+
+Every resource that more than one site's pages draw on carries information between them. Each channel below is either **closed** or **bounded and recorded**; none is accepted for a footprint gain. FP-36 tests the closed ones; the bounded ones go into the renderer threat model (Section 9.4).
+
+| Shared resource | What it could reveal | Status | Mechanism |
+|---|---|---|---|
+| In-process content caches (decoded images, style sheets, attribute sets, bytecode) | What the same site did under another top-level site | **Closed** | Keyed by partition (Section 6.4; JS-17) |
+| Glyph atlas | Which glyphs and web fonts other sites rendered | **Closed** | Per (site, container, partition) atlas (FP-D14) |
+| Downloaded optional data | Which locales or codecs other sites used | **Closed** | Nothing web-observable is downloaded on demand (FP-D13) |
+| Wake grid | Other processes' timer demand | **Closed** | Grid is a fixed function of time (Section 6.8) |
+| Font list in the session image | Installed fonts beyond PRIV-2's normalized set | **Closed** | Filtered per-page view (Section 6.3) |
+| Heap and buffer limits | The device's memory size | **Closed** | Canonical limits identical on every device (FP-D19); runaway threshold fixed |
+| `oom` crash reports | Other sites' memory use; device pressure | **Closed** | Reported only for the page's own runaway (Section 6.7) |
+| Worker pool size | Other processes' parallel demand | **Closed** | Fixed per process from the core count (Section 6.3) |
+| bfcache budget | Other sites' bfcache use, via `pageshow.persisted` | **Bounded**: one bit of device pressure | Fixed per-(site, container) sub-budget; another site's usage evicts an entry only at Moderate pressure or above |
+| Suspend quota and discard (`document.wasDiscarded`) | Device pressure | **Bounded**: one bit per return | Per-(site, container) quota; the global cap acts only under pressure; every browser that discards exposes this bit |
+| Ladder effects on rebuild latency | Device pressure | **Bounded**: one bit while visible | Visible pages lose derived stores only at Critical |
+| CPU contention | Other processes' CPU load | **Bounded**: inherent to sharing a CPU | OS scheduling; no Izcal mechanism adds to it |
+| Engine and session image page-cache residency | Whether another process recently touched a rarely used page (a locale slice, a WebIDL descriptor), the page-cache attack class ([Gruss et al.](https://arxiv.org/abs/1901.01161)) | **Bounded** | Small, rarely used image sections are populated at process start, so residency reflects "a process started recently", not which features ran; under memory pressure the OS evicts by recency and the residual channel remains, recorded; `mincore` and similar residency queries are denied by the renderer sandbox where the OS allows |
+| OS backstop kill | Roughly half the device's memory | **Bounded** | A page able to allocate half of RAM can infer it by timing anyway; reaching the backstop is a crash |
+| Spare process | — | No channel | It never ran content |
+
+### 6.19 Alternatives
+
+Each design alternative in this spec is decided in Section 9.3 with its options, recommendation, cost and reversal trigger. Decisions owned by the JS engine spec (JS-D4 for the DOM, JS-D12 for cross-ISA identity, JS-D17 for cage granularity, JS-D20 for reduced isolation) are referenced there, not repeated.
+
+### 6.20 Engine budgets and limits (numbers the JS engine spec asks for)
+
+The JS engine spec leaves these numbers to this spec (JS 6.5, 6.8, 6.13, JS-30, JS-32, Q-JS-6). Each is a first-principles setting, confirmed or changed at the milestone named.
+
+#### 6.20.1 Per-agent and per-page engine budgets
+
+| Item | Budget | Target | Set or confirmed at |
+|---|---|---|---|
+| Engine line of an empty site process (runtime, one agent heap with its committed nursery, one realm) | ≤ 1 MiB† (Section 6.3 sub-items) | FP-2, JS-32 | FP-M0 floor, FP-M2 |
+| Each further agent heap in an existing process | ≤ 768 KiB† including an empty document for window agents | FP-34, JS-32 | FP-M2 |
+| Each further realm, intrinsics untouched | ≤ 64 KiB† | FP-4 | FP-M2 |
+| Engine heap per corpus page (JS-30's categories, DOM node storage included) | Median ≤ 16 MiB†, p90 ≤ 56 MiB†, within FP-5's process budget | FP-35, JS-30 | FP-M3 |
+| Shared engine image private dirty pages | 0 | FP-3, JS-32 | FP-M2 |
+
+#### 6.20.2 Heap growth knob
+
+The engine paces GC by one knob per heap (JS 6.5). After a canonical cycle, the next trigger is **live canonical units × (1 + g)**, never below a minimum trigger, never above the heap limit:
+
+| Page state | g† | Minimum trigger† |
+|---|---|---|
+| Visible | 1.0 | 2 MiB of canonical allocation units per agent heap |
+| Hidden with a declared reason | 0.5 | 1 MiB |
+| Frozen | — (no allocation; the freeze shrink runs one final cycle) | — |
+
+The nursery starts with 128 KiB† committed and grows, as its survival rate stays low, to at most 8 MiB† per agent heap; it is decommitted on freeze. Visibility is a recorded B1 input, so a change of g on visibility changes keeps GC timing a function of inputs (JS 6.9). The values are calibrated against JS-41's total GC cost and FP-5 at FP-M3; a change is a decision-log line with both measurements.
+
+#### 6.20.3 Flushing class (b) engine data
+
+| When | What is flushed† |
+|---|---|
+| End of a canonical cycle, visible or hidden-with-reason page | Machine code and feedback of functions not run in the last 4 canonical cycles; bytecode of functions not run in the last 8 |
+| Freeze trim | Machine code and feedback of every function not on a stack; bytecode not run in the last 4 canonical cycles; source kept |
+| Navigation away | The destroyed agent's heap released whole (JS 6.5) |
+
+Ages are in canonical cycles, so flushing is a function of inputs (JS 6.5). They are tuned at FP-M3 against resume latency (the rebuild a returning user waits for) and FP-6.
+
+#### 6.20.4 Limits and CPU budgets as capabilities
+
+The broker grants these with the tier ceiling at process launch (JS 6.8). All of them live outside the cage and are read-only to the mutator.
+
+| Limit | Value | Behaviour at the limit |
+|---|---|---|
+| Agent heap limit | 4 GiB† of canonical units, **identical on every device** (FP-D19) | The allocation fails canonically: the agent is terminated and its page shows a crash page with "this page ran out of memory"; other pages are untouched (P3) |
+| Buffer and linear-memory backing per process | 16 GiB† canonical, identical on every device | `ArrayBuffer`, `SharedArrayBuffer`, `memory.grow` and `table.grow` fail with the error their specifications define (JS 6.5) |
+| Real memory exhausted before a canonical limit | — | Handled by the ladder and the runaway rule (Section 6.7); the renderer may crash (tier R), never with a JS-visible difference (JS 6.5) |
+| CPU budget, visible page | None for first-party script (P2) | — |
+| CPU budget, hidden with a declared reason | ≤ 1% of a core† outside the media path (FP-19) | Tasks demoted to background QoS, then the page is frozen if the reason permits; the user sees why |
+| CPU budget, frozen page | 0 | — |
+| CPU budget, ad script or frame over the FP-29 thresholds | Thresholds from FP-M5 | Section 6.14's action |
+
+#### 6.20.5 Locale and web-observable data
+
+Locale data is part of the one web-observable data set (FP-D13): all locales, identical in every installation, mapped clean, so its memory cost is only the slices a page touches. Its disk budget is set from the measured size of `hg-cldr-build`'s output at FP-M2 (Q-JS-6), with ≤ 24 MiB† on disk as the placeholder for the whole set (Section 6.12).
+
+#### 6.20.6 Reservations and mappings
+
+| Per process | Reservation† | Page-table cost |
+|---|---|---|
+| Cage (JS-D17) | 16 GB | VM metadata only until touched |
+| Trusted region | 1 GB | As above |
+| Buffer region | 64 GB, plus one guarded reservation of about 8 GiB per 32-bit Wasm memory (JS 6.6) | As above |
+| Code region | 512 MB, reserved on the first compilation | As above |
+| Allocator, stack segments, image mappings | As used | As above |
+
+An idle empty site process holds **≤ 64† mappings**, far below Linux's default `vm.max_map_count` of 65530 ([kernel.org](https://docs.kernel.org/admin-guide/sysctl/vm.html)). Untouched reservations cost VM metadata (a VMA on Linux, a VAD on Windows) and no page tables, a first-principles claim that FP-M0 measures per OS. The renderer sandbox must **not** use an address-space limit such as `RLIMIT_AS` to bound memory, because it counts reservations; memory is bounded by charged-memory limits (cgroups, job objects) and canonical limits instead. Each OS's user address-space size for these reservations is recorded at FP-M0.
+
+## 7. M-1 compliance
+
+**Dependencies used, unmodified:** OS interfaces only. `mmap`, `madvise`, `memfd_create`, `clone3`, `execve`, PSI and cgroup files, `posix_spawn`, `sched_setattr`, `prctl` (Linux); Mach VM, dispatch memory-pressure sources, QoS APIs, Metal (macOS); `VirtualAlloc`/`VirtualFree`, `OfferVirtualMemory`, section objects, job objects, `CreateProcess` with AppContainer, `SetProcessInformation` and `SetThreadInformation`, DXGI and Direct3D 12 (Windows); Vulkan. Generic Rust crates for data structures and serialization where the coding standard allows. Platform energy meters as lab instruments, not as product code.
+
+**Built new by Izcal:** `hg-image` (image inventory, builder, tier T, and loader), the substrate memory interface in `hg-substrate` and `hg-substrate-os` (one trait set with the JS engine), the Linux spawner, `hg-alloc`, `hg-ledger`, `hg-memory` (broker policy, ladder, ranking, pressure adapters, page-out), the derived-store registry and safepoint handshake client, `hg-content-block`'s compiled matcher and list compiler, `hg-energy` (attribution model over the shared time accounting), the background-policy scheduler state in the substrate executor, `hg-suspend` (the lifecycle client of `hg-js-snapshot`), the attribution history store, and the shell's attribution views.
+
+**Anchored to:**
+
+| Part | Specifications and documentation |
+|---|---|
+| Freeze, resume, discard semantics | Page Lifecycle (WICG, via [Chrome](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)); HTML event loop and timer steps ([run steps after a timeout](https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#run-steps-after-a-timeout)); HTML session history and bfcache eligibility |
+| Interventions and reports | Reporting API; WICG crash reporting ([WICG](https://wicg.github.io/crash-reporting/)) |
+| Image decoding | Each format's specification (JPEG, PNG, GIF, WebP, AVIF, JPEG XL), via the decoders' own anchors |
+| WebGL and WebGPU context loss on restore | WebGL and WebGPU specifications |
+| Agents and agent clusters | HTML's agent and agent-cluster definitions, via the JS engine spec (JS 6.0, 6.12) |
+| Every OS mechanism | The OS documentation cited in Sections 4.2, 6.3 and 6.7; Chromium, Firefox and WebKit are cited as **evidence of cost**, never as templates, and only through published prose or black-box observation: their source code is never evidence (M-1 part 3, 2.3.1) |
+
+### 7.1 Constants and how each is set
+
+M-1 part 3 asks that a constant equal to an incumbent's be derived, not inherited. Where Izcal's starting value equals another browser's, that value is a **prior**, stated as such, and the milestone below replaces it with Izcal's own measurement or derivation.
+
+| Constant | Izcal's value | Derivation or measurement | Incumbent prior | Set at |
+|---|---|---|---|---|
+| Linux charged memory | Private anonymous resident + swapped, plus owned shared regions | What only this process keeps alive (Section 6.2) | Chrome also reports a private memory footprint; which OS counters it follows is observed black-box at FP-M0, not read from source | Derived now |
+| bfcache entries per tab | 3† | Back-navigation distance distribution on the long-running corpus: the smallest N covering 95%† of back navigations | Firefox's 3 per tab ([Mozilla wiki](https://wiki.mozilla.org/DocShell/Fastback)) | FP-M3 |
+| bfcache time to live | 10 min† | Return-time distribution: the time covering 90%† of returns, against the memory-time an entry costs | Chrome's 10 minutes ([Chrome](https://developer.chrome.com/docs/web-platform/bfcache-ccns)) | FP-M3 |
+| Spare process | One, while spawn-to-ready > 10 ms† | Spawn latency (FP-M0) against one F_fixed of memory | Chrome keeps one and skips it on low-memory devices ([Reis et al. 2019](https://www.usenix.org/system/files/sec19-reis.pdf) §4.1.3) | FP-M0 |
+| Free-disk Critical floor (macOS) | Set at FP-M3 | The largest single write the ladder may need (suspending the largest eligible frozen page) plus the OS's own swap headroom | None: the only incumbent figure found was read from engine source, which is not evidence (M-1 part 3) | FP-M3 |
+| Kill ranking | Section 6.7 | User-visible cost of losing state | Android's process-importance order has the same shape ([Android](https://developer.android.com/guide/components/activities/process-lifecycle)) | Derived now |
+| Declared reasons | Section 6.8 | Six user-visible activity classes | Chrome's exemption list | Derived now |
+| Process granularity | One per (site, container) | Section 6.10's model | Firefox `webIsolated` | Derived now; FP-D3 |
+| Freeze grace period | 30 s† | Breakage on the background suite against energy at equal breakage (Q10) | Chrome's 5 minutes before intensive throttling | FP-M4 |
+
+No code, structure or constant is taken from another engine. Where another engine's constant appears in this spec, it is evidence or a stated prior, cited from published prose or black-box observation and never from engine source (M-1 part 3, 2.3.1); Izcal's thresholds carry † and are set by its own measurement milestones.
+
+## 8. Targets
+
+† marks thresholds this document sets from first principles. **None is measured on Izcal yet**; the measurement milestones of Section 9 set or confirm them, and a changed threshold is a decision-log entry with its line-item reason. Numbers taken from other documents carry no †. Run counts in DST and CI targets (100 of 100, 1,000 of 1,000) are **test sizes**, not thresholds. Prefix **FP-** (targets FP-1 to FP-39, decisions FP-D1 to FP-D19, milestones FP-M0 to FP-M6, scenario FP-S30) and **DC-** do not collide with any prefix in `reports/` or the security-scope and coding-standard worktrees (checked 19 October 2026).
+
+### 8.1 Device classes and measurement conventions
+
+| Class | Definition | Reference devices (HGBA-2 Section 6, Stage 1 7.6) |
+|---|---|---|
+| **DC-16** | ≥ 16 GB RAM | Apple Silicon Mac; Linux desktop with Intel Gen12+ GPU |
+| **DC-8** | 8 GB RAM | x86-64 Windows laptop class (an 8 GB unit is added to the lab, FP-M0) |
+| **DC-4** | 4 GB RAM | A 4 GB x86-64 Linux laptop added to the lab (FP-M0); Android ≥ 4 GB from Stage 2 (S-8) |
+| **DC-2** | 2–3 GB RAM | Android devices from Stage 2 (S-8); before then, a 2 GB memory-limited configuration of the DC-4 laptop, reported as emulation (FP-D12) |
+
+Conventions for every memory target: **charged memory** as defined in Section 6.2, with resident memory reported beside it where a target says so; **settled** = median over the last 30 s† of a 60 s† quiet period; median of 5† runs; warm profile unless stated; Izcal's own processes only; G reported separately; Full tier ceiling unless stated, with the Jitless ceiling reported for every row. "Corpus" is the published, versioned corpus of HGBA-2 Section 6. **FP-S30** is the scenario: 30 tabs, each a distinct corpus site including 3 iframe-heavy pages, loaded 10 s apart, 1 visible, measured at settle and again after 10 min with the user idle; discard, suspend and page-out are **disabled** for the memory measurement and measured separately.
+
+### 8.2 The budget table
+
+| Budget | DC-16 | DC-8 | DC-4 | Target |
+|---|---|---|---|---|
+| Baseline browser, idle, no tab content (broker ≤ 20, shell ≤ 14, GPU service CPU side ≤ 12, network ≤ 8, storage ≤ 4, crash handler ≤ 2, Linux spawner ≤ 1 MiB†; utility jobs exit when done) | ≤ 64 MiB† | ≤ 64 MiB† | ≤ 64 MiB† | FP-1 |
+| Empty site process (process part + first agent), Full and Jitless | ≤ 4 MiB† | ≤ 4 MiB† | ≤ 4 MiB† | FP-2 |
+| Engine line within it | ≤ 1 MiB† | same | same | FP-2, JS-32 |
+| Each further agent heap in an existing process | ≤ 768 KiB† | same | same | FP-34 |
+| Each further empty same-agent frame / realm | ≤ 128 KiB† / ≤ 64 KiB† | same | same | FP-4 |
+| Image decoder process per (site, container), idle (if FP-D11 (b)) | ≤ 2 MiB†; exits after 10 s† idle | same | same | FP-38 |
+| Code-cache builder process (JS-D21), at most one at a time per profile†, charged to the script's (site, container) partition | peak ≤ 8 MiB† above the cached script's source size; exits when its job ends | same | same | FP-39 |
+| Median corpus page, its site process, visible, settled (fixed cost included) | ≤ 32 MiB† | same | same | FP-5 |
+| p90 corpus page, same | ≤ 96 MiB† | same | same | FP-5 |
+| Engine heap per page (within FP-5), median / p90 | ≤ 16 MiB† / ≤ 56 MiB† | same | same | FP-35 |
+| Median corpus page after 10 min hidden (frozen, trimmed): charged; resident reported | ≤ 12 MiB† | same | same | FP-6 |
+| FP-S30 at settle, whole browser | ≤ 1.25 GiB† | ≤ 1.25 GiB† | ≤ 1.25 GiB†, with full I-1, origin keying and no visible-tab kill | FP-6, FP-8 |
+| FP-S30 after 10 min idle | ≤ 0.75 GiB† | same | same | FP-6 |
+| Isolation overhead, corpus / iframe-heavy set, origin keying on | ≤ 5%† / ≤ 25%† | same | same | FP-7 |
+| bfcache total; per (site, container) | ≤ min(5% RAM, 256 MiB)†; ≤ 64 MiB† | same | same | FP-16 |
+| Idle wakeups, one static page visible, whole browser | ≤ 1/s† | same | same | FP-18 |
+| Hidden page without declared reason, after freeze | 0 wakeups, 0 CPU | same | same | FP-17 |
+| Hidden page with declared reason, outside media path | ≤ 1% of one core†, ≤ 1 wakeup/s† | same | same | FP-19 |
+| Idle power overhead (static page visible, 10 min, user idle) | Upper 95% confidence bound ≤ 2%† above OS idle | same | same | FP-21 |
+| Energy per corpus run, per tier ceiling | Set at FP-M3, then no increase beyond the measured noise band | same | same | FP-22 |
+| GPU memory, baseline | ≤ swapchain + 16 MiB† | same | same | FP-14 |
+| GPU memory, visible tab | ≤ 2.5 × viewport px × 4 B + visible images' textures† | same | same | FP-14 |
+| Glyph atlas per (site, container, partition) | ≤ 2 MiB† | same | same | FP-14 |
+| GPU memory, hidden tab after 30 s | 0 page-owned bytes | same | same | FP-14 |
+| Agent heap limit / buffer and linear-memory limit per process (canonical, identical on every device) | 4 GiB† / 16 GiB† | same | same | FP-35 |
+| Hidden runaway threshold / OS backstop | 2 GiB† / min(8 GiB, 50% RAM)† | same | same | FP-15 |
+| Installer / installed per architecture, excluding the web-observable data set | ≤ 50 MiB† / ≤ 120 MiB† | same | same | FP-25 |
+| Web-observable data set on disk (all locales, hyphenation, codecs) | Measured at FP-M2; placeholder ≤ 24 MiB† | same | same | FP-25 |
+| HTTP cache / code cache / suspend files | 256 MiB† / 64 MiB† / ≤ min(1 GiB, 2% free)†, ≤ 128 MiB† per (site, container) | same | same | FP-26 |
+| Cold start to interactive shell | ≤ 500 ms† | ≤ 700 ms† | ≤ 1 s† | FP-27 |
+| Warm start | ≤ 150 ms† | ≤ 200 ms† | ≤ 300 ms† | FP-27 |
+| Site process spawn to ready, full sandbox, no spare | ≤ 15 ms† | ≤ 20 ms† | ≤ 30 ms† | FP-27 |
+
+### 8.3 Targets
+
+| ID | Target | Metric and threshold | How measured | If it fails |
+|---|---|---|---|---|
+| **FP-1** | **Small baseline** | Section 8.2 baseline row, per process and in total | Lab, charged memory, idle shell with an empty new-tab page | Line-item analysis per process; the over-budget process's owner fixes or records a decision-log line |
+| **FP-2** | **Empty site process** | ≤ 4 MiB† charged on macOS, Linux and Windows, Full and Jitless; line items of Section 6.3 reported each release | Lab; plus the FP-M0 probe before engine code exists | Ship blocker for Stage 1 exit if over the FP-M0 measured floor plus Izcal's line items (Section 6.3); between that and 4 MiB, a decision-log entry with line items |
+| **FP-3** | **Start-up does not write what it need not** | Image mappings: **0** private dirty pages in any process, ever; relocation and loader dirty data ≤ 128 KiB† per process | `vmmap`/`smaps`/VMMap per process in the lab; image write = fault in tests | A write into the image is a bug (fault); relocation growth needs a `Binary-Size:`-style reason |
+| **FP-4** | **Same-agent frames and realms are cheap** | ≤ 128 KiB† per additional empty same-agent frame; per realm with untouched intrinsics ≤ 64 KiB† | Canonical bytes in CI; lab confirmation | JS engine owner fixes laziness |
+| **FP-5** | **Typical page** | Median ≤ 32 MiB†, p90 ≤ 96 MiB† per site process, visible, settled, per tier ceiling | Lab corpus | Ledger breakdown names the category; the owning track fixes; thresholds revisited only at FP-M3 |
+| **FP-6** | **Many tabs** | FP-S30 ≤ 1.25 GiB† at settle and ≤ 0.75 GiB† after 10 min idle; median hidden page ≤ 12 MiB† charged, resident reported | Lab, all classes | Ladder and trim policy re-examined before any threshold moves |
+| **FP-7** | **Isolation is nearly free** (replaces S-3's ≤15%) | Isolation overhead ≤ 5%† on the corpus, ≤ 25%† on the iframe-heavy set, with origin keying on | Lab: shipped build vs the measurement-only co-locating simulation build | Reduce F_fixed and content duplication; never co-locate sites, never turn origin keying off (P1) |
+| **FP-8** | **Full isolation on small machines** | On DC-4, FP-S30 completes with full I-1 and origin keying, no visible-tab or browser kill; I-1's reduced-isolation mode (JS-D20) is never needed on DC-4 (Stage 1) or on DC-2 Android devices of ≥ 2 GB† (measured when those devices join the lab with S-8; DC-2 emulation reported earlier as evidence) | Lab DC-4; DC-2 | Fix F_fixed and the ladder; the reduced mode's threshold is set by this measurement, not assumed |
+| **FP-9** | **Memory is returned** | After navigating away within a site (bfcache disabled), charged memory returns within 10%† of the pre-load level within 10 s†; 8 h† long-running scenario ≤ 1.2×† its 10-min level | Lab long-running set; canonical bytes in CI | Fragmentation analysis per ledger category |
+| **FP-10** | **Every byte is explained** | Unexplained remainder U ≤ 5%† per Izcal-only process, ≤ 15%† for the GPU service, on the corpus | Lab: charged minus ledger minus known overheads | New ledger coverage before new features in that process |
+| **FP-11** | **Compact nodes** | Node columns ≤ 48 B† per node (CS-PF-1 assert); columns + rare data + existing wrappers ≤ 72 B† per node averaged over the corpus, text excluded, **counted across every copy** (JS-D4's metric); DOM + style + layout + paint data ≤ 512 B† per node averaged over the corpus, text and images excluded | CS-PF-1; JS-M0 spike; canonical bytes per category ÷ node count | Field audit with the reorder lint; INC-3-style trimming; JS-D4's reversal trigger |
+| **FP-12** | **Derived data is safely discardable** | 100% of derived stores registered with bytes, rebuild cost and class; discard-and-rebuild of class (a) and flush of class (b) at random points give bit-identical DET-1 hashes in 1,000 of 1,000 DST runs | DST farm | A divergence is a DET-1 ship blocker for that store |
+| **FP-13** | **Images at display size, near the viewport** | Decoded bytes per image ≤ display size × DPR² × 4 B (+ codec block rounding); decoded working set ≤ 1.5 × viewport pixels × 4 B† per visible tab on the corpus; 0 decoded bytes for a frozen tab after trim | Ledger image category; lab | Decoder or scheduler fix |
+| **FP-14** | **GPU memory budgets** | Section 8.2 GPU rows; per-site GPU bytes attributed with U ≤ 15%† | GPU service ledger vs OS API usage | Graphics track fixes; tile policy revisited |
+| **FP-15** | **Reclaim never needs memory and never races script** | In simulation with every allocation failing after Critical and a script thread running a long task on a visible page, the ladder restores the target headroom in 100% of runs with 0 sanitizer reports; the safepoint handshake meets JS-42's bound; in the lab, ≥ 256 MiB† released within 100 ms† of a Critical signal on FP-S30; 0 browser-process OOMs and 0 visible-tab kills in the pressure suite | DST; lab pressure suite (memory hog plus FP-S30) | Ship blocker |
+| **FP-16** | **bfcache in bytes** | Total and per-(site, container) within Section 8.2; median entry ≤ 40%† of the page's visible settled size; BF-1's hit rate published | Lab | Trim more; never raise a byte cap without a decision-log line |
+| **FP-17** | **Hidden means no wakeups** | A frozen page's process: 0 scheduled wakeups and 0 CPU over 10 min, excluding broker commands; background compatibility suite: breakage ≤ 1%† of corpus sites, each with an open fix | OS wakeup counters in the lab; virtual wakeups in DST; compatibility suite | Fix by a declared reason or spec-anchored behaviour; FP-D4's reversal trigger |
+| **FP-18** | **Idle is idle** | ≤ 1 wakeup/s† for the whole browser with one static page visible, user idle; 0 periodic timers in Izcal's own code | Lab OS counters; DST virtual wakeups; substrate assertion | The process with the wakeups is found from the ledger; its owner fixes |
+| **FP-19** | **Background with a reason is cheap** | ≤ 1% of a core† and ≤ 1 wakeup/s† outside the media path | Lab | Tighten that reason's budget |
+| **FP-20** | **Timers coalesce** | 100% of engine-scheduled timers carry a tolerance; in an idle multi-tab scenario, ≥ 90%† of process wakeups land on the shared wake grid | Substrate assertion; lab traces | Substrate fix |
+| **FP-21** | **Idle power** | System power with Izcal idle (one static page visible, 10 min) against system idle without Izcal: at least 10† alternating runs of each (ABAB), the upper bound of the 95% confidence interval of the difference ≤ 2%†; the meter's resolution must be ≤ 0.5%† of system idle power, otherwise the result is published as "below meter resolution" and FP-18 stands in | Platform meters, exclusive rig booking | Wakeup and GPU investigation |
+| **FP-22** | **Energy per corpus run** (replaces RES-5; HGBA-2 X-4 moved to Stage 1) | Absolute baseline per device and per tier ceiling set at FP-M3 from measurement; then a release regresses if its mean exceeds the previous release's by more than the 95% confidence interval of run-to-run noise measured on that device (≥ 10† runs), published with the band; Chrome, Firefox and Safari published for information | Platform meters | X-4: an energy regression is a release blocker |
+| **FP-23** | **Energy attribution is honest and cheap** | Model within 15%† of meter per corpus page; the always-on accounting (shared with JS-60) ≤ 0.5%† of corpus CPU time | Lab | UI stays on shares until met; collection moves behind a consumer flag |
+| **FP-24** | **Footprint is deterministic in CI** | Canonical touched and committed bytes (code excluded) and virtual wakeups bit-identical across 100 of 100 runs and across macOS, Linux and Windows simulation builds **on each ISA**, under each tier ceiling; identity of the same quantities across x86-64 and AArch64 checked and every difference root-caused; JS-observable digests across ISAs follow JS-D12; PR gate at +0.5%† per ISA | CI; `hg-dst` | A determinism bug, filed under DET-1 |
+| **FP-25** | **Small install** (replaces RES-4) | Installer ≤ 50 MiB†, installed ≤ 120 MiB† per architecture, excluding the web-observable data set, whose size is published and added; engine image ≤ 16 MiB†; the jitless executable's loaded-library closure contains no code generator | Release pipeline; G14 check | CS-PF-8 reasons reviewed |
+| **FP-26** | **Disk budgets are visible** | HTTP cache, code cache and suspend files within Section 6.12, including time-to-live; 100% shown in settings with a clear action | Release tests | Shell fix |
+| **FP-27** | **Fast start** (replaces RES-1, RES-2) | Section 8.2 start-up rows, median of 20† runs; cold after reboot; spawn measured on the full sandbox path of Section 6.3 | Lab, exclusive booking | Order file, image and lazy-init review |
+| **FP-28** | **Blocking is a lever, not a cost** | Matcher ≤ 8 MiB†, p99 match ≤ 20 µs†, 0 allocations per match; per-site savings (bytes, processes not started, memory, CPU, energy) published for the corpus | Network service ledger; CS-PF-3; lab A/B | Matcher redesign |
+| **FP-29** | **Interventions hit only outliers** | On a **held-out** corpus not used for calibration, and in lab sessions with recorded interaction ground truth: fires on ≤ 0.1%† of ad scripts and frames, on 0 interacted frames, 0 first-party frames and 0 first-party scripts; 100% of firings logged, shown and replayable from the recording | Held-out corpus; lab; intervention log; replay | Thresholds recalibrated; never broadened silently |
+| **FP-30** | **"Why heavy" is right** | On a published planted-cause suite: for allocation-rate, CPU, wakeup and per-category causes (heavy third-party script, background timer loop, runaway animation, spinning worker), the live view's top cause is the planted one in ≥ 95%† of cases; for retention causes (leaked detached DOM, retained images), the replay heap query names the planted retainer in 100% of cases | Suite in CI (DST) and lab | Attribution fix; FP-D15's battery control waits |
+| **FP-31** | **Suspend-to-disk earns its place** (spike) | Section 6.9 kill criteria | Spike evaluation at FP-M5 | Rung removed; discard stays |
+| **FP-32** | **Few threads** | Idle empty site process: 2 threads; a code writer only after the first compilation; total pool worker threads across processes ≤ 2 × cores† in FP-S30; agent threads (dedicated workers) reported per page | Lab process inspection | Substrate pool fix |
+| **FP-33** | **CI predicts the device** | CT predicts charged memory per process within ±10%† on Linux and macOS; CC predicts commit within ±10%† on Windows; on the corpus, per OS | Lab vs CI join, nightly | Recalibrate the canonical model before trusting the gate |
+| **FP-34** | **Agents are cheap** | Each further agent heap in an existing process (window agent with `about:blank`, or dedicated worker with an empty script) ≤ 768 KiB† charged | Canonical bytes in CI; lab | JS engine owner fixes per-agent state; JS-32 |
+| **FP-35** | **Engine budgets and limits** | Engine heap per page within Section 8.2's row; heap and buffer limits identical on every device class (Section 6.20.4); behaviour at each limit as specified, tested in DST | Lab; DST | JS engine track fixes (JS-30); a limit that differs by device is a privacy bug |
+| **FP-36** | **No cross-partition footprint channel** | A probing suite in which a frame of site B under top-level site A tries to detect, by timing or any API, what B under top-level site C did through each **closed** channel of Section 6.18.1 (decoded images, style sheets, attribute sets, glyph atlas, bytecode, wake grid, limits): 0 detectable differences above noise; each **bounded** channel's capacity measured and published; the suite joins PRIV-2's test set beside JS-17 | T2; lab | Ship blocker for the leaking mechanism; it is partitioned before the release |
+| **FP-37** | **Attribution history is forgotten** | 100% of attribution rows removed when the user clears history (time-range checked), clears a site's data, removes a container or closes a private window; 0 rows older than Section 6.14's retention; the shell renderer's memory holds no rows beyond those on screen | Storage tests; shell renderer inspection in DST | Ship blocker |
+| **FP-39** | **The code-cache builder is cheap and short-lived** (JS-D21) | Peak charged memory ≤ 8 MiB† above the source size; 0 builders alive 1 s† after their job; at most one at a time per profile†; builds run at background QoS and count toward the owning partition's CPU and energy attribution | Lab, corpus run with cold caches | Builder review: fewer cached scripts, never a renderer-built entry (JS-18) |
+| **FP-38** | **Decoder processes are cheap** (if FP-D11 (b)) | Idle decoder process ≤ 2 MiB† charged; exits within 10 s† idle; decoded pixels reach the GPU service with 0 extra copies | Lab | Decoder process start-up review |
+
+### 8.4 Replacement of RES-1 to RES-5
+
+| Stage 1 13.3 | Was | Replaced by |
+|---|---|---|
+| RES-1 Cold start | ≤ 1.5× stable Chrome | FP-27 absolute cold-start budgets per class |
+| RES-2 Warm start | ≤ 1.5× stable Chrome | FP-27 absolute warm-start and spawn budgets |
+| RES-3 Memory | 10-tab PSS ≤ 1.2× stable Chrome | FP-1, FP-2, FP-5, FP-6 (FP-S30), FP-7 (with S-3), FP-34, on the charged metric of Section 6.2 |
+| RES-4 Installer | ≤ 120 MB† | FP-25 (≤ 50 MiB† installer, ≤ 120 MiB† installed, plus the web-observable data set) |
+| RES-5 Energy | Per-corpus-run energy published | FP-21, FP-22, FP-23 |
+
+Memory and energy thresholds are absolute. Comparisons with other browsers stay **published information** (HGBA-2 X-2's spirit), never the threshold. The JS engine spec uses relative thresholds only for engine **speed** (JS-20, JS-21, JS-23 to JS-25), because competitiveness is a relative question there; its memory and energy targets cite this spec's absolute ones (JS 8 preamble).
+
+## 9. Milestones and staffing
+
+### 9.1 What is ordered or held, and why
+
+The owner's direction allows staging only where a first-principles argument favours it, never schedule. Every item in this spec that is ordered or held is listed with its gate; nothing waits for a date, and "not finished by a milestone" is never a reason to move an item to a later stage.
+
+| Item | Held until | Kind |
+|---|---|---|
+| Suspend-to-disk in the ladder | FP-31's kill criteria pass on the corpus, using `hg-js-snapshot`'s serializable heap (JS-M2) | Measurement |
+| "Limit this site on battery" | FP-30 passes (attribution it acts on is right) | Measurement |
+| Heavy-frame and heavy-script intervention enforced | Thresholds calibrated (FP-M5), FP-29 passes on the held-out corpus, announced one release before | Measurement |
+| OS page-out on a platform | That platform's swap is shown to be in memory or encrypted (Q14) | Security |
+| Glyph atlases and every in-process cache partitioned | Before they ship at all (FP-36) | Security |
+| `measureUserAgentSpecificMemory` | A second engine ships it, or corpus usage makes its absence a compatibility issue (FP-D10) | Measurement |
+| FP-8 at ≥ 2 GB | DC-2 devices exist in the lab with S-8's Android work | Measurement (needs the device) |
+| Every † threshold | Its milestone measurement (Section 7.1, Section 9.2) | Measurement |
+
+### 9.2 Milestones
+
+Stage 1's milestones (Stage 1 design Section 8.1) are being rewritten for an own engine under 2.3.0; the footprint milestones below attach to them and to the JS engine's milestones by name.
+
+| ID | With | Exit criterion |
+|---|---|---|
+| **FP-M0** | Before M1, with JS-M0 | Definitions of Section 6.2 implemented as a lab harness (charged and resident time series per process per OS); an **empty-process probe** on Izcal's substrate with the full sandbox, two threads and an IPC endpoint, measured on all three OSes (sets FP-2's floor and blocker); reservations and mapping counts measured per OS (Section 6.20.6); spawn cost per OS on the full sandbox path, Linux spawner included (sets the spare-process rule); Chrome, Firefox and Safari measured with the same harness on the corpus, for information, including the black-box checks of open question 17; DC-8 and DC-4 lab devices added; DC-2 emulation configuration defined |
+| **FP-M1** | M1 | Substrate memory interface (one trait set with the JS engine) with production and simulation implementations; canonical touched and committed bytes and virtual wakeups in DST; ledger v1; `hg-alloc` v1; relocation-size CI check; no-periodic-timer rule enforced in the substrate |
+| **FP-M2** | M2, with JS-M1 | Image inventory v1 (name tables, UA sheet data, Unicode tables, the JS section as the engine provides it); session image from the font utility job; web-observable data set measured (Q-JS-6) and FP-D13's installer budget set; FP-2, FP-3, FP-4 and FP-34 measured on a real site process; FP-11's column assert; FP-24 gate live with the `Footprint:` trailer, per ISA |
+| **FP-M3** | M4 | First pixels: GPU ledger and partitioned atlases, image pipeline (decode on demand, downscale, discardable regions per OS, decoder process if FP-D11 (b)), derived-store registry with both classes and FP-12 in DST; **first full corpus measurement**: FP-5, FP-6, FP-13, FP-14, FP-35 measured, † budgets confirmed or changed by decision-log line items; Section 7.1 constants set; growth knob and flush ages calibrated; energy baseline and noise bands for FP-22; compressed and paged-out footprint of frozen tabs per OS; swap encryption per OS (Q14); attribute-set sharing hit rate on the corpus (replacing a figure once taken from an engine commit); AVIF and JPEG XL decode memory measured before those decoders are specified |
+| **FP-M4** | M6, with JS-M2 | Background policy: freeze, declared reasons, wake grid, QoS per OS; FP-17 to FP-20 met; background compatibility suite running; pressure ladder with FP-15 and the safepoint handshake; page-out rung on platforms that pass Q14; attribution history store with FP-37; FP-36 probing suite running |
+| **FP-M5** | M7 | bfcache byte budgets (FP-16); own content-blocking matcher and utility-process list compiler (FP-28); intervention thresholds calibrated and FP-29 on the held-out corpus; energy model calibrated (FP-23); attribution views in the shell (FP-30); suspend-to-disk spike evaluated against FP-31 and the page-out rung (FP-D6) |
+| **FP-M6** | M8 (Stage 1 exit), with JS-M3 | Every FP target met, or waived in the decision log with the failed gate and its evidence |
+
+The **suspend-to-disk spike** runs from FP-M4 to FP-M5 with one engineer from the footprint track and one from the JS engine track, on JS-M2's serializable heap. Its outcome is decided by FP-31's criteria alone: if they pass, the rung ships; if they fail, the rung is removed; if the evaluation is not complete at FP-M5, the spike continues and the rung stays out of the ladder until it is, without a stage label.
+
+### 9.3 Decisions for the owner
+
+**Owner decision (19 October 2026): every recommendation below is accepted.**
+
+A bare "yes" to any of these means the recommendation. Build-versus-reuse is not on this list: the standing answer is "build our own, following our specs" (M-1, D-S10).
+
+| ID | Decision | Options | Recommendation | Cost | Reversal trigger |
+|---|---|---|---|---|---|
+| **FP-D1** | How site processes share start-up state | (a) Fresh `exec` of every site process + read-only, position-independent images; per-OS sandboxed spawn path (a single-threaded spawner with `clone3` on Linux); (b) Linux zygote; (c) re-randomized template pool (Morula) | **(a)** | Spawn latency not hidden by sharing (a spare process hides it); a new image format; the JS engine creates intrinsics lazily from it | FP-27's spawn-to-ready missed with a spare present, **and** (c) measured with a lower charged cost per process while keeping per-process heap and writable-state randomization |
+| **FP-D2** | DOM representation (decided by JS-D4; this spec's requirements in Section 6.4) | (a) Accept JS-D4 (a): one copy, node columns outside the cage, lazy wrappers, text arena, mirror retired; (b) JS-D4 (b): node in the cage plus the data-plane mirror; (c) JS-D4 (c): node in the cage read by workers | **(a)**: it is the only option that meets requirement 1 (one copy) without putting workers on attacker-writable memory | A node space in the collector (JS's cost) | JS-D4's trigger (bytes per node across every copy or node-space GC time >10%† worse than (c) at the JS-M0 spike); or FP-11 missed by (a) where another option meets it |
+| **FP-D3** | Process granularity within a site | (a) One per (site, container), split on a budget only at agent-cluster boundaries; (b) per site instance (browsing context group) with a soft limit; (c) one per (site, container, agent cluster) | **(a)** | A heavy same-site tab can slow its siblings until the split triggers; each same-site tab still pays F_agent | p95 input latency in multi-tab same-site scenarios regresses more than 10%† against (b) or (c) in the lab |
+| **FP-D4** | Hidden pages | (a) Freeze after 30 s† unless a declared reason from the six activity classes; (b) throttle to one wake per minute after a delay; (c) mild throttling only | **(a)** | Compatibility work: every break in the background suite needs a declared reason or a fix | The background suite shows breakage on more than 1%† of corpus sites that no declared reason can fix |
+| **FP-D5** | Allocator | (a) Izcal's own `hg-alloc`; (b) a general-purpose crate (allowed by M-1 as generic infrastructure) | **(a)**, per the build-our-own default; its first lab comparison against (b) on FP-S30 and Speedometer at FP-M3 is the confirmation CS-PF-6 asks for | 1–2 engineer-quarters†; allocator bugs are security bugs | (b) beats (a) on charged memory and CPU by more than 5%† after (a) is tuned |
+| **FP-D6** | Reclaim before discard | (a) Both rungs: OS page-out of frozen processes at Moderate where swap is in memory or encrypted, and the suspend-to-disk spike at Critical, gated by FP-31; (b) discard only; (c) page-out only | **(a)** | Page-out releases resident RAM only; suspend needs `hg-js-snapshot`'s live-heap serialization and a new file with a security model | FP-31 fails: suspend leaves the ladder, (c) remains; or page-out matches suspend's released memory and restore time on every class where swap or commit binds: suspend is not built further |
+| **FP-D7** | Interventions | (a) Script-attributed: cross-site ad frames replaced, ad scripts in first-party frames deprioritized and capped, outlier thresholds, recorded as B1 inputs; (b) Chrome-shaped frame-level only; (c) none; (d) broad per-site budgets | **(a)** | List-dependent classification; must be announced; a held-out corpus to maintain | The intervention log shows false positives on interacted frames, first-party frames or first-party scripts |
+| **FP-D8** | Origin keying | (a) On for every desktop class, regardless of FP-7; (b) a RAM threshold, as HGBA-2 I-1 (c) now says | **(a)**: with F_fixed small, origin keying is affordable, and isolation is never the lever for a memory target | About F_fixed per extra subdomain process | None that turns it off: if FP-7 fails with it on, F_fixed and content duplication are reduced. Revisited only if a security review finds origin keying gives no protection |
+| **FP-D9** | Footprint telemetry | (a) Corpus results, plus opt-in aggregates: per-process-kind totals in coarse buckets, no site identities, locally randomized (randomized response, ε ≤ 1†), under a privacy review; (b) default-on telemetry | **(a)** | Field distributions arrive slowly | A privacy-preserving aggregation scheme passes a PRIV review and shows corpus results miss a field distribution that changes a budget: then a wider opt-in scheme, never default-on |
+| **FP-D10** | `measureUserAgentSpecificMemory` | (a) Not implemented; reconsider on the trigger; (b) implement, cross-origin-isolated only | **(a)** | Developers lack a field memory signal on Izcal | A second engine ships it, or corpus usage makes its absence a compatibility issue |
+| **FP-D11** | Where images decode (joint with the security owner, Q-SEC-13) | (a) In the site process; (b) a decoder process per (site, container); (c) a pooled utility process | **(b)**, as Stage 1 M7 places images in utility processes: a decoder bug then reaches only pixels, not the site's renderer state; (a) only if the security owner rules that Izcal's Rust decoders add no risk in the renderer; never (c). Footprint is not an argument either way | One small process per image-decoding (site, container) (FP-38); IPC for decode requests | The security owner rules (a) adds no risk: then (a), with FP-38 retired |
+| **FP-D12** | Lab devices | (a) Add an 8 GB Windows laptop and a 4 GB Linux laptop at FP-M0, a DC-2 emulation configuration now, and DC-2 Android devices with S-8; (b) emulate all small classes with memory limits on large machines | **(a)**: emulation misses OS behaviour under real pressure | Device purchase and lab upkeep | Emulation reproduces the real DC-4 device's FP-S30 and pressure-suite results within 5%† over three releases: then emulation suffices for new classes |
+| **FP-D13** | Web-observable optional data (locales, hyphenation, codecs) | (a) Ship every locale, dictionary and codec with every build, identical in every installation; (b) a set chosen from the user's settings (UI languages), installed independently of page behaviour and recorded as engine configuration; (c) download on demand when a page needs it | **(a)**: no fingerprint beyond the build, identical web behaviour on every installation (P2, DET-1), and no memory cost because untouched slices are clean mapped pages; (c) is rejected (cross-site channel, network leak, fingerprint, determinism break) | Installer and disk size by the data set's measured size (FP-25) | A PRIV review shows (b) adds no identifying bits beyond what `Accept-Language` already sends, and the measured data set more than doubles the installer |
+| **FP-D14** | Glyph atlases | (a) One per (site, container, partition), for all fonts; (b) one per (site, container) process key; (c) one per device, shared (0.1) | **(a)**: closes the channel within a site across top-level sites too, as the code cache does | Re-rasterizing common glyphs per partition; up to 2 MiB† per partition | Measured raster cost makes FP-14 or frame-time targets unattainable: then (b) for system-font glyphs only, with FP-36 showing no detectable cross-partition difference; never (c) |
+| **FP-D15** | Per-site user controls | (a) Outcome controls ("keep running in the background", "limit on battery"), the battery limit gated on FP-30; (b) numeric MB or CPU budgets set by users; (c) none: engine defaults only (Stage 1 Section 6's current wording) | **(a)** | Shell UI and a policy state per site | Usability study shows users do not find or understand the controls: then (c), keeping the declared reason |
+| **FP-D16** | HGBA-2 4.6 "never custom persistence layers" (spec conflict) | (a) Define a **regenerable-cache class**, jointly with the JS spec: authenticated, bound to the engine build, discarded and never repaired on failure, discarded when the writing process later crashed, failed a check or was killed for a bad message, time-to-live per member, never the only copy of user data, partitioned per (top-level site, container); members: code cache, B1 checkpoints, heap export files, live-page snapshots (suspend files, also single-use), compiled filter automata; (b) treat each format as an exception case by case; (c) forbid the formats | **(a)**: one ruling, matching JS 9.5's proposed amendment | Each member must meet every rule; the loaders are Tier 1 fuzz targets | A member needs crash consistency or is the only copy of user data: it leaves the class and moves to a crash-consistent embedded store |
+| **FP-D17** | Stage 1 Section 1 "1 per site … per site instance" against HGBA-2 I-1 "every site gets its own locked renderer process" (spec conflict) | (a) Amend Stage 1 Section 1 to "one or more per (site, container), never two sites; splits only at agent-cluster boundaries" (FP-D3); (b) keep Stage 1's per-site-instance wording and amend nothing; (c) amend I-1 | **(a)**: both texts agree that sites never share; only the within-site granularity differs, and FP-D3 decides it | Wording changes in Stage 1 Section 1 and its process map | FP-D3's reversal trigger fires: then Stage 1 is amended to the chosen granularity instead |
+| **FP-D18** | Attribution history | (a) Held in the storage service, 24 h† detail and 7 days† aggregates, cleared with history and site data, per container, memory-only in private windows, shell sees only displayed rows; (b) current session only, nothing stored; (c) held in the shell | **(a)** | A storage schema and clearing paths | A privacy review finds the 7-day aggregates reconstruct history beyond what the history view already shows: then shorter retention or (b) |
+| **FP-D19** | Heap and buffer limits | (a) Canonical limits identical on every device (4 GiB† per agent heap, 16 GiB† buffers per process); device memory protected by the ladder; (b) limits as a fraction of device RAM | **(a)**: a device-dependent JS-visible limit is a fingerprint of the device's memory | A page on a small device hits real exhaustion (crash or discard) before a canonical limit | A web-compatibility issue needs device-dependent limits: then RAM buckets as coarse as PRIV-2 allows, recorded as a bounded channel |
+
+### 9.4 Amendments this spec proposes to other documents (not applied)
+
+| Document | Section | Amendment |
+|---|---|---|
+| HGBA-2 | 4.6 | Replace the V8-specific mechanisms (V8 startup snapshots, V8 code cache, SpiderMonkey JSBC) with Izcal's image inventory and own code cache; define **charged memory** per OS, with resident memory reported beside it; add "reclaim never needs memory" and the per-OS release mapping (resident vs charged vs discardable); map the hot, warm, cold and frozen tiers onto Section 6.7's states; add the **regenerable-cache class** (FP-D16, jointly with JS 9.5) |
+| HGBA-2 | 6, S-3 | Tighten to FP-7 (≤ 5%† corpus, ≤ 25%† iframe-heavy, origin keying on); keep "never across sites" |
+| HGBA-2 | 4.1, I-1 | The reduced-isolation threshold is measured by FP-8 on DC-4 and DC-2; origin keying on every desktop class (FP-D8); in-process caches keyed by (top-level site, container), extending I-1 (b) |
+| HGBA-2 | 6, X-4 | Energy moves from Stage 3 to Stage 1 (as RES-5 already did), as FP-22 |
+| HGBA-3 | B4 | As JS 9.5 proposes for JS-D4; FP-11's per-node budgets across every copy |
+| HGBA-3 | B7 | Frozen tabs skip style and layout too; hidden **running** tabs (agents, automation, declared reasons) stay pixel-optional (0.1's "frozen subsumes pixel-optional" is withdrawn) |
+| HGBA-3 | INC-3 | Re-base on FP-11 once the mirror is retired |
+| HGBA-3 | PRIV-2 | Add FP-36's cross-partition footprint probing suite beside JS-17 |
+| Stage 1 design | 1, process map | FP-D17 wording; a spare-process row; a Linux spawner row; a decoder-process row (FP-D11); a threads column (FP-32); owns lists rewritten for own components |
+| Stage 1 design | 3.1 | One memory trait set with the JS engine (`Memory` with ledger tags and `purge`, `CodeMemory`); timer tolerance on `post`; simulation counts canonical touched and committed bytes and wakeups |
+| Stage 1 design | 5.2, 5.4 | As JS 9.5 proposes for JS-D4 |
+| Stage 1 design | 6, rows "Per-site resource meter", "Tab memory and bfcache", "Built-in content blocking" | Attribution, history rules and interventions (Section 6.14); FP-D15 replaces "engine defaults, not user budgets" if approved; the reclaim ladder and bfcache byte budgets (Sections 6.7, 6.10); own matcher compiled in a utility process (Section 6.11) |
+| Stage 1 design | 8.1 M7 | Images in decoder processes per (site, container) (FP-D11) |
+| Stage 1 design | BF-1 policy | Byte budgets with per-(site, container) sub-budgets and trimmed entries (FP-16) |
+| Stage 1 design | 7.6 | Device classes DC-16, DC-8, DC-4, DC-2; charged and resident time series; meters; FP-S30 |
+| Stage 1 design | 8.3 | Footprint track 3–4† plus 2–3† in other tracks |
+| Stage 1 design | 13.3 | RES-1 to RES-5 replaced per Section 8.4 |
+| JS engine spec | — | Items for its next revision are listed in Section 11.3 |
+| Coding standard | CS-PF | New rule: the canonical-footprint gate with a `Footprint:` trailer, per ISA (FP-24); new rule: every cache and derived store registers with the memory manager (owner, budget, class, purge hook, ledger tag); new rule: no pointer-bearing static data in Izcal code (FP-3); new rule: no periodic timers in Izcal code (FP-18); CS-PF-1's hot-type list adds node columns and rare-data entries, asserted on both ISAs; a field-reorder lint; thread creation only through the substrate with a role and stack size; a build-graph rule that no release target enables the co-locating measurement feature; CS-PF-5 and CS-PF-6 cite FP targets instead of RES-* and P-1/RES-3, and CS-PF-6's allocator choice is confirmed by FP-D5's lab comparison |
+| DevTools spec | Stage 2 views, 6.5 | Per-site memory view sourced from the ledger moves to Stage 1's late milestones; deterministic footprint replay; recorded-session processes budgeted as site processes (DevTools 6.6's probe uses FP-2's method); scoped principals see out-of-set frames as opaque, with no totals |
+| Security scope | 6.3, 6.3a | Rows for the Linux spawner (broker TCB), the spare process, the font and filter-list utility jobs (strictest tier), the image decoder process (FP-D11), the measurement-only co-locating build (excluded from releases), and the attribution history as a storage-service asset that the shell renderer sees only on screen |
+| Security scope | Renderer and GPU-service threat models | Persistence through engine images, bounded by FP-D16; the shared-resource channels of Section 6.18.1 (bounded ones recorded); glyph atlases partitioned per (site, container, partition) |
+| Security scope | 6.7, 6.13, SEC-34, SEC-16 | Suspend files and attribution history under REC-R2's key rule; the image inventory under SEC-16; per-site cgroups and job objects as resource limits, not security boundaries; no `RLIMIT_AS` on renderers (Section 6.20.6) |
+| Shell UI design | R13 | Resource meter becomes the causal view of Section 6.14; background and battery controls per site (FP-D15) |
+
+## 10. Risks
+
+| Risk | Effect | Mitigation |
+|---|---|---|
+| **The 4 MiB† empty-process budget is unreachable** on some OS (page tables, loader, sandbox set-up, OS framework init) | F_fixed and every scenario budget scale up | FP-M0 measures the floor first and the blocker is floor plus line items; line items move only with reasons; Windows CIG and macOS sandbox start-up measured early |
+| **Per-agent cost erodes same-site consolidation** | Same-site tabs cost F_agent each, so FP-D3's benefit shrinks | FP-34 budget; small initial nursery; lazy realms; FP-D3's reversal trigger |
+| **Freeze-by-default breaks sites** (P2) | Compatibility complaints, chat and dashboard regressions | Declared reasons from activity classes, the per-site "keep running" control, a background compatibility suite, FP-D4's reversal trigger |
+| **Partitioned caches and atlases cost memory and raster time** | Higher FP-5 and GPU use on sites embedded under many top-level sites | Measured at FP-M3; FP-D14's trigger; never a reason to unpartition (P1) |
+| **The safepoint handshake is slow on long builtins** | Critical-rung latency on visible pages | JS-42's bound; interrupt checks added where the measurement points; frozen pages need no handshake |
+| **No fork server raises spawn latency**, especially on Windows (one anecdote of ~10× Linux, Low) | Slower cross-site navigation | Spare process; FP-27 on the full sandbox path; FP-D1's reversal |
+| **Suspend-to-disk** is first-of-kind, with security and correctness surface | Spike may fail | Kill criteria; regenerable-cache class; single use; page-out as the cheaper rung |
+| **Shipping every locale and codec enlarges the installer** | Larger download | Measured at FP-M2; FP-D13's trigger; mapped clean, so no memory cost |
+| **Energy model inaccuracy** | Misleading UI | Shares until FP-23 passes; meters as the authority |
+| **macOS background policy** relies on public QoS only | Weaker background placement than Chromium's private-API route | Measure; open question 4 |
+| **Canonical measures diverge from charged memory** | CI gate trusts a wrong proxy | Touched and committed measured separately; FP-33 recalibration |
+| **Cross-ISA canonical bytes differ** | FP-24 gate per ISA only | Gate per ISA by design; every cross-ISA difference root-caused |
+| **Attribution overhead on hot paths** | CPU cost | One mechanism with the JS engine; clock reads per task; allocation-site counters hoisted in optimized code; shared 0.5%† budget |
+| **Bounded channels prove wider than measured** | Cross-site information through pressure effects | FP-36 measures each bounded channel's capacity; any found above noise in a closed channel is a ship blocker |
+| **Content-blocking breakage and list governance** | Site breakage, anti-blocking responses | Shell and policy work owns lists; per-site toggle |
+| **16 KiB granules waste memory on 4 KiB systems** for tiny allocations | Small overhead | Sub-granule size classes inside spans; granule only for release and protection |
+| **Budgets set from first principles prove too generous** | Missed opportunity | Thresholds ratchet down after FP-M3, never silently up |
+
+## 11. Open questions and flagged claims
+
+### 11.1 Open questions
+
+1. **Spawn cost per OS** for a sandboxed empty Izcal process on the full path of Section 6.3, including the Linux spawner: no primary numbers for macOS or Windows (`os_mechanisms.md` 14.1). FP-M0.
+2. **Private dirty bytes of an empty process** per OS, split into loader, allocator, stacks, engine runtime and sandbox set-up. FP-M0.
+3. **Compression ratio of Izcal's heaps** under the macOS compressor, the Windows store and zram, and how much of a frozen tab ends up compressed or paged out. FP-M3.
+4. **A public-API route on macOS** for per-child background CPU and timer policy beyond QoS classes (App Nap applies per app). FP-M4.
+5. **macOS read-only shared regions**: the Mach memory-entry equivalent of a sealed memfd, its cost and whether the renderer sandbox permits mapping it (not researched).
+6. **Purgeable memory inside the macOS renderer sandbox**: whether the purgeable VM calls are allowed under Izcal's deny-default SBPL profile.
+7. **Linux cgroup delegation**: how many target distributions give a user session delegated cgroup v2 control, so per-site `memory.high` and `cpu.uclamp.max` are available.
+8. **Metal budget query and volatile memory on macOS**: which Metal property best gives a process's recommended budget and current allocation, and whether volatile Metal resources leave `phys_footprint` on macOS (Apple documents only the iOS and tvOS limit).
+9. **Same-site process split threshold** (FP-D3's 1 GiB† and 5 s†) needs lab data.
+10. **Freeze grace period** (30 s†) against Chrome's 5-minute intensive-throttling delay: which breaks fewer corpus sites at equal energy (Section 7.1).
+11. **Whether any browser or research project restored a live page from disk** (one search, no result).
+12. **Per-category renderer memory on a real corpus** (fonts, style, layout, IPC, canvas, media): no published baseline exists; Izcal's FP-M3 measurement will be the first.
+13. **Untouched reservations and page tables**: that a reserved, untouched range costs VM metadata and no page tables on each OS, and each OS's user address-space size (Section 6.20.6). FP-M0.
+14. **Swap encryption per OS** on the reference devices (macOS, Windows pagefile, Linux distributions), which gates the page-out rung. FP-M3.
+15. **Capacity of the bounded channels** of Section 6.18.1, in bits per probe, on the reference devices. FP-36 at FP-M4.
+16. **Re-rasterization cost of partitioned glyph atlases** on sites embedded under many top-level sites. FP-M3.
+17. **Incumbent behaviour observed black-box** (replacing figures once read from engine source, M-1 part 3): which OS counters each browser's reported footprint follows on each OS, including whether shared memory is charged; memory charged per element and per attribute set when a page creates a million of them; whether each browser reacts to Linux PSI pressure before the OOM killer; macOS `phys_footprint` after `MADV_FREE_REUSABLE` and after `MADV_FREE_REUSE` on Izcal's own probe; each browser's HTTP-cache size against free disk; Chrome's soft process limit on each lab device. FP-M0. **Closed by FP-M0, 22 October 2026, item by item:**
+   - **OS counters** (all three OSes, four incumbents): macOS `phys_footprint`, Linux VmRSS+VmSwap, Windows commit charge (private) with working set recorded alongside — each OS's reported figure follows a different counter (Windows' Task Manager "Memory" column is private working set). Rows in the FP-M0 decision log (`measurements/milestones/fp-m0/results/decision-log.md` on the measurements branch).
+   - **Per-element memory, element variant** (macOS): a million `div`s with text cost Chrome 155 ~2,592 B/element and Firefox 158 ~1,129 B/element.
+   - **Linux PSI reaction**: Chromium sheds ~73% of its resident set (2,064 → ~550 MB) at a 12 GiB anonymous allocation while keeping every process, and stays shed through recovery; an instantaneous 16 GiB single shot killed it outright before it could react. No browser documentation describes reacting to PSI, so the answer is measured, not read. Chromium's reaction is measured; Firefox's is not.
+   - **macOS accounting**: `MADV_FREE_REUSABLE` releases the `phys_footprint` charge (probe: 263,472 KB → 1,328 KB).
+   - **HTTP-cache against free disk** (macOS): Chrome ~7.8 MB and Firefox ~44 MB against ~979 GB free — the Section 6.12 1% rule is an upper bound, not an observed default.
+   - **Soft process limit** (local device): Chrome 155 shows no renderer reuse by 80 tabs; the limit lies beyond.
+   - **Still open, same gate:** the per-attribute-set variant (FP-M0's million-element harness shape), Firefox's PSI reaction, `MADV_FREE_REUSE`, cache sizing on Linux and Windows, and the soft limit on the other lab devices. FP-M0.
+
+### 11.2 Claims that are single-source, unverified or conflicting
+
+Carried over from the notes, plus this spec's own:
+- **Chrome and Firefox empty-process breakdowns on macOS** (27 MB, 12 MB `__DATA_CONST`; 18 MB) are one first-hand run each (n=1), on a 2026 Chrome and a 2024 Firefox build (`breakdown_measurement.md` 3.3–3.5). Linux and Windows were not measured.
+- **Vendor "up to" figures** without published distributions: Chrome M87 (5×, 1.25 h), M89 (Windows: 22/8/3%), Memory Saver (40%, 10 GB), Edge sleeping tabs (32%, 83–85%), EcoQoS (up to 90%), Brave (33–66%, mAh figures), Teams (50% less power for video). Used as direction, never as budgets.
+- **Instagram copy-on-write numbers** come from search snippets of a page that blocks scripts; **Morula's 13 MB** from its abstract; **Windows process-creation cost** from one forum anecdote; **Windows compression ratio** from a secondary source.
+- **Chrome's segment-heap reversal** rests on press coverage only (Low); it is not the basis of any rule.
+- **Other engines' per-node cost** is unknown: sizes once inferred from engine source were removed at 0.3.1 (M-1 part 3) and are measured black-box at FP-M0 (Q17); the 95–115 B two-core figure is an estimate before attributes and payload.
+- **Stylo memory numbers** (+12 MB, +10 MB) are a single 2017 bug snippet; **Zig data-oriented percentages** are secondhand.
+- **The "JS 35% / DOM 10%" split** attributed to the V8 team has no located primary source.
+- **Pélissier et al. (WebConf 2026)** energy figures come from an abstract; the page is behind an anti-bot wall.
+- **CMU tab-study percentages** beyond the 25% crash figure were not read in the paper.
+- **Chrome's bfcache time to live** (10 minutes) comes from Chrome's developer documentation; an entry count first read from a mirror of Chromium source was removed at 0.3.1 (M-1 part 3).
+- **32% of GIFs animated** is a chart value in the Web Almanac, not in its text.
+- **Gruss et al.'s page cache attacks** were read from the arXiv preprint; the critique places the paper at CCS 2019, not re-checked.
+- **The platform energy meters** (RAPL, `powermetrics`, Windows EMI) are named without their primary documentation having been read for this spec.
+- **First-principles claims to measure, not facts:** that untouched reservations cost no page tables (Q13); that canonical bytes without code are identical across ISAs (FP-24); that a fixed runaway threshold and canonical limits remove the device-memory channel (FP-36); that populating small image sections at start reduces page-cache residency leakage (FP-36); that the safepoint handshake meets JS-42 on long builtins.
+- **Every † threshold in Sections 6 and 8** is this document's first-principles setting. None is a measurement of Izcal.
+
+**Resolved by the phase 8 fact-check** (`factcheck.md`): the HTML timer padding step (re-anchored to `#run-steps-after-a-timeout`); `PR_SET_VMA_ANON_NAME` (Linux 5.17, needs `CONFIG_ANON_VMA_NAME`); Site Isolation's 9–13% (re-read in full). **Removed as unsourced:** Slack and Teams −50% memory; Windows' 15.625 ms timer default; Chrome 57's budget throttling; "most popular" for The Great Suspender. **Corrected:** Never-Slow Mode, WebKit bug 104202 and Firefox's 3.62 MiB per document (Sections 2, 5, 6.3, 6.11); the FP-2 sum; pointer compression; Firefox 93; per-process ASLR; the Windows QoS table; and the citations listed in Appendix A.
+
+**Spec conflicts.** HGBA-2 4.6's "never custom persistence layers" and Stage 1 Section 1's "site instance" wording are now decisions FP-D16 and FP-D17.
+
+### 11.3 Remaining inconsistencies that need a change in the JS engine spec
+
+The two specs agree on every design point listed in Section 6.17. This revision listed seven items for the JS side; **#1–6 are resolved** in the JS engine spec draft 0.2's footprint 11.3 pass (its Appendix A, "footprint 11.3 #1–6"), and #7 needs no change:
+
+1. **Canonical bytes definition.** *Resolved:* JS 6.5 and 6.15 name canonical touched (CT) and canonical committed (CC) bytes with the OS metric each predicts; JS-30 and JS-32 measure CT and CC in CI.
+2. **IDs this revision adds.** *Resolved:* JS-32 cites FP-34, JS-30 cites FP-35, and the JS header cites this spec's draft 0.2 with FP-1 to FP-39 and FP-D1 to FP-D19.
+3. **Locale set.** *Resolved:* JS 6.13 says the locale set follows the build only (FP-D13 (a)), keeping the (b) wording as the alternative if the owner chooses it.
+4. **Heap limits are device-independent.** *Resolved:* JS 6.5 and 6.8 state that heap and buffer limits are identical on every device (FP-D19).
+5. **Flush ages and growth knob.** *Resolved:* JS 6.5's flush ages cite Section 6.20.3 and its pacing row Section 6.20.2.
+6. **Code cache persistence.** *Resolved by a JS design change:* code-cache entries are now built only by a per-job code-cache builder process outside the renderer, from source the network service delivered and hashed; the renderer can only send a hint of which functions ran, and persists no IC state (JS 6.11, JS-D21, JS-18). A renderer compromise therefore cannot persist through the code cache. *Applied on this side:* the builder is a process kind in Section 8.2 with target FP-39, and Section 6.12's code-cache row records that only the builder writes entries.
+7. **FP-8's 2 GB claim.** Stands: JS 6.7's reference to FP-8 "on devices of 2 GB† and more" is unchanged; this spec measures it on DC-2 devices with S-8, and on DC-4 for Stage 1.
+
+## Appendix A. Review disposition (revision 0.2)
+
+Sources: the fact-check (`research_notes/Izcal resource footprint/factcheck.md`, 102 claims, 12 must-fix items) and the design critique (`research_notes/Izcal resource footprint/critique.md`, 38 findings and reconciliation items R1–R20). IDs: **FC-#** = fact-check must-fix item #; **H#, M#, L#** = critique findings; **R#** = reconciliation items. Dispositions: **Applied**; **Applied differently** (why); **Rejected** (why). No finding is rejected.
+
+**Fact-check, must-fix**
+
+| ID | Finding | Disposition | Where |
+|---|---|---|---|
+| FC-1 | The JS engine spec exists; reconcile FP-D2 and image placement | Applied against JS draft 0.2: header and integrations cite it; FP-D2 becomes requirements on JS-D4 (which now itself chooses one copy outside the cage); the JS section of the image is mapped at the cage start | Header, 1, 6.3, 6.4, 6.17, 9.3, 11.3 |
+| FC-2 | Never-Slow Mode was an unshipped prototype with no recorded reason (code-review evidence replaced by press coverage at 0.3.1) | Applied: facts stated; "broke pages" and "failure" removed; byte-budget lesson restated from first principles | 2, 4.4, 5, 6.14 |
+| FC-3 | WebKit bug 104202 RESOLVED INVALID | Applied: the row now records the rejected two-tier proposal, and the lesson is one tier with no promotion copies | 5, 6.4 |
+| FC-4 | Firefox 3.62 MiB per document was AdBlock Plus's user sheet | Applied: removed as engine-image evidence; kept, correctly described, as evidence for sharing cosmetic-filter cascades per partition | 6.3, 6.11 |
+| FC-5 | FP-2 line items sum to 3.5 MiB | Applied: line items restated (process part, engine line with sub-items, margin 1.0 MiB) and sum to 4.0 MiB in 6.3, 8.2 and FP-2 | 6.3, 8.2, FP-2 |
+| FC-6 | Pointer compression "up to 43%"; Oilpan 21% on Windows, 6% on Android | Applied | 5, 6.4 |
+| FC-7 | Firefox 93: crashes fell; OOM share of the remainder rose; late pressure event | Applied | 2, 5, 6.7 |
+| FC-8 | Per-process ASLR holds for images and heaps, not code on Windows and macOS | Applied: rule 1 and 6.18 restated; FP-D1's argument is about writable state and heap layout | 6.3, 6.18, FP-D1 |
+| FC-9 | Windows QoS: only HighQoS and EcoQoS are app-settable | Applied | 4.2, 6.8 |
+| FC-10 | Citations and scope (Android ≥2 GB source; §5.3.2; §4.1.1; PartitionAlloc on Windows; Metal iOS/tvOS limit; Android 15 supports 16 KiB; Firefox decode settled; Fission USS) | Applied, each in place | 2, 4.2, 5, 6.1, 6.3, 6.5, 6.10 |
+| FC-11 | Drop or source Slack/Teams −50%, 15.625 ms, Chrome 57, "most popular" | Applied: all four removed | 1, 2, 4.2 |
+| FC-12 | 11.2 updates; HTML anchor; † on conventions and run counts | Applied: flags removed, anchor `#run-steps-after-a-timeout`, † on 8.1 conventions, run counts declared test sizes | 6.8, 8, 8.1, 11.2 |
+
+The fact-check's other "Partly" corrections are applied as well: Reis 2019 for the soft limit; "in the 2011 design" for ChromeOS; V8 7.1 → 7.8 for the 18%; "almost half (12 of 27 MB)"; "up to ~8 MB" for the zygote; the standalone-benchmark and pref-default-off qualifiers for scaled IDCT; IPC buffers "in the browser process"; Firefox UA sheets "about 460 KiB per process was the target"; the two-core estimate's qualifier; the Chromium disk-pressure feature flag; Chromium's HTTP-cache steps; `CONFIG_ANON_VMA_NAME`; the 32% GIF chart value flagged.
+
+**Critique, High**
+
+| ID | Finding | Disposition |
+|---|---|---|
+| H1 | FP-D2 and JS-D4 are incompatible | Applied: one decision record, JS-D4, owned by the JS spec; FP-D2 states requirements (one copy, bytes across every copy, workers never trace or write) and records JS-D4 (a) as meeting them; FP-11 counts every copy (6.4, 9.3, FP-11) |
+| H2 | One heap per process vs one per agent | Applied: F_fixed = process part + per-agent part; FP-34 for each further agent; FP-4 limited to same-agent frames; sharing table limited to what JS 6.11 allows; splits only at agent-cluster boundaries; option (c) per agent cluster added to FP-D3 (6.1, 6.3, 6.4, 6.10, FP-D3) |
+| H3 | Ladder drops heap data and races the script thread | Applied: two classes; class (a) unmapped off-thread only for frozen pages or after a safepoint handshake bounded by JS-42; class (b) only at deterministic points, never on the Critical path; FP-15 adds a running script thread (6.4, 6.7, FP-15) |
+| H4 | On-demand downloads create a channel, a leak, a fingerprint and a determinism break | Applied: nothing web-observable is fetched because a page asked; FP-D13 recommends one data set in every installation; FP-25 follows that decision (6.12, FP-D13, 6.18.1) |
+| H5 | One shared library defeats the jitless executable | Applied: the code generator lives only in what the JIT renderer loads; G14 on the loaded-library closure; FP-25 checks it (6.12, FP-25) |
+| H6 | The broker parses fonts and filter lists | Applied: both are built in utility processes at the strictest tier; the broker passes sealed handles; 9.4 adds the security-scope rows (6.3, 6.11, 9.4) |
+| H7 | A shared glyph atlas breaks the no-cross-site-sharing rule | **Applied differently**: partitioned more finely than proposed, per (site, container, partition), because B-in-A and B-in-C would otherwise share an atlas across top-level sites, the same problem the JS spec's code-cache keying solves; budget per partition; GPU threat model amendment (6.6, FP-D14) |
+| H8 | FP-24 cannot pass across ISAs | Applied: gate per ISA and per tier ceiling; machine code reported separately; cross-ISA identity checked, JS-observable digests per JS-D12 (6.2, 6.16, FP-24) |
+| H9 | Staging by schedule; two owners for live restore | Applied: the "not ready by FP-M5 → Stage 2" fallback is removed; `hg-js-snapshot` owns the format and `hg-suspend` is its lifecycle client; FP-31 alone decides; user controls are a decision (FP-D15) gated on FP-30; Section 9.1 lists every held item with its gate (6.9, 6.14, 9.1, 9.2) |
+
+**Critique, Medium**
+
+| ID | Finding | Disposition |
+|---|---|---|
+| M1 | The persistence ruling covers only suspend files | Applied: FP-D16 defines the regenerable-cache class with every member, matching JS 9.5 |
+| M2 | A compromise can persist through suspend files or the code cache | Applied: build binding, discard on writer failure, TTL (7 days† suspend, 14 days† code cache), single-use suspend files; threat-model amendment; remaining code-cache question raised for the JS spec (6.9, 6.12, 11.3) |
+| M3 | Read-only image vs mutable shape state and hash seeds | Applied on the JS side (JS 6.1 adopts rule 2, immortal image objects, perfect hashes); this spec references it (6.3) |
+| M4 | `oom` reports leak device pressure | Applied: reported only for the page's own runaway; ladder kills report nothing (6.7, 6.15) |
+| M5 | Shared budgets and pages are cross-site channels | Applied: Section 6.18.1 lists every channel as closed or bounded; per-(site, container) sub-budgets; populated image sections; FP-36 |
+| M6 | Attribution history is browsing history in the shell renderer | Applied: storage-service holder, retention, clearing, containers, private windows; FP-D18, FP-37; security-scope amendment (6.14) |
+| M7 | Heavy-frame intervention copies Chrome, circular target, not replayable | Applied: script-attributed design with action on the smallest safe unit; held-out corpus and interaction ground truth; decisions recorded as B1 inputs (6.14, FP-29, FP-D7) |
+| M8 | Constants and shapes taken from other browsers | Applied: Section 7.1 derives each or names the milestone that sets it, with the incumbent value stated as a prior; declared reasons derived from activity classes |
+| M9 | FP-D8's trigger trades isolation; FP-8 untestable at 2 GB | Applied: FP-D8 has no trigger that turns origin keying off; FP-8's Stage 1 claim is on DC-4, and the 2 GB claim is measured on DC-2 devices, with emulation as earlier evidence (FP-D8, FP-8, 8.1, FP-D12) |
+| M10 | Freeze would freeze agents, automation, DevTools, PiP, cross-context peers | Applied: all added as declared reasons under activity classes; B7 amendment corrected (6.8, 9.4) |
+| M11 | `posix_spawn` cannot build the Linux sandbox | Applied: per-OS spawn path with the full sandbox, a single-threaded spawner with `clone3` on Linux; FP-27 measured on that path (6.3, FP-27, FP-M0) |
+| M12 | FP-2 blocker before the floor; nursery and stack lines | Applied: blocker = FP-M0 floor + line items; nursery and stack-segment lines; script thread's OS stack holds only Rust frames (6.3, FP-2) |
+| M13 | Region tags cannot attribute heap bytes per script | Applied: allocation-site counters (JS 6.10) for live allocation; replay heap queries for retention; FP-30 split by what each can claim (6.2, 6.14, FP-30) |
+| M14 | FP-33, FP-21, FP-22 not measurable as written | Applied: canonical touched and committed bytes, each predicting its own OS metric; FP-21 protocol with runs, confidence bound and meter resolution; FP-22 noise band (6.2, FP-21, FP-22, FP-33) |
+| M15 | DOM text and JS strings are two copies | Applied on the JS side (JS-D4 text arena, external strings); this spec budgets the copy and wide-form rates (6.4) |
+| M16 | OS page-out is a missing alternative and the metric cannot credit it | **Applied differently**: page-out is not only an alternative but a ladder rung at Moderate, gated on swap being in memory or encrypted; resident memory reported beside charged; FP-D6 compares both rungs and FP-31 includes the comparison (6.2, 6.7, 6.9, FP-D6) |
+| M17 | Missing amendments: images in utility processes, security-scope rows, IPC-R7 receiver | Applied: FP-D11 now recommends per-site decoder processes as Stage 1 M7 places them, decided jointly with the security owner; security-scope rows added; the GPU service fixes the image region's format (6.5, 9.4, FP-D11) |
+| M18 | Numbers the JS spec left to this spec are missing | Applied: Section 6.20 (per-agent and per-page budgets, growth knob, flush ages, limits, CPU budgets, behaviour at limits, locale data, reservations); FP-35 |
+| M19 | Node-size evidence contradicts itself | Applied: measured figures used, estimates labelled, FP-11 recomputed across every copy (6.4, FP-11) |
+
+**Critique, Low**
+
+| ID | Finding | Disposition |
+|---|---|---|
+| L1 | FP-D9 and FP-D12 lack reversal triggers | Applied (9.3) |
+| L2 | S-30 uses HGBA-2's `S-` prefix | Applied: renamed FP-S30; the spike ID FP-S1 is dropped in favour of FP-31 to keep one meaning for FP-S (8.1) |
+| L3 | DevTools citation wrong; totals for out-of-set frames | Applied: `devtools-user` sees everything (as browser UI); scoped principals see out-of-set frames as opaque, with no totals (6.15, 9.4) |
+| L4 | Allocator and pool timers must be one-shot | Applied (6.3, 6.8, FP-18) |
+| L5 | Opt-in aggregates lack a mechanism | **Applied differently**: a mechanism is specified at the level this spec can own (coarse per-process-kind buckets, no site identities, randomized response with ε ≤ 1†), and the full scheme is put under a PRIV review, because no privacy spec exists yet to hold it (FP-D9) |
+| L6 | The co-locating build relies on convention | Applied: a build-graph rule checked on release binaries (6.10, 9.4) |
+| L7 | CS-PF-5 and CS-PF-6 cite RES; FP-D5 precedes measurement | Applied: coding-standard amendment; FP-D5's first lab comparison is its confirmation (9.3, 9.4) |
+| L8 | HGBA-2 4.6 tiers vs FP states | Applied: mapping in 6.7 and the 4.6 amendment |
+| L9 | Wake grid must not depend on other processes | Applied (6.8, 6.18.1) |
+| L10 | Session font list vs PRIV-2 | Applied: filtered per-page view (6.3, 6.18.1) |
+
+**Reconciliation with the JS engine spec**
+
+| ID | Topic | Disposition |
+|---|---|---|
+| R1 | DOM representation | Applied: JS-D4 owns it; FP-D2 is requirements (6.4) |
+| R2 | Heap granularity | Applied: F_proc + F_agent, FP-34, sharing table, split rule (6.1, 6.3, 6.4, 6.10); the JS side decided the same-site read-only code space (JS 6.11) |
+| R3 | Image identity and placement | Applied: one image inventory with owners and process kinds; UI image never in site renderers; FP-25 covers all files (6.3, 6.12) |
+| R4 | Mutable state for image objects | JS-side, applied there (JS 6.1); referenced (6.3) |
+| R5 | Substrate memory traits | Applied: one trait set, `Memory` with ledger tags and `purge`, plus `CodeMemory` (6.3, 9.4) |
+| R6 | Canonical accounting | Applied: canonical touched and committed bytes for footprint; GC debt in canonical allocation units, never mixed; engine-internal allocation excluded from GC debt (6.2); the JS wording item is in 11.3 |
+| R7 | Determinism scope | Applied: FP-24 per ISA and per tier ceiling (6.16, FP-24) |
+| R8 | Discardable engine data | Applied: two classes; class (b) never on the Critical path (6.4, 6.7, 6.20.3) |
+| R9 | Memory-return hooks | Applied: shrink on freeze and navigation away scheduled outside pressure (6.8, 6.10, 6.20.3) |
+| R10 | Threads and stacks | Applied: shared pool; dedicated code-writer thread counted in FP-32; agent threads; stack row per JS 6.6 (6.3, FP-32) |
+| R11 | Heap limits and CPU budgets | Applied: Section 6.20.4, FP-35, FP-D19 |
+| R12 | Live-page snapshot | Applied: one owner per part, FP-31 gate, no schedule fallback, entropy re-seeded on restore (6.9, 9.1) |
+| R13 | Persistence class | Applied: FP-D16 with the JS member list, plus compromise persistence rules (6.9, 6.12) |
+| R14 | Tier ceilings | Applied: library layout fixed; budgets FP-2, FP-5, FP-22 and the CI gate stated per ceiling (6.12, 8.1, 8.3) |
+| R15 | Text | Applied on the JS side (JS-D4); this spec budgets the rates (6.4) |
+| R16 | Attribution and time accounting | Applied: one mechanism (substrate thread clocks plus `hg-js-observe`), one 0.5%† budget shared with JS-60, intervention decisions as B1 inputs, script-level alternative (6.13, 6.14, FP-23, FP-D7) |
+| R17 | Relative thresholds | Applied: memory and energy absolute; relative only for engine speed in the JS spec (8.4) |
+| R18 | RES references | JS-side, applied there (JS 9.5, JS-22); consistent with 8.4 |
+| R19 | Origin keying | JS-side, applied there (JS 6.7 follows FP-D8); FP-D8's trigger corrected here |
+| R20 | Reservations | Applied: page-table line counts the cage, trusted, buffer, Wasm and code reservations; mapping count and per-OS limits; no `RLIMIT_AS` (6.3, 6.20.6) |
