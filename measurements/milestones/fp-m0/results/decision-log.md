@@ -106,3 +106,14 @@ Two runs. **First run (single 16 GB shot):** chromium reached 11 verified pages,
 | Recovery (60 s) | **~545 MB — stays shed** | 19 | 0.02 | 19.2 GB |
 
 **Reading (Q-17's PSI part):** chromium reacts to memory pressure before the OOM killer — at the 12 GiB step it shed ~73% of its resident set in one step while keeping every process, and it does not re-inflate after the pressure passes (the shed pages stay shed). The 8 GiB step produced no reaction (no pressure on the browser's share). The first run's outright SIGKILL was the single-shot's fault — an instantaneous 16 GB touch storm leaves no time to react — which is why the staircase is the harness's canonical shape. The TSV: `results/linux/2026-10-22-psi-probe.tsv`; the probe: `harness/psi-probe.sh`.
+
+## Per-element memory (22 October 2026, macOS 26, rig local)
+
+FP-M0 open question 17, the per-element part: memory charged per element when a page creates a million of them, black-box. A localhost page appends 1,000,000 `<div>`s (one-character text node each); each browser's tree is sampled on the blank page and on the million-element page (1-minute samples, steady state = last 6; Chrome's load gated on its "million done" title, blank tab closed before sampling; Firefox loads by single invocation with the profile-lock kill).
+
+| Browser | Blank | Million elements | Per element |
+|---|---|---|---|
+| Chrome 155 | 169 MB (5 procs) | 2,761 MB (7 procs) | **~2,592 bytes** |
+| Firefox 158 | 641 MB (10 procs) | 1,770 MB (10 procs) | **~1,129 bytes** |
+
+**Reading:** Chrome pays ~2.3x Firefox per `<div>`+text node on this OS. Both figures are the element variant only — the attribute-set variant (the spec's "per attribute set" wording) is a follow-up with the same harness shape. Neither row is a threshold; both are FP-M0 observations. Probe: `harness/per-element-probe.sh`; TSVs in `results/`.
