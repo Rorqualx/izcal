@@ -383,7 +383,9 @@ fn main() {
     // Every outcome other than a ready line prints the child's state
     // and exits 1; the timing line prints only for a ready child.
     const READY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    // Capacity 1: the reader sends exactly one message, so the send never
+    // blocks (CS-AS-6: no unbounded channel).
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(1);
     // The handle crosses to the reader thread as an integer (HANDLE is
     // a raw pointer, so not Send); only that thread uses it from here.
     let read_raw = read_h as usize;

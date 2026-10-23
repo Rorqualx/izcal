@@ -3,12 +3,23 @@
 version = 4
 
 [[package]]
+name = "hg-substrate"
+version = "0.0.0"
+dependencies = [
+ "hg-types",
+]
+
+[[package]]
 name = "hg-substrate-os"
 version = "0.0.0"
 dependencies = [
  "libc",
  "windows-sys",
 ]
+
+[[package]]
+name = "hg-types"
+version = "0.0.0"
 
 [[package]]
 name = "libc"

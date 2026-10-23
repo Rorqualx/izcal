@@ -107,6 +107,10 @@ fn main() {
         let _ = out.write_all(line.as_bytes()).and_then(|()| out.flush());
         std::process::exit(1);
     }
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "CS-ER-14: this is the process's crash handler; with stderr null it reports a panic down the IPC pipe"
+    )]
     std::panic::set_hook(Box::new(|info| fail(&format!("panic: {info}"))));
 
     // 1. Lock down first: lower from the AppContainer's Low integrity
