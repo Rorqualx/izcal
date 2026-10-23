@@ -91,31 +91,52 @@ fn main() {
 fn main() {
     use std::io::Write;
 
+    // stdout is the IPC pipe and stderr is null, so every failure is
+    // reported down the pipe as one `fp-m0-empty: error:` line, which
+    // the supervisor prints with the child's exit code (SEC-8).
+    fn fail(msg: &str) -> ! {
+        // One line, one write: the supervisor reads a single message, so
+        // line breaks inside msg (a panic's location and payload) are
+        // flattened.
+        let line = format!("fp-m0-empty: error: {}\n", msg.replace(['\r', '\n'], " "));
+        let mut out = std::io::stdout().lock();
+        let _ = out.write_all(line.as_bytes()).and_then(|()| out.flush());
+        std::process::exit(1);
+    }
+    std::panic::set_hook(Box::new(|info| fail(&format!("panic: {info}"))));
+
     let probe = probe_line();
 
     let done = Arc::new(AtomicBool::new(false));
     let mut handles = Vec::new();
     for name in ["fp-m0-thread-a", "fp-m0-thread-b"] {
         let done = Arc::clone(&done);
-        handles.push(
-            thread::spawn(name, move || {
-                while !done.load(Ordering::Relaxed) {
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-                }
-            })
-            .expect("thread spawn"),
-        );
+        match thread::spawn(name, move || {
+            while !done.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        }) {
+            Ok(h) => handles.push(h),
+            Err(e) => fail(&format!("thread spawn ({name}): {e}")),
+        }
     }
 
     let line = format!(
         "sandbox=applied {probe} threads=2 pid={}\n",
         std::process::id(),
     );
-    // The ready line is the only output. A failed write cannot be
-    // reported (stderr is null); the supervisor reports the missing
-    // line and the child's state instead (SEC-8).
     let mut ipc = std::io::stdout().lock();
-    let _ = ipc.write_all(line.as_bytes()).and_then(|()| ipc.flush());
+    if ipc
+        .write_all(line.as_bytes())
+        .and_then(|()| ipc.flush())
+        .is_err()
+    {
+        // The pipe itself failed, so nothing can be reported down it;
+        // exiting lets the supervisor report the closed pipe and this
+        // exit code instead of waiting on a silent child.
+        std::process::exit(2);
+    }
+    drop(ipc);
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));

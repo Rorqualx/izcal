@@ -153,7 +153,9 @@ fn main() {
 /// restricted untrusted token and the job, starts the child under the
 /// token suspended so the job assignment completes before it runs
 /// (fatal on failure), resumes it, times spawn-to-ready, prints the
-/// child's ready line, and holds it for the harness.
+/// child's ready line, and holds it for the harness. Any other outcome
+/// (an error line, a closed pipe, no line within the deadline) prints
+/// one `FAILED` line with the child's state and exits 1.
 #[cfg(windows)]
 fn main() {
     use std::mem::size_of;
@@ -287,38 +289,75 @@ fn main() {
         exit(1);
     }
 
-    // 4. The ready line (blocking read on the pipe).
-    let mut buf = [0u8; 512];
-    let mut n: u32 = 0;
-    // SAFETY: the buffer is valid for the read; the read blocks until
-    // the child writes or the pipe closes.
-    unsafe { ReadFile(read_h, buf.as_mut_ptr(), 512, &mut n, ptr::null_mut()) };
-    // SAFETY: the read end is ours and no longer needed.
-    unsafe { CloseHandle(read_h) };
-    println!(
-        "fp-m0-probe: child pid={} spawn-to-ready={:.3} ms",
-        pi.dwProcessId,
-        started.elapsed().as_secs_f64() * 1e3
-    );
-    if n > 0 {
-        print!(
-            "fp-m0-probe: {}",
-            String::from_utf8_lossy(&buf[..n as usize])
-        );
-    } else {
-        // No ready line: the pipe closed. Report how the child ended,
-        // never silently (SEC-8).
-        use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
-        // SAFETY: pi.hProcess is the child's process handle, valid
-        // until this process exits; the wait is bounded.
-        let waited = unsafe { WaitForSingleObject(pi.hProcess, 2000) };
-        let mut code: u32 = 0;
-        // SAFETY: valid process handle and out-pointer.
-        let ok = unsafe { GetExitCodeProcess(pi.hProcess, &mut code) };
-        println!(
-            "fp-m0-probe: no ready line; child wait={waited:#x} exit-code-ok={ok} exit-code={code:#010x}"
-        );
+    // 4. The ready line, with a deadline. A reader thread does the
+    // blocking read so a child that neither writes nor exits is
+    // reported as stuck instead of hanging the supervisor (SEC-8).
+    // Every outcome other than a ready line prints the child's state
+    // and exits 1; the timing line prints only for a ready child.
+    const READY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    // The handle crosses to the reader thread as an integer (HANDLE is
+    // a raw pointer, so not Send); only that thread uses it from here.
+    let read_raw = read_h as usize;
+    let reader = hg_substrate_os::thread::spawn("fp-m0-probe-reader", move || {
+        let read_h = read_raw as HANDLE;
+        let mut buf = [0u8; 512];
+        let mut n: u32 = 0;
+        // SAFETY: the buffer is valid for the read; read_h is the pipe's
+        // read end, owned by this thread from here on. The read blocks
+        // until the child writes or the pipe closes.
+        let ok = unsafe { ReadFile(read_h, buf.as_mut_ptr(), 512, &mut n, ptr::null_mut()) };
+        // SAFETY: the read end is ours and no longer needed.
+        unsafe { CloseHandle(read_h) };
+        let got = if ok == 0 { 0 } else { n as usize };
+        let _ = tx.send(buf[..got].to_vec());
+    });
+    if let Err(e) = reader {
+        eprintln!("fp-m0-probe: reader thread: {e}");
+        // SAFETY: valid process handle; the child is ours to end.
+        unsafe { TerminateProcess(pi.hProcess, 1) };
         exit(1);
+    }
+
+    match rx.recv_timeout(READY_DEADLINE) {
+        Ok(bytes) if bytes.starts_with(b"sandbox=applied") => {
+            println!(
+                "fp-m0-probe: child pid={} spawn-to-ready={:.3} ms",
+                pi.dwProcessId,
+                started.elapsed().as_secs_f64() * 1e3
+            );
+            print!("fp-m0-probe: {}", String::from_utf8_lossy(&bytes));
+        }
+        Ok(bytes) if !bytes.is_empty() => {
+            // The child wrote something other than a ready line: its
+            // error report (stderr is null, so stdout carries it).
+            println!(
+                "fp-m0-probe: FAILED child pid={} reported: {}; {}",
+                pi.dwProcessId,
+                String::from_utf8_lossy(&bytes).trim_end(),
+                child_state(pi.hProcess)
+            );
+            exit(1);
+        }
+        Ok(_) => {
+            println!(
+                "fp-m0-probe: FAILED child pid={} closed the pipe without a ready line; {}",
+                pi.dwProcessId,
+                child_state(pi.hProcess)
+            );
+            exit(1);
+        }
+        Err(_) => {
+            println!(
+                "fp-m0-probe: FAILED child pid={} no ready line within {} s; {}; terminating it",
+                pi.dwProcessId,
+                READY_DEADLINE.as_secs(),
+                child_state(pi.hProcess)
+            );
+            // SAFETY: valid process handle; a stuck child is ended.
+            unsafe { TerminateProcess(pi.hProcess, 1) };
+            exit(1);
+        }
     }
 
     // 5. Hold the child for the harness; the measurement kills us.
@@ -326,4 +365,26 @@ fn main() {
         // SAFETY: a fixed 1-second sleep with no return value.
         unsafe { Sleep(1000) };
     }
+}
+
+/// How the child stands, for the failure lines: its exit code once it
+/// has exited (waiting up to 2 s), or "still running" — never the
+/// STILL_ACTIVE pseudo exit code (259) read as a real one.
+#[cfg(windows)]
+fn child_state(process: windows_sys::Win32::Foundation::HANDLE) -> String {
+    use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+    use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+
+    // SAFETY: the caller passes the child's process handle, valid for
+    // the supervisor's lifetime; the wait is bounded.
+    let waited = unsafe { WaitForSingleObject(process, 2000) };
+    if waited != WAIT_OBJECT_0 {
+        return format!("child still running (wait={waited:#x})");
+    }
+    let mut code: u32 = 0;
+    // SAFETY: valid process handle and out-pointer.
+    if unsafe { GetExitCodeProcess(process, &mut code) } == 0 {
+        return "child exited; exit code unreadable".to_string();
+    }
+    format!("child exited with code {code:#010x}")
 }
