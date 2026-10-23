@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Izcal pre-push: protects main/hgba and release tags, checks that a pushed
-# submodule pointer exists upstream, and re-runs the deterministic checks on
+# Izcal pre-push: protects main and re-runs the deterministic checks on
 # the pushed commits (catches --no-verify commits). See CONTRIBUTING.md.
 set -u
 HOOKS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -17,34 +16,18 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
   case "$remote_ref" in
     refs/heads/*)
       b=${remote_ref#refs/heads/}
-      # IZCAL_S4E_REBASE lets the documented rebase push reach hgba; the
-      # non-fast-forward rule below still requires the old tip to be tagged.
-      if is_protected "$b" && [ "${IZCAL_ALLOW_PROTECTED:-}" != 1 ] &&
-         ! { [ "$b" = hgba ] && [ "${IZCAL_S4E_REBASE:-}" = 1 ]; }; then
+      if is_protected "$b" && [ "${IZCAL_ALLOW_PROTECTED:-}" != 1 ]; then
         echo "pre-push: '$b' is protected; push a feature branch and open a pull request" >&2
         status=1; continue
       fi
-      if [ "$remote_sha" != "$zero" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
-        # The one exception: the S-4e upstream rebase of hgba. The old tip
-        # must be tagged first, because the project's submodule history
-        # pins old fork commits and they must stay reachable.
-        if [ "$b" = hgba ] && [ "${IZCAL_S4E_REBASE:-}" = 1 ]; then
-          if ! git tag --points-at "$remote_sha" | grep -q '^hgba-pre-'; then
-            echo "pre-push: tag the old hgba tip first: git tag hgba-pre-<upstream version> $remote_sha && git push $remote hgba-pre-<upstream version>" >&2
-            status=1; continue
-          fi
-        elif is_protected "$b"; then
-          echo "pre-push: non-fast-forward push to protected '$b' refused (S-4e rebase: see CONTRIBUTING.md)" >&2
-          status=1; continue
-        fi
+      if [ "$remote_sha" != "$zero" ] && is_protected "$b" &&
+         ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+        echo "pre-push: non-fast-forward push to protected '$b' refused" >&2
+        status=1; continue
       fi
       ;;
-    refs/tags/v*-izcal.*)
-      if [ "${IZCAL_RELEASE:-}" != 1 ]; then
-        echo "pre-push: release tag ${remote_ref#refs/tags/} needs IZCAL_RELEASE=1 (rusty_v8 owner, after S-4e step 3)" >&2
-        status=1
-      fi
-      continue ;;
+    # Release tags v* are protected server-side (signed, bypass recorded;
+    # SEC-27), so the hook adds no client-side tag rule.
     *) continue ;;
   esac
 
@@ -56,20 +39,6 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
     base=$remote_sha
   fi
   [ -n "$base" ] || { echo "pre-push: no merge base with the default branch; skipping checks" >&2; continue; }
-
-  # A submodule pointer must name a commit that its remote already has,
-  # or every other clone breaks.
-  for sm in $(git config -f .gitmodules --get-regexp '\.path$' 2>/dev/null | awk '{print $2}'); do
-    new=$(git rev-parse -q --verify "$local_sha:$sm" 2>/dev/null) || continue
-    old=$(git rev-parse -q --verify "$base:$sm" 2>/dev/null || echo "")
-    [ "$new" = "$old" ] && continue
-    url=$(git config -f .gitmodules "submodule.$sm.url")
-    if ! git ls-remote "$url" | awk '{print $1}' | grep -qx "$new" &&
-       ! git -C "$sm" branch -r --contains "$new" 2>/dev/null | grep -q .; then
-      echo "pre-push: submodule $sm points at $new, which $url does not have; push it there first" >&2
-      status=1
-    fi
-  done
 
   IZCAL_HOOKS_SKIP="${IZCAL_HOOKS_SKIP:-}" bash "$(checks_script)" --range "$base" "$local_sha" || status=1
 done

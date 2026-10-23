@@ -52,7 +52,7 @@ log then records it, per the footprint spec's item-by-item rule.
   accounting after `MADV_FREE_REUSABLE` (done 22 Oct — the probe releases
   the phys_footprint charge), HTTP-cache sizing (black-box observation),
   Linux PSI reactions (the .185 rig). **Partially closed 22 Oct by the
-  footprint spec's revision 0.3.2** (on PR #11's branch): counters on
+  footprint spec's revision 0.3.2** (carried into 0.4.6): counters on
   all three OSes, the per-element variant, Chromium's PSI reaction,
   `MADV_FREE_REUSABLE`, macOS cache sizing and the local soft limit.
   Still open under FP-M0: the per-attribute-set variant, Firefox's PSI

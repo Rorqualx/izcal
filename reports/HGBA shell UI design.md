@@ -1,6 +1,6 @@
 # HGBA shell UI design
 
-*Companion to the Stage 1 architecture design, HGBA-2.1 and HGBA-3.1. Written against design draft 0.8, HGBA-2.1.3 and HGBA-3.1.3; current revisions are draft 0.10, 2.2.0 and 3.2.0. Date: 14 October 2026. Status: draft 0.3, complete for review (0.3, 17 October 2026: keyboard model anchored to WAI-ARIA APG and UAAG 2.0 under HGBA-2 M-1). Evidence notes: `research_notes/Shell UI design/`.*
+*Companion to the Stage 1 architecture design, HGBA-2.1 and HGBA-3.1. Written against design draft 0.8, HGBA-2.1.3 and HGBA-3.1.3; the revisions then current were design draft 0.10, HGBA-2 2.2.0 and HGBA-3 3.2.0 (now 0.14.5, HGBA-2 2.4.4 and HGBA-3 3.3.3). Date: 14 October 2026. Status: draft 0.5, complete for review (0.5, 21 October 2026: phase 3 amendments A-UI-1 to A-UI-6 and A-UI-8 applied from the accepted resource-footprint, fonts and text, images and media, graphics, layout and content-blocking specs and the SVG, animation and editing specs, Section 10; 0.4, 21 October 2026: batch-4 amendments applied from the accepted shell spec 0.3 and phishing protection spec 0.3 — prompts are separate broker-owned OS windows, the trusted-region property is restated as an own-layer/no-overlap property, the site panel gains Phishing protection and trust-store rows, the phishing/malware interstitial is the phishing spec's surface, UI-9 cites PH-11 and UI-10 covers the interstitial, notifications move to Stage 2; 0.3, 17 October 2026: keyboard model anchored to WAI-ARIA APG and UAAG 2.0 under HGBA-2 M-1). Evidence notes: `research_notes/Shell UI design/`.*
 
 This document consolidates every UI decision scattered across the HGBA documents, then designs the shell the same way the engine was designed. Each surface traces to a requirement, each claim about user behaviour carries a source, each element has a maturity label, and each target can fail. It changes no engine target. Thresholds marked † are set by this document.
 
@@ -29,7 +29,7 @@ Every UI-bearing decision already made, with its source. This table is the shell
 |---|---|---|
 | R1 | Shell is HTML/CSS rendered by the engine, in its own sandboxed **shell renderer** with zero ambient authority; it reaches browser state only through capability endpoints granted by the broker | Stage 1 design D-S2, Section 1 |
 | R2 | User theming is **CSS-only**; scripted customization goes through W-1 components | D-S2 |
-| R3 | A minimal **native recovery window** opens when the HTML shell fails to start twice in a row; it can reset the profile, start without hardware acceleration and send the crash report, nothing else | D-S2, Section 6 |
+| R3 | A minimal **native recovery window** opens when the HTML shell fails to start twice in a row; it offers **five actions and nothing else**: reset the profile, start without hardware acceleration, start with themes and extensions off, send the crash report, and quit | D-S2, as amended by SH-D22, Section 6 |
 | R4 | **AI off by default**: no AI entry points, chips, suggestions or promotions anywhere in default UI; settings is the only place AI appears; the choice survives updates with no re-prompt | HGBA-3.1 B10, AG-0 |
 | R5 | **Accessibility model setting** is separate from the AI switch and off by default | HGBA-3.1 B10 (R4 class) |
 | R6 | **Repair inspector**: "What the browser changed on this page" lists every accessibility repair; one toggle reverts them all | HGBA-3.1.1 B8; Section 5.8 |
@@ -38,7 +38,7 @@ Every UI-bearing decision already made, with its source. This table is the shell
 | R9 | **JavaScript modes** per site, inherited from the container: off, same-site only, full; the same-site caveat (a taken-over subdomain counts as same-site) is stated in the mode's description | Section 6 |
 | R10 | **Protected media mode** label: "Playing protected video using Windows' / macOS's media engine"; one-click switch back; remembered per container; per-site "never switch" | Section 13.1a |
 | R11 | **Permission prompts** require user activation; quiet UI; auto-revocation of unused grants; per-site and per-container grants | Section 6, 13.2 |
-| R12 | **Notification controls** (Stage 2): mute and snooze from the notification, opt-in per-site digest, never delays by default | Section 6 |
+| R12 | **Notification permission is not offered in Stage 1 at all** (amended by SH-D17); Stage 2 adds delivery and controls: mute and snooze from the notification, opt-in per-site digest, never delays by default | Section 6; SH-D17 |
 | R13 | **Per-site resource meter** (Stage 2): CPU, memory, network and energy shown on request; visibility only | Section 6 |
 | R14 | **Crash reports** opt-out with a per-crash prompt, "send" pre-selected, viewable before sending; **telemetry** opt-in | D-S4 |
 | R15 | **Onboarding** explains AI-off, containers, import and the DRM position | Section 13.2 |
@@ -68,7 +68,7 @@ Every UI-bearing decision already made, with its source. This table is the shell
 ```
 
 - **Each shell service is a capability endpoint** with its own IDL file (Section 4 of the Stage 1 design). The shell renderer gets exactly these endpoints and no others, so a compromised shell cannot open files or sockets. This is the shell-side version of HGBA-2.0 I-2.
-- **Prompts that must not be spoofable** (permissions, protected-media switch, credential confirmation for agents) are drawn by the shell in the region above the page's top edge, which page content cannot paint over. Page-rendered content never contains a prompt the browser issued.
+- **Prompts that must not be spoofable** (permissions, protected-media switch, credential confirmation for agents, and the phishing/malware interstitial) are **separate broker-owned OS windows** with their own OS layer, not a region drawn inside the page window (SH-D2, SH-D3). The prompt renderer software-rasterises them in a jitless, project-JS-only process; the content GPU is never on the prompt pixel path. Page-rendered content never contains a prompt the browser issued. Where an OS requires a window to carry a prompt, that window's own layer is the trusted layer; the property is tested, not the window class (SH-11).
 - **The shell runs under the deterministic substrate.** A shell bug found in simulation replays from its seed like any engine bug, because the shell is a page.
 
 ---
@@ -100,7 +100,7 @@ Maturity labels follow HGBA-3.1 P7: **shipped** (in a browser today), **shipped 
 - **Container chip** before the address: the container's **name and colour together**. No study of container-colour comprehension exists, so colour alone is not trusted; target UI-8 measures it. *Shipped* (Firefox Containers), with name added.
 - **No padlock and no trust icon.** A neutral **site-controls** button opens the site panel (4.3), following Chrome 117's change: 89% misread the padlock, and in testing users opened site controls more often without confusion. Plain-HTTP pages show "Not secure". HTTPS-first is the default; Chrome's equivalent warned on fewer than 3% of page loads. *Shipped.*
 - **URL display:** the full URL with the registrable domain emphasized. Chrome's domain-only trial "didn't move relevant security metrics" and none of 14 formats improved identity judgements, so no new format is invented. Lookalike-domain detection relies on IDN homograph rules plus a lookalike warning; users identified the real site for only 40% of lookalike URLs (CHI 2020). *Shipped.*
-- **Trusted region:** everything above the double line is drawn by the shell. Browser prompts (permissions, the protected-media switch, credential confirmation) anchor to this region and overlap the page edge, so page content cannot fake them (UI-10). *Shipped* (Chrome's "line of death" principle).
+- **Trusted layer, not a trusted strip inside the page:** browser prompts (permissions, the protected-media switch, credential confirmation, the phishing/malware interstitial) are drawn in **their own broker-owned OS window above the content layer**, so page content cannot paint over or cover them (UI-10, SH-D2, SH-D3). The earlier "line of death" region inside the page window is withdrawn: the property is *unoccludable by the page, broker-hit-tested*, and a separate owned window is how Izcal implements it on every OS (SH-11). *Shipped mechanism* (separate OS prompt windows); the property claim is tested, not assumed.
 
 ### 4.2 Address bar states
 
@@ -125,16 +125,24 @@ Maturity labels follow HGBA-3.1 P7: **shipped** (in a browser today), **shipped 
 | Connection: secure (TLS 1.3, hybrid PQ)         |
 |-------------------------------------------------|
 | Permissions        camera: ask  location: off   |
-| Blocked here       23 trackers, 4 ads   [list]  |
+| Blocked here       9 parties, 4 orgs    [list]  |
+| Phishing protect.  protected · list 12 min old   |
 | JavaScript         full          [change]       |
 | Fingerprinting     protected (noise on readback)|
 | Accessibility      2 repairs applied [inspect]  |  <- only if repairs are enabled (R6)
-| Resources          CPU 3%  net 1.2 MB  [meter]  |  <- Stage 2 (R13)
+| Resources          CPU 3%  net 1.2 MB  [why]    |  <- Stage 2 (R13): causal view, not a meter
 | Protected media    not in use                   |
+| Certificates       checked by your OS store     |
 |-------------------------------------------------|
 | [Clear data for this site]   [Site settings]    |
 +-------------------------------------------------+
 ```
+
+**Phishing protection row** (added 21 October 2026, phishing spec PH-D6): the row states whether this (site, container) is protected, the **bundle age** and the **last check**, with a report link; it has **no off switch** (unlike the Blocking row's per-site off). It shows the `no-bundle` state as "protection data unavailable", and after a per-navigation proceed, "You chose to visit a listed site — Leave". Paste-and-go runs the check before the request and never previews speculatively. The row reads the durable prompt-ledger summary linked by `check_id`, not the 24 h† check-log detail.
+
+**Password manager and form fill:** before filling, the manager consults the check record and **does not autofill on a `listed` verdict or a `no-bundle` state** without a fresh user action. Lookalike-domain detection remains the shell's warning class (Q-PH-16, open); the reputation list supplies the URL formatter, never a lookalike claim.
+
+**Certificates row:** carries the trust-store disclosure ("Certificates are checked by your operating system's store until Izcal's root programme ships") on every site while the OS store is in use; `about:build` records the mode (networking NW-D24).
 
 One panel holds every per-site control, replacing a scatter of icons. Brave and Firefox have no published comprehension data for their shield icons (gap), so the panel uses text rows rather than an icon state. *Shipped* in parts (Chrome site controls, Brave Shields); the combined panel is *new*.
 
@@ -155,7 +163,8 @@ One panel holds every per-site control, replacing a scatter of icons. Brave and 
 
 - **The safe action is the prominent button, and "proceed" sits behind "details".** This design raised heeding from 37% to 62% in Chrome's field study (CHI 2015), though it did not improve understanding.
 - Attention drops sharply from the second exposure to a repeated warning, so warning surfaces are few, and their appearance varies with the threat class (certificate, phishing, malware, lookalike) rather than reusing one template.
-- **Downloads** use two levels, "suspicious" and "dangerous", each with a different action set. *Shipped* (Chrome, which published no numbers).
+- **The phishing and malware interstitials are the phishing protection spec's surfaces** (PH-D6, PH-12; class `security-interstitial`), drawn by the prompt renderer in the broker-placed OS layer: broker-formatted target URL (scheme, host, port, path) and Izcal-authored list evidence, never page strings; the safe action is prominent and a proceed is per navigation, never persisted. The shell owns accessibility, timing, placement and the ledger row; the phishing spec owns the decision, lists, copy and report decision. There is **no second warning UI**.
+- **Downloads** use two levels, "suspicious" and "dangerous", each with a different action set. *Shipped* (Chrome, which published no numbers). The verdict feeding them is the phishing spec's URL check (initial URL and every redirect hop) plus SH-R7's type rules; the malware class is a documented gap until URLhaus/Smarthaus is licensed (PH-D7, Q-PH-2).
 
 ### 4.6 Onboarding (first run)
 
@@ -217,7 +226,7 @@ The name is **"Troubleshoot"**, and every option says exactly what it disables. 
 
 ### 4.10 Visual language
 
-- System UI fonts.
+- **System UI fonts:** the OS tier's UI face on macOS and Windows and Izcal's sans alias face on Linux, with the interim tier for scripts that face does not cover until their Izcal faces ship; native-surface strings follow the fonts and text spec's TX-16 rule (fonts and text spec 9.5, R23).
 - Two densities, normal and compact. Compact is kept because removing it was a measured-later mistake elsewhere.
 - Light and dark themes following the OS.
 - No brand colour on any security state.
@@ -239,8 +248,8 @@ Same form as the engine targets. "Lab study" means a moderated, task-based study
 | UI-6 | Nothing unrequested appears | Shell audit against the AG-0 UI-surface list: 0 AI surfaces, 0 promotions, 0 re-prompts after a "no", in fresh-install and upgrade scenarios | Ship blocker |
 | UI-7 | Shell is responsive | p95 input-to-paint ≤ **16 ms†** for typing in the address bar and switching tabs, on the reference devices; shell first paint counted inside RES-1 | Profile the shell like any page; no new shell features until fixed |
 | UI-8 | Containers are recognized | ≥ **90%†** of lab participants correctly name the current tab's container from the chip (name plus colour), including participants with colour-vision deficiency | Change chip design; never rely on colour alone |
-| UI-9 | Warnings are heeded | Lab adherence to certificate and phishing interstitials ≥ the adherence measured for current stable Chrome's interstitials in the same study | Redesign the interstitial |
-| UI-10 | Browser prompts cannot be spoofed | Property test: every browser-issued prompt is drawn in the shell's trusted region and overlaps the page edge; a red-team page suite cannot render a convincing look-alike within the trusted region | Ship blocker |
+| UI-9 | Warnings are heeded | Lab adherence to certificate interstitials ≥ the adherence measured for current stable Chrome's interstitials in the same study; for the phishing and malware interstitial the method and threshold are **PH-11** in the phishing protection spec, and the two studies do not double-count participants | Redesign the interstitial |
+| UI-10 | Browser prompts cannot be spoofed | Property test: every browser-issued prompt, **including the phishing/malware interstitial**, is a broker-placed layer above the content layer, unoccludable by the page and broker-hit-tested; a red-team page suite cannot cover, imitate or relabel one; a separate owned prompt window conforms where the OS requires one | Ship blocker |
 | UI-11 | Usability does not regress | System Usability Scale (SUS) on core tasks each stage. No published browser SUS benchmark exists, so the Stage 1 measurement is the baseline; later stages may not drop more than **5 points†** | Investigate the regressed tasks before shipping the stage |
 
 ---
@@ -249,19 +258,50 @@ Same form as the engine targets. "Lab study" means a moderated, task-based study
 
 | Stage | Surfaces |
 |---|---|
-| **1 (M4–M8)** | Main window, horizontal tabs, tab search and recently closed, address bar states (normal, Not secure, container chip, permission chip, protected media once M7 lands), site panel without the resource meter, permission prompts, interstitials, downloads with two-level warnings, onboarding, settings (all groups, with the AI group showing the off switch only), recovery window, find in page, zoom, fullscreen, import, basic password manager, keyboard model, screen-reader support |
-| **2** | Vertical tabs, split view, tab groups; resource meter; notification mute, snooze and digests; R2 repair inspector; JavaScript modes; container routes including the Tor label; save for offline and reader view; PDF editing |
+| **1 (M4–M8)** | Main window, horizontal tabs, tab search and recently closed, address bar states (normal, Not secure, container chip, permission chip, protected media once M7 lands), site panel without the resource meter (with the Phishing protection and Certificates rows), permission prompts **except notifications**, interstitials, downloads with two-level warnings, onboarding, settings (all groups, with the AI group showing the off switch only), recovery window (five actions, R3), find in page, zoom, fullscreen, import, basic password manager, keyboard model, screen-reader support |
+| **2** | Vertical tabs, split view, tab groups; resource meter; **notification permission, delivery, mute, snooze and digests** (R12); R2 repair inspector; JavaScript modes; container routes including the Tor label; save for offline and reader view; PDF editing |
 | **3** | Agent surfaces (only with the AI switch on); embedding-API settings |
 
 ---
 
 ## 7. Open questions
 
-- **Q-UI-1:** how do omnibox navigations split between typed, searched and suggested? No vendor publishes it, and it decides how much the address bar should favour search suggestions.
-- **Q-UI-2:** what is the right default for container names and count? No study of container comprehension exists; UI-8 and UI-3 are the first data.
-- **Q-UI-3:** how should the protected-media label appear when a page mixes protected and unprotected media?
-- **Q-UI-4:** what is the project name? The name appears in the UA token, the recovery window and onboarding (Section 13.2, owner decision).
+- **Q-UI-1:** how do omnibox navigations split between typed, searched and suggested? No vendor publishes it, and it decides how much the address bar should favour search suggestions. Stays open; measured in the address-bar study at SH-M4 (shell spec §9.5).
+- **Q-UI-2:** what is the right default for container names and count? **Resolved for Stage 1**: four named defaults — personal, work, banking, shopping — editable and skippable; UI-8 and UI-3 remain the first comprehension data.
+- **Q-UI-3:** how should the protected-media label appear when a page mixes protected and unprotected media? **Deferred to Stage 2** as Q-SH-12; Stage 1 shows the per-origin protected state and the switch.
+- **Q-UI-4:** what is the project name? The name appears in the UA token, the recovery window and onboarding (Section 13.2, owner decision). Unchanged.
+- **Q-UI-5 (Q-PH-16):** who owns the lookalike-domain warning class? The recommendation is the shell (UI-10/SH-11), with the phishing spec supplying the URL formatter and no reputation claim; left open so the shell's phase 8 settles it.
 
 ## 8. Non-goals
 
-The shell does not compete on tab-strip layout (UP5). It does not show trust badges, padlocks or brand colours on security states. It does not promote features, including AI. It does not re-prompt after a "no". It does not hide what a setting disables. It does not rely on colour alone for any state.
+The shell does not compete on tab-strip layout (UP5). It does not show trust badges, padlocks or brand colours on security states. It does not promote features, including AI. It does not re-prompt after a "no". It does not hide what a setting disables. It does not rely on colour alone for any state. It does not draw the phishing/malware interstitial itself: that surface belongs to the phishing protection spec (4.5).
+
+## 9. Batch-4 amendments (21 October 2026)
+
+The owner accepted the shell spec's decisions (SH-D1–SH-D30) and the phishing protection spec's decisions (PH-D1–PH-D15) on 21 October 2026. This design is owner-approved direction, not a spec, so the table records what changed here and what the shell spec now owns.
+
+**Adopted unchanged into the shell spec:** UI R1 → SH-D4/D6/D7; R2 → SH-D5; R4 → SH-D16/SH-8; R5 (setting exposed only if the model ships); R6 (repair overlay and toggle stay with the engine, AX spec); R7 → SH-D26; R8 verbatim in the site panel's route row; R9 with the caveat stated; R10 with exact OS wording (Q-SH-12 for the mixed case); R11 → SH-D12 plus the broker's hit-test and timing; R13 as Stage 2 visibility only; R14 → SH-D29; R15 → SH-D23/SH-6; R16 → SH-D19; R17 as surfaces in shell 6.8/6.10/6.12; R18 → SH-D27 (PDF editing is PD's); R19 → SH-D21; R20 → SH-D24; R21 (the site panel explains engine behaviour; settings expose registry rows only).
+
+**Amended here, with the shell spec's text governing:**
+- **Prompts are separate owned OS windows** (SH-D2, SH-D3, 6.5). The trusted-region-inside-the-page model is withdrawn; UI-10 is the own-layer/no-overlap/broker-hit-test property (3, 4.1, 4.5, 5).
+- **UI R3 recovery** becomes five actions (SH-D22): add "start with themes and extensions off" and "quit" (2, 6).
+- **UI R12 notifications** are not offered in Stage 1 at all (SH-D17); Stage 2 adds delivery and controls (2, 6).
+- **Site panel:** the padlock and shield language is replaced by the neutral site-controls button, and the panel gains the Phishing protection and Certificates rows (4.3).
+- **Staging** follows shell 9.1: tab groups, palette, notifications and the resource meter are Stage 2; Stage 1 keeps the surfaces listed in 6.
+- **UI-9** delegates the phishing study to PH-11. The §5 targets map to the shell's SH targets in order: UI-1 → SH-3; UI-2 → SH-4; UI-3 → SH-9/SH-13; UI-4 → SH-6; UI-5 → SH-7; UI-6 → SH-8; UI-7 → SH-2; UI-8 → SH-9; UI-9 → SH-10; UI-10 → SH-11; UI-11 → SH-12. Where thresholds differ, the stricter spec target governs (for example SH-9's 95%† over UI-8's 90%†).
+
+**Open after batch 4:** Q-UI-1 (omnibox query mix, measured at SH-M4); Q-UI-3 (mixed protected media, Q-SH-12); Q-UI-4 (project name, owner); Q-UI-5/Q-PH-16 (lookalike class ownership); AX-D3/D4/D9/D11 placement and AT approval (pending, shell spec 9.5).
+
+## 10. Phase 3 amendments (21 October 2026)
+
+The owner accepted the component specs' Section 9.4/9.5 recommendations on 20–21 October 2026. These rows were queued for this design. This section records what changed here; each component spec's text governs the engine behaviour.
+
+- **Resources (A-UI-1; R13).** The per-site resource meter becomes the **causal view** of the resource-footprint spec's 6.14: it names the top cause — heavy third-party script, a background timer loop, a runaway animation, a spinning worker, a retainer — from the same attribution data, and shows numbers rather than asking for them; the whole-browser view uses the same causes. The site panel gains the two outcome controls of FP-D15: **"keep this site running in the background"** (a declared reason) and **"limit this site on battery"** (hidden CPU at the floor, visible animation capped at 30 Hz† with user input exempt), the battery control shipping only after FP-30 shows the attribution it acts on is right. There are no numeric MB or CPU budgets for users to set.
+- **System UI fonts (A-UI-2; 4.10).** As 4.10 now states: the OS tier's UI face on macOS and Windows, Izcal's sans alias face on Linux, the interim tier for scripts that face does not cover, and TX-16's rule for native-surface strings (fonts and text spec 9.5, R23).
+- **Media (A-UI-3; R17, MD-D32).** The shell owns the native controls' shell parts and the fullscreen exit affordance with its security message; Picture-in-Picture and Document PiP are shell-owned windows with their own exit affordances; protected playback carries MD-D32's affordance; per-site autoplay and animation settings sit in the site panel; caption preferences (size, colour, opacity, edge) are in Settings > Media and DRM, with the OS style as the default for properties the page has not styled; a media-process crash is labelled a media crash, not a page crash; per-site media energy appears in the resource view.
+- **Site panel and prompts (A-UI-4; GR-D11, GR-D28, GR-S11).** Suspended GPU contexts and unavailable WebGL or WebGPU get named states with a reason, never a blank canvas, and the WebGPU permission is a prompt. The prompt surface is a separate broker-owned OS layer (already 0.4, SH-D2/SH-D3). Reduce-motion, reduce-transparency and flash protection are shell settings that also enable the compositor's interventions.
+- **Settings (A-UI-5; LY 9.5).** Settings > Appearance gains an **overlay-or-classic scrollbar** preference defaulting to the OS accessibility setting; **page-zoom levels are recorded environment inputs**, so a replay reproduces them; form-control pickers (select, date, colour) are positioned from `hg-layout-query` rectangles, never guessed.
+- **Site panel (A-UI-6; CB-D13, CB-D19).** "Blocked here" counts **parties and organisations**, never requests. The controls are graduated, narrowest first: allow one party here; allow sign-in with a provider for this tab; hiding off here; protection off here. Turning protection off or reporting a break opens the report flow (a narrow fix and a consented report), and when a fix ships the panel offers to restore protection. User-added lists carry the **"recognizability"** label, because a unique list set distinguishes the user. The **Security interstitial** is the security list's warning surface, distinct from the phishing and malware interstitial (PH-D6, PH-12).
+- **SVG, motion and editing surfaces (A-UI-8; SVG R14, AN-D10, editing 6.6–6.12).** **SVG:** the SV-D9 scriptless-document bar and its "run with script" action; play controls for SVG images and inline SMIL paused under reduce-motion, with the per-site animation setting to resume. **Motion:** Settings > Accessibility gains the motion level per site (R, S, X), the command and shortcut for level X, the offer to throttle rAF, and flash protection; the opt-in uniformity profile shows the warning that reduced motion stops working and that levels S and X are detectable. **Editing:** the Paste popup (a separate OS window at the pointer or caret, enabled after 1 s†, no default action); the autofill preview (a separate non-interactive OS window over the field); the UI-10 amendment allowing such in-page-area OS windows when page content cannot draw over them, tested with the red-team suite; the clipboard panel (memory only, nothing in private windows) and its notices; the command-text warning; find options (case, diacritics, whole word, regex); the spelling menu with "Add to dictionary"; the autofill chooser listing fields; a setting to stop caret blinking.
+
+**No target changed.** Section 5's targets stand, and UI-1 to UI-11 map to the shell spec's SH targets as Section 9 records. A-UI-7 was applied in 0.4.

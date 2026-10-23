@@ -275,7 +275,7 @@ The registry records "G73 onward" as the next free number (reconciliation 2, Q19
 
 ### C32. One commit link in the research notes (M-1 part 3)
 
-LG 2.5 cites a commit page of a filter-list project ("[urlhaus-filter commit message](https://git.nixnet.services/curben/urlhaus-filter/commit/ebff98279625897b104f23d29251582160dbe6c7)") for the claim that a downstream project labels Tranco MIT. M-1 part 3 lists commits among sources that are never evidence. The claim is graded Low and no decision depends on it. No other link in the spec or notes points to engine or blocker source: GitHub links are READMEs, wiki prose or release notes, and `firefox-source-docs.mozilla.org` pages are published documentation prose. **Fix:** remove the commit link and the claim, or cite a prose page.
+LG 2.5 cites a commit page of a filter-list project (a commit message in the urlhaus-filter repository; *link removed in the 2.3.3 pass*) for the claim that a downstream project labels Tranco MIT. M-1 part 3 lists commits among sources that are never evidence. The claim is graded Low and no decision depends on it. No other link in the spec or notes points to engine or blocker source: GitHub links are READMEs, wiki prose or release notes, and `firefox-source-docs.mozilla.org` pages are published documentation prose. **Fix:** remove the commit link and the claim, or cite a prose page.
 
 ### C33. MD-D14 is described as unconditional
 

@@ -165,7 +165,7 @@ Borderline links, with judgement:
 
 | Link (note) | What it is | Judgement |
 |---|---|---|
-| `git.nixnet.services/curben/urlhaus-filter/commit/ebff982...` (LG 2.5) | A **commit page** in a filter-list (data) repository, cited for its commit message labelling Tranco "MIT" | Not engine or blocker source, but a commit page shows a diff, which M-1 part 3 names. Replace or drop (FC-R11); the claim is already graded Low and is not used by the report |
+| urlhaus-filter commit page (LG 2.5; address removed in the 2.3.3 pass) | A **commit page** in a filter-list (data) repository, cited for its commit message labelling Tranco "MIT" | Not engine or blocker source, but a commit page shows a diff, which M-1 part 3 names. Replace or drop (FC-R11); the claim is already graded Low and is not used by the report |
 | `bugzilla.mozilla.org/show_bug.cgi?id=1210192` (HP 3.7) | Bug "Update Disconnect GPL notice in about:license"; its one attachment is a MozReview code-review request (licence text, not engine code) | Issue discussion is allowed; acceptable, but the cited fact (a GPL-notice discussion) does not need the bug. Keep with care, or cite the Mozilla blog only (FC-R11) |
 | `github.com/gorhill/uBlock/releases/tag/1.46.0` and `/1.54.0` (ME 4.3, LG 6.2) | GitHub release pages: release-note prose, plus source-archive download links | Allowed as release notes; nothing was taken from the archives |
 | `github.com/AdguardTeam/DiffBuilder` (LG 6.3) | Front page of a **code** repository (a tool), read for its README | Allowed by the README-prose rule, but it is a blocker vendor's tool repository; prefer the `ameshkov/diffupdates` spec alone for the 7-day retention, or mark the README as the only part read (it is) |

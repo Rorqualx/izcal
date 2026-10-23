@@ -1,6 +1,6 @@
 # Contributing to Izcal
 
-This covers the project, [Rorqualx/izcal](https://github.com/Rorqualx/izcal) (branch `main`). The 0.2 fork is retired (C-10): the engine is Izcal's own, and the fork-specific text below is kept as history. The git hooks and CI enforce every rule below that a machine can check. The hooks catch problems early, and CI catches anything committed with `--no-verify`.
+This covers the project repository, [Rorqualx/izcal](https://github.com/Rorqualx/izcal) (branch `main`). The git hooks and CI enforce every rule below that a machine can check. The hooks catch problems early, and CI catches anything committed with `--no-verify`. *(Historical: until 21 October 2026 this file also covered the `rusty_v8` fork at `m0/rusty_v8`; the fork material was removed from the tree that day and survives in git history.)*
 
 ## Setup
 
@@ -28,14 +28,7 @@ Use one worktree per branch, and one per agent session when several Claude Code 
   git worktree add ../izcal-wt/<topic> -b <type>/<topic> origin/main
   ```
 
-  A new worktree has no fork checkout, and none is needed (C-10); the 0.2 submodule instructions apply only to historical work on the fork.
-- **Fork (retired, C-10):** historically the worktree came from the fork itself, so it shared the fork's hooks setting (the commands are in git history):
-
-  ```
-  git -C m0/<fork> worktree add ../../fork-wt/<topic> -b <type>/<topic> izcal/hgba
-  ```
-
-  Each fork worktree builds its own engine: about 2 GB of output and 17–30 minutes per configuration. Disk is not a constraint, but time is, so set `SCCACHE=sccache`. When the work does not change the engine or the fork's C++, point `ENGINE_ARCHIVE` at an existing archive instead of rebuilding.
+  A new worktree needs only `tools/setup-hooks.sh`. *(Historical: fork worktrees and submodule checkouts applied until the fork material was removed on 21 October 2026.)*
 - **Cleanup**, after the branch is merged. Check that the worktree has nothing uncommitted (`git -C <worktree> status`) and that its branch is merged, then:
 
   ```
@@ -48,8 +41,8 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 
 ## Commits
 
-- **One logical change per commit**, building and passing tests on its own. The 0.2 rule that fork commits stay separable for an S-4e rebase retires with the fork (C-10).
-- **Commit messages:** a subject of the form `<area>: <summary>`, with a lowercase area, at most 72 characters, no trailing period, and a blank line before the body. Examples: `ci: cache submodule state`, `spec: restate S-4e as an update policy`. The body says why, not what. The `commit-msg` hook enforces the subject rules. `Merge`, `Revert`, `fixup!` and `squash!` subjects are exempt.
+- **One logical change per commit**, building and passing tests on its own. *(Historical: the fork's commits also had to stay separable — each S-4e rebase replayed them onto a new upstream, and they were offered upstream individually — until the fork material was removed on 21 October 2026.)*
+- **Commit messages:** a subject of the form `<area>: <summary>`, with a lowercase area, at most 72 characters, no trailing period, and a blank line before the body. Examples: `ci: cache rust build output`, `spec: restate S-4e as an update policy`. The body says why, not what. The `commit-msg` hook enforces the subject rules. `Merge`, `Revert`, `fixup!` and `squash!` subjects are exempt.
 - **Trailers:** commits written with an AI agent end with its `Co-Authored-By` line (and `Claude-Session` where the tool provides one).
 
 ## Checks
@@ -62,7 +55,7 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 | `size` | A file is over 5 MB |
 | `binary` | A build output or archive is added (`.a`, `.lib`, `.o`, `.dll`, `.so`, `.dylib`, `.exe`, `.pdb`, `.gz`, `.xz`, `.zst`, `.tar`, `.zip`, `.7z`) |
 | `secrets` | `gitleaks` finds a credential. Without gitleaks, a regex covers GitHub, AWS, Slack and API keys and private-key blocks |
-| `rustfmt` | A Rust file is not formatted under its crate's edition and `rustfmt.toml` (the fork's files use the fork's pinned toolchain) |
+| `rustfmt` | A Rust file is not formatted under its crate's edition and `rustfmt.toml` |
 | `shellcheck` | A shell script has a warning or error. Scripts under `logs*/` folders are records of what ran in M0 and are not checked |
 | `actionlint` | A GitHub workflow has an error |
 | `mdlinks` | A relative Markdown link points at a file that does not exist |
@@ -76,34 +69,25 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 ## Code review
 
 - **AI review, on every commit that changes code.** The pre-commit hook sends the staged diff of code files (Rust, C++, Python, shell, TOML, YAML, gn; not Markdown or logs) to Claude Code (`IZCAL_REVIEW_MODEL`, default `sonnet`), with read-only access to the repository. It reports correctness, memory-safety, GC, security and build defects. Its security checklist is specific to Izcal: unvalidated data crossing a process or IPC boundary, capabilities passed further than needed, ambient authority in a sandboxed process, untrusted input parsed in a privileged process, cross-site data reaching one process, secrets logged or exported, missing consent or origin checks on inspection and agent surfaces, weak or hand-rolled cryptography, unsafe Rust whose safety argument does not hold, and injection, and checks the rules in this file and in the specs. A high-severity finding is printed and blocks the commit by default, but the review is **advisory**: it is not an approval or a security control, and a maintainer may override it with a recorded reason. Medium findings are printed as warnings. If the reviewer cannot run (no CLI, no network, timeout), the commit goes through with a warning. A typical review takes 5–30 seconds and costs about $0.01–0.10.
+- **A model change is an audit event.** A change to a shipped `.hgmodel` weight set or its manifest carries the new data-ledger digest and the model card in the review (ML service spec 0.3, ML-D3 and ML-20), and the build rejects a weight file that has no ledger row. The weights must be MIT and their training data D0 commissioned or D1 MIT; D2 needs the owner's Q-ML-9 exception, and a third-party MIT weight needs Q-ML-11 (licence audit, class 6).
 - **The one carve-out for hand-rolled cryptography.** Izcal writes its own cryptography on purpose: `hg-crypto` (networking spec NW-D23) and, since batch 3, `hg-webcrypto` and the WebCrypto additions to `hg-crypto` (WebCrypto spec WC-D1). The checklist's "weak or hand-rolled cryptography" item is **not** satisfied by pointing at that crate: the carve-out makes the code expected, not exempt. Hand-written crypto in `hg-crypto` or `hg-webcrypto` is in the yearly external audit (NW-52) and in the same gates as any other code, so the finding to raise there is a missing test vector, a non-constant-time comparison, a key path `expose_bytes` does not cover, or a primitive the audit has not approved — never the fact that Izcal wrote it. Hand-written crypto anywhere else is still a high-severity finding.
 - **Pull requests** need green CI. Self-merge is allowed, because the project has one maintainer, and every self-approval is recorded in the pull request and counted in the quarterly security report (SEC-27). Once there are two, one approval from someone other than the author is required, and the AI review does not count as that approval.
 
 ## Merging
 
 - **Project (`main`): squash merge.** The pull request title becomes the commit subject, so it follows the commit-message format.
-- **Fork (`hgba`, retired — C-10):** the 0.2 rebase-merge rule, kept as history.
+*(Historical: the fork's rebase-merge, submodule-pointer, CI-matrix and release-tag rules applied until the fork material was removed on 21 October 2026.)*
 - Delete the branch after merging. GitHub does this automatically.
-- **Submodule pointer bumps (retired, C-10):** the 0.2 rule. Engine images replace the fork submodule, and their hashes are verified at build time (SEC-13); there are no fork hash pins.
 
 ## Pushing
 
 - **Feature branches:** push freely. `git push --force-with-lease` is fine on your own branch, never on someone else's.
 - **Protected branches:** never pushed directly. The `IZCAL_ALLOW_PROTECTED=1` override exists only for repository administration, and GitHub's protection refuses the push anyway.
-- **CI cost (0.2 fork, retired — C-10):** every push to `hgba` ran the full fork build matrix; the rule retires with the fork.
 - **Release tags** `v*` are protected by a server-side ruleset that requires signed tags and records any bypass; the client-side `IZCAL_RELEASE=1` rule retires (SEC-27). The 0.2 fork tag rule (`v<upstream>-izcal.<n>`) retires with the fork (C-10).
 
-## The S-4e upstream rebase (retired, C-10)
+## The S-4e upstream rebase (historical)
 
-*This section is history. The engine is Izcal's own, so there is no upstream rebase and no force-push rule; engine image hashes are verified at build time instead (SEC-13).* The 0.2 text: every Chrome stable release, the fork owner rebased the fork's commits onto the new upstream tag (HGBA-2.1 S-4e). This was the one time `hgba` was rewritten:
-
-1. On a `rebase/v<new>` branch, rebase the fork's commits onto the upstream tag. Fix conflicts commit by commit.
-2. Open a pull request into `hgba` so CI runs the full fork matrix on the rebased branch, and complete S-4e steps 2–3.
-3. Tag the old tip so its commits stay reachable, because the project's submodule history pins them: `git tag hgba-pre-v<old> izcal/hgba && git push izcal hgba-pre-v<old>`.
-4. Temporarily allow force pushes on `hgba` (repository settings, or `gh api`), then push: `IZCAL_S4E_REBASE=1 git push --force-with-lease izcal rebase/v<new>:hgba`. `pre-push` refuses the push unless the old tip is tagged `hgba-pre-*`. Restore the protection immediately afterwards.
-5. Bump the project's submodule pointer.
-
-If the rebase cannot pass inside the security window, follow S-4e's backport rule instead: cherry-pick the upstream security commits onto the pinned engine through an ordinary pull request.
+*(The fork-only S-4e rebase procedure applied until the fork material was removed on 21 October 2026; it survives in git history.)*
 
 ## Specs
 
@@ -136,7 +120,7 @@ The 0.2 `v8-audit` check retired with the fork (C-10; ledger A-CON-4); no check 
 ## License
 
 - Contributions are licensed under MIT, the project's license ([LICENSE](LICENSE)); no separate agreement is needed.
-- **MIT only.** Every dependency and data set that ships must be available under MIT, alone or as one choice of a dual licence ("MIT OR Apache-2.0" is fine). If it is not, Izcal builds its own; we do not ask authors to relicense. Exceptions (HGBA-2 M-1 part 1): standards data from the standards bodies themselves (Unicode, WHATWG, IANA, tz, OpenType registries, the Public Suffix List, the CT log list); test-only crates and suites that never ship (dev-dependencies, WPT, test262, oracles), whatever their licence; OS interfaces, drivers and the toolchain.
+- **MIT only.** Every dependency and data set that ships must be available under MIT, alone or as one choice of a dual licence ("MIT OR Apache-2.0" is fine). If it is not, Izcal builds its own; we do not ask authors to relicense. Exceptions (HGBA-2 M-1 part 1): standards data from the standards bodies themselves (Unicode, WHATWG, IANA, tz, OpenType registries, the Public Suffix List, the CT log list); test-only crates and suites that never ship (dev-dependencies, WPT, test262, oracles), whatever their licence; OS interfaces, drivers and the toolchain. The `security` check runs `cargo deny check licenses` with `tools/deny.toml` on every changed `Cargo.lock`.
 - Release binaries ship the license notices of every dependency and data set.
 
 ## Large files and artifacts

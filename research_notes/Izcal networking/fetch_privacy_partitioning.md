@@ -3,7 +3,7 @@
 Compiled 2026-10-19. Primary sources were preferred (specifications, Chromium and Mozilla design documents and intent threads, WebKit and Google blogs, IETF Datatracker).
 Confidence: **High** = primary source read and the claim checked in its text; **Medium** = primary abstract or snippet, a search-engine summary of a primary page, a vendor claim without data, or a well-known fact recalled but not re-read this session; **Low** = secondary source only, or unverified.
 
-**Method note.** This strand follows phase 2 of `.claude/skills/first-principles-spec/SKILL.md`. The session's shared web-search budget ran out after about 20 searches. After that, only known primary pages were fetched directly. Items not re-checked this session are graded Medium or Low and marked "(not re-read)". The Fetch Standard was read in full text at its 2026-10-19 revision. Browser source code was read only for stated rationale (M-1).
+**Method note.** This strand follows phase 2 of `.claude/skills/first-principles-spec/SKILL.md`. The session's shared web-search budget ran out after about 20 searches. After that, only known primary pages were fetched directly. Items not re-checked this session are graded Medium or Low and marked "(not re-read)". The Fetch Standard was read in full text at its 2026-10-19 revision. *(2.3.3: no browser's or other third-party project's source code is evidence; the 0.3 reading of a Chromium header for row 1.9 was withdrawn in 0.3.1.)*
 
 ## 1. How the three engines partition network state
 
