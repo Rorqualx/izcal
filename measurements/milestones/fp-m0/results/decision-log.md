@@ -139,3 +139,14 @@ Safari's single-instance model: the measurement ran inside the live session with
 ## The Q-17 close (22 October 2026)
 
 The footprint spec's revision 0.3.2 (PR #11's branch) closes open question 17 on its measured parts, item by item — the three-OS counter mapping, the per-element variant, Chromium's PSI reaction, `MADV_FREE_REUSABLE` accounting, macOS cache sizing and the local soft limit — each citing the rows above. The parts still open stay in the spec's Section 11.1 with their FP-M0 gates: the per-attribute-set variant, Firefox's PSI reaction, `MADV_FREE_REUSE`, cache sizing on Linux and Windows, and the soft limit on the other lab devices. No decision, target or threshold changed by the close.
+
+## Spawn-latency probe (23 October 2026, macOS 26 + rig253)
+
+FP-M0's spawn-latency part (the spare-process gate: keep a spare only while spawn-to-ready exceeds 10 ms†). The full sandbox path is gated on the sandbox itself, so this run measures the un-sandboxed floor — spawn call to the child's "ready" byte on an inherited pipe, 500 runs each. The sandbox can only add cost.
+
+| OS | min | p50 | p90 | p99 | max |
+|---|---|---|---|---|---|
+| macOS 26 (Apple silicon) | 0.548 ms | 0.568 ms | 0.680 ms | **1.696 ms** | 73.1 ms |
+| Windows (rig253) | 2.216 ms | 2.931 ms | 3.463 ms | **5.441 ms** | 755.3 ms |
+
+**Reading:** both un-sandboxed p99s sit below the 10 ms† gate, so the gate is reachable pre-sandbox — the sandbox's own cost (measured at FP-M0 half B) is the deciding term. The single-run maxima are cold-start outliers, not distributions. Probes: `harness/spawn-latency-probe.c` + `spawn-latency-child.c` (macOS, clang) and `spawn-latency-probe-win.c` + `spawn-latency-child-win.c` (Windows, MSVC 14.44 via vcvars64).
