@@ -334,9 +334,12 @@ $(printf '%s\n' "$dout" | grep -E '^(error|warning)\[|ID:|Crate:|Title:|^ +[a-z_
           fi
         fi
         # The V8-era spikes are history (HGBA-2 2.3.0) and keep their
-        # dependencies until they are archived. Test-only crates may carry
-        # any licence, so dev-dependencies are left out of this run only.
-        case "$dir" in m0|m0/*|cppgc-spike|cppgc-spike/*|v8-cppgc-ext|v8-cppgc-ext/*) continue ;; esac
+        # dependencies until they are archived. Research measurement
+        # crates are probes, never shipped, so their dependencies are
+        # outside the MIT-only rule (HGBA-2 2.3.2 covers shipped
+        # dependencies). Test-only crates may carry any licence, so
+        # dev-dependencies are left out of this run only.
+        case "$dir" in m0|m0/*|cppgc-spike|cppgc-spike/*|v8-cppgc-ext|v8-cppgc-ext/*|research_notes|research_notes/*) continue ;; esac
         if ! lout=$(cd "$dir" && cargo-deny --log-level error --exclude-dev --config "$CHECKS_DIR/deny.toml" check licenses 2>&1); then
           sec_bad="$sec_bad
 == cargo-deny licenses (MIT only): $lock
