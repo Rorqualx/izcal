@@ -26,10 +26,10 @@ pub fn apply() -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        // The Windows tier restricts the process from birth: the
-        // supervisor starts it under the restricted untrusted token,
-        // so there is no post-start lockdown to apply here.
-        return Ok(());
+        // The supervisor starts the process in an AppContainer under
+        // the lockdown token and its job; the process's own step is to
+        // lower itself from Low to Untrusted integrity.
+        return windows::apply_empty_process_profile();
     }
     #[allow(unreachable_code)]
     Err("hg-sandbox: no backend for this OS".to_string())
@@ -50,7 +50,7 @@ pub fn probe_line() -> String {
     }
     #[cfg(windows)]
     {
-        return windows::probe_line();
+        return windows::probe_line(None);
     }
     #[allow(unreachable_code)]
     "no-probe".to_string()
