@@ -223,6 +223,7 @@ fn main() {
         Ok(t) => t,
         Err(e) => {
             eprintln!("fp-m0-probe: token: {e}");
+            remove_canary();
             exit(1);
         }
     };
@@ -230,6 +231,7 @@ fn main() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("fp-m0-probe: appcontainer: {e}");
+            remove_canary();
             exit(1);
         }
     };
@@ -237,6 +239,7 @@ fn main() {
         Ok(j) => j,
         Err(e) => {
             eprintln!("fp-m0-probe: job: {e}");
+            remove_canary();
             exit(1);
         }
     };
@@ -401,6 +404,7 @@ fn main() {
         eprintln!("fp-m0-probe: reader thread: {e}");
         // SAFETY: valid process handle; the child is ours to end.
         unsafe { TerminateProcess(pi.hProcess, 1) };
+        remove_canary();
         exit(1);
     }
 
