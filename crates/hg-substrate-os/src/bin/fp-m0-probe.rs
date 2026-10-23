@@ -347,7 +347,19 @@ fn main() {
             );
             exit(1);
         }
-        Err(_) => {
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            // The reader thread ended without sending: a supervisor
+            // fault, not the child's.
+            println!(
+                "fp-m0-probe: FAILED supervisor reader ended without a result; child pid={}; {}; terminating it",
+                pi.dwProcessId,
+                child_state(pi.hProcess)
+            );
+            // SAFETY: valid process handle; the child is ours to end.
+            unsafe { TerminateProcess(pi.hProcess, 1) };
+            exit(1);
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
             println!(
                 "fp-m0-probe: FAILED child pid={} no ready line within {} s; {}; terminating it",
                 pi.dwProcessId,
