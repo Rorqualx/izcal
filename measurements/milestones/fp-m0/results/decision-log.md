@@ -158,6 +158,19 @@ The first Izcal code milestone (crates `hg-substrate-os`, tier O): an empty proc
 | Item | Value |
 |---|---|
 | **The floor** (release build, 2 threads + IPC endpoint, sandbox applied) | **4,096 KB phys_footprint** (stable across samples) |
-| Spawn-to-ready on the full sandbox path (supervisor → ready byte) | ~80 ms first run (vs ~0.6 ms bare — sandbox apply dominates; the distribution run comes with the spare-process measurement) |
+| Spawn-to-ready on the full sandbox path (supervisor → ready byte) | **Distribution, 100 runs: min 4.28 / p50 4.42 / p90 4.84 / p99 11.20 / max 28.07 ms** (the ~80 ms first-run singles were cold-start noise; the bare floor's p99 was 1.70 ms, so the sandbox apply adds ~9.5 ms at p99) |
 
 **FP-2's ship blocker, item by item (never a lump):** the measured floor **4,096 KB** on macOS 26, plus the line items as they land — the broker's process-kind machinery, IPC tables, per-partition state and the engine's heaps each add their measured rows here at their milestones; FP-2's blocker is the running sum. Linux and Windows legs of the same probe are queued (macOS first, per the README). Probe: `crates/hg-substrate-os/src/bin/fp-m0-probe.rs` (supervisor) and `fp-m0-empty.rs` (the sandboxed process); sandbox: `src/sandbox/macos.rs`.
+
+**The spare-process gate, measured (23 October 2026):** the sandboxed spawn-to-ready distribution's p99 (11.20 ms) exceeds the 10 ms† gate on macOS — the sandbox apply pushes the bare p99 (1.70 ms) over it — so the gate's own rule says **keep a spare** on this OS. The Linux sandboxed single (0.805 ms) and the Windows leg will add their rows; the rule stays "keep a spare only while spawn-to-ready exceeds 10 ms†" and now has its first data.
+
+## Half B, Linux leg (23 October 2026, rig hueyj)
+
+The same empty-process probe, Linux backend: a seccomp-bpf allowlist with an architecture check (x86_64/aarch64), written from the kernel's seccomp documentation — the strictest tier of security 6.7 (compute plus IPC; no filesystem, no network). The deny action is **EPERM, not KILL**, so a denial is observable: the tier probe performs the two must-deny operations and reports their errnos (both EPERM on the run — the filter working as written). The black-box method shaped the allowlist: the first run's strace exposed `sendto` (std's unix-socket writes carry MSG_NOSIGNAL) and `set_robust_list` (glibc thread teardown) as the two syscalls the empty process needs beyond the first-principles set; each addition is labelled with its reason in the table.
+
+| Item | Value |
+|---|---|
+| **The floor** (release build, 2 threads + IPC endpoint, filter applied) | **2,148 KB VmRSS, 0 KB VmSwap** (stable across samples) |
+| Spawn-to-ready on the full sandbox path | 0.805 ms |
+
+**FP-2's running blocker sum (item by item, never a lump):** macOS 26 — 4,096–4,144 KB phys_footprint; Linux (hueyj) — 2,148 KB VmRSS + 0 swap. The Windows row lands with its leg. Probe: the same `fp-m0-probe`/`fp-m0-empty` pair; sandbox: `src/sandbox/linux.rs`.

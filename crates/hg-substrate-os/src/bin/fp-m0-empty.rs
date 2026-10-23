@@ -15,42 +15,30 @@
     reason = "G5: src/bin/fp-m0-empty.rs (the pre-opened fd 3)"
 )]
 
+#[cfg(unix)]
 use std::io::Write;
+#[cfg(unix)]
 use std::os::fd::FromRawFd;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use hg_substrate_os::sandbox::macos::{apply_empty_process_profile, probe_tier};
+#[cfg(unix)]
+use hg_substrate_os::sandbox::apply;
+use hg_substrate_os::sandbox::probe_line;
 use hg_substrate_os::thread;
 
+#[cfg(unix)]
 fn main() {
     // 1. Lock down first: nothing opens after this point.
-    if let Err(e) = apply_empty_process_profile() {
+    if let Err(e) = apply() {
         eprintln!("fp-m0-empty: sandbox failed to apply: {e}");
         std::process::exit(1);
     }
 
     // 2. The tier probe: record what was achieved, never silent.
-    let tier = probe_tier();
-
-    // 2a. The behavioral sysctl probe: sandbox_check's "sysctl-read"
-    // verdict disagrees with the profile's (allow sysctl-read) rule
-    // (first run: D while the process plainly reads sysctls), so the
-    // tier line reports the real read, which is what the rule governs.
-    let mut memsize: u64 = 0;
-    let mut len: libc::size_t = std::mem::size_of::<u64>();
-    // SAFETY: the name is a static C string; `memsize` and `len` are
-    // valid out-pointers for the call's duration.
-    let sysctl_ok = unsafe {
-        libc::sysctlbyname(
-            c"hw.memsize".as_ptr(),
-            (&mut memsize as *mut u64).cast::<libc::c_void>(),
-            &mut len,
-            std::ptr::null_mut(),
-            0,
-        ) == 0
-    };
+    let probe = probe_line();
 
     // 3. Two threads, through the sanctioned interface.
     let done = Arc::new(AtomicBool::new(false));
@@ -72,21 +60,63 @@ fn main() {
     // supervisor guarantees it is open and valid for this process.
     let mut ipc = unsafe { UnixStream::from_raw_fd(3) };
     let line = format!(
-        "sandbox=applied file-read={} mach-lookup={} network-outbound={} sysctl-check={} sysctl-real={} threads=2 pid={}\n",
-        tier[0].as_char(),
-        tier[1].as_char(),
-        tier[2].as_char(),
-        tier[3].as_char(),
-        if sysctl_ok {
-            format!("ok:{memsize}")
-        } else {
-            "failed".to_string()
-        },
+        "sandbox=applied {probe} threads=2 pid={}\n",
         std::process::id(),
     );
-    let _ = ipc.write_all(line.as_bytes());
+    if let Err(e) = ipc.write_all(line.as_bytes()) {
+        eprintln!("fp-m0-empty: ready write failed: {e}");
+    }
 
     // 5. Wait forever: the supervisor samples us and then kills us.
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+/// The Windows main: the child starts restricted from birth (the
+/// supervisor created it under the untrusted token), probes its tier,
+/// spawns the two threads, reports over the inherited pipe handle
+/// passed as argv[1], and waits.
+#[cfg(windows)]
+fn main() {
+    use std::io::Write;
+    use std::os::windows::io::FromRawHandle;
+    use std::os::windows::io::RawHandle;
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("fp-m0-empty: missing pipe handle argument");
+        std::process::exit(1);
+    }
+    let handle: RawHandle = args[1].parse::<usize>().unwrap_or(0) as RawHandle;
+    // SAFETY: the handle is the supervisor's inherited pipe end; the
+    // supervisor guarantees it is valid for this process.
+    let mut ipc = unsafe { std::fs::File::from_raw_handle(handle) };
+
+    let probe = probe_line();
+
+    let done = Arc::new(AtomicBool::new(false));
+    let mut handles = Vec::new();
+    for name in ["fp-m0-thread-a", "fp-m0-thread-b"] {
+        let done = Arc::clone(&done);
+        handles.push(
+            thread::spawn(name, move || {
+                while !done.load(Ordering::Relaxed) {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            })
+            .expect("thread spawn"),
+        );
+    }
+
+    let line = format!(
+        "sandbox=applied {probe} threads=2 pid={}\n",
+        std::process::id(),
+    );
+    if let Err(e) = ipc.write_all(line.as_bytes()) {
+        eprintln!("fp-m0-empty: ready write failed: {e}");
+    }
+
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));
     }

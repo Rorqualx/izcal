@@ -151,7 +151,7 @@ fn check(operation: &'static CStr, kind: c_int, arg: Option<&CStr>) -> Verdict {
 /// tier, in wire order. A result of `Denied` on the first three and
 /// `Allowed` on sysctl-read is the profile working as written; anything
 /// else is a reduced tier, recorded, never silent (security 6.7).
-pub fn probe_tier() -> [Verdict; 4] {
+fn probe_tier() -> [Verdict; 4] {
     let hosts = CString::new("/etc/hosts").expect("no NUL");
     let windowserver = CString::new("com.apple.WindowServer").expect("no NUL");
     [
@@ -160,4 +160,39 @@ pub fn probe_tier() -> [Verdict; 4] {
         check(ops::NETWORK_OUTBOUND, ops::FILTER_NONE, None),
         check(ops::SYSCTL_READ, ops::FILTER_NONE, None),
     ]
+}
+
+/// The ready-line segment for macOS: the sandbox_check verdicts plus
+/// the behavioral sysctl probe. `sandbox_check`'s "sysctl-read" name
+/// returns a false deny while the profile's `(allow sysctl-read)` rule
+/// demonstrably works, so the line reports the real read — what the
+/// rule governs — alongside the check's verdict (recorded in the FP-M0
+/// decision log, not treated as a tier reduction).
+pub fn probe_line() -> String {
+    let tier = probe_tier();
+    let mut memsize: u64 = 0;
+    let mut len: libc::size_t = std::mem::size_of::<u64>();
+    // SAFETY: the name is a static C string; `memsize` and `len` are
+    // valid out-pointers for the call's duration.
+    let sysctl_ok = unsafe {
+        libc::sysctlbyname(
+            c"hw.memsize".as_ptr(),
+            (&mut memsize as *mut u64).cast::<libc::c_void>(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        ) == 0
+    };
+    format!(
+        "file-read={} mach-lookup={} network-outbound={} sysctl-check={} sysctl-real={}",
+        tier[0].as_char(),
+        tier[1].as_char(),
+        tier[2].as_char(),
+        tier[3].as_char(),
+        if sysctl_ok {
+            format!("ok:{memsize}")
+        } else {
+            "failed".to_string()
+        },
+    )
 }

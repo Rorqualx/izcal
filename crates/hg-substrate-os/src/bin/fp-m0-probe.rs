@@ -11,27 +11,37 @@
     reason = "G5: src/bin/fp-m0-probe.rs (posix_spawn + signals)"
 )]
 
+#[cfg(unix)]
 use std::ffi::CString;
+#[cfg(unix)]
 use std::io::Read;
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::process::exit;
+#[cfg(unix)]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(unix)]
 use std::time::Instant;
 
+#[cfg(unix)]
 use libc::{
     kill, posix_spawn, posix_spawn_file_actions_addclose, posix_spawn_file_actions_adddup2,
     posix_spawn_file_actions_destroy, posix_spawn_file_actions_init, posix_spawn_file_actions_t,
 };
 
 /// Set by the signal handler; the supervisor loop reaps on it.
+#[cfg(unix)]
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
+#[cfg(unix)]
 extern "C" fn on_signal(_: libc::c_int) {
     // Async-signal-safe: a lock-free store only.
     RUNNING.store(false, Ordering::Relaxed);
 }
 
+#[cfg(unix)]
 fn main() {
     // SAFETY: the handler body is async-signal-safe (one lock-free
     // store); the function-pointer-to-integer cast is the documented
@@ -139,4 +149,152 @@ fn main() {
     // SAFETY: `pid` is the killed child; the null status out-pointer is
     // the documented "no status wanted" form.
     unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
+}
+
+/// The Windows supervisor: creates the IPC pipe (inheritable), the
+/// restricted untrusted token and the job, starts the child under the
+/// token with the pipe handle on its command line, times spawn-to-
+/// ready, prints the ready line, and keeps the child alive for the
+/// harness (the measurement kills the pair).
+#[cfg(windows)]
+fn main() {
+    use std::mem::size_of;
+    use std::ptr;
+    use std::time::Instant;
+
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+    use windows_sys::Win32::Storage::FileSystem::ReadFile;
+    use windows_sys::Win32::System::Pipes::CreatePipe;
+    use windows_sys::Win32::System::ProcessStatus::GetProcessMemoryInfo;
+    use windows_sys::Win32::System::Threading::{
+        CreateProcessAsUserW, PROCESS_INFORMATION, STARTUPINFOW, Sleep,
+    };
+
+    use hg_substrate_os::sandbox::windows::{assign_job, job_object, restricted_token};
+
+    // 1. The IPC pipe, inheritable (the child receives the write end).
+    let sa = SECURITY_ATTRIBUTES {
+        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: ptr::null_mut(),
+        bInheritHandle: 1,
+    };
+    let mut read_h: HANDLE = ptr::null_mut();
+    let mut write_h: HANDLE = ptr::null_mut();
+    // SAFETY: the out-handles are valid; the attributes request
+    // inheritance for the child's copy of the write end.
+    if unsafe { CreatePipe(&mut read_h, &mut write_h, &sa, 0) } == 0 {
+        eprintln!("fp-m0-probe: CreatePipe failed");
+        exit(1);
+    }
+    // The child must inherit only the write end (I-2: a handle passed
+    // further than needed). Clear the read end's inherit flag.
+    // SAFETY: read_h is the just-created pipe handle; the flag change
+    // applies to this process's copy only.
+    let inherit_cleared = unsafe {
+        windows_sys::Win32::Foundation::SetHandleInformation(
+            read_h,
+            windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT,
+            0,
+        )
+    };
+    if inherit_cleared == 0 {
+        eprintln!("fp-m0-probe: SetHandleInformation failed");
+        exit(1);
+    }
+
+    // 2. The restricted token and the job.
+    let token = match restricted_token() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("fp-m0-probe: token: {e}");
+            exit(1);
+        }
+    };
+    let job = match job_object() {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("fp-m0-probe: job: {e}");
+            exit(1);
+        }
+    };
+
+    // 3. The child command line: the exe next to this one plus the
+    // inherited pipe handle.
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("fp-m0-empty.exe")))
+        .expect("exe path");
+    let exe_w: Vec<u16> = exe
+        .to_string_lossy()
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut cmdline: Vec<u16> = format!("\"{}\" {}", exe.display(), write_h as usize)
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // 4. Start the child under the token.
+    // SAFETY: a zeroed struct is the documented initial state.
+    let mut si: STARTUPINFOW = unsafe { std::mem::zeroed() };
+    si.cb = size_of::<STARTUPINFOW>() as u32;
+    // SAFETY: a zeroed struct is the documented initial state.
+    let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+    let started = Instant::now();
+    // SAFETY: the exe path, command line and startup info are valid
+    // for the call; inheritance is on so the child gets the write end.
+    let rc = unsafe {
+        CreateProcessAsUserW(
+            token.as_handle(),
+            exe_w.as_ptr(),
+            cmdline.as_mut_ptr(),
+            ptr::null(),
+            ptr::null(),
+            1,
+            0,
+            ptr::null(),
+            ptr::null(),
+            &si,
+            &mut pi,
+        )
+    };
+    // SAFETY: the parent's copy of the write end is no longer needed.
+    unsafe { CloseHandle(write_h) };
+    if rc == 0 {
+        eprintln!("fp-m0-probe: CreateProcessAsUserW failed");
+        exit(1);
+    }
+    // SAFETY: pi.hProcess is the just-created child process handle.
+    if let Err(e) = unsafe { assign_job(&job, pi.hProcess) } {
+        eprintln!("fp-m0-probe: job assign: {e}");
+    }
+
+    // 5. The ready line (blocking read on the pipe).
+    let mut buf = [0u8; 512];
+    let mut n: u32 = 0;
+    // SAFETY: the buffer is valid for the read; the read blocks until
+    // the child writes or the pipe closes.
+    unsafe { ReadFile(read_h, buf.as_mut_ptr(), 512, &mut n, ptr::null_mut()) };
+    let elapsed = started.elapsed();
+    // SAFETY: the read end is ours and no longer needed.
+    unsafe { CloseHandle(read_h) };
+    println!(
+        "fp-m0-probe: child pid={} spawn-to-ready={:.3} ms",
+        pi.dwProcessId,
+        elapsed.as_secs_f64() * 1e3
+    );
+    if n > 0 {
+        print!(
+            "fp-m0-probe: {}",
+            String::from_utf8_lossy(&buf[..n as usize])
+        );
+    }
+
+    // 6. Hold the child for the harness; the measurement kills us.
+    let _ = GetProcessMemoryInfo; // the harness reads counters itself
+    loop {
+        // SAFETY: a fixed 1-second sleep with no return value.
+        unsafe { Sleep(1000) };
+    }
 }

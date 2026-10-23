@@ -7,6 +7,8 @@
 [crates.hg-substrate-os]
 entries = [
   "sandbox::macos",             # the sandbox API (security scope 6.7's measured path)
+  "sandbox::linux",             # seccomp-bpf: prctl FFI and the raw filter program
+  "sandbox::windows",           # Win32 token APIs (untrusted integrity, lockdown, job)
   "src/bin/fp-m0-probe.rs",     # posix_spawn + signals: the FP-M0 supervisor
   "src/bin/fp-m0-empty.rs",     # the pre-opened fd 3 (UnixStream::from_raw_fd)
 ]
