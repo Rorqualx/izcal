@@ -1,6 +1,6 @@
 # Contributing to Izcal
 
-This covers the project, [Rorqualx/izcal](https://github.com/Rorqualx/izcal) (branch `main`). The 0.2 `rusty_v8` fork is retired (C-10): the engine is Izcal's own, and the fork-specific text below is kept as history. The git hooks and CI enforce every rule below that a machine can check. The hooks catch problems early, and CI catches anything committed with `--no-verify`.
+This covers the project, [Rorqualx/izcal](https://github.com/Rorqualx/izcal) (branch `main`). The 0.2 fork is retired (C-10): the engine is Izcal's own, and the fork-specific text below is kept as history. The git hooks and CI enforce every rule below that a machine can check. The hooks catch problems early, and CI catches anything committed with `--no-verify`.
 
 ## Setup
 
@@ -28,14 +28,14 @@ Use one worktree per branch, and one per agent session when several Claude Code 
   git worktree add ../izcal-wt/<topic> -b <type>/<topic> origin/main
   ```
 
-  A new worktree has no fork checkout, and none is needed (C-10). The 0.2 instruction to run `git -C ../izcal-wt/<topic> submodule update --init m0/rusty_v8` applies only to historical work on the fork.
-- **Fork (retired, C-10):** historically the worktree came from the fork itself, so it shared the fork's hooks setting:
+  A new worktree has no fork checkout, and none is needed (C-10); the 0.2 submodule instructions apply only to historical work on the fork.
+- **Fork (retired, C-10):** historically the worktree came from the fork itself, so it shared the fork's hooks setting (the commands are in git history):
 
   ```
-  git -C m0/rusty_v8 worktree add ../../rusty_v8-wt/<topic> -b <type>/<topic> izcal/hgba
+  git -C m0/<fork> worktree add ../../fork-wt/<topic> -b <type>/<topic> izcal/hgba
   ```
 
-  Each fork worktree builds its own V8: about 2 GB of output and 17–30 minutes per configuration. Disk is not a constraint, but time is, so set `SCCACHE=sccache`. When the work does not change V8 or the fork's C++, point `RUSTY_V8_ARCHIVE` at an existing archive instead of rebuilding.
+  Each fork worktree builds its own engine: about 2 GB of output and 17–30 minutes per configuration. Disk is not a constraint, but time is, so set `SCCACHE=sccache`. When the work does not change the engine or the fork's C++, point `ENGINE_ARCHIVE` at an existing archive instead of rebuilding.
 - **Cleanup**, after the branch is merged. Check that the worktree has nothing uncommitted (`git -C <worktree> status`) and that its branch is merged, then:
 
   ```
@@ -84,26 +84,26 @@ Use one worktree per branch, and one per agent session when several Claude Code 
 - **Project (`main`): squash merge.** The pull request title becomes the commit subject, so it follows the commit-message format.
 - **Fork (`hgba`, retired — C-10):** the 0.2 rebase-merge rule, kept as history.
 - Delete the branch after merging. GitHub does this automatically.
-- **Submodule pointer bumps (retired, C-10):** the 0.2 rule. Engine images replace the fork submodule, and their hashes are verified at build time (SEC-13); there are no V8 hash pins.
+- **Submodule pointer bumps (retired, C-10):** the 0.2 rule. Engine images replace the fork submodule, and their hashes are verified at build time (SEC-13); there are no fork hash pins.
 
 ## Pushing
 
 - **Feature branches:** push freely. `git push --force-with-lease` is fine on your own branch, never on someone else's.
 - **Protected branches:** never pushed directly. The `IZCAL_ALLOW_PROTECTED=1` override exists only for repository administration, and GitHub's protection refuses the push anyway.
-- **CI cost (0.2 fork, retired — C-10):** every push to `hgba` ran the full V8 build matrix; the rule retires with the fork.
+- **CI cost (0.2 fork, retired — C-10):** every push to `hgba` ran the full fork build matrix; the rule retires with the fork.
 - **Release tags** `v*` are protected by a server-side ruleset that requires signed tags and records any bypass; the client-side `IZCAL_RELEASE=1` rule retires (SEC-27). The 0.2 fork tag rule (`v<upstream>-izcal.<n>`) retires with the fork (C-10).
 
 ## The S-4e upstream rebase (retired, C-10)
 
-*This section is history. The engine is Izcal's own, so there is no upstream rebase and no force-push rule; engine image hashes are verified at build time instead (SEC-13).* The 0.2 text: every Chrome stable release, the `rusty_v8` owner rebased the fork's commits onto the new upstream tag (HGBA-2.1 S-4e). This was the one time `hgba` was rewritten:
+*This section is history. The engine is Izcal's own, so there is no upstream rebase and no force-push rule; engine image hashes are verified at build time instead (SEC-13).* The 0.2 text: every Chrome stable release, the fork owner rebased the fork's commits onto the new upstream tag (HGBA-2.1 S-4e). This was the one time `hgba` was rewritten:
 
 1. On a `rebase/v<new>` branch, rebase the fork's commits onto the upstream tag. Fix conflicts commit by commit.
-2. Open a pull request into `hgba` so CI runs the full V8 matrix on the rebased branch, and complete S-4e steps 2–3.
+2. Open a pull request into `hgba` so CI runs the full fork matrix on the rebased branch, and complete S-4e steps 2–3.
 3. Tag the old tip so its commits stay reachable, because the project's submodule history pins them: `git tag hgba-pre-v<old> izcal/hgba && git push izcal hgba-pre-v<old>`.
 4. Temporarily allow force pushes on `hgba` (repository settings, or `gh api`), then push: `IZCAL_S4E_REBASE=1 git push --force-with-lease izcal rebase/v<new>:hgba`. `pre-push` refuses the push unless the old tip is tagged `hgba-pre-*`. Restore the protection immediately afterwards.
 5. Bump the project's submodule pointer.
 
-If the rebase cannot pass inside the security window, follow S-4e's backport rule instead: cherry-pick the V8 security commits onto the pinned V8 through an ordinary pull request.
+If the rebase cannot pass inside the security window, follow S-4e's backport rule instead: cherry-pick the upstream security commits onto the pinned engine through an ordinary pull request.
 
 ## Specs
 
@@ -127,7 +127,7 @@ Izcal is a new engine written from the ground up: it neither copies another brow
 
 Izcal's own Rust code follows [the coding standard](reports/Izcal%20coding%20standard.md). Read its one-page summary before writing code; `cargo xtask tier <crate>` lists the rules for a crate's tier.
 
-The 0.2 `v8-audit` check retired with the fork (C-10; ledger A-CON-4); no check reads a `rusty_v8` checkout.
+The 0.2 `v8-audit` check retired with the fork (C-10; ledger A-CON-4); no check reads a fork checkout.
 
 - **Trailers go in the pull request body**, not in commits: `Spec:`, `Test:`, `Perf:`, `Binary-Size:` and `Fixes:` (CS-GA-3). The repository squashes with "pull request title and description", so the body becomes the commit message and the trailers stay in history.
 - **Suppressions** are `#[expect(..., reason = "...")]`, or a `// cs-allow(<rule>): <reason>` marker on the line an `ast-grep` check matches. The reason states a fact a reviewer can check; CI lists every new one in the PR summary.
@@ -141,4 +141,4 @@ The 0.2 `v8-audit` check retired with the fork (C-10; ledger A-CON-4); no check 
 
 ## Large files and artifacts
 
-Build outputs and engine images never go into git (`.gitignore`, and the `size` and `binary` checks). Publish engine images as release assets and record their hashes; release verification checks them at build time (SEC-13). The 0.2 V8 archive rule retires with the fork (C-10).
+Build outputs and engine images never go into git (`.gitignore`, and the `size` and `binary` checks). Publish engine images as release assets and record their hashes; release verification checks them at build time (SEC-13). The 0.2 fork archive rule retires with the fork (C-10).
