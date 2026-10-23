@@ -1,0 +1,8 @@
+id: all-fns
+language: rust
+rule:
+  kind: function_item
+  not:
+    inside:
+      kind: foreign_mod_item
+      stopBy: end

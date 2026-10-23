@@ -1,0 +1,32 @@
+
+running 1 test
+failing --- FAILED
+
+failures:
+
+---- failing stdout ----
+proptest: FileFailurePersistence::SourceParallel set, but failed to find lib.rs or main.rs
+proptest: FileFailurePersistence::SourceParallel set, but failed to find lib.rs or main.rs
+proptest: Saving this and future failures in <probe>/tests/seed.proptest-regressions
+proptest: If this test was run on a CI system, you may wish to add the following line to your copy of the file. (You may need to create it.)
+cc 32e566a41a339bdab114c4c48ecd160d8a5e683ab867ecb89204686f63d6a6ad
+
+thread 'failing' (59471487) panicked at tests/seed.rs:31:1:
+Test failed: value 559372213834933397 hit the bug at tests/seed.rs:37.
+minimal failing input: v = (
+    559372213834933397,
+    "",
+)
+	successes: 7
+	local rejects: 0
+	global rejects: 0
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    failing
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test seed`

@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # gitleaks, actionlint, zizmor and cargo-deny, each pinned and checked
+      # gitleaks, actionlint, zizmor, cargo-deny and ast-grep, each pinned and checked
       # against its SHA-256 (tools/ci-install-tools.sh). shellcheck, python3
       # and rustfmt (stable) come with the runner image.
       - name: Install check tools
