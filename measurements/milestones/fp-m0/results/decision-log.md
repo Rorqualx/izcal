@@ -117,3 +117,7 @@ FP-M0 open question 17, the per-element part: memory charged per element when a 
 | Firefox 158 | 641 MB (10 procs) | 1,770 MB (10 procs) | **~1,129 bytes** |
 
 **Reading:** Chrome pays ~2.3x Firefox per `<div>`+text node on this OS. Both figures are the element variant only — the attribute-set variant (the spec's "per attribute set" wording) is a follow-up with the same harness shape. Neither row is a threshold; both are FP-M0 observations. Probe: `harness/per-element-probe.sh`; TSVs in `results/`.
+
+## Chrome's soft process limit (22 October 2026, macOS 26, rig local)
+
+FP-M0 open question 17, the soft-limit part: Chrome 155 opened same-site tabs one at a time through its DevTools endpoint and the process-tree size was recorded every 5 tabs. **No plateau by 80 tabs**: the tree grew linearly, one renderer per tab (nprocs = tabs + 6 helpers, 86 processes at 80 tabs, page counts verified). The soft limit on this lab device (12-core Apple silicon) lies beyond 80 tabs — no renderer reuse was observed. The same probe shape on the other lab devices is the follow-up if the limit needs locating there. TSV: `results/2026-10-22-soft-limit.tsv`; probe: `harness/soft-limit-probe.sh`.
