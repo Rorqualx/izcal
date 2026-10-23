@@ -121,3 +121,17 @@ FP-M0 open question 17, the per-element part: memory charged per element when a 
 ## Chrome's soft process limit (22 October 2026, macOS 26, rig local)
 
 FP-M0 open question 17, the soft-limit part: Chrome 155 opened same-site tabs one at a time through its DevTools endpoint and the process-tree size was recorded every 5 tabs. **No plateau by 80 tabs**: the tree grew linearly, one renderer per tab (nprocs = tabs + 6 helpers, 86 processes at 80 tabs, page counts verified). The soft limit on this lab device (12-core Apple silicon) lies beyond 80 tabs — no renderer reuse was observed. The same probe shape on the other lab devices is the follow-up if the limit needs locating there. TSV: `results/2026-10-22-soft-limit.tsv`; probe: `harness/soft-limit-probe.sh`.
+
+## Safari leg (22 October 2026, macOS 26, rig local)
+
+Safari's single-instance model: the measurement ran inside the live session with the rule that only a dedicated window, bound by reference at creation, is touched — existing windows and tabs are never touched and Safari is never killed. Loads match the matrix; the cross-site load runs in its own fresh window (the first build accumulated tabs across loads, which made its cross-site sample a 61-tab window — discarded). Tab counts verified via AppleScript (61 in the accumulated window; 31 in the fresh cross-site window).
+
+| Load | Safari 26 |
+|---|---|
+| Blank | **503 MB** (21 procs) |
+| 1 tab | 527 MB (21) |
+| 10 tabs | 682 MB (30) |
+| 30 tabs | **1,007 MB** (50) |
+| 30 cross-site tabs | **1,458 MB** (44) |
+
+**Reading:** Safari's macOS floor (503 MB) sits between Chrome's 162 MB and Firefox's 639 MB, and its same-site slope (~17 MB/tab) is close to Firefox's economy; the cross-site jump (+451 MB over 30 tabs, +17 processes) is the smallest of the three browsers on macOS. **Discarded versions:** run 1 (Safari not running — `-600`), run 2 (all-zero rows: the tree sampler's comma-separated patterns were a latent bug — the comma string was passed to `pgrep -f` as one literal regex that matches nothing; fixed by joining commas into an ERE alternation, which the matrix had never exercised because it used single patterns). The harness's macOS tree sampler is the canonical one, so the fix is recorded there. Probe: `harness/run-matrix-safari.sh` (+ `run-matrix-safari-crosssite.sh`).

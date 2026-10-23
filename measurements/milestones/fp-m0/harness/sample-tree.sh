@@ -12,9 +12,11 @@ out="../results/$(date +%Y-%m-%d)-${label}.tsv"
 # Collect the process tree: roots match the pattern, then walk descendants
 # breadth-first (each pid has one parent, so no cycles); duplicates from
 # helpers that match the pattern AND sit under a matching parent collapse
-# in the final sort -u.
+# in the final sort -u. Commas separate alternative patterns and are
+# joined into one ERE alternation (a literal comma would match nothing).
 tree_pids() {
-  local roots; roots=$(pgrep -f "$patterns" | sort -u | grep -v "^$$$")
+  local pats; pats=${patterns//,/\|}
+  local roots; roots=$(pgrep -f "$pats" | sort -u | grep -v "^$$$")
   local queue; queue="$roots"; local out=""
   while [[ -n "$queue" ]]; do
     local next="" pid
