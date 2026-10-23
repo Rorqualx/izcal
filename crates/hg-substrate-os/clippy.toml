@@ -1,0 +1,76 @@
+# GENERATED for tier O (hg-substrate-os) from the workspace clippy.toml by
+# coding standard A.2: every array entry whose reason starts with G3, CS-AS-3,
+# "CS-AS-4 select" or "CS-AS-6 bounded" is dropped. Regenerate, do not edit.
+# Izcal clippy configuration: coding standard 0.3.7, Appendix A.3, verbatim
+# except where marked "M1-A". Each crate uses the nearest clippy.toml up the
+# tree; hg-substrate-os (tier O) carries its own generated copy.
+msrv = "1.99"
+avoid-breaking-exported-api = false      # internal crates have no semver (CS-ST-14)
+# Size and length thresholds stay at clippy's defaults (futures 16384 B, errors 128 B, 100 lines).
+
+# test code may panic (Section 6.2)
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true
+
+# CS-TY-12: float-based unit newtypes may use operators in tier P
+# M1-A: returns when hg_types::CssPx and DevicePx exist
+# arithmetic-side-effects-allowed = ["hg_types::CssPx", "hg_types::DevicePx"]
+
+# M1-A: returns when these guard types exist (A.3: "paths fixed when the types exist")
+# await-holding-invalid-types = [          # CS-AS-8; paths fixed when the types exist
+#   { path = "hg_heap::Root", reason = "CS-AS-8: GC root scope (S-4c)" },
+#   { path = "hg_substrate::SequenceBoundRef", reason = "CS-AS-8" },
+#   { path = "hg_dom::cell::TokenRef", reason = "CS-TY-10" },
+#   { path = "hg_dom::cell::TokenRefMut", reason = "CS-TY-10" },
+# ]
+
+# Entries whose reason starts "G3", "CS-AS-3" or "CS-AS-4 select" are dropped from hg-substrate-os's generated copy,
+# and so are bounded-channel entries ("CS-AS-6 bounded"); every other entry stays (A.2).
+disallowed-methods = [
+  # G3 / CS-AS-1: ambient effects (replacement: the substrate)
+  # CS-AS-3: the substrate owns every thread
+  # CS-AS-4: no third-party executor
+  { path = "futures::executor::block_on", reason = "CS-AS-4" },
+  { path = "futures::executor::block_on_stream", reason = "CS-AS-4" },
+  # CS-AS-6: queues are substrate primitives; unbounded ones exist nowhere
+  { path = "std::sync::mpsc::channel", reason = "CS-AS-6 unbounded" },
+  { path = "crossbeam_channel::unbounded", reason = "CS-AS-6 unbounded" },
+  { path = "flume::unbounded", reason = "CS-AS-6 unbounded" },
+  { path = "futures::channel::mpsc::unbounded", reason = "CS-AS-6 unbounded" },
+  { path = "tokio::sync::mpsc::unbounded_channel", reason = "CS-AS-6 unbounded" },
+  # CS-ER-2, CS-ER-14, CS-ER-10
+  { path = "std::panic::catch_unwind", reason = "CS-ER-2" },
+  { path = "std::panic::resume_unwind", reason = "CS-ER-2" },
+  { path = "std::panic::set_hook", reason = "CS-ER-14: crash handler only" },
+  { path = "std::panic::take_hook", reason = "CS-ER-14: crash handler only" },
+  { path = "std::backtrace::Backtrace::capture", reason = "CS-ER-10: crash handler only" },
+  { path = "std::backtrace::Backtrace::force_capture", reason = "CS-ER-10: crash handler only" },
+  { path = "log::set_logger", reason = "CS-ER-14: the substrate installs the log adapter" },
+  { path = "log::set_boxed_logger", reason = "CS-ER-14: the substrate installs the log adapter" },
+  # CS-V8-3 retired with the fork (C-10): no v8::* paths exist. H-1 is enforced
+  # by hg-heap's Field<T> types, which make a raw pointer a compile error.
+]
+
+disallowed-types = [
+  { path = "std::collections::HashMap", reason = "CS-AS-2", replacement = "hg_types::HashMap" },
+  { path = "std::collections::HashSet", reason = "CS-AS-2", replacement = "hg_types::HashSet" },
+  { path = "std::hash::RandomState", reason = "CS-AS-2" },
+  { path = "hashbrown::HashMap", reason = "CS-AS-2", replacement = "hg_types::HashMap" },
+  { path = "hashbrown::HashSet", reason = "CS-AS-2", replacement = "hg_types::HashSet" },
+  { path = "indexmap::IndexMap", reason = "CS-AS-2", replacement = "hg_types::IndexMap" },
+  { path = "indexmap::IndexSet", reason = "CS-AS-2", replacement = "hg_types::IndexSet" },
+  { path = "ahash::RandomState", reason = "CS-AS-2" },
+  { path = "ahash::AHashMap", reason = "CS-AS-2", replacement = "hg_types::HashMap" },
+  { path = "futures::executor::LocalPool", reason = "CS-AS-4" },
+  { path = "tokio::sync::Mutex", reason = "CS-AS-8" },
+  { path = "tokio::sync::RwLock", reason = "CS-AS-8" },
+  { path = "async_lock::Mutex", reason = "CS-AS-8" },
+  { path = "futures::lock::Mutex", reason = "CS-AS-8" },
+]
+
+disallowed-macros = [
+]
