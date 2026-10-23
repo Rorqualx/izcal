@@ -150,3 +150,14 @@ FP-M0's spawn-latency part (the spare-process gate: keep a spare only while spaw
 | Windows (rig253) | 2.216 ms | 2.931 ms | 3.463 ms | **5.441 ms** | 755.3 ms |
 
 **Reading:** both un-sandboxed p99s sit below the 10 ms† gate, so the gate is reachable pre-sandbox — the sandbox's own cost (measured at FP-M0 half B) is the deciding term. The single-run maxima are cold-start outliers, not distributions. Probes: `harness/spawn-latency-probe.c` + `spawn-latency-child.c` (macOS, clang) and `spawn-latency-probe-win.c` + `spawn-latency-child-win.c` (Windows, MSVC 14.44 via vcvars64).
+
+## Half B: the substrate floor (23 October 2026, macOS 26, rig local)
+
+The first Izcal code milestone (crates `hg-substrate-os`, tier O): an empty process on Izcal's substrate with the **full sandbox** of security scope 6.7, **two threads** and an **IPC endpoint** (fd 3, pre-opened by the supervisor — nothing opens after lockdown). The sandbox is a **custom deny-default SBPL** applied at start through `sandbox_init_with_parameters` (never a named profile, per the spec's SDK-27 measurement), written from first principles: `(version 1) (deny default) (allow sysctl-read)`. Tier verified by probe: file-read, mach-lookup and network-outbound all denied; the sysctl allow verified **behaviorally** (a real `sysctlbyname("hw.memsize")` read succeeds — `sandbox_check`'s "sysctl-read" name returns a false deny and is recorded as a probe-naming finding, not a tier reduction).
+
+| Item | Value |
+|---|---|
+| **The floor** (release build, 2 threads + IPC endpoint, sandbox applied) | **4,096 KB phys_footprint** (stable across samples) |
+| Spawn-to-ready on the full sandbox path (supervisor → ready byte) | ~80 ms first run (vs ~0.6 ms bare — sandbox apply dominates; the distribution run comes with the spare-process measurement) |
+
+**FP-2's ship blocker, item by item (never a lump):** the measured floor **4,096 KB** on macOS 26, plus the line items as they land — the broker's process-kind machinery, IPC tables, per-partition state and the engine's heaps each add their measured rows here at their milestones; FP-2's blocker is the running sum. Linux and Windows legs of the same probe are queued (macOS first, per the README). Probe: `crates/hg-substrate-os/src/bin/fp-m0-probe.rs` (supervisor) and `fp-m0-empty.rs` (the sandboxed process); sandbox: `src/sandbox/macos.rs`.

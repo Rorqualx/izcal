@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$MODE" ] || { echo "usage: checks.sh --staged | --range BASE HEAD [--review]" >&2; exit 2; }
 
-CHECKS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)  # also serves the fork
+CHECKS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(git rev-parse --show-toplevel) || exit 2
 cd "$ROOT" || exit 2
 # An unresolvable range would yield an empty file list and a silent pass.
@@ -125,7 +125,7 @@ fi
 
 # --- rustfmt: per file, with its crate's edition and rustfmt config ----------
 # Runs from the file's directory, so rustup honours that crate's
-# rust-toolchain.toml (the fork pins its own toolchain).
+# rust-toolchain.toml.
 nearest() { # nearest file named $2 (or $3) from dir $1 up to the repo root
   local d=$1
   while :; do
@@ -145,6 +145,11 @@ if ! skipped rustfmt; then
       dir=$(dirname "$f")
       manifest=$(nearest "$dir" Cargo.toml)
       ed=$( [ -n "$manifest" ] && sed -n 's/^edition *= *"\([0-9]*\)".*/\1/p' "$manifest" | head -1 )
+      # edition.workspace = true (the standard's form, CS-ST-9) resolves
+      # against the root manifest's [workspace.package] edition.
+      if [ -z "$ed" ] && [ -n "$manifest" ] && grep -q '^edition\.workspace' "$manifest"; then
+        ed=$(sed -n '/^\[workspace\.package\]/,/^\[/ s/^edition *= *"\([0-9]*\)".*/\1/p' "$ROOT/Cargo.toml" | head -1)
+      fi
       cfg=$(nearest "$dir" rustfmt.toml .rustfmt.toml)
       args="--check --edition ${ed:-2021}"
       [ -n "$cfg" ] && args="$args --config-path $ROOT/$cfg"
@@ -266,7 +271,7 @@ fi
 #   (3) GitHub workflows pass zizmor (unpinned actions, credential
 #       persistence, cache poisoning, template injection);
 #   (4) a changed Cargo.lock has no known advisory (cargo-deny, RustSec),
-#       and outside the V8-era history crates every shipped crate is
+#       and outside the archived m0 spikes every shipped crate is
 #       available under MIT (cargo-deny licenses, HGBA-2 M-1 part 1).
 if ! skipped security; then
   sec_bad=""
@@ -333,13 +338,13 @@ $(printf '%s\n' "$zout" | grep -E '^(error|warning)\[|^ *--> |\^' | sed "s|$TMP/
 $(printf '%s\n' "$dout" | grep -E '^(error|warning)\[|ID:|Crate:|Title:|^ +[a-z_-]+ [0-9.]+' | head -20)"
           fi
         fi
-        # The V8-era spikes are history (HGBA-2 2.3.0) and keep their
-        # dependencies until they are archived. Research measurement
-        # crates are probes, never shipped, so their dependencies are
-        # outside the MIT-only rule (HGBA-2 2.3.2 covers shipped
-        # dependencies). Test-only crates may carry any licence, so
-        # dev-dependencies are left out of this run only.
-        case "$dir" in m0|m0/*|cppgc-spike|cppgc-spike/*|v8-cppgc-ext|v8-cppgc-ext/*|research_notes|research_notes/*) continue ;; esac
+        # The archived m0 spikes (HGBA-2 2.3.0) keep their historical
+        # dependencies. Research measurement crates are probes, never
+        # shipped, so their dependencies are outside the MIT-only rule
+        # (HGBA-2 2.3.2 covers shipped dependencies). Test-only crates
+        # may carry any licence, so dev-dependencies are left out of
+        # this run only.
+        case "$dir" in m0|m0/*|research_notes|research_notes/*) continue ;; esac
         if ! lout=$(cd "$dir" && cargo-deny --log-level error --exclude-dev --config "$CHECKS_DIR/deny.toml" check licenses 2>&1); then
           sec_bad="$sec_bad
 == cargo-deny licenses (MIT only): $lock
@@ -373,7 +378,7 @@ if [ "$REVIEW" = 1 ] && ! skipped review; then
     head -n "$max" "$TMP/diff" > "$TMP/diff.cut"
     note=""; [ "$total" -gt "$max" ] && note="The diff was cut to its first $max of $total lines; say so if that hides context you need."
     schema='{"type":"object","properties":{"verdict":{"enum":["pass","warn","block"]},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"enum":["high","medium","low"]},"file":{"type":"string"},"line":{"type":"integer"},"issue":{"type":"string"}},"required":["severity","file","issue"]}}},"required":["verdict","findings"]}'
-    prompt="You are reviewing a staged change to Izcal, a Rust browser engine on V8 (a rusty_v8 fork). The unified diff is on stdin. Report only real defects: correctness bugs, memory or thread safety (unsafe, cppgc/GC rules, write barriers), security, broken builds or CI, security defects (for Izcal: unvalidated data crossing a process or IPC boundary, a capability or handle passed further than needed, ambient authority in a sandboxed process, untrusted input parsed in a privileged process, cross-site data reaching one process (HGBA-2 P1, I-1, I-2), secrets or credentials logged or exported, missing consent or origin checks on inspection, automation or agent surfaces (B9, B10), weak or hand-rolled cryptography, unsafe Rust whose SAFETY argument does not hold, injection into shells, SQL or HTML), violations of the project's written rules, and code that appears copied, ported or translated from another browser engine (Servo, Chromium/Blink, WebKit, Gecko/Firefox, Ladybird), which is forbidden by Stage 1 design D-S10 and is always high severity. You may read files in the repository for context: CONTRIBUTING.md, the specs in reports/ (HGBA-2 targets such as S-4c/S-4e/S-4f, the Stage 1 design's crate rules G1-G8). Do not report style or formatting (other checks cover those) or speculation. Severity high = would ship a bug or break the build; medium = likely bug; low = minor. verdict: block if any high finding, warn if any medium, else pass. Keep each issue to one or two sentences. $note"
+    prompt="You are reviewing a staged change to Izcal, a Rust browser engine built from the ground up (HGBA-2 2.3.0: the engine is Izcal's own — no V8, no fork). The unified diff is on stdin. Report only real defects: correctness bugs, memory or thread safety (unsafe, the cage rules H-1/H-2, the token-cell discipline CS-V8-1, SAFETY arguments), security, broken builds or CI, security defects (for Izcal: unvalidated data crossing a process or IPC boundary, a capability or handle passed further than needed, ambient authority in a sandboxed process, untrusted input parsed in a privileged process, cross-site data reaching one process (HGBA-2 P1, I-1, I-2), secrets or credentials logged or exported, missing consent or origin checks on inspection, automation or agent surfaces (B9, B10), weak or hand-rolled cryptography, unsafe Rust whose SAFETY argument does not hold, injection into shells, SQL or HTML), violations of the project's written rules, and code that appears copied, ported or translated from another browser engine (Servo, Chromium/Blink, WebKit, Gecko/Firefox, Ladybird), which is forbidden by Stage 1 design D-S10 and is always high severity. You may read files in the repository for context: CONTRIBUTING.md, the specs in reports/ (HGBA-2 targets such as S-4a/S-4c, the Stage 1 design's crate rules G1-G9). Do not report style or formatting (other checks cover those) or speculation. Severity high = would ship a bug or break the build; medium = likely bug; low = minor. verdict: block if any high finding, warn if any medium, else pass. Keep each issue to one or two sentences. $note"
     start=$(date +%s)
     if command -v timeout >/dev/null; then TO="timeout 300"; elif command -v gtimeout >/dev/null; then TO="gtimeout 300"; else TO=""; fi
     # shellcheck disable=SC2086 # TO is a command prefix
