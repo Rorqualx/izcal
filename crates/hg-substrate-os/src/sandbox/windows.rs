@@ -243,9 +243,11 @@ pub fn probe_line() -> String {
         }
     };
 
-    // The must-deny probe: opening a system file at Untrusted
-    // integrity must fail with ACCESS_DENIED.
-    let hosts = wide("C:\\Windows\\System32\\drivers\\etc\\hosts");
+    // The must-deny probe: opening the SAM hive at Untrusted
+    // integrity must fail with ACCESS_DENIED (it is SYSTEM-only;
+    // hosts is world-readable even at Untrusted, the first run's
+    // finding).
+    let hosts = wide("C:\\Windows\\System32\\config\\SAM");
     // SAFETY: the wide path is NUL-terminated and valid for the call.
     let h = unsafe {
         CreateFileW(

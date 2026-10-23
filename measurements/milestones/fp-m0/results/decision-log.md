@@ -174,3 +174,14 @@ The same empty-process probe, Linux backend: a seccomp-bpf allowlist with an arc
 | Spawn-to-ready on the full sandbox path | 0.805 ms |
 
 **FP-2's running blocker sum (item by item, never a lump):** macOS 26 — 4,096–4,144 KB phys_footprint; Linux (hueyj) — 2,148 KB VmRSS + 0 swap. The Windows row lands with its leg. Probe: the same `fp-m0-probe`/`fp-m0-empty` pair; sandbox: `src/sandbox/linux.rs`.
+
+## Half B, Windows leg (23 October 2026, rig253) — floor measured, loader stall recorded
+
+The Windows supervisor creates the restricted token (DISABLE_MAX_PRIVILEGE | SANDBOX_INERT, Untrusted label SID), the kill-on-close job and the IPC pipe; the child starts suspended under the token (CreateProcessWithTokenW — CreateProcessAsUserW demands SE_INCREASE_QUOTA_NAME, error 1314, from a non-admin caller), is assigned to the job (fatal on failure), then resumes. **The floor: 372–376 KB private commit charge, 1,992 KB working set, stable across samples** — the restricted child's steady state.
+
+**Recorded findings (all follow-ups, none silent):**
+1. **The child stalls in the loader before main under the Untrusted token** — one thread, zero CPU, the "main reached" marker never prints; without the token the same binary runs to its ready line (the pipe handoff works). The floor above is the loader-stalled state's footprint; a debugger session on rig253 diagnoses the stall, then the ready line and the tier probe (the SAM must-deny read) land.
+2. **The environment scrub fails ERROR_INVALID_PARAMETER (87)** in both forms tried — a hand-built block and one filtered from GetEnvironmentStringsW — with CreateProcessW and WithToken alike; NULL (inherit) works. The scrub joins the Windows-tier follow-up list (AppContainer, win32k lockdown, ACG).
+3. The must-deny probe's first target (`drivers\etc\hosts`) is world-readable even at Untrusted (file-read=ALLOWED on the diagnostic run) — the probe now targets the SYSTEM-only SAM hive.
+
+**FP-2's running blocker sum:** macOS 26 — 4,096–4,144 KB phys_footprint; Linux (hueyj) — 2,148–2,152 KB VmRSS + 0 swap; Windows (rig253) — 372–376 KB private / 1,992 KB WS (the stalled-loader state, to be re-measured once the stall is fixed). The sum updates when the Windows tier line lands.
