@@ -1,0 +1,23 @@
+[package]
+name = "hg-substrate-sim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's simulation substrate (L1, tier R): every simulated process in one OS process, one seeded scheduler, virtual time, injected faults and a byte-exact trace (Stage 1 design 3.2)"
+
+# Tier R: the base lint table (coding standard A.2) and the root
+# clippy.toml (G3: no ambient OS effects).
+[lints]
+workspace = true
+
+[dependencies]
+hg-substrate = { path = "../hg-substrate" }
+hg-types = { path = "../hg-types" }
+
+[dev-dependencies]
+hg-substrate-os = { path = "../hg-substrate-os" }
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

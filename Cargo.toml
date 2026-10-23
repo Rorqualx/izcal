@@ -24,3 +24,8 @@ missing_safety_doc = "deny"
 undocumented_unsafe_blocks = "deny"
 mod_module_files = "deny"
 
+
+# CS-ER-2: shipping and simulation binaries abort on panic. Test builds
+# unwind (Cargo forces it) and `dev` matches them.
+[profile.release]
+panic = "abort"

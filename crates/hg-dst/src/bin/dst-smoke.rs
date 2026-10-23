@@ -1,0 +1,161 @@
+//! A small simulation binary for `hg-dst` to run until the engine's own
+//! process skeletons arrive (M1 phase E).
+//!
+//! A browser process sends 200 messages, spread over virtual time, to a
+//! renderer; the renderer answers each on the browser's `ui` sequence
+//! and runs a fork/join phase; a network process commits and releases
+//! memory under injected commit failures. The renderer and network
+//! processes crash and restart under the fault plan.
+//!
+//! `--bug` plants a bug only some seeds reach: the browser treats a
+//! refused post to the renderer (it crashed and has not restarted yet)
+//! as impossible and panics. DST should find it, group every failing
+//! seed under one signature, and hand back a replay command.
+//!
+//! Usage: `dst-smoke --seed N [--crash-ppm N] [--bug]`
+
+use std::process::ExitCode;
+use std::sync::{Arc, Mutex};
+
+use hg_substrate::{
+    EntropyPurpose, Memory, MemoryKind, PostError, Priority, SequenceHandle, Substrate, Task,
+};
+use hg_substrate_os::memory::OsMemory;
+use hg_substrate_sim::{FaultPlan, Limits, SimConfig, World};
+use hg_types::{Duration, Instant};
+
+struct Args {
+    seed: u64,
+    crash_ppm: u32,
+    bug: bool,
+}
+
+fn parse() -> Option<Args> {
+    let mut a = Args {
+        seed: 0,
+        crash_ppm: 5_000,
+        bug: false,
+    };
+    let mut it = std::env::args().skip(1);
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--seed" => a.seed = it.next()?.parse().ok()?,
+            "--crash-ppm" => a.crash_ppm = it.next()?.parse().ok()?,
+            "--bug" => a.bug = true,
+            _ => return None,
+        }
+    }
+    Some(a)
+}
+
+type Endpoint = Arc<Mutex<Option<(Substrate, SequenceHandle)>>>;
+
+fn main() -> ExitCode {
+    let Some(args) = parse() else {
+        eprintln!("usage: dst-smoke --seed N [--crash-ppm N] [--bug]");
+        return ExitCode::from(2);
+    };
+    let mut config = SimConfig::new(args.seed);
+    config.faults = FaultPlan {
+        crash_per_million_steps: args.crash_ppm,
+        commit_fail_per_million: 20_000,
+        ..FaultPlan::NONE
+    };
+    config.memory_budget = Some(1 << 20);
+    let world = World::new(config);
+    let backing = || -> Arc<dyn Memory> { Arc::new(OsMemory::new()) };
+
+    let renderer: Endpoint = Arc::new(Mutex::new(None));
+    let browser: Endpoint = Arc::new(Mutex::new(None));
+
+    // Renderer: registers its inbox on each (re)start.
+    let r_ep = Arc::clone(&renderer);
+    world.spawn("renderer", backing(), true, move |s| {
+        let inbox = s.exec.sequence("inbox", Priority::UserVisible);
+        *r_ep.lock().unwrap() = Some((s, inbox));
+    });
+
+    // Network: memory traffic under commit faults.
+    world.spawn("network", backing(), true, |s| {
+        let seq = s.exec.sequence("cache", Priority::BestEffort);
+        for n in 0..20u64 {
+            let s2 = s.clone();
+            let _ = s.exec.post(
+                seq,
+                Task::new(move || {
+                    let r = s2.mem.reserve(256 * 1024, MemoryKind::CanonicalExemptCache);
+                    if let Ok(r) = r {
+                        // A refused commit is an expected outcome here.
+                        let _ = s2.mem.commit(&r, 64 * 1024);
+                        s2.mem.decommit(&r, 0);
+                        s2.mem.release(r);
+                    }
+                }),
+                Some(Duration::from_millis(n.saturating_mul(3))),
+                Duration::from_millis(1),
+            );
+        }
+    });
+
+    // Browser: sends messages; replies come back to `ui`.
+    let (r_ep, b_ep) = (Arc::clone(&renderer), Arc::clone(&browser));
+    let bug = args.bug;
+    world.spawn("browser", backing(), false, move |s| {
+        let ui = s.exec.sequence("ui", Priority::UserBlocking);
+        *b_ep.lock().unwrap() = Some((s.clone(), ui));
+        let mut rng = s.entropy.stream(EntropyPurpose::Random);
+        for n in 0..200u64 {
+            let delay = Duration::from_micros(rng.next_u64() % 100_000);
+            let (r_ep, b_ep) = (Arc::clone(&r_ep), Arc::clone(&b_ep));
+            let _ = s.exec.post(
+                ui,
+                Task::new(move || send(n, &r_ep, &b_ep, bug)),
+                Some(delay),
+                Duration::from_micros(200),
+            );
+        }
+    });
+
+    world.run(Limits {
+        max_steps: 1_000_000,
+        max_time: Instant::from_nanos(60_000_000_000),
+    });
+    // The browser keeps a substrate in `browser`; clear the endpoints
+    // so the world's tasks and substrates are freed with it.
+    renderer.lock().unwrap().take();
+    browser.lock().unwrap().take();
+    println!("{}", world.summary().report_line());
+    ExitCode::SUCCESS
+}
+
+fn send(n: u64, renderer: &Endpoint, browser: &Endpoint, bug: bool) {
+    let target = renderer.lock().unwrap().clone();
+    let Some((rs, inbox)) = target else { return };
+    let reply_to = browser.lock().unwrap().clone();
+    let rs2 = rs.clone();
+    let result = rs.exec.post(
+        inbox,
+        Task::new(move || {
+            let parts = Arc::new(Mutex::new([0u64; 4]));
+            let p = Arc::clone(&parts);
+            rs2.exec.fork_join().for_each_index(4, &move |i| {
+                if let Some(slot) = p.lock().unwrap().get_mut(i) {
+                    *slot = n.wrapping_mul(31).wrapping_add(i as u64);
+                }
+            });
+            if let Some((bs, ui)) = reply_to {
+                let _ = bs.exec.post(ui, Task::new(|| {}), None, Duration::ZERO);
+            }
+        }),
+        None,
+        Duration::ZERO,
+    );
+    match result {
+        Ok(()) => {}
+        Err(PostError::ShuttingDown) if bug => {
+            panic!("bug: message {n} posted to a crashed renderer");
+        }
+        // The renderer crashed; it re-registers when it restarts.
+        Err(_) => {}
+    }
+}

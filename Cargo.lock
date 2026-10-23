@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "hg-dst"
+version = "0.0.0"
+dependencies = [
+ "hg-substrate",
+ "hg-substrate-os",
+ "hg-substrate-sim",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-substrate"
 version = "0.0.0"
 dependencies = [
@@ -17,6 +27,15 @@ dependencies = [
  "hg-types",
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "hg-substrate-sim"
+version = "0.0.0"
+dependencies = [
+ "hg-substrate",
+ "hg-substrate-os",
+ "hg-types",
 ]
 
 [[package]]
