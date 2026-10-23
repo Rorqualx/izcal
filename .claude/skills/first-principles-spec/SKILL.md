@@ -72,6 +72,7 @@ Before the spec is done:
 - an independent **fact-check** of the claims that carry the design: dates, numbers, quotes, "X was abandoned because Y";
 - an independent **design critique** against the existing specs, looking for contradictions, missed constraints and M-1 violations;
 - every link resolves, and every `#fragment` exists.
+- no link points to another engine's source code, and no value is derived from it (M-1 part 3).
 
 Fix what they find, then record the result in the spec's header.
 
@@ -79,7 +80,7 @@ Fix what they find, then record the result in the spec's header.
 
 The research is too broad for one context. Split phases 2 and 3 into **strands** (for example: history and postmortems, protocols and standards, invisible data and gaps, visualization and UX, integrations), and give each strand to its own researcher in parallel. Each researcher writes one file under `research_notes/<Report title>/<strand>.md`, using the format below. A synthesis author then reads every note plus the existing specs, and writes phases 4–7 into `reports/<Report title>.md`. A fact-checker and a design critic, who did not write the spec, then do phase 8 independently.
 
-Brief every agent with this skill's path, so the method travels with the work. Researchers share a limited web-search budget, so tell them to research their most important questions first. When the budget runs out, they read known primary pages directly and grade anything left unchecked as Medium or Low.
+Brief every agent with this skill's path, so the method travels with the work. **Researchers never read or cite another engine's source code** (code files, headers, commits, diffs, code reviews), even for a single constant (M-1 part 3). They use published prose and black-box tests; where only the source states a value, they record it as a question for a black-box measurement. Researchers share a limited web-search budget, so tell them to research their most important questions first. When the budget runs out, they read known primary pages directly and grade anything left unchecked as Medium or Low.
 
 ## Research note format
 
