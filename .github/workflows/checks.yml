@@ -27,11 +27,14 @@ jobs:
 
       # gitleaks, actionlint, zizmor, cargo-deny and ast-grep, each pinned and checked
       # against its SHA-256 (tools/ci-install-tools.sh). shellcheck, python3
-      # and rustfmt (stable) come with the runner image.
+      # and rustfmt (stable) come with the runner image; the repo's
+      # rust-toolchain.toml pins 1.99.1 (CS-ST-9), which rustup
+      # auto-installs WITHOUT the rustfmt component — add it first.
       - name: Install check tools
         run: |
           bash tools/ci-install-tools.sh "$RUNNER_TEMP/bin"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          rustup component add rustfmt || true
           shellcheck --version | sed -n 2p; rustfmt --version
 
       - name: Checks

@@ -1,0 +1,12 @@
+# CS-TY-13: inventoried unsafe code. Each module here carries
+# #[expect(unsafe_code, reason = "G5: <entry>")] and every unsafe block
+# states its precondition and why it holds. The graph lint checks these
+# module paths against the code (tools/checks.sh, when it gains the
+# graph check). Unsafe diffs need the inventory owner (CODEOWNERS).
+
+[crates.hg-substrate-os]
+entries = [
+  "sandbox::macos",             # the sandbox API (security scope 6.7's measured path)
+  "src/bin/fp-m0-probe.rs",     # posix_spawn + signals: the FP-M0 supervisor
+  "src/bin/fp-m0-empty.rs",     # the pre-opened fd 3 (UnixStream::from_raw_fd)
+]

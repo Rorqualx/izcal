@@ -1,0 +1,28 @@
+# Izcal — one workspace built together (coding standard CS-ST-1).
+# The lint tables below are the starter set; they become generated from
+# tools/lints.toml once `cargo xtask lints` exists (coding standard 0.3.7,
+# "tools/tiers.toml is the normative file ... does not exist in this
+# worktree yet" — same state here).
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+version = "0.0.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+
+[workspace.lints.rustdoc]
+missing_docs = "deny"

@@ -1,0 +1,3 @@
+# Coding standard CS-ST-9: stable pinned; bumped on the bot's cadence.
+[toolchain]
+channel = "1.99.1"

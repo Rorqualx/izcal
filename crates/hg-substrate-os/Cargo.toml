@@ -1,0 +1,21 @@
+[package]
+name = "hg-substrate-os"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's OS substrate (tier O, G3): the one crate allowed ambient OS effects — sandbox backends, process kinds, the sanctioned thread interface, IPC endpoints"
+
+[lints]
+workspace = true
+
+[dependencies]
+libc = "0.2"
+
+[[bin]]
+name = "fp-m0-empty"
+path = "src/bin/fp-m0-empty.rs"
+
+[[bin]]
+name = "fp-m0-probe"
+path = "src/bin/fp-m0-probe.rs"
