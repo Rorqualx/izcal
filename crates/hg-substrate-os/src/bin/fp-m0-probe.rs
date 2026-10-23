@@ -1,7 +1,7 @@
 //! FP-M0 half B: the supervisor that drives the empty-process probe.
 //!
 //! Spawns `fp-m0-empty` with the IPC endpoint pre-opened (fd 3 on unix,
-//! an inherited pipe handle on Windows — the security-scope 6.7
+//! a pipe passed as the child's stdout on Windows — the security-scope 6.7
 //! pattern: the child opens nothing after lockdown), times
 //! spawn-to-ready, prints the child's ready line and pid, and keeps
 //! the child alive for the external harness (which samples any PID).
@@ -149,19 +149,20 @@ fn main() {
     unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
 }
 
-/// The Windows supervisor: creates the IPC pipe (inheritable), the
+/// The Windows supervisor: creates the IPC pipe (the child's stdout), the
 /// restricted untrusted token and the job, starts the child under the
 /// token suspended so the job assignment completes before it runs
 /// (fatal on failure), resumes it, times spawn-to-ready, prints the
-/// child's ready line, and holds it for the harness.
+/// child's ready line, and holds it for the harness. Any other outcome
+/// (an error line, a closed pipe, no line within the deadline) prints
+/// one `FAILED` line with the child's state and exits 1.
 #[cfg(windows)]
 fn main() {
     use std::mem::size_of;
     use std::ptr;
     use std::time::Instant;
 
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, SetHandleInformation};
-    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::Storage::FileSystem::ReadFile;
     use windows_sys::Win32::System::Pipes::CreatePipe;
     use windows_sys::Win32::System::Threading::{
@@ -171,29 +172,20 @@ fn main() {
 
     use hg_substrate_os::sandbox::windows::{assign_job, job_object, restricted_token};
 
-    // 1. The IPC pipe, inheritable (the child receives the write end).
-    let sa = SECURITY_ATTRIBUTES {
-        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: ptr::null_mut(),
-        bInheritHandle: 1,
-    };
+    // 1. The IPC pipe. The child receives the write end as its stdout:
+    // CreateProcessWithTokenW starts the child through the Secondary
+    // Logon service, which passes the three STARTUPINFO std handles
+    // and no other handle (an inherited handle named on the command
+    // line was invalid in the child; FP-M0 decision log, 23 October).
     let mut read_h: HANDLE = ptr::null_mut();
     let mut write_h: HANDLE = ptr::null_mut();
-    // SAFETY: the out-handles are valid; the attributes request
-    // inheritance for the child's copy of the write end.
-    if unsafe { CreatePipe(&mut read_h, &mut write_h, &sa, 0) } == 0 {
+    // Neither end is inheritable: the service duplicates the stdout
+    // handle into the child itself, so no inheritable handle of ours
+    // exists for any process to pick up (I-2).
+    // SAFETY: the out-handles are valid; null attributes give
+    // default security and no inheritance.
+    if unsafe { CreatePipe(&mut read_h, &mut write_h, ptr::null(), 0) } == 0 {
         eprintln!("fp-m0-probe: CreatePipe failed");
-        exit(1);
-    }
-    // The child must inherit only the write end (I-2: a handle passed
-    // further than needed). Clear the read end's inherit flag.
-    // SAFETY: read_h is the just-created pipe handle; the flag change
-    // applies to this process's copy only.
-    if unsafe {
-        SetHandleInformation(read_h, 1 /* HANDLE_FLAG_INHERIT */, 0)
-    } == 0
-    {
-        eprintln!("fp-m0-probe: SetHandleInformation failed");
         exit(1);
     }
 
@@ -213,13 +205,12 @@ fn main() {
         }
     };
 
-    // 3. The child command line: the exe next to this one plus the
-    // inherited pipe handle.
+    // 3. The child command line: the exe next to this one.
     let exe = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("fp-m0-empty.exe")))
         .expect("exe path");
-    let mut cmdline: Vec<u16> = format!("\"{}\" {}", exe.display(), write_h as usize)
+    let mut cmdline: Vec<u16> = format!("\"{}\"", exe.display())
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
@@ -232,6 +223,10 @@ fn main() {
     // SAFETY: a zeroed struct is the documented initial state.
     let mut si: STARTUPINFOW = unsafe { std::mem::zeroed() };
     si.cb = size_of::<STARTUPINFOW>() as u32;
+    // The pipe is the child's stdout, the IPC endpoint; stdin and
+    // stderr are null, so the child holds no other handle of ours.
+    si.dwFlags = 0x100; // STARTF_USESTDHANDLES
+    si.hStdOutput = write_h;
     // SAFETY: a zeroed struct is the documented initial state.
     let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
     let started = Instant::now();
@@ -246,16 +241,24 @@ fn main() {
     // SE_INCREASE_QUOTA_NAME (1314) from a non-admin caller. The
     // child starts suspended so the job assignment below completes
     // BEFORE it runs — its mitigation claim is true when it reports.
+    //
+    // No console window: creating one for a console-subsystem child
+    // under the restricted token fails in the loader with
+    // STATUS_DLL_INIT_FAILED (0xC0000142) before main — the "loader
+    // stall" (FP-M0 decision log, 23 October). fp-m0-empty is built
+    // for the GUI subsystem, so it gets no console at all;
+    // CREATE_NO_WINDOW keeps any console-subsystem child windowless.
     const CREATE_SUSPENDED: u32 = 0x4;
-    // SAFETY: valid exe path, command line and startup info;
-    // inheritance is on so the child gets the write end.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    // SAFETY: valid exe path, command line and startup info; the
+    // write end reaches the child as its stdout.
     let rc = unsafe {
         CreateProcessWithTokenW(
             token.as_handle(),
             0,
             exe_w.as_ptr(),
             cmdline.as_mut_ptr(),
-            CREATE_SUSPENDED,
+            CREATE_SUSPENDED | CREATE_NO_WINDOW,
             ptr::null(),
             ptr::null(),
             &si,
@@ -286,24 +289,87 @@ fn main() {
         exit(1);
     }
 
-    // 4. The ready line (blocking read on the pipe).
-    let mut buf = [0u8; 512];
-    let mut n: u32 = 0;
-    // SAFETY: the buffer is valid for the read; the read blocks until
-    // the child writes or the pipe closes.
-    unsafe { ReadFile(read_h, buf.as_mut_ptr(), 512, &mut n, ptr::null_mut()) };
-    // SAFETY: the read end is ours and no longer needed.
-    unsafe { CloseHandle(read_h) };
-    println!(
-        "fp-m0-probe: child pid={} spawn-to-ready={:.3} ms",
-        pi.dwProcessId,
-        started.elapsed().as_secs_f64() * 1e3
-    );
-    if n > 0 {
-        print!(
-            "fp-m0-probe: {}",
-            String::from_utf8_lossy(&buf[..n as usize])
-        );
+    // 4. The ready line, with a deadline. A reader thread does the
+    // blocking read so a child that neither writes nor exits is
+    // reported as stuck instead of hanging the supervisor (SEC-8).
+    // Every outcome other than a ready line prints the child's state
+    // and exits 1; the timing line prints only for a ready child.
+    const READY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    // The handle crosses to the reader thread as an integer (HANDLE is
+    // a raw pointer, so not Send); only that thread uses it from here.
+    let read_raw = read_h as usize;
+    let reader = hg_substrate_os::thread::spawn("fp-m0-probe-reader", move || {
+        let read_h = read_raw as HANDLE;
+        let mut buf = [0u8; 512];
+        let mut n: u32 = 0;
+        // SAFETY: the buffer is valid for the read; read_h is the pipe's
+        // read end, owned by this thread from here on. The read blocks
+        // until the child writes or the pipe closes.
+        let ok = unsafe { ReadFile(read_h, buf.as_mut_ptr(), 512, &mut n, ptr::null_mut()) };
+        // SAFETY: the read end is ours and no longer needed.
+        unsafe { CloseHandle(read_h) };
+        let got = if ok == 0 { 0 } else { n as usize };
+        let _ = tx.send(buf[..got].to_vec());
+    });
+    if let Err(e) = reader {
+        eprintln!("fp-m0-probe: reader thread: {e}");
+        // SAFETY: valid process handle; the child is ours to end.
+        unsafe { TerminateProcess(pi.hProcess, 1) };
+        exit(1);
+    }
+
+    match rx.recv_timeout(READY_DEADLINE) {
+        Ok(bytes) if bytes.starts_with(b"sandbox=applied") => {
+            println!(
+                "fp-m0-probe: child pid={} spawn-to-ready={:.3} ms",
+                pi.dwProcessId,
+                started.elapsed().as_secs_f64() * 1e3
+            );
+            print!("fp-m0-probe: {}", String::from_utf8_lossy(&bytes));
+        }
+        Ok(bytes) if !bytes.is_empty() => {
+            // The child wrote something other than a ready line: its
+            // error report (stderr is null, so stdout carries it).
+            println!(
+                "fp-m0-probe: FAILED child pid={} reported: {}; {}",
+                pi.dwProcessId,
+                String::from_utf8_lossy(&bytes).trim_end(),
+                child_state(pi.hProcess)
+            );
+            exit(1);
+        }
+        Ok(_) => {
+            println!(
+                "fp-m0-probe: FAILED child pid={} closed the pipe without a ready line; {}",
+                pi.dwProcessId,
+                child_state(pi.hProcess)
+            );
+            exit(1);
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            // The reader thread ended without sending: a supervisor
+            // fault, not the child's.
+            println!(
+                "fp-m0-probe: FAILED supervisor reader ended without a result; child pid={}; {}; terminating it",
+                pi.dwProcessId,
+                child_state(pi.hProcess)
+            );
+            // SAFETY: valid process handle; the child is ours to end.
+            unsafe { TerminateProcess(pi.hProcess, 1) };
+            exit(1);
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            println!(
+                "fp-m0-probe: FAILED child pid={} no ready line within {} s; {}; terminating it",
+                pi.dwProcessId,
+                READY_DEADLINE.as_secs(),
+                child_state(pi.hProcess)
+            );
+            // SAFETY: valid process handle; a stuck child is ended.
+            unsafe { TerminateProcess(pi.hProcess, 1) };
+            exit(1);
+        }
     }
 
     // 5. Hold the child for the harness; the measurement kills us.
@@ -311,4 +377,26 @@ fn main() {
         // SAFETY: a fixed 1-second sleep with no return value.
         unsafe { Sleep(1000) };
     }
+}
+
+/// How the child stands, for the failure lines: its exit code once it
+/// has exited (waiting up to 2 s), or "still running" — never the
+/// STILL_ACTIVE pseudo exit code (259) read as a real one.
+#[cfg(windows)]
+fn child_state(process: windows_sys::Win32::Foundation::HANDLE) -> String {
+    use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+    use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+
+    // SAFETY: the caller passes the child's process handle, valid for
+    // the supervisor's lifetime; the wait is bounded.
+    let waited = unsafe { WaitForSingleObject(process, 2000) };
+    if waited != WAIT_OBJECT_0 {
+        return format!("child still running (wait={waited:#x})");
+    }
+    let mut code: u32 = 0;
+    // SAFETY: valid process handle and out-pointer.
+    if unsafe { GetExitCodeProcess(process, &mut code) } == 0 {
+        return "child exited; exit code unreadable".to_string();
+    }
+    format!("child exited with code {code:#010x}")
 }

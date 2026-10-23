@@ -263,14 +263,13 @@ pub fn probe_line() -> String {
     let file_verdict = if h == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
         // SAFETY: GetLastError reads the thread's error slot only.
         let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-        format!(
-            "file-read={}",
-            if err == ERROR_ACCESS_DENIED {
-                "denied"
-            } else {
-                "unexpected"
-            }
-        )
+        if err == ERROR_ACCESS_DENIED {
+            "file-read=denied".to_string()
+        } else {
+            // Any other failure is reported with its code, never as a
+            // denial (SEC-8): it does not show the token blocked it.
+            format!("file-read=failed-{err}")
+        }
     } else {
         // SAFETY: the handle is ours and valid.
         unsafe { CloseHandle(h) };

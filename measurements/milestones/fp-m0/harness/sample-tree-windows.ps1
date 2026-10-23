@@ -4,7 +4,8 @@
 # process tree rooted at CommandLine matches, one row every 5 s into
 # results\<date>-<label>.tsv. Both counters are recorded so the
 # counter-mapping observation (FP open question 17) can say which reported
-# figure each incumbent's footprint follows.
+# figure each incumbent's footprint follows. Totals are in MB (the
+# original columns) and in KB (appended, for sub-MB processes).
 param([string]$Pattern, [int]$Minutes = 2, [string]$Label = "manual")
 $ErrorActionPreference = "SilentlyContinue"
 $dir = Join-Path $PSScriptRoot "results"
@@ -31,20 +32,24 @@ function Get-TreePids {
   return $seen.Keys
 }
 
-"t`tsample`tnprocs`ttotal_private_MB`ttotal_ws_MB`tmax_single_private_MB" | Set-Content -Encoding utf8 $out
+# UTF-8 without a BOM: Windows PowerShell's "-Encoding utf8" writes one,
+# which turns the first column name into "\ufefft" for TSV readers.
+$enc = New-Object System.Text.UTF8Encoding($false)
+[IO.File]::WriteAllText($out, "t`tsample`tnprocs`ttotal_private_MB`ttotal_ws_MB`tmax_single_private_MB`ttotal_private_KB`ttotal_ws_KB`n", $enc)
 $n = $Minutes * 12
 for ($i = 0; $i -le $n; $i++) {
   $pids = @(Get-TreePids)
-  $totalPriv = 0; $totalWs = 0; $max = 0; $count = 0
+  $totalPriv = 0; $totalWs = 0; $max = 0; $count = 0; $privKB = 0; $wsKB = 0
   foreach ($id in $pids) {
     $p = Get-Process -Id $id
     if (-not $p) { continue }
     $mb = [math]::Round($p.PrivateMemorySize64 / 1MB)
     $wsmb = [math]::Round($p.WorkingSet64 / 1MB)
     $count++; $totalPriv += $mb; $totalWs += $wsmb
+    $privKB += [math]::Round($p.PrivateMemorySize64 / 1KB); $wsKB += [math]::Round($p.WorkingSet64 / 1KB)
     if ($mb -gt $max) { $max = $mb }
   }
-  "$(Get-Date -Format HH:mm:ss)`t$i`t$count`t$totalPriv`t$totalWs`t$max" | Add-Content -Encoding utf8 $out
+  [IO.File]::AppendAllText($out, "$(Get-Date -Format HH:mm:ss)`t$i`t$count`t$totalPriv`t$totalWs`t$max`t$privKB`t$wsKB`n", $enc)
   Start-Sleep 5
 }
 Write-Output "done: $n samples, $count processes in the last sample -> $out"

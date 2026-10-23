@@ -1,4 +1,4 @@
-﻿t	sample	nprocs	total_private_MB	total_ws_MB	max_single_private_MB
+t	sample	nprocs	total_private_MB	total_ws_MB	max_single_private_MB
 15:20:19	0	80	2230	5183	138
 15:20:25	1	80	2220	5174	137
 15:20:30	2	80	2225	5183	138

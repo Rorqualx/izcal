@@ -185,3 +185,41 @@ The Windows supervisor creates the restricted token (DISABLE_MAX_PRIVILEGE | SAN
 3. The must-deny probe's first target (`drivers\etc\hosts`) is world-readable even at Untrusted (file-read=ALLOWED on the diagnostic run) — the probe now targets the SYSTEM-only SAM hive.
 
 **FP-2's running blocker sum:** macOS 26 — 4,096–4,144 KB phys_footprint; Linux (hueyj) — 2,148–2,152 KB VmRSS + 0 swap; Windows (rig253) — 372–376 KB private / 1,992 KB WS (the stalled-loader state, to be re-measured once the stall is fixed). The sum updates when the Windows tier line lands.
+
+## Half B, Windows leg — the loader stall, root-caused and fixed (23 October 2026, rig253)
+
+**Root cause, measured:** the supervisor now reports how a child ended when no ready line arrives (SEC-8). Every run of the old pair ended with **exit code `0xC0000142` (STATUS_DLL_INIT_FAILED)**, about 6 ms after spawn — a DLL's initialization failed in the loader, before `main`. The child imports no GUI library (kernel32, advapi32, ntdll, VCRUNTIME140 and the UCRT API sets only), so the creation flags were bisected:
+
+| Creation flags (with CREATE_SUSPENDED) | Result |
+|---|---|
+| none (console child, default console) | `0xC0000142` before main |
+| CREATE_NEW_CONSOLE | `0xC0000142` before main |
+| DETACHED_PROCESS | rejected by CreateProcessWithTokenW (error 87) |
+| **CREATE_NO_WINDOW** | **loader completes; the child reaches main** |
+
+So **creating a console window for the child under the restricted token is what fails**. With CREATE_NO_WINDOW the console still exists, as a windowless `conhost.exe` child (956 KB private, 6,200 KB working set — more than the sandboxed process itself). The fix removes the console entirely: `fp-m0-empty` is built for the **GUI subsystem** (no console, no conhost), and the supervisor keeps CREATE_NO_WINDOW for any console-subsystem child. The 23 October "one thread, zero CPU" observation and the 372–376 KB floor were taken from this failing launch, not from a running child; both are superseded below.
+
+**Second defect, measured:** the IPC handle never reached the child. CreateProcessWithTokenW starts the child through the Secondary Logon service, which passes the three STARTUPINFO std handles and no inherited handle: the pipe handle named on the command line was invalid in the child (the supervisor read end-of-pipe at once). The pipe now goes as the child's **stdout** (STARTF_USESTDHANDLES), stdin and stderr are null, and **neither pipe end is inheritable** — the service duplicates the stdout handle itself, so no inheritable handle of ours exists for any process to pick up (I-2). The child's Windows path no longer needs `unsafe` (no raw handle from argv).
+
+**The Windows floor, re-measured** with the final build (GUI-subsystem child, 2-minute sample, one process in every row; exclusive booking, `rig check` OK at 14:14:38 and 14:16:51 -06:00): **880 KB private / 4,612 KB working set for the first ~30 s, then a steady 796 KB private / 4,552–4,568 KB working set**. Six threads at start (main, the two probe threads, and three the process did not create itself), 51 handles. TSV: `results/windows/2026-10-23-halfb-win-fixed.tsv`. The sampler now also writes KB totals (the MB columns round a sub-MB process to 1). Its timestamps are rig253's clock, which runs on Pacific time: 13:14:44 there is 14:14:44 -06:00.
+
+**Sandboxed spawn-to-ready, 100 runs** with the final build (exclusive booking, `rig check` OK at 14:14:13 -06:00): **0 failures; min 8.30, p50 10.19, p90 10.93, p99 12.33 ms** (nearest-rank: p99 is the 99th of 100 sorted values). The first run, the first launch after a rebuild, took 879.61 ms (cold start). Without it, the 99 warm runs give the same p50, p90 and p99, with a maximum of 12.33 ms. Raw values: `results/windows/2026-10-23-halfb-win-spawn.tsv`. The p99 is above the 10 ms† gate, as on macOS (11.20 ms): **keep a spare process on Windows too.** Before the GUI-subsystem change (with conhost) spawn-to-ready was 21–23 ms. (An earlier 100-run pass on this branch reported its maximum, 11.71 ms, as the p99; this pass replaces it.)
+
+**Failure reporting, checked on rig253.** The supervisor prints the timing line only for a ready child. Every other outcome prints one `FAILED` line with the child's state and exits 1; the child reports its own errors, including panics, down the pipe as one line. Each path was exercised with a temporary test switch, removed before commit:
+
+| Child behavior | Supervisor output |
+|---|---|
+| ready | timing line + ready line; holds the child |
+| panics | `FAILED … reported: fp-m0-empty: error: panic: …; child exited with code 0x00000001` |
+| exits before writing | `FAILED … closed the pipe without a ready line; child exited with code 0x00000007` |
+| hangs without writing | `FAILED … no ready line within 10 s; child still running (wait=0x102); terminating it` |
+
+**The child does not get the supervisor's environment.** With a NULL environment block, CreateProcessWithTokenW does not hand the child the caller's environment; per its documentation, it builds a new one from the token user's profile. A variable set in the supervisor did not reach the child. The 23 October note that "NULL (inherit) works" is corrected: NULL works, but it does not inherit. The environment scrub stays on the Windows-tier follow-up list.
+
+**The tier line now arrives, and it shows two things to fix (follow-ups, not silent):**
+1. **The must-deny probe cannot answer.** Opening the SAM hive fails with **error 32 (ERROR_SHARING_VIOLATION)** for every caller, sandboxed or not — the system holds it open exclusively. The probe now prints `file-read=failed-<code>` for any failure other than access denied, so this reads `failed-32`, never `denied`.
+2. **The current Windows tier does not block reads of user files.** A one-off diagnostic build pointed the probe at a file the user created in `Documents`: **`file-read=ALLOWED`** under the Untrusted, DISABLE_MAX_PRIVILEGE | SANDBOX_INERT token (also `ALLOWED` for `drivers\etc\hosts`). The Untrusted label stops writes up, not reads; read denial needs restricting SIDs on the token or an AppContainer. That joins the Windows-tier follow-up list (AppContainer, win32k lockdown, ACG, the environment scrub) together with a must-deny target that answers: a supervisor-created canary the user can read.
+
+**FP-2's running blocker sum:** macOS 26 — 4,096–4,144 KB phys_footprint; Linux (hueyj) — 2,148–2,152 KB VmRSS + 0 swap; **Windows (rig253) — 796 KB private / 4,552–4,568 KB working set steady, 880 KB / 4,612 KB in the first ~30 s** (replaces the 372–376 KB loader-failure figure).
+
+**Windows TSVs and the BOM.** Windows PowerShell's `-Encoding utf8` writes a byte-order mark, so every Windows TSV from `sample-tree-windows.ps1` began with one and its first column read as `\ufefft`. The sampler now writes UTF-8 without a BOM. The BOM was removed from the 11 existing Windows TSVs (22 and 23 October); no data changed.
