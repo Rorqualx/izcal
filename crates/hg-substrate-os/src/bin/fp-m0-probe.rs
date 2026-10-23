@@ -219,12 +219,12 @@ fn main() {
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("fp-m0-empty.exe")))
         .expect("exe path");
-    let exe_w: Vec<u16> = exe
-        .to_string_lossy()
+    let mut cmdline: Vec<u16> = format!("\"{}\" {}", exe.display(), write_h as usize)
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
-    let mut cmdline: Vec<u16> = format!("\"{}\" {}", exe.display(), write_h as usize)
+    let exe_w: Vec<u16> = exe
+        .to_string_lossy()
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
