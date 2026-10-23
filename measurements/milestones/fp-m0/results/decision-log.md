@@ -135,3 +135,7 @@ Safari's single-instance model: the measurement ran inside the live session with
 | 30 cross-site tabs | **1,458 MB** (44) |
 
 **Reading:** Safari's macOS floor (503 MB) sits between Chrome's 162 MB and Firefox's 639 MB, and its same-site slope (~17 MB/tab) is close to Firefox's economy; the cross-site jump (+451 MB over 30 tabs, +17 processes) is the smallest of the three browsers on macOS. **Discarded versions:** run 1 (Safari not running — `-600`), run 2 (all-zero rows: the tree sampler's comma-separated patterns were a latent bug — the comma string was passed to `pgrep -f` as one literal regex that matches nothing; fixed by joining commas into an ERE alternation, which the matrix had never exercised because it used single patterns). The harness's macOS tree sampler is the canonical one, so the fix is recorded there. Probe: `harness/run-matrix-safari.sh` (+ `run-matrix-safari-crosssite.sh`).
+
+## The Q-17 close (22 October 2026)
+
+The footprint spec's revision 0.3.2 (PR #11's branch) closes open question 17 on its measured parts, item by item — the three-OS counter mapping, the per-element variant, Chromium's PSI reaction, `MADV_FREE_REUSABLE` accounting, macOS cache sizing and the local soft limit — each citing the rows above. The parts still open stay in the spec's Section 11.1 with their FP-M0 gates: the per-attribute-set variant, Firefox's PSI reaction, `MADV_FREE_REUSE`, cache sizing on Linux and Windows, and the soft limit on the other lab devices. No decision, target or threshold changed by the close.

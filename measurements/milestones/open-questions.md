@@ -51,7 +51,13 @@ log then records it, per the footprint spec's item-by-item rule.
   footprint follows (macOS counter mapping — extend the matrix), macOS
   accounting after `MADV_FREE_REUSABLE` (done 22 Oct — the probe releases
   the phys_footprint charge), HTTP-cache sizing (black-box observation),
-  Linux PSI reactions (the .185 rig).
+  Linux PSI reactions (the .185 rig). **Partially closed 22 Oct by the
+  footprint spec's revision 0.3.2** (on PR #11's branch): counters on
+  all three OSes, the per-element variant, Chromium's PSI reaction,
+  `MADV_FREE_REUSABLE`, macOS cache sizing and the local soft limit.
+  Still open under FP-M0: the per-attribute-set variant, Firefox's PSI
+  reaction, `MADV_FREE_REUSE`, cache sizing on Linux and Windows, and
+  the soft limit on the other lab devices.
 - **The cross-site tab mix** (the matrix's stated caveat): 30 tabs across
   distinct domains, Chrome and Firefox — **done 22 Oct, macOS**.
 - **The Linux matrix leg** — **done 22 Oct, rig hueyj** (chromium and
