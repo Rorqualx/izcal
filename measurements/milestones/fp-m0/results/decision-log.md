@@ -257,3 +257,26 @@ The control shows the probe does report `ALLOWED` when a read is allowed. Its `j
 **FP-2's running blocker sum:** macOS 26 — 4,096–4,144 KB phys_footprint; Linux (hueyj) — 2,148–2,152 KB VmRSS + 0 swap; **Windows (rig253) — 792 KB private / 4,620 KB working set steady** (AppContainer tier; replaces 796 / 4,552–4,568).
 
 **Still open on Windows (named, not silent):** win32k lockdown, ACG, CIG and CET (the rest of 6.7's utility row); the environment scrub; and the alternate desktop that 6.7's renderer row adds.
+
+## Idle wakeups: the empty process polled; now it does not (23 October 2026, all three OSes)
+
+**The target:** footprint spec 6.8 says the engine has **no periodic timers of its own and no polling**, and FP-18 budgets idle wakeups for the *whole browser* at **≤ 1/s†** with one static page visible. FP-M0 had measured memory and spawn time but never wakeups.
+
+**The counters** (new harness files; each reads one documented per-process counter at the start and end of a 60 s window):
+- macOS: `wakeups-mac.c` — `proc_pid_rusage` (RUSAGE_INFO_V2): interrupt wakeups, and of those the wakeups out of package idle.
+- Linux: `wakeups-linux.sh` — voluntary and involuntary context switches summed over `/proc/<pid>/task/*/status`.
+- Windows: `wakeups-windows.ps1` — the raw cumulative "Context Switches" count of each thread (`Win32_PerfRawData_PerfProc_Thread`). A first version averaged the formatted `Context Switches/sec` counter; it failed with invalid samples when the process's start-up threads exited, so the raw totals replace it, and the window starts 40 s after launch so the thread set is stable (3 threads).
+
+**Measured: the empty process woke twice a second.** Its two probe threads each looped on a 1 s sleep to check a stop flag:
+
+| OS (rig) | Before (main) | After (blocking wait) |
+|---|---|---|
+| macOS 26 (local) | **2.000/s** interrupt wakeups (0.350/s out of package idle), 0.034 ms CPU per minute | **0.000/s**, 0 CPU, two 60 s windows |
+| Linux (hueyj) | **2.000/s** voluntary switches, 0 involuntary | **0.000/s**, two 60 s windows |
+| Windows (rig253) | **2.033–2.067/s** context switches | **0.000/s**, 0 CPU, two 60 s windows |
+
+That is twice FP-18's whole-browser budget from an empty process. **The fix:** the two threads and the main thread now block with `std::thread::park()` (no timer; the loop only absorbs spurious returns), so the process sits at zero wakeups until something wakes it.
+
+Bookings: `rig check --kind exclusive` OK on local (15:37:27, 15:38:53), hueyj (15:41:07) and rig253 (15:57:55, -06:00). The first Windows pass ran after its booking had already ended (the check passed, the rig was free); the table's Windows row is from the booked rerun, which matched it. The supervisor (`fp-m0-probe`) still sleeps 1 s in its hold loop; it is test harness only, and only the sandboxed child is counted.
+
+**FP-M0 idle-wakeup row, the empty process:** **0 wakeups/s on macOS, Linux and Windows.**

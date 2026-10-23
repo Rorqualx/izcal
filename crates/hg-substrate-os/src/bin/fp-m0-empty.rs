@@ -53,8 +53,11 @@ fn main() {
         let done = Arc::clone(&done);
         handles.push(
             thread::spawn(name, move || {
+                // Block until woken: no timer, so no idle wakeups
+                // (footprint 6.8: no periodic timers, no polling).
+                // park() may return spuriously, hence the loop.
                 while !done.load(Ordering::Relaxed) {
-                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    std::thread::park();
                 }
             })
             .expect("thread spawn"),
@@ -76,8 +79,10 @@ fn main() {
     }
 
     // 5. Wait forever: the supervisor samples us and then kills us.
+    // Hold the process, blocked with no timer, until the supervisor ends
+    // it.
     loop {
-        std::thread::sleep(std::time::Duration::from_secs(3600));
+        std::thread::park();
     }
 }
 
@@ -125,8 +130,11 @@ fn main() {
     for name in ["fp-m0-thread-a", "fp-m0-thread-b"] {
         let done = Arc::clone(&done);
         match thread::spawn(name, move || {
+            // Block until woken: no timer, so no idle wakeups
+            // (footprint 6.8: no periodic timers, no polling).
+            // park() may return spuriously, hence the loop.
             while !done.load(Ordering::Relaxed) {
-                std::thread::sleep(std::time::Duration::from_secs(1));
+                std::thread::park();
             }
         }) {
             Ok(h) => handles.push(h),
@@ -151,7 +159,9 @@ fn main() {
     }
     drop(ipc);
 
+    // Hold the process, blocked with no timer, until the supervisor ends
+    // it.
     loop {
-        std::thread::sleep(std::time::Duration::from_secs(3600));
+        std::thread::park();
     }
 }
