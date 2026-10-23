@@ -13,8 +13,6 @@
 //! the raw BPF program bytes.
 #![expect(unsafe_code, reason = "G5: sandbox::linux (seccomp BPF)")]
 
-use std::mem::size_of;
-
 /// `AUDIT_ARCH_X86_64`, `AUDIT_ARCH_AARCH64` (the two lab arches).
 const ARCH_X86_64: u32 = 0xC000_003E;
 const ARCH_AARCH64: u32 = 0xC000_00B7;
@@ -161,37 +159,40 @@ fn build_filter() -> Vec<SockFilter> {
     };
     let n = table.len();
 
-    let mut f = Vec::new();
-    f.push(SockFilter {
-        code: BPF_LD_W_ABS,
-        jt: 0,
-        jf: 0,
-        k: 4,
-    });
-    f.push(SockFilter {
-        code: BPF_JEQ_K,
-        jt: 2,
-        jf: 0,
-        k: ARCH_X86_64,
-    });
-    f.push(SockFilter {
-        code: BPF_JEQ_K,
-        jt: 1,
-        jf: 0,
-        k: ARCH_AARCH64,
-    });
-    f.push(SockFilter {
-        code: BPF_RET_K,
-        jt: 0,
-        jf: 0,
-        k: RET_DENY,
-    });
-    f.push(SockFilter {
-        code: BPF_LD_W_ABS,
-        jt: 0,
-        jf: 0,
-        k: 0,
-    });
+    // The arch check (load arch, accept the two lab arches, else deny),
+    // then the syscall-number load.
+    let mut f = vec![
+        SockFilter {
+            code: BPF_LD_W_ABS,
+            jt: 0,
+            jf: 0,
+            k: 4,
+        },
+        SockFilter {
+            code: BPF_JEQ_K,
+            jt: 2,
+            jf: 0,
+            k: ARCH_X86_64,
+        },
+        SockFilter {
+            code: BPF_JEQ_K,
+            jt: 1,
+            jf: 0,
+            k: ARCH_AARCH64,
+        },
+        SockFilter {
+            code: BPF_RET_K,
+            jt: 0,
+            jf: 0,
+            k: RET_DENY,
+        },
+        SockFilter {
+            code: BPF_LD_W_ABS,
+            jt: 0,
+            jf: 0,
+            k: 0,
+        },
+    ];
     for (i, (nr, _reason)) in table.iter().enumerate() {
         f.push(SockFilter {
             code: BPF_JEQ_K,

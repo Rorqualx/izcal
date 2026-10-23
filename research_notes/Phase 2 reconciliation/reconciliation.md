@@ -102,6 +102,8 @@ Compiled 19 October 2026 by the reconciliation reviewer, who wrote none of the t
 
 **Changed.** ST 6.15, 9.5; TX 5, 6.11, 6.12, 6.15, 7, 8, 9.5 (every reference renumbered); NW 6.21, 8.1 (NW-9), 9.5.
 
+**Addendum, 21 October 2026 (C-5).** The one registry is settled and complete: G1–G9 Stage 1; G10–G12 DevTools; G13–G18 JS; G19–G24 ST; G25–G29 TX; G30–G36 NW; G37–G45 LY; G46–G49 unassigned; G50–G57 MD; G58–G59 unassigned; G60–G72 GR; G73–G79 unassigned; G80–G87 CB; G88–G109 unassigned (the next spec or specs); G110–G119 PDF; G120–G129 SVG; G130–G139 animation; G140–G149 editing; G150–G159 storage; G160–G169 WebCrypto; G170–G179 extensions; G180–G189 ML service; G190–G199 phishing protection; G200–G209 shell; G210 onward the next spec. This replaces this section's "G36 onward" line and the earlier "G88 onward" wording; the registry lives in Stage 1 2.2.
+
 ### P8. `FontFace` and `@font-face` descriptor parsing across layers
 
 **Conflict.** TX's `hg-font-load` (L2t) implements `FontFace` ([TX 6.5][TX]), whose constructor takes descriptor strings, and canvas text takes a CSS `font` string; parsing them needs ST's generated parsers (L2p). Under P1, L2t cannot depend on L2p, and ST's G22 and G23 forbid a second parser of a CSS grammar.
@@ -155,6 +157,8 @@ Compiled 19 October 2026 by the reconciliation reviewer, who wrote none of the t
 
 **Conflict.** NW-D7 keys network state by (T, C, F, X, N, n) ([NW 6.8][NW]). ST keys parsed sheets and attribute sets, and TX keys every text cache and the atlas, by "partition", which FP 6.4 defines as (top-level site, container) ([ST 6.6, 6.11][ST], [TX 6.8][TX], [FP 6.4][FP]). A renderer cache coarser than the network key re-creates the leak the network key closes: a credentialless iframe or fenced frame (nonce n) shares a process with other documents of its site, and would see their decoded resources, parsed sheets and shaped text by timing. `:visited` (ST-D15) says nothing about nonce partitions.
 **Resolution.** NW owns one **partition key type** (fixed at NW-M0). In-process caches in a renderer key by its projection **(T, C, X, n)**: F is fixed by the process's site lock (origin under FP-D8), and N concerns only navigation requests. ST's sheet and attribute-set sharing, TX's shaping, raster, instance, parsed-font and validation caches, and FP-D14's atlas use that projection. In a nonce partition the broker sends no visited answers, so `:visited` never matches there. ST's per-agent intern tables may span two partitions only when both documents are in one agent, which already lets them script each other, so no new channel arises. **Owner.** NW (key); ST, TX (use). **Changed.** NW 6.8, 9.5; ST 6.6, 6.11, 6.14, 9.5; TX 6.5, 6.8, 9.5. FP amendment (listed in NW, ST and TX 9.5): FP 6.4 and FP-D14 use the projection.
+
+**Addendum, 21 October 2026 (GR 9.5).** The projection's assumption that F is fixed per process holds after the graphics transfer: content GPU processes are keyed like renderers (GR-D2), so one content GPU process serves one (T, C, X, n) partition and F varies only across processes, never within one. No cache in this section spans two F values in one process.
 
 ### P19. Cache classes: in-memory classes, canonical bytes and FP-D16 members
 
