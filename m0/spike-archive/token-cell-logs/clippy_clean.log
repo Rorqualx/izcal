@@ -1,0 +1,18 @@
+    Checking token-cell v0.0.0 (/Users/joederas/Documents/Cline/code/browser/m0/token-cell-spike/token-cell)
+    Checking v8 v152.2.0 (/Users/joederas/Documents/Cline/code/browser/m0/rusty_v8)
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> /Users/joederas/Documents/Cline/code/browser/m0/rusty_v8/src/isolate.rs:2346:8
+     |
+2346 |       .fetch_update(
+     |        ^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+     |
+2346 -       .fetch_update(
+2346 +       .try_update(
+     |
+
+warning: `v8` (lib) generated 1 warning (run `cargo clippy --fix --lib -p v8 -- ` to apply 1 suggestion)
+    Checking token-cell-v8 v0.0.0 (/Users/joederas/Documents/Cline/code/browser/m0/token-cell-spike/token-cell-v8)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.46s

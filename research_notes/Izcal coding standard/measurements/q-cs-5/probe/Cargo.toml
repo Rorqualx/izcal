@@ -1,0 +1,14 @@
+[package]
+name = "qcs5-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# The fork at the project's gitlink (aabd96b), consumed with its own CI's
+# release-sandbox archive through RUSTY_V8_ARCHIVE (see ../run.sh).
+[dependencies]
+# On revire the fork is cloned next to this crate (../rusty_v8-izcal).
+v8 = { path = "../rusty_v8-izcal", features = ["v8_enable_sandbox"] }
+
+[profile.release]
+debug = 1

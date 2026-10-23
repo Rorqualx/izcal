@@ -1,0 +1,2873 @@
+{
+ "samples": [
+  "20261018T224114Z",
+  "20261018T230717Z",
+  "20261019T000722Z",
+  "20261019T010727Z",
+  "20261019T020733Z"
+ ],
+ "per_sample": {
+  "20261018T224114Z": {
+   "openphish": {
+    "bytes": 14313,
+    "urls": 296,
+    "hosts": 273,
+    "http": {
+     "etag": "\"57b5a0a4db75ad90fad55c7f737aed3e01d6fa67c6a5cbcee92ab816bcdcd3e8\"",
+     "content-length": "14313"
+    },
+    "header_ts": null
+   },
+   "urlhaus_online": {
+    "bytes": 2774162,
+    "urls": 27723,
+    "hosts": 1984,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:37:15 GMT",
+     "etag": "\"2a5492-65e250a115f83\"",
+     "content-length": "2774162"
+    },
+    "header_ts": null
+   },
+   "urlhaus_recent": {
+    "bytes": 7875655,
+    "urls": 32284,
+    "hosts": 7254,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:36:37 GMT",
+     "etag": "\"782c47-65e2507bed117\"",
+     "content-length": "7875655"
+    },
+    "header_ts": "2026-10-18 22:34:20 (UTC)",
+    "entry_age_hours": {
+     "n": 33683,
+     "min": 0.12,
+     "p10": 159.72,
+     "median": 303.91,
+     "p90": 604.65,
+     "max": 742.66
+    },
+    "extra": {
+     "threat": {
+      "malware_download": 33683
+     },
+     "online": 16497
+    }
+   },
+   "threatfox_recent": {
+    "bytes": 1687137,
+    "urls": 804,
+    "hosts": 2202,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:35:08 GMT",
+     "etag": "\"19be61-65e250279d1ea\"",
+     "content-length": "1687137"
+    },
+    "header_ts": "2026-10-18 22:30:48 UTC",
+    "entry_age_hours": {
+     "n": 7486,
+     "min": 0.17,
+     "p10": 7.26,
+     "median": 221.49,
+     "p90": 17432.74,
+     "max": 44549.03
+    },
+    "extra": {
+     "ioc_type": {
+      "url": 823,
+      "domain": 2042,
+      "sha256_hash": 820,
+      "ip:port": 3659,
+      "sha1_hash": 71,
+      "md5_hash": 71
+     },
+     "threat_type": {
+      "botnet_cc": 5052,
+      "payload_delivery": 1472,
+      "payload": 962
+     }
+    }
+   },
+   "bazaar_sha256": {
+    "bytes": 59906,
+    "urls": 0,
+    "hosts": 0,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:05:02 GMT",
+     "etag": "\"ea02-65e2496d974c3\"",
+     "content-length": "59906"
+    },
+    "header_ts": "2026-10-18 22:03:11 UTC",
+    "hashes": 900
+   },
+   "pdb_links_new": {
+    "bytes": 143,
+    "urls": 3,
+    "hosts": 1,
+    "http": {
+     "etag": "\"91d1dac392190b4b2c0783cc38b36af3805aa8f4916678ba2145d8df8ac8576e\"",
+     "content-length": "143"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_new": {
+    "bytes": 91,
+    "urls": 0,
+    "hosts": 3,
+    "http": {
+     "etag": "\"248dd49ae7c241a4850a31a23f8446c3c393720d29bccfccef2a37a734439b6a\"",
+     "content-length": "91"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_act": {
+    "bytes": 11023128,
+    "urls": 0,
+    "hosts": 392071,
+    "http": {
+     "etag": "\"adaf9d3cfd73c0dd6d3315e8a23989b8ec692e1cdd63d92259c41a2a2ea227b7\"",
+     "content-length": "11023128"
+    },
+    "header_ts": null
+   },
+   "phisharmy": {
+    "bytes": 3415483,
+    "urls": 0,
+    "hosts": 153648,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:00:26 GMT"
+    },
+    "header_ts": "2026-10-18T22:00:25Z"
+   },
+   "certpl": {
+    "bytes": 2560830,
+    "urls": 0,
+    "hosts": 124483,
+    "http": {
+     "content-length": "2560830",
+     "last-modified": "Sun, 18 Oct 2026 22:40:06 GMT",
+     "etag": "\"6ad54ac6-27133e\""
+    },
+    "header_ts": null
+   },
+   "phishtank": {
+    "bytes": 11675526,
+    "urls": 59685,
+    "hosts": 30485,
+    "http": {
+     "content-length": "11675526",
+     "etag": "\"791e77c2d63a7b31ae2cc21be3017a4d\"",
+     "last-modified": "Sun, 18 Oct 2026 22:21:56 GMT"
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 60872,
+     "min": 1.07,
+     "p10": 1766.68,
+     "median": 10104.26,
+     "p90": 26501.67,
+     "max": 137315.85
+    },
+    "extra": {
+     "verif_delay_min_median": 11.7,
+     "verif_delay_min_p90": 206.74833333333336,
+     "top_targets": [
+      [
+       "Other",
+       54043
+      ],
+      [
+       "Allegro",
+       2838
+      ],
+      [
+       "Internal Revenue Service",
+       824
+      ],
+      [
+       "Amazon.com",
+       570
+      ],
+      [
+       "Facebook",
+       402
+      ],
+      [
+       "Microsoft",
+       342
+      ],
+      [
+       "Netflix",
+       176
+      ],
+      [
+       "Bradesco",
+       159
+      ]
+     ]
+    }
+   },
+   "phishstats_api": {
+    "bytes": 177117,
+    "urls": 99,
+    "hosts": 37,
+    "http": {},
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 100,
+     "min": 0.12,
+     "p10": 1.25,
+     "median": 4.14,
+     "p90": 6.65,
+     "max": 7.19
+    }
+   }
+  },
+  "20261018T230717Z": {
+   "openphish": {
+    "bytes": 14313,
+    "urls": 296,
+    "hosts": 273,
+    "http": {
+     "etag": "\"57b5a0a4db75ad90fad55c7f737aed3e01d6fa67c6a5cbcee92ab816bcdcd3e8\"",
+     "content-length": "14313"
+    },
+    "header_ts": null
+   },
+   "urlhaus_online": {
+    "bytes": 2774143,
+    "urls": 27723,
+    "hosts": 1988,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 23:02:16 GMT",
+     "etag": "\"2a547f-65e25637a7abe\"",
+     "content-length": "2774143"
+    },
+    "header_ts": null
+   },
+   "urlhaus_recent": {
+    "bytes": 7876591,
+    "urls": 32288,
+    "hosts": 7258,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 23:01:36 GMT",
+     "etag": "\"782fef-65e2561203b88\"",
+     "content-length": "7876591"
+    },
+    "header_ts": "2026-10-18 23:00:18 (UTC)",
+    "entry_age_hours": {
+     "n": 33688,
+     "min": 0.12,
+     "p10": 160.15,
+     "median": 304.35,
+     "p90": 605.08,
+     "max": 743.1
+    },
+    "extra": {
+     "threat": {
+      "malware_download": 33688
+     },
+     "online": 16498
+    }
+   },
+   "threatfox_recent": {
+    "bytes": 1681014,
+    "urls": 810,
+    "hosts": 2203,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 23:05:08 GMT",
+     "etag": "\"19a676-65e256dc33f4b\"",
+     "content-length": "1681014"
+    },
+    "header_ts": "2026-10-18 23:00:48 UTC",
+    "entry_age_hours": {
+     "n": 7460,
+     "min": 0.11,
+     "p10": 7.69,
+     "median": 222.2,
+     "p90": 17920.59,
+     "max": 44549.46
+    },
+    "extra": {
+     "ioc_type": {
+      "url": 829,
+      "sha256_hash": 788,
+      "domain": 2043,
+      "ip:port": 3658,
+      "sha1_hash": 71,
+      "md5_hash": 71
+     },
+     "threat_type": {
+      "botnet_cc": 5057,
+      "payload": 930,
+      "payload_delivery": 1473
+     }
+    }
+   },
+   "bazaar_sha256": {
+    "bytes": 59906,
+    "urls": 0,
+    "hosts": 0,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:05:02 GMT",
+     "etag": "\"ea02-65e2496d974c3\"",
+     "content-length": "59906"
+    },
+    "header_ts": "2026-10-18 22:03:11 UTC",
+    "hashes": 900
+   },
+   "pdb_links_new": {
+    "bytes": 143,
+    "urls": 3,
+    "hosts": 1,
+    "http": {
+     "etag": "\"91d1dac392190b4b2c0783cc38b36af3805aa8f4916678ba2145d8df8ac8576e\"",
+     "content-length": "143"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_new": {
+    "bytes": 91,
+    "urls": 0,
+    "hosts": 3,
+    "http": {
+     "etag": "\"248dd49ae7c241a4850a31a23f8446c3c393720d29bccfccef2a37a734439b6a\"",
+     "content-length": "91"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_act": {
+    "bytes": 11023128,
+    "urls": 0,
+    "hosts": 392071,
+    "http": {
+     "etag": "\"adaf9d3cfd73c0dd6d3315e8a23989b8ec692e1cdd63d92259c41a2a2ea227b7\"",
+     "content-length": "11023128"
+    },
+    "header_ts": null
+   },
+   "phisharmy": {
+    "bytes": 3415483,
+    "urls": 0,
+    "hosts": 153648,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:00:26 GMT"
+    },
+    "header_ts": "2026-10-18T22:00:25Z"
+   },
+   "certpl": {
+    "bytes": 2561129,
+    "urls": 0,
+    "hosts": 124496,
+    "http": {
+     "content-length": "2561129",
+     "last-modified": "Sun, 18 Oct 2026 23:05:06 GMT",
+     "etag": "\"6ad550a2-271469\""
+    },
+    "header_ts": null
+   },
+   "phishtank": {
+    "bytes": 11675526,
+    "urls": 59685,
+    "hosts": 30485,
+    "http": {
+     "content-length": "11675526",
+     "etag": "\"791e77c2d63a7b31ae2cc21be3017a4d\"",
+     "last-modified": "Sun, 18 Oct 2026 22:21:56 GMT"
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 60872,
+     "min": 1.5,
+     "p10": 1767.12,
+     "median": 10104.69,
+     "p90": 26502.1,
+     "max": 137316.28
+    },
+    "extra": {
+     "verif_delay_min_median": 11.7,
+     "verif_delay_min_p90": 206.74833333333336,
+     "top_targets": [
+      [
+       "Other",
+       54043
+      ],
+      [
+       "Allegro",
+       2838
+      ],
+      [
+       "Internal Revenue Service",
+       824
+      ],
+      [
+       "Amazon.com",
+       570
+      ],
+      [
+       "Facebook",
+       402
+      ],
+      [
+       "Microsoft",
+       342
+      ],
+      [
+       "Netflix",
+       176
+      ],
+      [
+       "Bradesco",
+       159
+      ]
+     ]
+    }
+   },
+   "phishstats_api": {
+    "bytes": 176170,
+    "urls": 100,
+    "hosts": 39,
+    "http": {
+     "content-length": "176170",
+     "etag": "W/\"2b02a-C/itSaX/np7nGykKbd0O9+bVEUY\""
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 100,
+     "min": 0.07,
+     "p10": 0.55,
+     "median": 3.67,
+     "p90": 6.58,
+     "max": 6.91
+    }
+   },
+   "phishunt": {
+    "bytes": 33621,
+    "urls": 772,
+    "hosts": 770,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 23:07:22 GMT"
+    },
+    "header_ts": null
+   }
+  },
+  "20261019T000722Z": {
+   "openphish": {
+    "bytes": 14748,
+    "urls": 298,
+    "hosts": 266,
+    "http": {
+     "etag": "\"412da22dd233689745114bcab06dfa1473fc0ea68ebe95abb6621bb330225e6d\"",
+     "content-length": "14748"
+    },
+    "header_ts": null
+   },
+   "urlhaus_online": {
+    "bytes": 2772521,
+    "urls": 27706,
+    "hosts": 1987,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 00:02:09 GMT",
+     "etag": "\"2a4e29-65e2639a6d0e3\"",
+     "content-length": "2772521"
+    },
+    "header_ts": null
+   },
+   "urlhaus_recent": {
+    "bytes": 7804267,
+    "urls": 31940,
+    "hosts": 7133,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 00:01:31 GMT",
+     "etag": "\"77156b-65e263764ccee\"",
+     "content-length": "7804267"
+    },
+    "header_ts": "2026-10-18 23:59:23 (UTC)",
+    "entry_age_hours": {
+     "n": 33310,
+     "min": 0.13,
+     "p10": 161.15,
+     "median": 305.31,
+     "p90": 587.5,
+     "max": 720.07
+    },
+    "extra": {
+     "threat": {
+      "malware_download": 33310
+     },
+     "online": 16478
+    }
+   },
+   "threatfox_recent": {
+    "bytes": 1674192,
+    "urls": 824,
+    "hosts": 2204,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 00:05:08 GMT",
+     "etag": "\"198bd0-65e26445304f1\"",
+     "content-length": "1674192"
+    },
+    "header_ts": "2026-10-19 00:04:55 UTC",
+    "entry_age_hours": {
+     "n": 7428,
+     "min": 0.04,
+     "p10": 8.69,
+     "median": 230.4,
+     "p90": 18088.11,
+     "max": 44550.47
+    },
+    "extra": {
+     "ioc_type": {
+      "sha256_hash": 742,
+      "url": 843,
+      "domain": 2043,
+      "ip:port": 3658,
+      "sha1_hash": 71,
+      "md5_hash": 71
+     },
+     "threat_type": {
+      "payload": 884,
+      "botnet_cc": 5069,
+      "payload_delivery": 1475
+     }
+    }
+   },
+   "bazaar_sha256": {
+    "bytes": 59840,
+    "urls": 0,
+    "hosts": 0,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 23:05:02 GMT",
+     "etag": "\"e9c0-65e256d6a99f9\"",
+     "content-length": "59840"
+    },
+    "header_ts": "2026-10-18 23:00:10 UTC",
+    "hashes": 899
+   },
+   "pdb_links_new": {
+    "bytes": 143,
+    "urls": 3,
+    "hosts": 1,
+    "http": {
+     "etag": "\"91d1dac392190b4b2c0783cc38b36af3805aa8f4916678ba2145d8df8ac8576e\"",
+     "content-length": "143"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_new": {
+    "bytes": 91,
+    "urls": 0,
+    "hosts": 3,
+    "http": {
+     "etag": "\"248dd49ae7c241a4850a31a23f8446c3c393720d29bccfccef2a37a734439b6a\"",
+     "content-length": "91"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_act": {
+    "bytes": 11023128,
+    "urls": 0,
+    "hosts": 392071,
+    "http": {
+     "etag": "\"adaf9d3cfd73c0dd6d3315e8a23989b8ec692e1cdd63d92259c41a2a2ea227b7\"",
+     "content-length": "11023128"
+    },
+    "header_ts": null
+   },
+   "phisharmy": {
+    "bytes": 3415483,
+    "urls": 0,
+    "hosts": 153648,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:00:26 GMT",
+     "etag": ""
+    },
+    "header_ts": "2026-10-18T22:00:25Z"
+   },
+   "certpl": {
+    "bytes": 2561129,
+    "urls": 0,
+    "hosts": 124496,
+    "http": {
+     "content-length": "2561129",
+     "last-modified": "Mon, 19 Oct 2026 00:05:06 GMT",
+     "etag": "\"6ad55eb2-271469\""
+    },
+    "header_ts": null
+   },
+   "phishtank": {
+    "bytes": 11671313,
+    "urls": 59665,
+    "hosts": 30469,
+    "http": {
+     "content-length": "11671313",
+     "etag": "\"35f1bdf5b4817ac2665370c81a49ee7b\"",
+     "last-modified": "Sun, 18 Oct 2026 23:22:12 GMT"
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 60849,
+     "min": 0.93,
+     "p10": 1770.22,
+     "median": 10105.82,
+     "p90": 26504.35,
+     "max": 137317.28
+    },
+    "extra": {
+     "verif_delay_min_median": 11.7,
+     "verif_delay_min_p90": 206.56666666666666,
+     "top_targets": [
+      [
+       "Other",
+       54025
+      ],
+      [
+       "Allegro",
+       2835
+      ],
+      [
+       "Internal Revenue Service",
+       824
+      ],
+      [
+       "Amazon.com",
+       569
+      ],
+      [
+       "Facebook",
+       402
+      ],
+      [
+       "Microsoft",
+       342
+      ],
+      [
+       "Netflix",
+       176
+      ],
+      [
+       "Bradesco",
+       159
+      ]
+     ]
+    }
+   },
+   "phishstats_api": {
+    "bytes": 179965,
+    "urls": 100,
+    "hosts": 39,
+    "http": {
+     "content-length": "179965",
+     "etag": "W/\"2befd-prIkZswrd5tX4B2qyaP5jukbye8\""
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 100,
+     "min": 0.02,
+     "p10": 0.71,
+     "median": 3.6,
+     "p90": 6.83,
+     "max": 7.33
+    }
+   },
+   "phishunt": {
+    "bytes": 33398,
+    "urls": 770,
+    "hosts": 768,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 00:07:27 GMT"
+    },
+    "header_ts": null
+   }
+  },
+  "20261019T010727Z": {
+   "openphish": {
+    "bytes": 14748,
+    "urls": 298,
+    "hosts": 266,
+    "http": {
+     "etag": "\"412da22dd233689745114bcab06dfa1473fc0ea68ebe95abb6621bb330225e6d\"",
+     "content-length": "14748"
+    },
+    "header_ts": null
+   },
+   "urlhaus_online": {
+    "bytes": 2771617,
+    "urls": 27711,
+    "hosts": 1989,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 01:02:14 GMT",
+     "etag": "\"2a4aa1-65e27108810f1\"",
+     "content-length": "2771617"
+    },
+    "header_ts": null
+   },
+   "urlhaus_recent": {
+    "bytes": 7808163,
+    "urls": 31954,
+    "hosts": 7141,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 01:01:37 GMT",
+     "etag": "\"7724a3-65e270e5157ab\"",
+     "content-length": "7808163"
+    },
+    "header_ts": "2026-10-19 01:01:17 (UTC)",
+    "entry_age_hours": {
+     "n": 33331,
+     "min": 0.1,
+     "p10": 162.15,
+     "median": 306.31,
+     "p90": 588.5,
+     "max": 721.07
+    },
+    "extra": {
+     "threat": {
+      "malware_download": 33331
+     },
+     "online": 16482
+    }
+   },
+   "threatfox_recent": {
+    "bytes": 1669338,
+    "urls": 837,
+    "hosts": 2206,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 01:05:09 GMT",
+     "etag": "\"1978da-65e271af5f915\"",
+     "content-length": "1669338"
+    },
+    "header_ts": "2026-10-19 01:00:48 UTC",
+    "entry_age_hours": {
+     "n": 7404,
+     "min": 0.11,
+     "p10": 9.69,
+     "median": 241.36,
+     "p90": 18714.04,
+     "max": 44551.47
+    },
+    "extra": {
+     "ioc_type": {
+      "url": 856,
+      "sha256_hash": 713,
+      "domain": 2043,
+      "ip:port": 3650,
+      "sha1_hash": 71,
+      "md5_hash": 71
+     },
+     "threat_type": {
+      "botnet_cc": 5073,
+      "payload": 855,
+      "payload_delivery": 1476
+     }
+    }
+   },
+   "bazaar_sha256": {
+    "bytes": 59642,
+    "urls": 0,
+    "hosts": 0,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 00:05:02 GMT",
+     "etag": "\"e8fa-65e2643fead3f\"",
+     "content-length": "59642"
+    },
+    "header_ts": "2026-10-19 00:04:52 UTC",
+    "hashes": 896
+   },
+   "pdb_links_new": {
+    "bytes": 143,
+    "urls": 3,
+    "hosts": 1,
+    "http": {
+     "etag": "\"91d1dac392190b4b2c0783cc38b36af3805aa8f4916678ba2145d8df8ac8576e\"",
+     "content-length": "143"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_new": {
+    "bytes": 91,
+    "urls": 0,
+    "hosts": 3,
+    "http": {
+     "etag": "\"248dd49ae7c241a4850a31a23f8446c3c393720d29bccfccef2a37a734439b6a\"",
+     "content-length": "91"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_act": {
+    "bytes": 11023128,
+    "urls": 0,
+    "hosts": 392071,
+    "http": {
+     "etag": "\"adaf9d3cfd73c0dd6d3315e8a23989b8ec692e1cdd63d92259c41a2a2ea227b7\"",
+     "content-length": "11023128"
+    },
+    "header_ts": null
+   },
+   "phisharmy": {
+    "bytes": 3412562,
+    "urls": 0,
+    "hosts": 153593,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 01:02:16 GMT"
+    },
+    "header_ts": "2026-10-19T01:02:16Z"
+   },
+   "certpl": {
+    "bytes": 2561559,
+    "urls": 0,
+    "hosts": 124514,
+    "http": {
+     "content-length": "2561559",
+     "last-modified": "Mon, 19 Oct 2026 01:05:06 GMT",
+     "etag": "\"6ad56cc2-271617\""
+    },
+    "header_ts": null
+   },
+   "phishtank": {
+    "bytes": 11667846,
+    "urls": 59649,
+    "hosts": 30454,
+    "http": {
+     "content-length": "11667846",
+     "etag": "\"d9ad933e35d16a8c4c4cd716a14fbabf\"",
+     "last-modified": "Mon, 19 Oct 2026 00:22:14 GMT"
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 60830,
+     "min": 1.23,
+     "p10": 1770.05,
+     "median": 10119.31,
+     "p90": 26506.74,
+     "max": 137318.28
+    },
+    "extra": {
+     "verif_delay_min_median": 11.7,
+     "verif_delay_min_p90": 206.65666666666667,
+     "top_targets": [
+      [
+       "Other",
+       54007
+      ],
+      [
+       "Allegro",
+       2837
+      ],
+      [
+       "Internal Revenue Service",
+       824
+      ],
+      [
+       "Amazon.com",
+       569
+      ],
+      [
+       "Facebook",
+       402
+      ],
+      [
+       "Microsoft",
+       342
+      ],
+      [
+       "Netflix",
+       175
+      ],
+      [
+       "Bradesco",
+       159
+      ]
+     ]
+    }
+   },
+   "phishstats_api": {
+    "bytes": 181436,
+    "urls": 100,
+    "hosts": 38,
+    "http": {
+     "content-length": "181436",
+     "etag": "W/\"2c4bc-UfRvABD6Kpt31JAyYo3E3ioUFhw\""
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 100,
+     "min": 0.12,
+     "p10": 1.02,
+     "median": 4.04,
+     "p90": 6.89,
+     "max": 7.81
+    }
+   },
+   "phishunt": {
+    "bytes": 33743,
+    "urls": 777,
+    "hosts": 775,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 01:07:32 GMT"
+    },
+    "header_ts": null
+   }
+  },
+  "20261019T020733Z": {
+   "openphish": {
+    "bytes": 14748,
+    "urls": 298,
+    "hosts": 266,
+    "http": {
+     "etag": "\"412da22dd233689745114bcab06dfa1473fc0ea68ebe95abb6621bb330225e6d\"",
+     "content-length": "14748"
+    },
+    "header_ts": null
+   },
+   "urlhaus_online": {
+    "bytes": 2771276,
+    "urls": 27701,
+    "hosts": 1989,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 02:02:16 GMT",
+     "etag": "\"2a494c-65e27e73e586c\"",
+     "content-length": "2771276"
+    },
+    "header_ts": null
+   },
+   "urlhaus_recent": {
+    "bytes": 7809638,
+    "urls": 31962,
+    "hosts": 7148,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 02:01:37 GMT",
+     "etag": "\"772a66-65e27e4e54217\"",
+     "content-length": "7809638"
+    },
+    "header_ts": "2026-10-19 01:50:21 (UTC)",
+    "entry_age_hours": {
+     "n": 33339,
+     "min": 0.29,
+     "p10": 163.15,
+     "median": 307.31,
+     "p90": 589.5,
+     "max": 722.07
+    },
+    "extra": {
+     "threat": {
+      "malware_download": 33339
+     },
+     "online": 16474
+    }
+   },
+   "threatfox_recent": {
+    "bytes": 1668355,
+    "urls": 856,
+    "hosts": 2213,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 02:05:09 GMT",
+     "etag": "\"197503-65e27f184dc2d\"",
+     "content-length": "1668355"
+    },
+    "header_ts": "2026-10-19 02:01:50 UTC",
+    "entry_age_hours": {
+     "n": 7400,
+     "min": 0.1,
+     "p10": 10.7,
+     "median": 246.36,
+     "p90": 18715.04,
+     "max": 44552.47
+    },
+    "extra": {
+     "ioc_type": {
+      "url": 875,
+      "sha256_hash": 685,
+      "domain": 2045,
+      "ip:port": 3653,
+      "sha1_hash": 71,
+      "md5_hash": 71
+     },
+     "threat_type": {
+      "botnet_cc": 5095,
+      "payload": 827,
+      "payload_delivery": 1478
+     }
+    }
+   },
+   "bazaar_sha256": {
+    "bytes": 58388,
+    "urls": 0,
+    "hosts": 0,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 01:05:03 GMT",
+     "etag": "\"e414-65e271a968d43\"",
+     "content-length": "58388"
+    },
+    "header_ts": "2026-10-19 00:57:08 UTC",
+    "hashes": 877
+   },
+   "pdb_links_new": {
+    "bytes": 143,
+    "urls": 3,
+    "hosts": 1,
+    "http": {
+     "etag": "\"91d1dac392190b4b2c0783cc38b36af3805aa8f4916678ba2145d8df8ac8576e\"",
+     "content-length": "143"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_new": {
+    "bytes": 91,
+    "urls": 0,
+    "hosts": 3,
+    "http": {
+     "etag": "\"248dd49ae7c241a4850a31a23f8446c3c393720d29bccfccef2a37a734439b6a\"",
+     "content-length": "91"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_act": {
+    "bytes": 11023128,
+    "urls": 0,
+    "hosts": 392071,
+    "http": {
+     "etag": "\"adaf9d3cfd73c0dd6d3315e8a23989b8ec692e1cdd63d92259c41a2a2ea227b7\"",
+     "content-length": "11023128"
+    },
+    "header_ts": null
+   },
+   "phisharmy": {
+    "bytes": 3412562,
+    "urls": 0,
+    "hosts": 153593,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 01:02:16 GMT"
+    },
+    "header_ts": "2026-10-19T01:02:16Z"
+   },
+   "certpl": {
+    "bytes": 2561277,
+    "urls": 0,
+    "hosts": 124499,
+    "http": {
+     "content-length": "2561277",
+     "last-modified": "Mon, 19 Oct 2026 02:05:06 GMT",
+     "etag": "\"6ad57ad2-2714fd\""
+    },
+    "header_ts": null
+   },
+   "phishtank": {
+    "bytes": 11662545,
+    "urls": 59621,
+    "hosts": 30432,
+    "http": {
+     "content-length": "11662545",
+     "etag": "\"3854acd4156b9e65f63b4c6bfd2eb8b3\"",
+     "last-modified": "Mon, 19 Oct 2026 01:22:22 GMT"
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 60801,
+     "min": 2.23,
+     "p10": 1774.76,
+     "median": 10121.79,
+     "p90": 26508.05,
+     "max": 137319.28
+    },
+    "extra": {
+     "verif_delay_min_median": 11.7,
+     "verif_delay_min_p90": 206.76,
+     "top_targets": [
+      [
+       "Other",
+       53985
+      ],
+      [
+       "Allegro",
+       2834
+      ],
+      [
+       "Internal Revenue Service",
+       824
+      ],
+      [
+       "Amazon.com",
+       567
+      ],
+      [
+       "Facebook",
+       402
+      ],
+      [
+       "Microsoft",
+       342
+      ],
+      [
+       "Netflix",
+       174
+      ],
+      [
+       "Bradesco",
+       159
+      ]
+     ]
+    }
+   },
+   "phishstats_api": {
+    "bytes": 182202,
+    "urls": 100,
+    "hosts": 38,
+    "http": {
+     "content-length": "182202",
+     "etag": "W/\"2c7ba-k+GE6n5/gQLPy7zsP8D7E4DwP8g\""
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 100,
+     "min": 0.67,
+     "p10": 1.23,
+     "median": 4.67,
+     "p90": 7.41,
+     "max": 7.94
+    }
+   },
+   "phishunt": {
+    "bytes": 33800,
+    "urls": 779,
+    "hosts": 777,
+    "http": {
+     "last-modified": "Mon, 19 Oct 2026 02:07:37 GMT"
+    },
+    "header_ts": null
+   }
+  }
+ },
+ "churn": {
+  "openphish": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "urls",
+    "before": 296,
+    "after": 296,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 296,
+    "after": 298,
+    "added": 162,
+    "removed": 160,
+    "added_per_hour": 161.8
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 298,
+    "after": 298,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 298,
+    "after": 298,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 136,
+    "first_n": 296,
+    "last_n": 298,
+    "union": 458
+   }
+  ],
+  "urlhaus_online": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "urls",
+    "before": 27723,
+    "after": 27723,
+    "added": 8,
+    "removed": 8,
+    "added_per_hour": 18.4
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 27723,
+    "after": 27706,
+    "added": 40,
+    "removed": 57,
+    "added_per_hour": 39.9
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 27706,
+    "after": 27711,
+    "added": 32,
+    "removed": 27,
+    "added_per_hour": 32.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 27711,
+    "after": 27701,
+    "added": 16,
+    "removed": 26,
+    "added_per_hour": 16.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 27606,
+    "first_n": 27723,
+    "last_n": 27701,
+    "union": 27818
+   }
+  ],
+  "urlhaus_recent": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "urls",
+    "before": 32284,
+    "after": 32288,
+    "added": 4,
+    "removed": 0,
+    "added_per_hour": 9.2
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 32288,
+    "after": 31940,
+    "added": 20,
+    "removed": 368,
+    "added_per_hour": 20.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 31940,
+    "after": 31954,
+    "added": 14,
+    "removed": 0,
+    "added_per_hour": 14.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 31954,
+    "after": 31962,
+    "added": 8,
+    "removed": 0,
+    "added_per_hour": 8.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 31916,
+    "first_n": 32284,
+    "last_n": 31962,
+    "union": 32330
+   }
+  ],
+  "threatfox_recent": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "urls",
+    "before": 804,
+    "after": 810,
+    "added": 6,
+    "removed": 0,
+    "added_per_hour": 13.8
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 810,
+    "after": 824,
+    "added": 14,
+    "removed": 0,
+    "added_per_hour": 14.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 824,
+    "after": 837,
+    "added": 15,
+    "removed": 2,
+    "added_per_hour": 15.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 837,
+    "after": 856,
+    "added": 19,
+    "removed": 0,
+    "added_per_hour": 19.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 802,
+    "first_n": 804,
+    "last_n": 856,
+    "union": 858
+   }
+  ],
+  "bazaar_sha256": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "hashes",
+    "before": 900,
+    "after": 900,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "hashes",
+    "before": 900,
+    "after": 899,
+    "added": 6,
+    "removed": 7,
+    "added_per_hour": 6.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "hashes",
+    "before": 899,
+    "after": 896,
+    "added": 10,
+    "removed": 13,
+    "added_per_hour": 10.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "hashes",
+    "before": 896,
+    "after": 877,
+    "added": 11,
+    "removed": 30,
+    "added_per_hour": 11.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 850,
+    "first_n": 900,
+    "last_n": 877,
+    "union": 927
+   }
+  ],
+  "pdb_links_new": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "urls",
+    "before": 3,
+    "after": 3,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 3,
+    "after": 3,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 3,
+    "after": 3,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 3,
+    "after": 3,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 3,
+    "first_n": 3,
+    "last_n": 3,
+    "union": 3
+   }
+  ],
+  "pdb_domains_new": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "hosts",
+    "before": 3,
+    "after": 3,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 3,
+    "after": 3,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 3,
+    "after": 3,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 3,
+    "after": 3,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 3,
+    "first_n": 3,
+    "last_n": 3,
+    "union": 3
+   }
+  ],
+  "pdb_domains_act": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "hosts",
+    "before": 392071,
+    "after": 392071,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 392071,
+    "after": 392071,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 392071,
+    "after": 392071,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 392071,
+    "after": 392071,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 392071,
+    "first_n": 392071,
+    "last_n": 392071,
+    "union": 392071
+   }
+  ],
+  "phisharmy": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "hosts",
+    "before": 153648,
+    "after": 153648,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 153648,
+    "after": 153648,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 153648,
+    "after": 153593,
+    "added": 909,
+    "removed": 964,
+    "added_per_hour": 907.7
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 153593,
+    "after": 153593,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 152684,
+    "first_n": 153648,
+    "last_n": 153593,
+    "union": 154557
+   }
+  ],
+  "certpl": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "hosts",
+    "before": 124483,
+    "after": 124496,
+    "added": 36,
+    "removed": 23,
+    "added_per_hour": 82.9
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 124496,
+    "after": 124496,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 124496,
+    "after": 124514,
+    "added": 36,
+    "removed": 18,
+    "added_per_hour": 36.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "hosts",
+    "before": 124514,
+    "after": 124499,
+    "added": 0,
+    "removed": 15,
+    "added_per_hour": 0.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 124427,
+    "first_n": 124483,
+    "last_n": 124499,
+    "union": 124555
+   }
+  ],
+  "phishtank": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "urls",
+    "before": 59685,
+    "after": 59685,
+    "added": 0,
+    "removed": 0,
+    "added_per_hour": 0.0
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 59685,
+    "after": 59665,
+    "added": 2,
+    "removed": 22,
+    "added_per_hour": 2.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 59665,
+    "after": 59649,
+    "added": 5,
+    "removed": 21,
+    "added_per_hour": 5.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 59649,
+    "after": 59621,
+    "added": 0,
+    "removed": 28,
+    "added_per_hour": 0.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 59614,
+    "first_n": 59685,
+    "last_n": 59621,
+    "union": 59692
+   }
+  ],
+  "phishstats_api": [
+   {
+    "frm": "20261018T224114Z",
+    "to": "20261018T230717Z",
+    "minutes": 26,
+    "key": "urls",
+    "before": 99,
+    "after": 100,
+    "added": 10,
+    "removed": 9,
+    "added_per_hour": 23.0
+   },
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 100,
+    "after": 100,
+    "added": 15,
+    "removed": 15,
+    "added_per_hour": 15.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 100,
+    "after": 100,
+    "added": 10,
+    "removed": 10,
+    "added_per_hour": 10.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 100,
+    "after": 100,
+    "added": 7,
+    "removed": 7,
+    "added_per_hour": 7.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261019T020733Z",
+    "survivors": 58,
+    "first_n": 99,
+    "last_n": 100,
+    "union": 141
+   }
+  ],
+  "phishunt": [
+   {
+    "frm": "20261018T230717Z",
+    "to": "20261019T000722Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 772,
+    "after": 770,
+    "added": 11,
+    "removed": 13,
+    "added_per_hour": 11.0
+   },
+   {
+    "frm": "20261019T000722Z",
+    "to": "20261019T010727Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 770,
+    "after": 777,
+    "added": 7,
+    "removed": 0,
+    "added_per_hour": 7.0
+   },
+   {
+    "frm": "20261019T010727Z",
+    "to": "20261019T020733Z",
+    "minutes": 60,
+    "key": "urls",
+    "before": 777,
+    "after": 779,
+    "added": 2,
+    "removed": 0,
+    "added_per_hour": 2.0
+   },
+   {
+    "summary": true,
+    "first": "20261018T230717Z",
+    "last": "20261019T020733Z",
+    "survivors": 759,
+    "first_n": 772,
+    "last_n": 779,
+    "union": 792
+   }
+  ]
+ },
+ "overlap": {
+  "pairs": {
+   "openphish|phishtank": {
+    "inter": 14,
+    "jaccard": 0.0005,
+    "frac_a_in_b": 0.0338,
+    "frac_b_in_a": 0.0005
+   },
+   "openphish|phishstats_api": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "openphish|phishunt": {
+    "inter": 16,
+    "jaccard": 0.0135,
+    "frac_a_in_b": 0.0386,
+    "frac_b_in_a": 0.0203
+   },
+   "openphish|pdb_domains_act": {
+    "inter": 4,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0097,
+    "frac_b_in_a": 0.0
+   },
+   "openphish|phisharmy": {
+    "inter": 395,
+    "jaccard": 0.0026,
+    "frac_a_in_b": 0.9541,
+    "frac_b_in_a": 0.0026
+   },
+   "openphish|certpl": {
+    "inter": 5,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0121,
+    "frac_b_in_a": 0.0
+   },
+   "openphish|urlhaus_any": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "openphish|threatfox_recent": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "phishtank|phishstats_api": {
+    "inter": 38,
+    "jaccard": 0.0012,
+    "frac_a_in_b": 0.0012,
+    "frac_b_in_a": 0.7755
+   },
+   "phishtank|phishunt": {
+    "inter": 64,
+    "jaccard": 0.0021,
+    "frac_a_in_b": 0.0021,
+    "frac_b_in_a": 0.081
+   },
+   "phishtank|pdb_domains_act": {
+    "inter": 1600,
+    "jaccard": 0.0038,
+    "frac_a_in_b": 0.0525,
+    "frac_b_in_a": 0.0041
+   },
+   "phishtank|phisharmy": {
+    "inter": 27022,
+    "jaccard": 0.171,
+    "frac_a_in_b": 0.8862,
+    "frac_b_in_a": 0.1748
+   },
+   "phishtank|certpl": {
+    "inter": 2454,
+    "jaccard": 0.0161,
+    "frac_a_in_b": 0.0805,
+    "frac_b_in_a": 0.0197
+   },
+   "phishtank|urlhaus_any": {
+    "inter": 11,
+    "jaccard": 0.0003,
+    "frac_a_in_b": 0.0004,
+    "frac_b_in_a": 0.0013
+   },
+   "phishtank|threatfox_recent": {
+    "inter": 1,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0004
+   },
+   "phishstats_api|phishunt": {
+    "inter": 2,
+    "jaccard": 0.0024,
+    "frac_a_in_b": 0.0408,
+    "frac_b_in_a": 0.0025
+   },
+   "phishstats_api|pdb_domains_act": {
+    "inter": 2,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0408,
+    "frac_b_in_a": 0.0
+   },
+   "phishstats_api|phisharmy": {
+    "inter": 34,
+    "jaccard": 0.0002,
+    "frac_a_in_b": 0.6939,
+    "frac_b_in_a": 0.0002
+   },
+   "phishstats_api|certpl": {
+    "inter": 5,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.102,
+    "frac_b_in_a": 0.0
+   },
+   "phishstats_api|urlhaus_any": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "phishstats_api|threatfox_recent": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "phishunt|pdb_domains_act": {
+    "inter": 28,
+    "jaccard": 0.0001,
+    "frac_a_in_b": 0.0354,
+    "frac_b_in_a": 0.0001
+   },
+   "phishunt|phisharmy": {
+    "inter": 760,
+    "jaccard": 0.0049,
+    "frac_a_in_b": 0.962,
+    "frac_b_in_a": 0.0049
+   },
+   "phishunt|certpl": {
+    "inter": 17,
+    "jaccard": 0.0001,
+    "frac_a_in_b": 0.0215,
+    "frac_b_in_a": 0.0001
+   },
+   "phishunt|urlhaus_any": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "phishunt|threatfox_recent": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "pdb_domains_act|phisharmy": {
+    "inter": 1423,
+    "jaccard": 0.0026,
+    "frac_a_in_b": 0.0036,
+    "frac_b_in_a": 0.0092
+   },
+   "pdb_domains_act|certpl": {
+    "inter": 14,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0001
+   },
+   "pdb_domains_act|urlhaus_any": {
+    "inter": 7,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0008
+   },
+   "pdb_domains_act|threatfox_recent": {
+    "inter": 1,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0004
+   },
+   "phisharmy|certpl": {
+    "inter": 124358,
+    "jaccard": 0.8036,
+    "frac_a_in_b": 0.8046,
+    "frac_b_in_a": 0.9984
+   },
+   "phisharmy|urlhaus_any": {
+    "inter": 1,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0001
+   },
+   "phisharmy|threatfox_recent": {
+    "inter": 8,
+    "jaccard": 0.0001,
+    "frac_a_in_b": 0.0001,
+    "frac_b_in_a": 0.0036
+   },
+   "certpl|urlhaus_any": {
+    "inter": 1,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0001
+   },
+   "certpl|threatfox_recent": {
+    "inter": 8,
+    "jaccard": 0.0001,
+    "frac_a_in_b": 0.0001,
+    "frac_b_in_a": 0.0036
+   },
+   "urlhaus_any|threatfox_recent": {
+    "inter": 17,
+    "jaccard": 0.0016,
+    "frac_a_in_b": 0.002,
+    "frac_b_in_a": 0.0076
+   }
+  },
+  "unique": {
+   "openphish": {
+    "total": 414,
+    "only_here": 15,
+    "frac_only": 0.0362
+   },
+   "phishtank": {
+    "total": 30492,
+    "only_here": 3220,
+    "frac_only": 0.1056
+   },
+   "phishstats_api": {
+    "total": 49,
+    "only_here": 8,
+    "frac_only": 0.1633
+   },
+   "phishunt": {
+    "total": 790,
+    "only_here": 25,
+    "frac_only": 0.0316
+   },
+   "pdb_domains_act": {
+    "total": 392071,
+    "only_here": 390415,
+    "frac_only": 0.9958
+   },
+   "phisharmy": {
+    "total": 154557,
+    "only_here": 4544,
+    "frac_only": 0.0294
+   },
+   "certpl": {
+    "total": 124555,
+    "only_here": 195,
+    "frac_only": 0.0016
+   },
+   "urlhaus_any": {
+    "total": 8535,
+    "only_here": 8501,
+    "frac_only": 0.996
+   },
+   "threatfox_recent": {
+    "total": 2223,
+    "only_here": 2196,
+    "frac_only": 0.9879
+   }
+  },
+  "union_all": 559406,
+  "in_k_feeds": {
+   "1": 409119,
+   "2": 146326,
+   "3": 3933,
+   "4": 25,
+   "5": 2,
+   "6": 1,
+   "7": 0,
+   "8": 0,
+   "9": 0
+  },
+  "url_feed_hosts_covered_by_domain_lists_incl_parent": {
+   "openphish": {
+    "pdb_domains_act": 0.0121,
+    "phisharmy": 0.9541,
+    "certpl": 0.0121
+   },
+   "phishtank": {
+    "pdb_domains_act": 0.0702,
+    "phisharmy": 0.8862,
+    "certpl": 0.0818
+   },
+   "phishstats_api": {
+    "pdb_domains_act": 0.0612,
+    "phisharmy": 0.6939,
+    "certpl": 0.102
+   },
+   "phishunt": {
+    "pdb_domains_act": 0.0354,
+    "phisharmy": 0.962,
+    "certpl": 0.0215
+   }
+  }
+ },
+ "lag": {
+  "openphish": {
+   "new_in_a_after_first_sample": 141,
+   "phishtank": {
+    "b_earlier": 8,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 133
+   },
+   "phishstats_api": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 141
+   },
+   "phishunt": {
+    "b_earlier": 2,
+    "same_sample": 0,
+    "b_later": 4,
+    "never": 135
+   },
+   "pdb_domains_act": {
+    "b_earlier": 1,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 140
+   },
+   "phisharmy": {
+    "b_earlier": 9,
+    "same_sample": 0,
+    "b_later": 119,
+    "never": 13
+   },
+   "certpl": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 141
+   }
+  },
+  "phishtank": {
+   "new_in_a_after_first_sample": 7,
+   "openphish": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 7
+   },
+   "phishstats_api": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 7
+   },
+   "phishunt": {
+    "b_earlier": 0,
+    "same_sample": 3,
+    "b_later": 0,
+    "never": 4
+   },
+   "pdb_domains_act": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 7
+   },
+   "phisharmy": {
+    "b_earlier": 3,
+    "same_sample": 4,
+    "b_later": 0,
+    "never": 0
+   },
+   "certpl": {
+    "b_earlier": 7,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 0
+   }
+  },
+  "phishstats_api": {
+   "new_in_a_after_first_sample": 12,
+   "openphish": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 12
+   },
+   "phishtank": {
+    "b_earlier": 11,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 1
+   },
+   "phishunt": {
+    "b_earlier": 1,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 11
+   },
+   "pdb_domains_act": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 12
+   },
+   "phisharmy": {
+    "b_earlier": 10,
+    "same_sample": 0,
+    "b_later": 1,
+    "never": 1
+   },
+   "certpl": {
+    "b_earlier": 2,
+    "same_sample": 1,
+    "b_later": 0,
+    "never": 9
+   }
+  },
+  "phishunt": {
+   "new_in_a_after_first_sample": 790,
+   "openphish": {
+    "b_earlier": 14,
+    "same_sample": 0,
+    "b_later": 2,
+    "never": 774
+   },
+   "phishtank": {
+    "b_earlier": 61,
+    "same_sample": 3,
+    "b_later": 0,
+    "never": 726
+   },
+   "phishstats_api": {
+    "b_earlier": 1,
+    "same_sample": 0,
+    "b_later": 1,
+    "never": 788
+   },
+   "pdb_domains_act": {
+    "b_earlier": 28,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 762
+   },
+   "phisharmy": {
+    "b_earlier": 742,
+    "same_sample": 6,
+    "b_later": 12,
+    "never": 30
+   },
+   "certpl": {
+    "b_earlier": 16,
+    "same_sample": 1,
+    "b_later": 0,
+    "never": 773
+   }
+  },
+  "phisharmy": {
+   "new_in_a_after_first_sample": 909,
+   "openphish": {
+    "b_earlier": 119,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 790
+   },
+   "phishtank": {
+    "b_earlier": 1,
+    "same_sample": 4,
+    "b_later": 0,
+    "never": 904
+   },
+   "phishstats_api": {
+    "b_earlier": 1,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 908
+   },
+   "phishunt": {
+    "b_earlier": 12,
+    "same_sample": 6,
+    "b_later": 0,
+    "never": 891
+   },
+   "pdb_domains_act": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 909
+   },
+   "certpl": {
+    "b_earlier": 35,
+    "same_sample": 16,
+    "b_later": 0,
+    "never": 858
+   }
+  },
+  "certpl": {
+   "new_in_a_after_first_sample": 72,
+   "openphish": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 72
+   },
+   "phishtank": {
+    "b_earlier": 2,
+    "same_sample": 0,
+    "b_later": 4,
+    "never": 66
+   },
+   "phishstats_api": {
+    "b_earlier": 0,
+    "same_sample": 1,
+    "b_later": 0,
+    "never": 71
+   },
+   "phishunt": {
+    "b_earlier": 0,
+    "same_sample": 1,
+    "b_later": 2,
+    "never": 69
+   },
+   "pdb_domains_act": {
+    "b_earlier": 0,
+    "same_sample": 0,
+    "b_later": 0,
+    "never": 72
+   },
+   "phisharmy": {
+    "b_earlier": 1,
+    "same_sample": 16,
+    "b_later": 35,
+    "never": 20
+   }
+  }
+ },
+ "fp_proxy": {
+  "openphish": {
+   "apex_in_tranco_top100k": 4,
+   "top": [
+    [
+     13901,
+     "portalinmobiliario.com"
+    ],
+    [
+     19575,
+     "goo.su"
+    ],
+    [
+     20187,
+     "u.to"
+    ],
+    [
+     29061,
+     "surl.li"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 6,
+   "total": 414,
+   "ip_literal_hosts": 0
+  },
+  "phishtank": {
+   "apex_in_tranco_top100k": 165,
+   "top": [
+    [
+     1,
+     "google.com"
+    ],
+    [
+     18,
+     "linkedin.com"
+    ],
+    [
+     23,
+     "googletagmanager.com"
+    ],
+    [
+     38,
+     "bing.com"
+    ],
+    [
+     60,
+     "tiktok.com"
+    ],
+    [
+     72,
+     "wa.me"
+    ],
+    [
+     80,
+     "baidu.com"
+    ],
+    [
+     96,
+     "yandex.ru"
+    ],
+    [
+     100,
+     "t.me"
+    ],
+    [
+     118,
+     "bit.ly"
+    ],
+    [
+     131,
+     "dropbox.com"
+    ],
+    [
+     145,
+     "vk.com"
+    ],
+    [
+     149,
+     "forms.gle"
+    ],
+    [
+     154,
+     "vk.ru"
+    ],
+    [
+     156,
+     "gravatar.com"
+    ],
+    [
+     217,
+     "googleadservices.com"
+    ],
+    [
+     240,
+     "t.co"
+    ],
+    [
+     261,
+     "linktr.ee"
+    ],
+    [
+     287,
+     "tinyurl.com"
+    ],
+    [
+     380,
+     "issuu.com"
+    ],
+    [
+     520,
+     "google.com.hk"
+    ],
+    [
+     527,
+     "share.google"
+    ],
+    [
+     649,
+     "jotform.com"
+    ],
+    [
+     683,
+     "surveymonkey.com"
+    ],
+    [
+     714,
+     "vkontakte.ru"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 3697,
+   "total": 30492,
+   "ip_literal_hosts": 25
+  },
+  "phishstats_api": {
+   "apex_in_tranco_top100k": 3,
+   "top": [
+    [
+     96,
+     "yandex.ru"
+    ],
+    [
+     839,
+     "att.com"
+    ],
+    [
+     3008,
+     "vercel.com"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 7,
+   "total": 49,
+   "ip_literal_hosts": 2
+  },
+  "phishunt": {
+   "apex_in_tranco_top100k": 2,
+   "top": [
+    [
+     62413,
+     "a2zapk.dev"
+    ],
+    [
+     82347,
+     "roblox.com.bz"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 8,
+   "total": 790,
+   "ip_literal_hosts": 0
+  },
+  "pdb_domains_act": {
+   "apex_in_tranco_top100k": 74,
+   "top": [
+    [
+     118,
+     "bit.ly"
+    ],
+    [
+     156,
+     "gravatar.com"
+    ],
+    [
+     363,
+     "name.com"
+    ],
+    [
+     391,
+     "nflxvideo.net"
+    ],
+    [
+     944,
+     "mercadolibre.com.ar"
+    ],
+    [
+     1964,
+     "googll.store"
+    ],
+    [
+     2149,
+     "yotpo.com"
+    ],
+    [
+     2203,
+     "telegra.ph"
+    ],
+    [
+     2745,
+     "getpocket.com"
+    ],
+    [
+     2912,
+     "apkpure.com"
+    ],
+    [
+     3077,
+     "pastebin.com"
+    ],
+    [
+     3180,
+     "angelfire.com"
+    ],
+    [
+     5324,
+     "mercadolibre.cl"
+    ],
+    [
+     5325,
+     "amazon.ie"
+    ],
+    [
+     5527,
+     "filesusr.com"
+    ],
+    [
+     7109,
+     "linklist.bio"
+    ],
+    [
+     7371,
+     "lynk.id"
+    ],
+    [
+     9550,
+     "unstoppabledomains.com"
+    ],
+    [
+     11464,
+     "ffm.to"
+    ],
+    [
+     15021,
+     "mercadolibre.com.uy"
+    ],
+    [
+     15394,
+     "mez.ink"
+    ],
+    [
+     16889,
+     "ukankingwithea.com"
+    ],
+    [
+     17052,
+     "geocities.ws"
+    ],
+    [
+     19371,
+     "genspark.ai"
+    ],
+    [
+     19439,
+     "bit.do"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 16611,
+   "total": 392071,
+   "ip_literal_hosts": 5466
+  },
+  "phisharmy": {
+   "apex_in_tranco_top100k": 25,
+   "top": [
+    [
+     714,
+     "vkontakte.ru"
+    ],
+    [
+     15394,
+     "mez.ink"
+    ],
+    [
+     17360,
+     "hubs.ly"
+    ],
+    [
+     19371,
+     "genspark.ai"
+    ],
+    [
+     19376,
+     "sider.ai"
+    ],
+    [
+     21028,
+     "conta.cc"
+    ],
+    [
+     27969,
+     "cloudflare.vc"
+    ],
+    [
+     37089,
+     "linkbio.co"
+    ],
+    [
+     37313,
+     "cdntechone.com"
+    ],
+    [
+     45113,
+     "link.space"
+    ],
+    [
+     48509,
+     "verificator.cc"
+    ],
+    [
+     53476,
+     "dub.sh"
+    ],
+    [
+     56779,
+     "ln.run"
+    ],
+    [
+     62413,
+     "a2zapk.dev"
+    ],
+    [
+     64918,
+     "telegram.land"
+    ],
+    [
+     65952,
+     "w3s.link"
+    ],
+    [
+     66438,
+     "blinq.me"
+    ],
+    [
+     73389,
+     "scan.page"
+    ],
+    [
+     75849,
+     "encurtador.dev"
+    ],
+    [
+     82347,
+     "roblox.com.bz"
+    ],
+    [
+     84347,
+     "allmy.bio"
+    ],
+    [
+     87122,
+     "cli.re"
+    ],
+    [
+     87196,
+     "utua.com.br"
+    ],
+    [
+     89404,
+     "benefitsaccess-center.com"
+    ],
+    [
+     95323,
+     "ushort.company"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 2864,
+   "total": 154557,
+   "ip_literal_hosts": 0
+  },
+  "certpl": {
+   "apex_in_tranco_top100k": 2,
+   "top": [
+    [
+     27969,
+     "cloudflare.vc"
+    ],
+    [
+     48509,
+     "verificator.cc"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 184,
+   "total": 124555,
+   "ip_literal_hosts": 0
+  },
+  "urlhaus_any": {
+   "apex_in_tranco_top100k": 13,
+   "top": [
+    [
+     31,
+     "github.com"
+    ],
+    [
+     131,
+     "dropbox.com"
+    ],
+    [
+     165,
+     "example.com"
+    ],
+    [
+     261,
+     "linktr.ee"
+    ],
+    [
+     364,
+     "gitlab.com"
+    ],
+    [
+     756,
+     "mediafire.com"
+    ],
+    [
+     2141,
+     "bitbucket.org"
+    ],
+    [
+     5939,
+     "pixeldrain.com"
+    ],
+    [
+     15202,
+     "sendspace.com"
+    ],
+    [
+     16025,
+     "docsend.com"
+    ],
+    [
+     30152,
+     "webhook.site"
+    ],
+    [
+     32677,
+     "limewire.com"
+    ],
+    [
+     68072,
+     "fex.net"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 87,
+   "total": 8535,
+   "ip_literal_hosts": 7490
+  },
+  "threatfox_recent": {
+   "apex_in_tranco_top100k": 5,
+   "top": [
+    [
+     100,
+     "t.me"
+    ],
+    [
+     289,
+     "telegram.me"
+    ],
+    [
+     431,
+     "steamcommunity.com"
+    ],
+    [
+     3077,
+     "pastebin.com"
+    ],
+    [
+     48509,
+     "verificator.cc"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 21,
+   "total": 2223,
+   "ip_literal_hosts": 86
+  }
+ }
+}

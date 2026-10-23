@@ -1,0 +1,12 @@
+
+running 1 test
+failing --- FAILED
+
+failures:
+
+---- failing stdout ----
+proptest: FileFailurePersistence::SourceParallel set, but failed to find lib.rs or main.rs
+proptest: Test case failed: value 8580635882610198459 hit the bug at tests/seed.rs:37
+proptest: Test case failed: value 7508056397283923652 hit the bug at tests/seed.rs:37
+proptest: Test case failed: value 7441020179451031477 hit the bug at tests/seed.rs:37
+proptest: Test case failed: value 7441018133668016558 hit the bug at tests/seed.rs:37

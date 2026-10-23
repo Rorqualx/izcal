@@ -1,0 +1,1124 @@
+{
+ "samples": [
+  "20261018T224114Z"
+ ],
+ "per_sample": {
+  "20261018T224114Z": {
+   "openphish": {
+    "bytes": 14313,
+    "urls": 296,
+    "hosts": 273,
+    "http": {
+     "etag": "\"57b5a0a4db75ad90fad55c7f737aed3e01d6fa67c6a5cbcee92ab816bcdcd3e8\"",
+     "content-length": "14313"
+    },
+    "header_ts": null
+   },
+   "urlhaus_online": {
+    "bytes": 2774162,
+    "urls": 27723,
+    "hosts": 1984,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:37:15 GMT",
+     "etag": "\"2a5492-65e250a115f83\"",
+     "content-length": "2774162"
+    },
+    "header_ts": null
+   },
+   "urlhaus_recent": {
+    "bytes": 7875655,
+    "urls": 32284,
+    "hosts": 7254,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:36:37 GMT",
+     "etag": "\"782c47-65e2507bed117\"",
+     "content-length": "7875655"
+    },
+    "header_ts": "2026-10-18 22:34:20 (UTC)",
+    "entry_age_hours": {
+     "n": 33683,
+     "min": 0.12,
+     "p10": 159.72,
+     "median": 303.91,
+     "p90": 604.65,
+     "max": 742.66
+    },
+    "extra": {
+     "threat": {
+      "malware_download": 33683
+     },
+     "online": 16497
+    }
+   },
+   "threatfox_recent": {
+    "bytes": 1687137,
+    "urls": 804,
+    "hosts": 2202,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:35:08 GMT",
+     "etag": "\"19be61-65e250279d1ea\"",
+     "content-length": "1687137"
+    },
+    "header_ts": "2026-10-18 22:30:48 UTC",
+    "entry_age_hours": {
+     "n": 7486,
+     "min": 0.17,
+     "p10": 7.26,
+     "median": 221.49,
+     "p90": 17432.74,
+     "max": 44549.03
+    },
+    "extra": {
+     "ioc_type": {
+      "url": 823,
+      "domain": 2042,
+      "sha256_hash": 820,
+      "ip:port": 3659,
+      "sha1_hash": 71,
+      "md5_hash": 71
+     },
+     "threat_type": {
+      "botnet_cc": 5052,
+      "payload_delivery": 1472,
+      "payload": 962
+     }
+    }
+   },
+   "bazaar_sha256": {
+    "bytes": 59906,
+    "urls": 0,
+    "hosts": 0,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:05:02 GMT",
+     "etag": "\"ea02-65e2496d974c3\"",
+     "content-length": "59906"
+    },
+    "header_ts": "2026-10-18 22:03:11 UTC",
+    "hashes": 900
+   },
+   "pdb_links_new": {
+    "bytes": 143,
+    "urls": 3,
+    "hosts": 1,
+    "http": {
+     "etag": "\"91d1dac392190b4b2c0783cc38b36af3805aa8f4916678ba2145d8df8ac8576e\"",
+     "content-length": "143"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_new": {
+    "bytes": 91,
+    "urls": 0,
+    "hosts": 3,
+    "http": {
+     "etag": "\"248dd49ae7c241a4850a31a23f8446c3c393720d29bccfccef2a37a734439b6a\"",
+     "content-length": "91"
+    },
+    "header_ts": null
+   },
+   "pdb_domains_act": {
+    "bytes": 11023128,
+    "urls": 0,
+    "hosts": 392071,
+    "http": {
+     "etag": "\"adaf9d3cfd73c0dd6d3315e8a23989b8ec692e1cdd63d92259c41a2a2ea227b7\"",
+     "content-length": "11023128"
+    },
+    "header_ts": null
+   },
+   "phisharmy": {
+    "bytes": 3415483,
+    "urls": 0,
+    "hosts": 153648,
+    "http": {
+     "last-modified": "Sun, 18 Oct 2026 22:00:26 GMT"
+    },
+    "header_ts": "2026-10-18T22:00:25Z"
+   },
+   "certpl": {
+    "bytes": 2560830,
+    "urls": 0,
+    "hosts": 124483,
+    "http": {
+     "content-length": "2560830",
+     "last-modified": "Sun, 18 Oct 2026 22:40:06 GMT",
+     "etag": "\"6ad54ac6-27133e\""
+    },
+    "header_ts": null
+   },
+   "phishtank": {
+    "bytes": 11675526,
+    "urls": 59685,
+    "hosts": 30485,
+    "http": {
+     "content-length": "11675526",
+     "etag": "\"791e77c2d63a7b31ae2cc21be3017a4d\"",
+     "last-modified": "Sun, 18 Oct 2026 22:21:56 GMT"
+    },
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 60872,
+     "min": 1.07,
+     "p10": 1766.68,
+     "median": 10104.26,
+     "p90": 26501.67,
+     "max": 137315.85
+    },
+    "extra": {
+     "verif_delay_min_median": 11.7,
+     "verif_delay_min_p90": 206.74833333333336,
+     "top_targets": [
+      [
+       "Other",
+       54043
+      ],
+      [
+       "Allegro",
+       2838
+      ],
+      [
+       "Internal Revenue Service",
+       824
+      ],
+      [
+       "Amazon.com",
+       570
+      ],
+      [
+       "Facebook",
+       402
+      ],
+      [
+       "Microsoft",
+       342
+      ],
+      [
+       "Netflix",
+       176
+      ],
+      [
+       "Bradesco",
+       159
+      ]
+     ]
+    }
+   },
+   "phishstats_api": {
+    "bytes": 177117,
+    "urls": 99,
+    "hosts": 37,
+    "http": {},
+    "header_ts": null,
+    "entry_age_hours": {
+     "n": 100,
+     "min": 0.12,
+     "p10": 1.25,
+     "median": 4.14,
+     "p90": 6.65,
+     "max": 7.19
+    }
+   }
+  }
+ },
+ "churn": {
+  "openphish": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 296,
+    "first_n": 296,
+    "last_n": 296,
+    "union": 296
+   }
+  ],
+  "urlhaus_online": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 27723,
+    "first_n": 27723,
+    "last_n": 27723,
+    "union": 27723
+   }
+  ],
+  "urlhaus_recent": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 32284,
+    "first_n": 32284,
+    "last_n": 32284,
+    "union": 32284
+   }
+  ],
+  "threatfox_recent": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 804,
+    "first_n": 804,
+    "last_n": 804,
+    "union": 804
+   }
+  ],
+  "bazaar_sha256": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 900,
+    "first_n": 900,
+    "last_n": 900,
+    "union": 900
+   }
+  ],
+  "pdb_links_new": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 3,
+    "first_n": 3,
+    "last_n": 3,
+    "union": 3
+   }
+  ],
+  "pdb_domains_new": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 3,
+    "first_n": 3,
+    "last_n": 3,
+    "union": 3
+   }
+  ],
+  "pdb_domains_act": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 392071,
+    "first_n": 392071,
+    "last_n": 392071,
+    "union": 392071
+   }
+  ],
+  "phisharmy": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 153648,
+    "first_n": 153648,
+    "last_n": 153648,
+    "union": 153648
+   }
+  ],
+  "certpl": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 124483,
+    "first_n": 124483,
+    "last_n": 124483,
+    "union": 124483
+   }
+  ],
+  "phishtank": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 59685,
+    "first_n": 59685,
+    "last_n": 59685,
+    "union": 59685
+   }
+  ],
+  "phishstats_api": [
+   {
+    "summary": true,
+    "first": "20261018T224114Z",
+    "last": "20261018T224114Z",
+    "survivors": 99,
+    "first_n": 99,
+    "last_n": 99,
+    "union": 99
+   }
+  ],
+  "phishunt": []
+ },
+ "overlap": {
+  "pairs": {
+   "openphish|phishtank": {
+    "inter": 6,
+    "jaccard": 0.0002,
+    "frac_a_in_b": 0.022,
+    "frac_b_in_a": 0.0002
+   },
+   "openphish|phishstats_api": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "openphish|phishunt": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0
+   },
+   "openphish|pdb_domains_act": {
+    "inter": 3,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.011,
+    "frac_b_in_a": 0.0
+   },
+   "openphish|phisharmy": {
+    "inter": 267,
+    "jaccard": 0.0017,
+    "frac_a_in_b": 0.978,
+    "frac_b_in_a": 0.0017
+   },
+   "openphish|certpl": {
+    "inter": 5,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0183,
+    "frac_b_in_a": 0.0
+   },
+   "openphish|urlhaus_any": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "openphish|threatfox_recent": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "phishtank|phishstats_api": {
+    "inter": 27,
+    "jaccard": 0.0009,
+    "frac_a_in_b": 0.0009,
+    "frac_b_in_a": 0.7297
+   },
+   "phishtank|phishunt": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0
+   },
+   "phishtank|pdb_domains_act": {
+    "inter": 1600,
+    "jaccard": 0.0038,
+    "frac_a_in_b": 0.0525,
+    "frac_b_in_a": 0.0041
+   },
+   "phishtank|phisharmy": {
+    "inter": 27014,
+    "jaccard": 0.1719,
+    "frac_a_in_b": 0.8861,
+    "frac_b_in_a": 0.1758
+   },
+   "phishtank|certpl": {
+    "inter": 2445,
+    "jaccard": 0.016,
+    "frac_a_in_b": 0.0802,
+    "frac_b_in_a": 0.0196
+   },
+   "phishtank|urlhaus_any": {
+    "inter": 11,
+    "jaccard": 0.0003,
+    "frac_a_in_b": 0.0004,
+    "frac_b_in_a": 0.0013
+   },
+   "phishtank|threatfox_recent": {
+    "inter": 1,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0005
+   },
+   "phishstats_api|phishunt": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0
+   },
+   "phishstats_api|pdb_domains_act": {
+    "inter": 2,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0541,
+    "frac_b_in_a": 0.0
+   },
+   "phishstats_api|phisharmy": {
+    "inter": 23,
+    "jaccard": 0.0001,
+    "frac_a_in_b": 0.6216,
+    "frac_b_in_a": 0.0001
+   },
+   "phishstats_api|certpl": {
+    "inter": 2,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0541,
+    "frac_b_in_a": 0.0
+   },
+   "phishstats_api|urlhaus_any": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "phishstats_api|threatfox_recent": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0
+   },
+   "phishunt|pdb_domains_act": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0,
+    "frac_b_in_a": 0.0
+   },
+   "phishunt|phisharmy": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0,
+    "frac_b_in_a": 0.0
+   },
+   "phishunt|certpl": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0,
+    "frac_b_in_a": 0.0
+   },
+   "phishunt|urlhaus_any": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0,
+    "frac_b_in_a": 0.0
+   },
+   "phishunt|threatfox_recent": {
+    "inter": 0,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0,
+    "frac_b_in_a": 0.0
+   },
+   "pdb_domains_act|phisharmy": {
+    "inter": 1423,
+    "jaccard": 0.0026,
+    "frac_a_in_b": 0.0036,
+    "frac_b_in_a": 0.0093
+   },
+   "pdb_domains_act|certpl": {
+    "inter": 14,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0001
+   },
+   "pdb_domains_act|urlhaus_any": {
+    "inter": 7,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0008
+   },
+   "pdb_domains_act|threatfox_recent": {
+    "inter": 1,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0005
+   },
+   "phisharmy|certpl": {
+    "inter": 124306,
+    "jaccard": 0.8081,
+    "frac_a_in_b": 0.809,
+    "frac_b_in_a": 0.9986
+   },
+   "phisharmy|urlhaus_any": {
+    "inter": 1,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0001
+   },
+   "phisharmy|threatfox_recent": {
+    "inter": 8,
+    "jaccard": 0.0001,
+    "frac_a_in_b": 0.0001,
+    "frac_b_in_a": 0.0036
+   },
+   "certpl|urlhaus_any": {
+    "inter": 1,
+    "jaccard": 0.0,
+    "frac_a_in_b": 0.0,
+    "frac_b_in_a": 0.0001
+   },
+   "certpl|threatfox_recent": {
+    "inter": 8,
+    "jaccard": 0.0001,
+    "frac_a_in_b": 0.0001,
+    "frac_b_in_a": 0.0036
+   },
+   "urlhaus_any|threatfox_recent": {
+    "inter": 17,
+    "jaccard": 0.0016,
+    "frac_a_in_b": 0.002,
+    "frac_b_in_a": 0.0077
+   }
+  },
+  "unique": {
+   "openphish": {
+    "total": 273,
+    "only_here": 6,
+    "frac_only": 0.022
+   },
+   "phishtank": {
+    "total": 30485,
+    "only_here": 3230,
+    "frac_only": 0.106
+   },
+   "phishstats_api": {
+    "total": 37,
+    "only_here": 8,
+    "frac_only": 0.2162
+   },
+   "phishunt": {
+    "total": 0,
+    "only_here": 0,
+    "frac_only": 0
+   },
+   "pdb_domains_act": {
+    "total": 392071,
+    "only_here": 390415,
+    "frac_only": 0.9958
+   },
+   "phisharmy": {
+    "total": 153648,
+    "only_here": 4476,
+    "frac_only": 0.0291
+   },
+   "certpl": {
+    "total": 124483,
+    "only_here": 175,
+    "frac_only": 0.0014
+   },
+   "urlhaus_any": {
+    "total": 8500,
+    "only_here": 8466,
+    "frac_only": 0.996
+   },
+   "threatfox_recent": {
+    "total": 2202,
+    "only_here": 2175,
+    "frac_only": 0.9877
+   }
+  },
+  "union_all": 558388,
+  "in_k_feeds": {
+   "1": 408951,
+   "2": 145569,
+   "3": 3863,
+   "4": 4,
+   "5": 1,
+   "6": 0,
+   "7": 0,
+   "8": 0,
+   "9": 0
+  },
+  "url_feed_hosts_covered_by_domain_lists_incl_parent": {
+   "openphish": {
+    "pdb_domains_act": 0.0147,
+    "phisharmy": 0.978,
+    "certpl": 0.0183
+   },
+   "phishtank": {
+    "pdb_domains_act": 0.0703,
+    "phisharmy": 0.8861,
+    "certpl": 0.0815
+   },
+   "phishstats_api": {
+    "pdb_domains_act": 0.0811,
+    "phisharmy": 0.6216,
+    "certpl": 0.0541
+   },
+   "phishunt": {
+    "pdb_domains_act": 0,
+    "phisharmy": 0,
+    "certpl": 0
+   }
+  }
+ },
+ "lag": {},
+ "fp_proxy": {
+  "openphish": {
+   "apex_in_tranco_top100k": 0,
+   "top": [],
+   "hosts_under_top10k_registrable": 5,
+   "total": 273,
+   "ip_literal_hosts": 0
+  },
+  "phishtank": {
+   "apex_in_tranco_top100k": 165,
+   "top": [
+    [
+     1,
+     "google.com"
+    ],
+    [
+     18,
+     "linkedin.com"
+    ],
+    [
+     23,
+     "googletagmanager.com"
+    ],
+    [
+     38,
+     "bing.com"
+    ],
+    [
+     60,
+     "tiktok.com"
+    ],
+    [
+     72,
+     "wa.me"
+    ],
+    [
+     80,
+     "baidu.com"
+    ],
+    [
+     96,
+     "yandex.ru"
+    ],
+    [
+     100,
+     "t.me"
+    ],
+    [
+     118,
+     "bit.ly"
+    ],
+    [
+     131,
+     "dropbox.com"
+    ],
+    [
+     145,
+     "vk.com"
+    ],
+    [
+     149,
+     "forms.gle"
+    ],
+    [
+     154,
+     "vk.ru"
+    ],
+    [
+     156,
+     "gravatar.com"
+    ],
+    [
+     217,
+     "googleadservices.com"
+    ],
+    [
+     240,
+     "t.co"
+    ],
+    [
+     261,
+     "linktr.ee"
+    ],
+    [
+     287,
+     "tinyurl.com"
+    ],
+    [
+     380,
+     "issuu.com"
+    ],
+    [
+     520,
+     "google.com.hk"
+    ],
+    [
+     527,
+     "share.google"
+    ],
+    [
+     649,
+     "jotform.com"
+    ],
+    [
+     683,
+     "surveymonkey.com"
+    ],
+    [
+     714,
+     "vkontakte.ru"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 3697,
+   "total": 30485,
+   "ip_literal_hosts": 25
+  },
+  "phishstats_api": {
+   "apex_in_tranco_top100k": 3,
+   "top": [
+    [
+     96,
+     "yandex.ru"
+    ],
+    [
+     839,
+     "att.com"
+    ],
+    [
+     3008,
+     "vercel.com"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 7,
+   "total": 37,
+   "ip_literal_hosts": 2
+  },
+  "phishunt": {
+   "apex_in_tranco_top100k": 0,
+   "top": [],
+   "hosts_under_top10k_registrable": 0,
+   "total": 0,
+   "ip_literal_hosts": 0
+  },
+  "pdb_domains_act": {
+   "apex_in_tranco_top100k": 74,
+   "top": [
+    [
+     118,
+     "bit.ly"
+    ],
+    [
+     156,
+     "gravatar.com"
+    ],
+    [
+     363,
+     "name.com"
+    ],
+    [
+     391,
+     "nflxvideo.net"
+    ],
+    [
+     944,
+     "mercadolibre.com.ar"
+    ],
+    [
+     1964,
+     "googll.store"
+    ],
+    [
+     2149,
+     "yotpo.com"
+    ],
+    [
+     2203,
+     "telegra.ph"
+    ],
+    [
+     2745,
+     "getpocket.com"
+    ],
+    [
+     2912,
+     "apkpure.com"
+    ],
+    [
+     3077,
+     "pastebin.com"
+    ],
+    [
+     3180,
+     "angelfire.com"
+    ],
+    [
+     5324,
+     "mercadolibre.cl"
+    ],
+    [
+     5325,
+     "amazon.ie"
+    ],
+    [
+     5527,
+     "filesusr.com"
+    ],
+    [
+     7109,
+     "linklist.bio"
+    ],
+    [
+     7371,
+     "lynk.id"
+    ],
+    [
+     9550,
+     "unstoppabledomains.com"
+    ],
+    [
+     11464,
+     "ffm.to"
+    ],
+    [
+     15021,
+     "mercadolibre.com.uy"
+    ],
+    [
+     15394,
+     "mez.ink"
+    ],
+    [
+     16889,
+     "ukankingwithea.com"
+    ],
+    [
+     17052,
+     "geocities.ws"
+    ],
+    [
+     19371,
+     "genspark.ai"
+    ],
+    [
+     19439,
+     "bit.do"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 16611,
+   "total": 392071,
+   "ip_literal_hosts": 5466
+  },
+  "phisharmy": {
+   "apex_in_tranco_top100k": 25,
+   "top": [
+    [
+     714,
+     "vkontakte.ru"
+    ],
+    [
+     15394,
+     "mez.ink"
+    ],
+    [
+     17360,
+     "hubs.ly"
+    ],
+    [
+     19371,
+     "genspark.ai"
+    ],
+    [
+     19376,
+     "sider.ai"
+    ],
+    [
+     21028,
+     "conta.cc"
+    ],
+    [
+     27969,
+     "cloudflare.vc"
+    ],
+    [
+     37089,
+     "linkbio.co"
+    ],
+    [
+     37313,
+     "cdntechone.com"
+    ],
+    [
+     45113,
+     "link.space"
+    ],
+    [
+     48509,
+     "verificator.cc"
+    ],
+    [
+     53476,
+     "dub.sh"
+    ],
+    [
+     56779,
+     "ln.run"
+    ],
+    [
+     62413,
+     "a2zapk.dev"
+    ],
+    [
+     64918,
+     "telegram.land"
+    ],
+    [
+     65952,
+     "w3s.link"
+    ],
+    [
+     66438,
+     "blinq.me"
+    ],
+    [
+     73389,
+     "scan.page"
+    ],
+    [
+     75849,
+     "encurtador.dev"
+    ],
+    [
+     82347,
+     "roblox.com.bz"
+    ],
+    [
+     84347,
+     "allmy.bio"
+    ],
+    [
+     87122,
+     "cli.re"
+    ],
+    [
+     87196,
+     "utua.com.br"
+    ],
+    [
+     89404,
+     "benefitsaccess-center.com"
+    ],
+    [
+     95323,
+     "ushort.company"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 2863,
+   "total": 153648,
+   "ip_literal_hosts": 0
+  },
+  "certpl": {
+   "apex_in_tranco_top100k": 2,
+   "top": [
+    [
+     27969,
+     "cloudflare.vc"
+    ],
+    [
+     48509,
+     "verificator.cc"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 184,
+   "total": 124483,
+   "ip_literal_hosts": 0
+  },
+  "urlhaus_any": {
+   "apex_in_tranco_top100k": 13,
+   "top": [
+    [
+     31,
+     "github.com"
+    ],
+    [
+     131,
+     "dropbox.com"
+    ],
+    [
+     165,
+     "example.com"
+    ],
+    [
+     261,
+     "linktr.ee"
+    ],
+    [
+     364,
+     "gitlab.com"
+    ],
+    [
+     756,
+     "mediafire.com"
+    ],
+    [
+     2141,
+     "bitbucket.org"
+    ],
+    [
+     5939,
+     "pixeldrain.com"
+    ],
+    [
+     15202,
+     "sendspace.com"
+    ],
+    [
+     16025,
+     "docsend.com"
+    ],
+    [
+     30152,
+     "webhook.site"
+    ],
+    [
+     32677,
+     "limewire.com"
+    ],
+    [
+     68072,
+     "fex.net"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 87,
+   "total": 8500,
+   "ip_literal_hosts": 7456
+  },
+  "threatfox_recent": {
+   "apex_in_tranco_top100k": 5,
+   "top": [
+    [
+     100,
+     "t.me"
+    ],
+    [
+     289,
+     "telegram.me"
+    ],
+    [
+     431,
+     "steamcommunity.com"
+    ],
+    [
+     3077,
+     "pastebin.com"
+    ],
+    [
+     48509,
+     "verificator.cc"
+    ]
+   ],
+   "hosts_under_top10k_registrable": 20,
+   "total": 2202,
+   "ip_literal_hosts": 83
+  }
+ }
+}
