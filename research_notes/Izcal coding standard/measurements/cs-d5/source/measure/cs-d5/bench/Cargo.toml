@@ -1,0 +1,20 @@
+[package]
+name = "cs-d5-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+cssparser = "=0.38.0"
+url = "=2.5.8"
+html5ever = "=0.40.1"
+
+[dev-dependencies]
+gungraun = "=0.20.0"
+
+[[bench]]
+name = "kernels"
+harness = false
+
+[profile.bench]
+debug = 1

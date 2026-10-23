@@ -1,0 +1,57 @@
+# Temporary measurement for coding-standard decision CS-D5: are gungraun
+# (Valgrind) instruction counts stable enough on GitHub-hosted runners for a
+# 1% per-PR gate, and does the job fit its 300 s A.5 budget? Runs only on
+# pushes to the measurement branch; the branch is deleted afterwards.
+
+name: measure-cs-d5
+
+on:
+  push:
+    branches: [measure/cs-d5-gungraun]
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        rep: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # Pinned to full commit hashes, as in checks.yml.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup (valgrind, pinned toolchain, gungraun-runner)
+        run: bash measure/cs-d5/ci.sh setup
+
+      - name: Build base
+        run: bash measure/cs-d5/ci.sh build base
+
+      - name: Build head
+        run: bash measure/cs-d5/ci.sh build head
+
+      - name: Bench base (save baseline)
+        run: bash measure/cs-d5/ci.sh bench base base --save-baseline=base
+
+      - name: Bench head (compare with base)
+        run: bash measure/cs-d5/ci.sh bench head head --baseline=base
+
+      - name: Bench head again (same binary)
+        run: bash measure/cs-d5/ci.sh bench head2 head --baseline=base
+
+      - name: Bench head with cache simulation
+        run: bash measure/cs-d5/ci.sh bench cachesim head --callgrind-args=--cache-sim=yes
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-${{ matrix.os }}-${{ matrix.rep }}
+          path: ${{ runner.temp }}/results
+          retention-days: 7

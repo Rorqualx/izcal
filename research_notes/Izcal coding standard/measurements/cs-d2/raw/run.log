@@ -1,0 +1,35 @@
+[13:53:10] cssparser_tokenize_bootstrap: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.14/cpu (3.29 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:53:10-06:00
+   instr/iter off=[12715329.845, 12715331.61, 12715332.88] on=[13633031.28, 13633034.865, 13633037.175] delta=+7.217%
+[13:53:22] cssparser_tokenize_bulma: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.12/cpu (2.78 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:53:22-06:00
+   instr/iter off=[33525887.84, 33525890.21, 33525899.99] on=[36155045.71, 36155024.27, 36155031.38] delta=+7.842%
+[13:53:36] stylo_parse_bootstrap: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.10/cpu (2.39 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:53:36-06:00
+   instr/iter off=[43035899.3, 43035883.56, 43035880.78] on=[43922633.78, 43922618.22, 43922616.66] delta=+2.060%
+[13:53:49] stylo_parse_bulma: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.09/cpu (2.17 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:53:49-06:00
+   instr/iter off=[110081265.4, 110081279.6, 110081219.2] on=[113202303.56, 113202229.16, 113202264.96] delta=+2.835%
+[13:54:03] stylo_stylist_bootstrap: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.08/cpu (1.91 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:54:03-06:00
+   instr/iter off=[5369989.963333333, 5370050.066666666, 5370017.8533333335] on=[5686015.63, 5685993.973333334, 5685983.953333333] delta=+5.884%
+[13:54:14] stylo_stylist_bulma: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.07/cpu (1.77 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:54:14-06:00
+   instr/iter off=[8534934.185, 8534925.985, 8534966.135] on=[8944942.83, 8944995.565, 8945006.33] delta=+4.805%
+[13:54:27] selectors_match_bootstrap_navbar: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.07/cpu (1.60 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:54:27-06:00
+   instr/iter off=[4073683429.5, 4073682937.5, 4073682880.5] on=[4054777603.5, 4054777320.5, 4054778043.0] delta=-0.464%
+[13:56:06] html5ever_treebuild_wikipedia: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.05/cpu (1.11 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:56:06-06:00
+   instr/iter off=[65369680.76, 65369654.82, 65369684.46] on=[70488317.1, 70488308.78, 70488299.32] delta=+7.830%
+[13:56:20] html5ever_treebuild_navbar: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.05/cpu (1.09 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:56:20-06:00
+   instr/iter off=[92191261.825, 92191236.575, 92191227.975] on=[98634341.675, 98634331.925, 98634327.775] delta=+6.989%
+[13:56:36] html5ever_tokenize_lipsum: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.92 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:56:36-06:00
+   instr/iter off=[38899.69112, 38887.85424, 38888.2814] on=[41777.84916, 41782.09558, 41775.06662] delta=+7.430%
+[13:56:48] html5ever_tokenize_lipsum_zh: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.93 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:56:48-06:00
+   instr/iter off=[14069.51103, 14081.02329, 14096.09552] on=[14796.58091, 14772.39678, 14796.64031] delta=+5.082%
+[13:56:59] html5ever_tokenize_medium_fragment: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.86 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:56:59-06:00
+   instr/iter off=[423715.0358, 423799.816, 423638.8826] on=[465957.6654, 465973.9656, 465982.4386] delta=+9.973%
+[13:57:11] html5ever_tokenize_small_fragment: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.89 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:57:11-06:00
+   instr/iter off=[41291.78836, 41312.30466, 41265.36082] on=[45148.17974, 45172.21992, 45170.15664] delta=+9.393%
+[13:57:23] html5ever_tokenize_tiny_fragment: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.91 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:57:23-06:00
+   instr/iter off=[7536.09714, 7532.109085, 7532.81486] on=[7723.506815, 7743.74314, 7723.891055] delta=+2.537%
+[13:57:36] html5ever_tokenize_strong: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.93 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:57:36-06:00
+   instr/iter off=[317803.3168, 317852.8436, 317803.9534] on=[346169.5248, 346164.059, 346170.595] delta=+8.925%
+[13:57:46] url_join_wikipedia: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.94 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:57:46-06:00
+   instr/iter off=[4644489.524, 4644501.56, 4644496.63] on=[4684813.508, 4684809.028, 4684804.18] delta=+0.868%
+[13:57:58] url_parse_own_bench_strings: rig check exit=0: rig check OK: revire kind=exclusive session=browser-61 | load 0.04/cpu (0.95 / 24 cpus) | bookings: b-4c0108 exclusive cpu by browser-61 until 16:42 | game lock: free q0 | 2026-10-18T13:57:58-06:00
+   instr/iter off=[27152022.75, 27152026.65, 27152033.23] on=[27678026.98, 27678015.68, 27678023.89] delta=+1.937%
+ALL DONE

@@ -1,0 +1,31 @@
+[package]
+name = "csd2-proxy"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+stylo = { path = "../stylo/style" }
+stylo_traits = { path = "../stylo/style_traits", features = ["servo"] }
+selectors = { path = "../stylo/selectors" }
+servo_arc = { path = "../stylo/servo_arc" }
+cssparser = { path = "../cssparser" }
+html5ever = { path = "../html5ever/html5ever" }
+markup5ever_rcdom = { path = "../html5ever/rcdom" }
+web_atoms = { path = "../html5ever/web_atoms" }
+url = { path = "../url/url" }
+euclid = "0.22"
+
+# Pin every hot-path crate to the cloned commits so both builds use exactly that source.
+[patch.crates-io]
+cssparser = { path = "../cssparser" }
+cssparser-macros = { path = "../cssparser/macros" }
+url = { path = "../url/url" }
+idna = { path = "../url/idna" }
+form_urlencoded = { path = "../url/form_urlencoded" }
+percent-encoding = { path = "../url/percent_encoding" }
+web_atoms = { path = "../html5ever/web_atoms" }
+markup5ever = { path = "../html5ever/markup5ever" }
+html5ever = { path = "../html5ever/html5ever" }
+selectors = { path = "../stylo/selectors" }
+servo_arc = { path = "../stylo/servo_arc" }

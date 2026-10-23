@@ -1,0 +1,43 @@
++ xcrun clang -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -arch arm64 -O1 -Wall -Wextra -Wno-unused-parameter -mmacosx-version-min=14.0 -o bin/probe-sdk262 src/probe.c
++ xcrun clang -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -arch arm64 -O1 -Wall -Wextra -Wno-unused-parameter -mmacosx-version-min=14.0 -Wl,-platform_version,macos,14.0,27.0 -o bin/probe-sdk27-ld src/probe.c
++ xcrun clang -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -arch arm64 -O1 -Wall -Wextra -Wno-unused-parameter -mmacosx-version-min=27.0 -Wl,-platform_version,macos,27.0,27.0 -o bin/probe-sdk27-min27 src/probe.c
++ xcrun clang -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -arch arm64 -O1 -Wall -Wextra -Wno-unused-parameter -mmacosx-version-min=14.0 -Wl,-platform_version,macos,14.0,28.0 -o bin/probe-sdk28-ld src/probe.c
++ xcrun vtool -set-build-version macos 14.0 27.0 -replace -output bin/probe-sdk27-vtool bin/probe-sdk262
++ codesign -s - -f bin/probe-sdk27-vtool
+bin/probe-sdk27-vtool: replacing existing signature
++ set +x
+== bin/probe-sdk262
+bin/probe-sdk262:
+ platform MACOS
+    minos 14.0
+      sdk 26.2
+CodeDirectory v=20400 size=389 flags=0x20002(adhoc,linker-signed) hashes=9+0 location=embedded
+Signature=adhoc
+== bin/probe-sdk27-ld
+bin/probe-sdk27-ld:
+ platform MACOS
+    minos 14.0
+      sdk 27.0
+CodeDirectory v=20400 size=391 flags=0x20002(adhoc,linker-signed) hashes=9+0 location=embedded
+Signature=adhoc
+== bin/probe-sdk27-min27
+bin/probe-sdk27-min27:
+ platform MACOS
+    minos 27.0
+      sdk 27.0
+CodeDirectory v=20400 size=394 flags=0x20002(adhoc,linker-signed) hashes=9+0 location=embedded
+Signature=adhoc
+== bin/probe-sdk27-vtool
+bin/probe-sdk27-vtool:
+ platform MACOS
+    minos 14.0
+      sdk 27.0
+CodeDirectory v=20400 size=307 flags=0x2(adhoc) hashes=3+2 location=embedded
+Signature=adhoc
+== bin/probe-sdk28-ld
+bin/probe-sdk28-ld:
+ platform MACOS
+    minos 14.0
+      sdk 28.0
+CodeDirectory v=20400 size=391 flags=0x20002(adhoc,linker-signed) hashes=9+0 location=embedded
+Signature=adhoc
