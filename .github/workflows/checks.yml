@@ -1,4 +1,4 @@
-# Runs tools/checks.sh on every pull request and push to main: the same
+# Runs tools/checks.sh and clippy on every pull request and push to main: the same
 # checks as the git hooks, so a commit made with --no-verify is still
 # caught. Branch protection requires this job ("checks"). The AI review runs
 # only in the pre-commit hook (it needs the Claude Code CLI and an account).
@@ -46,3 +46,25 @@ jobs:
           base=$PR_BASE
           [ "$EVENT" = pull_request ] || base=$PUSH_BEFORE
           tools/checks.sh --range "$base" "$GITHUB_SHA"
+
+  # Clippy with -D warnings on all three reference OSes: the substrate's
+  # sandbox backends are cfg-gated per OS, so a lint error in one backend
+  # only shows when compiling for that OS.
+  clippy:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # rust-toolchain.toml pins 1.99.1; rustup installs it without clippy.
+      - name: Install clippy
+        run: rustup component add clippy
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
