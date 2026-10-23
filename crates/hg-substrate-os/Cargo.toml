@@ -10,6 +10,8 @@ description = "Izcal's OS substrate (tier O, G3): the one crate allowed ambient 
 workspace = true
 
 [dependencies]
+hg-substrate = { path = "../hg-substrate" }
+hg-types = { path = "../hg-types" }
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
@@ -24,6 +26,9 @@ windows-sys = { version = "0.61", features = [
   "Win32_Storage_FileSystem",
   "Win32_System_ProcessStatus",
   "Win32_System_Environment",
+  "Win32_System_Memory",
+  "Win32_System_SystemInformation",
+  "Win32_Security_Cryptography",
 ] }
 
 [[bin]]
@@ -33,3 +38,7 @@ path = "src/bin/fp-m0-empty.rs"
 [[bin]]
 name = "fp-m0-probe"
 path = "src/bin/fp-m0-probe.rs"
+
+[[bin]]
+name = "substrate-idle"
+path = "src/bin/substrate-idle.rs"

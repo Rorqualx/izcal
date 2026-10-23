@@ -90,18 +90,23 @@ pub trait Memory: Send + Sync {
     /// [`MemoryError::OutOfAddressSpace`] if the reservation fails.
     fn reserve(&self, bytes: usize, kind: MemoryKind) -> Result<Region, MemoryError>;
 
-    /// Commits the first `bytes` of `region`.
+    /// Grows the committed part of `region` to its first `bytes`
+    /// (rounded up to whole pages). A region's committed part is always a
+    /// prefix; committing less than is already committed changes nothing.
     ///
     /// # Errors
     /// [`MemoryError::CommitFailed`] if the pages cannot be committed;
     /// [`MemoryError::OutOfRange`] if `bytes` exceeds the region.
     fn commit(&self, region: &Region, bytes: usize) -> Result<(), MemoryError>;
 
-    /// Decommits the first `bytes` of `region`; the reservation stays.
+    /// Shrinks the committed part of `region` to its first `bytes`
+    /// (rounded up to whole pages); the pages past it are returned to the
+    /// OS and the reservation stays.
     fn decommit(&self, region: &Region, bytes: usize);
 
-    /// Drops the pages of the first `bytes` of `region` but keeps them
-    /// committed for reuse; the ledger records the purge.
+    /// Drops the contents of the committed part of `region` past its first
+    /// `bytes`, keeping those pages committed for reuse; their contents
+    /// are undefined afterwards. The ledger records the purge.
     fn purge(&self, region: &Region, bytes: usize);
 
     /// Releases the whole region.
