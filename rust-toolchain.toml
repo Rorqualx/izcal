@@ -1,3 +1,6 @@
 # Coding standard CS-ST-9: stable pinned; bumped on the bot's cadence.
+# rustfmt is needed by the tests too: hg-ipc-codegen formats its output,
+# and hg-ipc-gen's freshness test (CS-ST-17) regenerates and compares.
 [toolchain]
 channel = "1.99.1"
+components = ["clippy", "rustfmt"]

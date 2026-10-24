@@ -1,0 +1,38 @@
+[package]
+name = "hg-ipc-codegen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's IPC generator (tier T): compiles .hgidl into hg-ipc-gen's checked-in Rust (Stage 1 design 4.1; security scope IPC-R1 to IPC-R6; coding standard CS-ST-17)"
+
+[dependencies]
+hg-ipc = { path = "../hg-ipc" }
+
+[[bin]]
+name = "hg-ipc-codegen"
+path = "src/main.rs"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+# Tier T: the base table (coding standard A.1) with A.2's tier T changes.
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"

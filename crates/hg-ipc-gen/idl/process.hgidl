@@ -1,0 +1,73 @@
+/// Process bootstrap (M1): the first endpoint every child process holds,
+/// to the browser process. A renderer starts with exactly this endpoint
+/// and receives every other one from the broker (Stage 1 design 4.1).
+protocol process;
+
+/// Why a bootstrap request failed. Closed: no free text crosses a
+/// process boundary (coding standard CS-ER-6).
+error ProcessError {
+    /// This build does not support the request.
+    Unsupported,
+    /// The process is shutting down.
+    ShuttingDown,
+}
+
+/// The process kinds M1 starts (Stage 1 design M1 exit).
+enum ProcessKind {
+    /// A renderer: one site's web content.
+    Renderer,
+    /// The network service.
+    Network,
+}
+
+/// Identifies a build; a child from another build is refused.
+struct BuildId {
+    /// The build's identifier, from the release process.
+    id: u64,
+}
+
+/// Why the browser tells a child to exit.
+union ExitReason {
+    /// The browser is shutting down or no longer needs the process.
+    Normal,
+    /// The child reported another build than the browser's.
+    BuildMismatch {
+        /// The browser's build.
+        expected: BuildId,
+    },
+    /// The child's request failed.
+    Failed {
+        /// Why.
+        error: ProcessError,
+    },
+}
+
+/// Child to browser, on the bootstrap endpoint.
+interface ProcessHost bound capacity 64 overflow terminate {
+    /// The child has started and is ready for work.
+    ready(
+        /// What the child is.
+        kind: ProcessKind,
+        /// The child's build.
+        build: BuildId,
+    );
+    /// The answer to `ProcessControl.ping`.
+    pong(
+        /// The ping's nonce.
+        nonce: u64,
+    );
+}
+
+/// Browser to child, on the bootstrap endpoint.
+interface ProcessControl bound capacity 64 overflow terminate {
+    /// Asks the child to answer with `ProcessHost.pong`.
+    ping(
+        /// Echoed in the answer.
+        nonce: u64,
+    );
+    /// Tells the child to exit.
+    exit(
+        /// Why.
+        reason: ExitReason,
+    );
+}
