@@ -19,4 +19,6 @@ pub use generated::process;
 pub mod sample;
 
 #[cfg(test)]
+mod endpoint_tests;
+#[cfg(test)]
 mod tests;

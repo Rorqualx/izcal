@@ -7,6 +7,8 @@ publish.workspace = true
 description = "Izcal's deterministic simulation test runner (tier T): one seed per child process, crash signatures, replay commands, and the same-seed-same-trace check (Stage 1 design 7.4; CS-ER-2, CS-T5)"
 
 [dependencies]
+hg-ipc = { path = "../hg-ipc" }
+hg-ipc-gen = { path = "../hg-ipc-gen" }
 hg-substrate = { path = "../hg-substrate" }
 hg-substrate-os = { path = "../hg-substrate-os" }
 hg-substrate-sim = { path = "../hg-substrate-sim" }

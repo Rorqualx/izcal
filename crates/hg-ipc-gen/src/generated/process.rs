@@ -254,7 +254,16 @@ impl ProcessHost {
         binding: hg_ipc::Binding::Bound,
         capacity: 64,
         overflow: hg_ipc::Overflow::Terminate,
-        max_message_len: <Self as Wire>::MAX_LEN,
+        max_message_len: hg_ipc::wire::len_add(
+            2,
+            hg_ipc::wire::len_max(
+                hg_ipc::wire::len_add(
+                    hg_ipc::wire::len_add(0, <ProcessKind as Wire>::MAX_LEN),
+                    <BuildId as Wire>::MAX_LEN,
+                ),
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+            ),
+        ),
     };
 }
 
@@ -342,6 +351,128 @@ impl Wire for ProcessHost {
             hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
         ),
     );
+}
+
+impl ProcessHost {
+    /// Checks that `bytes` are one valid message, allocating nothing.
+    ///
+    /// # Errors
+    /// [`BadMessage`] if they are not.
+    pub fn validate_bytes(bytes: &[u8]) -> Result<(), BadMessage> {
+        let mut r = Reader::new(bytes);
+        match u16::decode(&mut r)? {
+            0 => Self::validate_ready(&mut r)?,
+            1 => Self::validate_pong(&mut r)?,
+            _ => return Err(BadMessage::UnknownOrdinal),
+        }
+        r.finish()
+    }
+}
+
+impl hg_ipc::Interface for ProcessHost {
+    const INFO: hg_ipc::InterfaceInfo = Self::INFO;
+    fn into_wire(self) -> (Vec<u8>, Vec<hg_ipc::Handle>) {
+        let mut w = Writer::new();
+        match self {
+            Self::Ready { kind, build } => {
+                0u16.encode(&mut w);
+                Self::encode_ready(&mut w, &kind, &build);
+            }
+            Self::Pong { nonce } => {
+                1u16.encode(&mut w);
+                Self::encode_pong(&mut w, &nonce);
+            }
+        }
+        (w.into_bytes(), Vec::new())
+    }
+    fn from_wire(
+        bytes: &[u8],
+        handles: Vec<hg_ipc::Handle>,
+        ipc: &std::sync::Arc<dyn hg_ipc::Ipc>,
+    ) -> Result<Self, BadMessage> {
+        let _ = ipc;
+        // Every check before any decoding: the bytes by the validator,
+        // which allocates nothing, then the handles' kinds (IPC-R1).
+        Self::validate_bytes(bytes)?;
+        let mut r = Reader::new(bytes);
+        let msg = match u16::decode(&mut r)? {
+            0 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (kind, build) = Self::decode_ready(&mut r)?;
+                Self::Ready { kind, build }
+            }
+            1 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (nonce,) = Self::decode_pong(&mut r)?;
+                Self::Pong { nonce }
+            }
+            _ => return Err(BadMessage::UnknownOrdinal),
+        };
+        r.finish()?;
+        Ok(msg)
+    }
+}
+
+impl hg_ipc::BoundInterface for ProcessHost {}
+
+/// Receives `process.ProcessHost`'s messages, each already checked. An `Err`
+/// closes the endpoint and reports the sender (IPC-R5).
+pub trait ProcessHostHandler {
+    /// The child has started and is ready for work.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn ready(
+        &mut self,
+        from: &hg_ipc::CallerIdentity,
+        kind: ProcessKind,
+        build: BuildId,
+    ) -> Result<(), ProcessError>;
+    /// The answer to `ProcessControl.ping`.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn pong(&mut self, from: &hg_ipc::CallerIdentity, nonce: u64) -> Result<(), ProcessError>;
+}
+
+impl ProcessHost {
+    /// Passes this message to its handler method.
+    ///
+    /// # Errors
+    /// The handler's.
+    pub fn dispatch<H: ProcessHostHandler + ?Sized>(
+        self,
+        h: &mut H,
+        from: &hg_ipc::CallerIdentity,
+    ) -> Result<(), ProcessError> {
+        match self {
+            Self::Ready { kind, build } => h.ready(from, kind, build),
+            Self::Pong { nonce } => h.pong(from, nonce),
+        }
+    }
+}
+
+/// Sends `process.ProcessHost`'s messages; implemented for `hg_ipc::Remote<ProcessHost>`.
+pub trait ProcessHostRemote {
+    /// The child has started and is ready for work.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn ready(&self, kind: ProcessKind, build: BuildId) -> Result<(), hg_ipc::SendError>;
+    /// The answer to `ProcessControl.ping`.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn pong(&self, nonce: u64) -> Result<(), hg_ipc::SendError>;
+}
+
+impl ProcessHostRemote for hg_ipc::Remote<ProcessHost> {
+    fn ready(&self, kind: ProcessKind, build: BuildId) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessHost::Ready { kind, build })
+    }
+    fn pong(&self, nonce: u64) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessHost::Pong { nonce })
+    }
 }
 
 #[cfg(test)]
@@ -524,7 +655,7 @@ fn verify_process_host_unknown_ordinal() {
     let Some(input) = bytes.get(..len) else {
         return;
     };
-    assert!(hg_ipc::validate_exact::<ProcessHost>(input) == Err(BadMessage::UnknownOrdinal));
+    assert!(ProcessHost::validate_bytes(input) == Err(BadMessage::UnknownOrdinal));
 }
 
 /// Browser to child, on the bootstrap endpoint.
@@ -551,7 +682,13 @@ impl ProcessControl {
         binding: hg_ipc::Binding::Bound,
         capacity: 64,
         overflow: hg_ipc::Overflow::Terminate,
-        max_message_len: <Self as Wire>::MAX_LEN,
+        max_message_len: hg_ipc::wire::len_add(
+            2,
+            hg_ipc::wire::len_max(
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                hg_ipc::wire::len_add(0, <ExitReason as Wire>::MAX_LEN),
+            ),
+        ),
     };
 }
 
@@ -631,6 +768,127 @@ impl Wire for ProcessControl {
             hg_ipc::wire::len_add(0, <ExitReason as Wire>::MAX_LEN),
         ),
     );
+}
+
+impl ProcessControl {
+    /// Checks that `bytes` are one valid message, allocating nothing.
+    ///
+    /// # Errors
+    /// [`BadMessage`] if they are not.
+    pub fn validate_bytes(bytes: &[u8]) -> Result<(), BadMessage> {
+        let mut r = Reader::new(bytes);
+        match u16::decode(&mut r)? {
+            0 => Self::validate_ping(&mut r)?,
+            1 => Self::validate_exit(&mut r)?,
+            _ => return Err(BadMessage::UnknownOrdinal),
+        }
+        r.finish()
+    }
+}
+
+impl hg_ipc::Interface for ProcessControl {
+    const INFO: hg_ipc::InterfaceInfo = Self::INFO;
+    fn into_wire(self) -> (Vec<u8>, Vec<hg_ipc::Handle>) {
+        let mut w = Writer::new();
+        match self {
+            Self::Ping { nonce } => {
+                0u16.encode(&mut w);
+                Self::encode_ping(&mut w, &nonce);
+            }
+            Self::Exit { reason } => {
+                1u16.encode(&mut w);
+                Self::encode_exit(&mut w, &reason);
+            }
+        }
+        (w.into_bytes(), Vec::new())
+    }
+    fn from_wire(
+        bytes: &[u8],
+        handles: Vec<hg_ipc::Handle>,
+        ipc: &std::sync::Arc<dyn hg_ipc::Ipc>,
+    ) -> Result<Self, BadMessage> {
+        let _ = ipc;
+        // Every check before any decoding: the bytes by the validator,
+        // which allocates nothing, then the handles' kinds (IPC-R1).
+        Self::validate_bytes(bytes)?;
+        let mut r = Reader::new(bytes);
+        let msg = match u16::decode(&mut r)? {
+            0 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (nonce,) = Self::decode_ping(&mut r)?;
+                Self::Ping { nonce }
+            }
+            1 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (reason,) = Self::decode_exit(&mut r)?;
+                Self::Exit { reason }
+            }
+            _ => return Err(BadMessage::UnknownOrdinal),
+        };
+        r.finish()?;
+        Ok(msg)
+    }
+}
+
+impl hg_ipc::BoundInterface for ProcessControl {}
+
+/// Receives `process.ProcessControl`'s messages, each already checked. An `Err`
+/// closes the endpoint and reports the sender (IPC-R5).
+pub trait ProcessControlHandler {
+    /// Asks the child to answer with `ProcessHost.pong`.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn ping(&mut self, from: &hg_ipc::CallerIdentity, nonce: u64) -> Result<(), ProcessError>;
+    /// Tells the child to exit.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn exit(
+        &mut self,
+        from: &hg_ipc::CallerIdentity,
+        reason: ExitReason,
+    ) -> Result<(), ProcessError>;
+}
+
+impl ProcessControl {
+    /// Passes this message to its handler method.
+    ///
+    /// # Errors
+    /// The handler's.
+    pub fn dispatch<H: ProcessControlHandler + ?Sized>(
+        self,
+        h: &mut H,
+        from: &hg_ipc::CallerIdentity,
+    ) -> Result<(), ProcessError> {
+        match self {
+            Self::Ping { nonce } => h.ping(from, nonce),
+            Self::Exit { reason } => h.exit(from, reason),
+        }
+    }
+}
+
+/// Sends `process.ProcessControl`'s messages; implemented for `hg_ipc::Remote<ProcessControl>`.
+pub trait ProcessControlRemote {
+    /// Asks the child to answer with `ProcessHost.pong`.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn ping(&self, nonce: u64) -> Result<(), hg_ipc::SendError>;
+    /// Tells the child to exit.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn exit(&self, reason: ExitReason) -> Result<(), hg_ipc::SendError>;
+}
+
+impl ProcessControlRemote for hg_ipc::Remote<ProcessControl> {
+    fn ping(&self, nonce: u64) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessControl::Ping { nonce })
+    }
+    fn exit(&self, reason: ExitReason) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessControl::Exit { reason })
+    }
 }
 
 #[cfg(test)]
@@ -812,5 +1070,5 @@ fn verify_process_control_unknown_ordinal() {
     let Some(input) = bytes.get(..len) else {
         return;
     };
-    assert!(hg_ipc::validate_exact::<ProcessControl>(input) == Err(BadMessage::UnknownOrdinal));
+    assert!(ProcessControl::validate_bytes(input) == Err(BadMessage::UnknownOrdinal));
 }

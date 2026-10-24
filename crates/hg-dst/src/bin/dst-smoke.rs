@@ -7,12 +7,21 @@
 //! memory under injected commit failures. The renderer and network
 //! processes crash and restart under the fault plan.
 //!
-//! `--bug` plants a bug only some seeds reach: the browser treats a
-//! refused post to the renderer (it crashed and has not restarted yet)
-//! as impossible and panics. DST should find it, group every failing
-//! seed under one signature, and hand back a replay command.
+//! `--ipc` runs the process protocol over simulated IPC instead (M1
+//! phase D2): the renderer, launched with channels to the browser,
+//! announces itself with `ready`, and the browser plays 200 `ping` /
+//! `pong` rounds with it, at seeded delays, through typed endpoints. A
+//! crashed renderer's channels close, so the browser sees the closure;
+//! the restarted renderer has no launch channels (relaunching is phase
+//! E's).
 //!
-//! Usage: `dst-smoke --seed N [--crash-ppm N] [--bug]`
+//! `--bug` plants a bug only some seeds reach: the browser treats a
+//! refused post to the renderer (it crashed and has not restarted yet),
+//! or with `--ipc` a send to a closed renderer, as impossible and
+//! panics. DST should find it, group every failing seed under one
+//! signature, and hand back a replay command.
+//!
+//! Usage: `dst-smoke --seed N [--crash-ppm N] [--ipc] [--bug]`
 
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
@@ -27,6 +36,7 @@ use hg_types::{Duration, Instant};
 struct Args {
     seed: u64,
     crash_ppm: u32,
+    ipc: bool,
     bug: bool,
 }
 
@@ -34,6 +44,7 @@ fn parse() -> Option<Args> {
     let mut a = Args {
         seed: 0,
         crash_ppm: 5_000,
+        ipc: false,
         bug: false,
     };
     let mut it = std::env::args().skip(1);
@@ -41,6 +52,7 @@ fn parse() -> Option<Args> {
         match arg.as_str() {
             "--seed" => a.seed = it.next()?.parse().ok()?,
             "--crash-ppm" => a.crash_ppm = it.next()?.parse().ok()?,
+            "--ipc" => a.ipc = true,
             "--bug" => a.bug = true,
             _ => return None,
         }
@@ -52,7 +64,7 @@ type Endpoint = Arc<Mutex<Option<(Substrate, SequenceHandle)>>>;
 
 fn main() -> ExitCode {
     let Some(args) = parse() else {
-        eprintln!("usage: dst-smoke --seed N [--crash-ppm N] [--bug]");
+        eprintln!("usage: dst-smoke --seed N [--crash-ppm N] [--ipc] [--bug]");
         return ExitCode::from(2);
     };
     let mut config = SimConfig::new(args.seed);
@@ -63,6 +75,16 @@ fn main() -> ExitCode {
     };
     config.memory_budget = Some(1 << 20);
     let world = World::new(config);
+    if args.ipc {
+        let keep = ipc::start(&world, args.bug);
+        world.run(Limits {
+            max_steps: 1_000_000,
+            max_time: Instant::from_nanos(60_000_000_000),
+        });
+        keep.lock().unwrap().clear();
+        println!("{}", world.summary().report_line());
+        return ExitCode::SUCCESS;
+    }
     let backing = || -> Arc<dyn Memory> { Arc::new(OsMemory::new()) };
 
     let renderer: Endpoint = Arc::new(Mutex::new(None));
@@ -157,5 +179,148 @@ fn send(n: u64, renderer: &Endpoint, browser: &Endpoint, bug: bool) {
         }
         // The renderer crashed; it re-registers when it restarts.
         Err(_) => {}
+    }
+}
+
+/// The `--ipc` workload: the process protocol over typed endpoints.
+mod ipc {
+    use std::sync::{Arc, Mutex};
+
+    use hg_ipc::{Endpoint, PeerBinding, PeerId, Remote, SendError, Serving};
+    use hg_ipc_gen::process::{
+        BuildId, ExitReason, ProcessControl, ProcessControlHandler, ProcessControlRemote,
+        ProcessError, ProcessHost, ProcessHostHandler, ProcessHostRemote, ProcessKind,
+    };
+    use hg_substrate::ipc::{ChannelReceiver, ChannelSender};
+    use hg_substrate::{
+        EntropyPurpose, Memory, Priority, RandomStream, SequenceHandle, Substrate, Task,
+    };
+    use hg_substrate_os::memory::OsMemory;
+    use hg_substrate_sim::World;
+    use hg_types::Duration;
+
+    const ROUNDS: u64 = 200;
+
+    /// The serving endpoints, kept until the run ends.
+    pub type Keep = Arc<Mutex<Vec<Serving>>>;
+
+    struct Browser {
+        s: Substrate,
+        seq: SequenceHandle,
+        control: Arc<Remote<ProcessControl>>,
+        rng: Box<dyn RandomStream>,
+        bug: bool,
+    }
+
+    impl Browser {
+        /// Pings round `n` after a seeded delay.
+        fn ping_later(&mut self, n: u64) {
+            let delay = Duration::from_micros(self.rng.next_u64() % 20_000);
+            let (control, bug) = (Arc::clone(&self.control), self.bug);
+            let _ = self.s.exec.post(
+                self.seq,
+                Task::new(move || match control.ping(n) {
+                    Err(SendError::Closed) if bug => {
+                        panic!("bug: ping {n} sent to a closed renderer");
+                    }
+                    // The renderer crashed: the conversation is over.
+                    _ => {}
+                }),
+                Some(delay),
+                Duration::from_micros(200),
+            );
+        }
+    }
+
+    impl ProcessHostHandler for Browser {
+        fn ready(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _kind: ProcessKind,
+            _build: BuildId,
+        ) -> Result<(), ProcessError> {
+            self.ping_later(0);
+            Ok(())
+        }
+
+        fn pong(&mut self, _from: &hg_ipc::CallerIdentity, nonce: u64) -> Result<(), ProcessError> {
+            let next = nonce.saturating_add(1);
+            if next < ROUNDS {
+                self.ping_later(next);
+            }
+            Ok(())
+        }
+    }
+
+    struct Renderer {
+        host: Remote<ProcessHost>,
+    }
+
+    impl ProcessControlHandler for Renderer {
+        fn ping(&mut self, _from: &hg_ipc::CallerIdentity, nonce: u64) -> Result<(), ProcessError> {
+            // A closed browser is fine: this process is ending too.
+            let _ = self.host.pong(nonce);
+            Ok(())
+        }
+
+        fn exit(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _reason: ExitReason,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+    }
+
+    /// Spawns the browser and the renderer and links them.
+    pub fn start(world: &World, bug: bool) -> Keep {
+        let backing = || -> Arc<dyn Memory> { Arc::new(OsMemory::new()) };
+        let keep: Keep = Arc::default();
+        let ends: Arc<Mutex<Option<(ChannelReceiver, ChannelSender)>>> = Arc::default();
+        let (e, k) = (Arc::clone(&ends), Arc::clone(&keep));
+        let browser = world.spawn("browser", backing(), false, move |s| {
+            let Some((from_renderer, to_renderer)) = e.lock().unwrap().take() else {
+                return;
+            };
+            let seq = s.exec.sequence("host", Priority::UserVisible);
+            let mut side = Browser {
+                s: s.clone(),
+                seq,
+                control: Arc::new(Remote::from_sender(&s.ipc, to_renderer)),
+                rng: s.entropy.stream(EntropyPurpose::Random),
+                bug,
+            };
+            let serving = Endpoint::<ProcessHost>::from_receiver(&s.ipc, from_renderer)
+                .serve_bound(
+                    seq,
+                    PeerBinding::new(PeerId::new(1, 0)),
+                    move |m, from| m.dispatch(&mut side, from),
+                    |_why| {},
+                )
+                .unwrap();
+            k.lock().unwrap().push(serving);
+        });
+        let k = Arc::clone(&keep);
+        let renderer = world.spawn("renderer", backing(), true, move |s| {
+            // A restart has no launch channels: relaunching is phase E's.
+            let Some(boot) = s.ipc.bootstrap() else {
+                return;
+            };
+            let host = Remote::<ProcessHost>::from_sender(&s.ipc, boot.to_parent);
+            let _ = host.ready(ProcessKind::Renderer, BuildId { id: 1 });
+            let mut side = Renderer { host };
+            let seq = s.exec.sequence("control", Priority::UserVisible);
+            let serving = Endpoint::<ProcessControl>::from_receiver(&s.ipc, boot.from_parent)
+                .serve_bound(
+                    seq,
+                    PeerBinding::new(PeerId::new(0, 0)),
+                    move |m, from| m.dispatch(&mut side, from),
+                    |_why| {},
+                )
+                .unwrap();
+            k.lock().unwrap().push(serving);
+        });
+        *ends.lock().unwrap() = world.link(browser, renderer, 64);
+        keep
     }
 }
