@@ -20,6 +20,7 @@
 mod clock;
 mod entropy;
 mod exec;
+mod ipc;
 mod memory;
 mod trace;
 mod world;
@@ -55,6 +56,11 @@ pub(crate) fn substrate_for(
             },
         }),
         mem: Arc::new(memory::SimMemory {
+            shared: Arc::clone(shared),
+            pid,
+            generation,
+        }),
+        ipc: Arc::new(ipc::SimIpc {
             shared: Arc::clone(shared),
             pid,
             generation,

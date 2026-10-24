@@ -2,6 +2,7 @@
 //! rustfmt by the caller, so this only has to be valid, deterministic
 //! Rust.
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use crate::check::{Checked, TypeFacts, pascal_of};
@@ -45,6 +46,41 @@ fn rust_type(t: &Type) -> String {
         Type::Vec(inner, n) => format!("hg_ipc::BoundedVec<{}, {n}>", rust_type(inner)),
         Type::Option(inner) => format!("Option<{}>", rust_type(inner)),
         Type::Named(name, _) => name.clone(),
+        Type::Remote(name, _) => format!("hg_ipc::Remote<{name}>"),
+        Type::Receiver(name, _) => format!("hg_ipc::Endpoint<{name}>"),
+    }
+}
+
+/// A parameter's Rust type: as [`rust_type`], except that a bound
+/// interface's sender travels as a `Grant` (IPC-R2 (a)).
+fn param_type(t: &Type, bound: &BTreeSet<String>) -> String {
+    match t {
+        Type::Remote(name, _) if bound.contains(name) => format!("hg_ipc::Grant<{name}>"),
+        _ => rust_type(t),
+    }
+}
+
+/// The handle kind a handle parameter crosses as: a bound interface's
+/// sender is its own kind (IPC-R1, R2).
+fn handle_kind(t: &Type, bound: &BTreeSet<String>) -> &'static str {
+    match t {
+        Type::Receiver(..) => "hg_ipc::HandleKind::ChannelReceiver",
+        Type::Remote(name, _) if bound.contains(name) => "hg_ipc::HandleKind::BoundChannelSender",
+        _ => "hg_ipc::HandleKind::ChannelSender",
+    }
+}
+
+/// The expression taking a handle parameter from the iterator `h`.
+fn handle_take(t: &Type, bound: &BTreeSet<String>) -> String {
+    match t {
+        Type::Remote(name, _) if bound.contains(name) => {
+            format!("hg_ipc::endpoint::take_grant::<{name}>(h.next())?")
+        }
+        Type::Remote(name, _) => format!("hg_ipc::endpoint::take_remote::<{name}>(h.next(), ipc)?"),
+        Type::Receiver(name, _) => {
+            format!("hg_ipc::endpoint::take_endpoint::<{name}>(h.next(), ipc)?")
+        }
+        _ => String::new(),
     }
 }
 
@@ -134,6 +170,7 @@ fn tagged(
     tag_ty: &str,
     unknown: &str,
     bodies: bool,
+    wire: bool,
 ) {
     if bodies {
         o.line(&format!("impl {name} {{"));
@@ -189,6 +226,9 @@ fn tagged(
         }
         o.line("}");
         o.line("");
+    }
+    if !wire {
+        return;
     }
     o.line(&format!("impl Wire for {name} {{"));
     let _ = (name, tag_ty);
@@ -322,6 +362,26 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
     o.line("");
     o.line("use hg_ipc::wire::{BadMessage, Reader, Wire, Writer};");
     o.line("");
+    let bound: BTreeSet<String> = file
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Interface {
+                id,
+                binding: Binding::Bound,
+                ..
+            } => Some(id.name.clone()),
+            _ => None,
+        })
+        .collect();
+    let error_name = file
+        .items
+        .iter()
+        .find_map(|i| match i {
+            Item::Error(id, _) => Some(id.name.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
 
     for item in &file.items {
         match item {
@@ -344,7 +404,7 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
                 o.line("");
                 let cases: Vec<(String, &[Field])> =
                     vs.iter().map(|v| (v.name.clone(), &[][..])).collect();
-                tagged(&mut o, &id.name, &cases, "u32", "UnknownTag", false);
+                tagged(&mut o, &id.name, &cases, "u32", "UnknownTag", false, true);
                 o.line("const MIN_LEN: usize = 4;");
                 o.line("const MAX_LEN: usize = 4;");
                 o.line("}");
@@ -375,7 +435,7 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
                     .iter()
                     .map(|c| (c.id.name.clone(), c.fields.as_slice()))
                     .collect();
-                tagged(&mut o, &id.name, &cases, "u32", "UnknownTag", false);
+                tagged(&mut o, &id.name, &cases, "u32", "UnknownTag", false, true);
                 o.line(&format!(
                     "const MIN_LEN: usize = {};",
                     cases_len(cs, 4, "MIN_LEN", "len_min")
@@ -438,6 +498,28 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
                 overflow,
                 messages,
             } => {
+                let ctx = Iface {
+                    protocol: &file.protocol.name,
+                    name: &id.name,
+                    bound: &bound,
+                    error: &error_name,
+                    is_bound: *binding == Binding::Bound,
+                };
+                let has_handles = messages
+                    .iter()
+                    .any(|m| m.fields.iter().any(|f| f.ty.is_handle()));
+                let data: Vec<Case> = messages
+                    .iter()
+                    .map(|m| Case {
+                        id: m.id.clone(),
+                        fields: m
+                            .fields
+                            .iter()
+                            .filter(|f| !f.ty.is_handle())
+                            .cloned()
+                            .collect(),
+                    })
+                    .collect();
                 let has_float = messages
                     .iter()
                     .any(|m| m.fields.iter().any(|f| field_has_float(&f.ty, checked)));
@@ -456,13 +538,18 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
                         Overflow::Terminate => "terminate",
                     }
                 ));
-                o.line(derives(&TypeFacts {
-                    size: crate::check::Size { min: 0, max: 0 },
-                    has_float,
-                    is_plain_enum: false,
-                    max_loop: 0,
-                    heap_depth: 0,
-                }));
+                if has_handles {
+                    // Handles are owned capabilities: no Clone or PartialEq.
+                    o.line("#[derive(Debug)]");
+                } else {
+                    o.line(derives(&TypeFacts {
+                        size: crate::check::Size { min: 0, max: 0 },
+                        has_float,
+                        is_plain_enum: false,
+                        max_loop: 0,
+                        heap_depth: 0,
+                    }));
+                }
                 o.line(&format!("pub enum {} {{", id.name));
                 for m in messages {
                     o.doc(&m.id);
@@ -471,7 +558,10 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
                         o.line(&format!("{v},"));
                     } else {
                         o.line(&format!("{v} {{"));
-                        field_list(&mut o, &m.fields, false);
+                        for f in &m.fields {
+                            o.doc(&f.id);
+                            o.line(&format!("{}: {},", f.id.name, param_type(&f.ty, &bound)));
+                        }
                         o.line("},");
                     }
                 }
@@ -496,32 +586,309 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
                         Overflow::Terminate => "Terminate",
                     }
                 ));
-                o.line("max_message_len: <Self as Wire>::MAX_LEN,");
+                o.line(&format!(
+                    "max_message_len: {},",
+                    cases_len(&data, 2, "MAX_LEN", "len_max")
+                ));
                 o.line("};");
                 o.line("}");
                 o.line("");
-                let cases: Vec<(String, &[Field])> = messages
+                let cases: Vec<(String, &[Field])> = data
                     .iter()
                     .map(|m| (pascal_of(&m.id.name), m.fields.as_slice()))
                     .collect();
-                tagged(&mut o, &id.name, &cases, "u16", "UnknownOrdinal", true);
-                o.line(&format!(
-                    "const MIN_LEN: usize = {};",
-                    cases_len(messages, 2, "MIN_LEN", "len_min")
-                ));
-                o.line(&format!(
-                    "const MAX_LEN: usize = {};",
-                    cases_len(messages, 2, "MAX_LEN", "len_max")
-                ));
-                o.line("}");
-                o.line("");
-                sample_tagged(&mut o, &id.name, &cases);
-                o.line("");
-                kani(&mut o, &file.protocol.name, &id.name, messages, checked);
+                tagged(
+                    &mut o,
+                    &id.name,
+                    &cases,
+                    "u16",
+                    "UnknownOrdinal",
+                    true,
+                    !has_handles,
+                );
+                if !has_handles {
+                    o.line(&format!(
+                        "const MIN_LEN: usize = {};",
+                        cases_len(&data, 2, "MIN_LEN", "len_min")
+                    ));
+                    o.line(&format!(
+                        "const MAX_LEN: usize = {};",
+                        cases_len(&data, 2, "MAX_LEN", "len_max")
+                    ));
+                    o.line("}");
+                    o.line("");
+                }
+                interface_impl(&mut o, &ctx, messages);
+                handler_trait(&mut o, &ctx, messages);
+                sender_trait(&mut o, &ctx, messages);
+                if !has_handles {
+                    sample_tagged(&mut o, &id.name, &cases);
+                    o.line("");
+                }
+                kani(&mut o, &file.protocol.name, &id.name, &data, checked);
             }
         }
     }
     o.s
+}
+
+/// What the per-interface emitters need to know.
+struct Iface<'a> {
+    protocol: &'a str,
+    name: &'a str,
+    bound: &'a BTreeSet<String>,
+    error: &'a str,
+    is_bound: bool,
+}
+
+/// `validate_bytes`, the `hg_ipc::Interface` impl (the message's wire
+/// form: bytes plus handles in declaration order) and the free/bound
+/// marker.
+fn interface_impl(o: &mut Out, x: &Iface<'_>, messages: &[Case]) {
+    let name = x.name;
+    o.line(&format!("impl {name} {{"));
+    o.line("/// Checks that `bytes` are one valid message, allocating nothing.");
+    o.line("///");
+    o.line("/// # Errors");
+    o.line("/// [`BadMessage`] if they are not.");
+    o.line("pub fn validate_bytes(bytes: &[u8]) -> Result<(), BadMessage> {");
+    o.line("let mut r = Reader::new(bytes);");
+    o.line("match u16::decode(&mut r)? {");
+    for (i, m) in messages.iter().enumerate() {
+        o.line(&format!(
+            "{i} => Self::validate_{}(&mut r)?,",
+            snake_of(&pascal_of(&m.id.name))
+        ));
+    }
+    o.line("_ => return Err(BadMessage::UnknownOrdinal),");
+    o.line("}");
+    o.line("r.finish()");
+    o.line("}");
+    o.line("}");
+    o.line("");
+
+    let any_handles = messages
+        .iter()
+        .any(|m| m.fields.iter().any(|f| f.ty.is_handle()));
+    o.line(&format!("impl hg_ipc::Interface for {name} {{"));
+    o.line("const INFO: hg_ipc::InterfaceInfo = Self::INFO;");
+    o.line("fn into_wire(self) -> (Vec<u8>, Vec<hg_ipc::Handle>) {");
+    o.line("let mut w = Writer::new();");
+    if any_handles {
+        o.line("let mut handles = Vec::new();");
+    }
+    o.line("match self {");
+    for (i, m) in messages.iter().enumerate() {
+        let v = pascal_of(&m.id.name);
+        let f = snake_of(&v);
+        let all = binding_names(&m.fields);
+        let pattern = if m.fields.is_empty() {
+            format!("Self::{v}")
+        } else {
+            format!("Self::{v} {{ {all} }}")
+        };
+        let args: String = m
+            .fields
+            .iter()
+            .filter(|p| !p.ty.is_handle())
+            .map(|p| format!(", &{}", p.id.name))
+            .collect();
+        o.line(&format!("{pattern} => {{"));
+        o.line(&format!("{i}u16.encode(&mut w);"));
+        o.line(&format!("Self::encode_{f}(&mut w{args});"));
+        for p in m.fields.iter().filter(|p| p.ty.is_handle()) {
+            o.line(&format!("handles.push({}.into_handle());", p.id.name));
+        }
+        o.line("}");
+    }
+    o.line("}");
+    if any_handles {
+        o.line("(w.into_bytes(), handles)");
+    } else {
+        o.line("(w.into_bytes(), Vec::new())");
+    }
+    o.line("}");
+    o.line("fn from_wire(");
+    o.line("bytes: &[u8],");
+    o.line("handles: Vec<hg_ipc::Handle>,");
+    o.line("ipc: &std::sync::Arc<dyn hg_ipc::Ipc>,");
+    o.line(") -> Result<Self, BadMessage> {");
+    if !any_handles {
+        o.line("let _ = ipc;");
+    }
+    o.line("// Every check before any decoding: the bytes by the validator,");
+    o.line("// which allocates nothing, then the handles' kinds (IPC-R1).");
+    o.line("Self::validate_bytes(bytes)?;");
+    o.line("let mut r = Reader::new(bytes);");
+    o.line("let msg = match u16::decode(&mut r)? {");
+    for (i, m) in messages.iter().enumerate() {
+        let v = pascal_of(&m.id.name);
+        let f = snake_of(&v);
+        let kinds: Vec<&str> = m
+            .fields
+            .iter()
+            .filter(|p| p.ty.is_handle())
+            .map(|p| handle_kind(&p.ty, x.bound))
+            .collect();
+        let data: Vec<String> = m
+            .fields
+            .iter()
+            .filter(|p| !p.ty.is_handle())
+            .map(|p| p.id.name.clone())
+            .collect();
+        o.line(&format!("{i} => {{"));
+        o.line(&format!(
+            "hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[{}])?;",
+            kinds.join(", ")
+        ));
+        o.line(&format!(
+            "let {} = Self::decode_{f}(&mut r)?;",
+            tuple(&data)
+        ));
+        if kinds.is_empty() {
+            if m.fields.is_empty() {
+                o.line(&format!("Self::{v}"));
+            } else {
+                o.line(&format!("Self::{v} {{ {} }}", binding_names(&m.fields)));
+            }
+        } else {
+            o.line("let mut h = handles.into_iter();");
+            for p in m.fields.iter().filter(|p| p.ty.is_handle()) {
+                o.line(&format!(
+                    "let {} = {};",
+                    p.id.name,
+                    handle_take(&p.ty, x.bound)
+                ));
+            }
+            o.line(&format!("Self::{v} {{ {} }}", binding_names(&m.fields)));
+        }
+        o.line("}");
+    }
+    o.line("_ => return Err(BadMessage::UnknownOrdinal),");
+    o.line("};");
+    o.line("r.finish()?;");
+    o.line("Ok(msg)");
+    o.line("}");
+    o.line("}");
+    o.line("");
+    let marker = if x.is_bound {
+        "BoundInterface"
+    } else {
+        "FreeInterface"
+    };
+    o.line(&format!("impl hg_ipc::{marker} for {name} {{}}"));
+    o.line("");
+}
+
+/// The parameter list `name: Type, …` of a message, handles included.
+fn params(m: &Case, bound: &BTreeSet<String>) -> String {
+    m.fields
+        .iter()
+        .map(|f| format!(", {}: {}", f.id.name, param_type(&f.ty, bound)))
+        .collect()
+}
+
+/// The handler trait, one method per message, and `dispatch`. A bound
+/// interface's methods get the caller's identity (IPC-R2 (c)); a free
+/// one's get none.
+fn handler_trait(o: &mut Out, x: &Iface<'_>, messages: &[Case]) {
+    let (name, error) = (x.name, x.error);
+    let from = if x.is_bound {
+        ", from: &hg_ipc::CallerIdentity"
+    } else {
+        ""
+    };
+    let from_arg = if x.is_bound { "from, " } else { "" };
+    let _ = writeln!(
+        o.s,
+        "/// Receives `{}.{name}`'s messages, each already checked. An `Err`\n\
+         /// closes the endpoint and reports the sender (IPC-R5).",
+        x.protocol
+    );
+    o.line(&format!("pub trait {name}Handler {{"));
+    for m in messages {
+        o.doc(&m.id);
+        o.line("///");
+        o.line("/// # Errors");
+        o.line("/// The protocol's error, which ends the conversation.");
+        o.line(&format!(
+            "fn {}(&mut self{from}{}) -> Result<(), {error}>;",
+            m.id.name,
+            params(m, x.bound)
+        ));
+    }
+    o.line("}");
+    o.line("");
+    o.line(&format!("impl {name} {{"));
+    o.line("/// Passes this message to its handler method.");
+    o.line("///");
+    o.line("/// # Errors");
+    o.line("/// The handler's.");
+    o.line(&format!(
+        "pub fn dispatch<H: {name}Handler + ?Sized>(self, h: &mut H{from}) -> Result<(), {error}> {{"
+    ));
+    o.line("match self {");
+    for m in messages {
+        let v = pascal_of(&m.id.name);
+        let all = binding_names(&m.fields);
+        let pattern = if m.fields.is_empty() {
+            format!("Self::{v}")
+        } else {
+            format!("Self::{v} {{ {all} }}")
+        };
+        let args = if m.fields.is_empty() {
+            from_arg.trim_end_matches(", ").to_owned()
+        } else {
+            format!("{from_arg}{all}")
+        };
+        o.line(&format!("{pattern} => h.{}({args}),", m.id.name));
+    }
+    o.line("}");
+    o.line("}");
+    o.line("}");
+    o.line("");
+}
+
+/// The sender trait on `hg_ipc::Remote<Iface>`, one method per message.
+fn sender_trait(o: &mut Out, x: &Iface<'_>, messages: &[Case]) {
+    let name = x.name;
+    let _ = writeln!(
+        o.s,
+        "/// Sends `{}.{name}`'s messages; implemented for `hg_ipc::Remote<{name}>`.",
+        x.protocol
+    );
+    o.line(&format!("pub trait {name}Remote {{"));
+    for m in messages {
+        o.doc(&m.id);
+        o.line("///");
+        o.line("/// # Errors");
+        o.line("/// [`hg_ipc::SendError`]; the sender never blocks.");
+        o.line(&format!(
+            "fn {}(&self{}) -> Result<(), hg_ipc::SendError>;",
+            m.id.name,
+            params(m, x.bound)
+        ));
+    }
+    o.line("}");
+    o.line("");
+    o.line(&format!("impl {name}Remote for hg_ipc::Remote<{name}> {{"));
+    for m in messages {
+        let v = pascal_of(&m.id.name);
+        let built = if m.fields.is_empty() {
+            format!("{name}::{v}")
+        } else {
+            format!("{name}::{v} {{ {} }}", binding_names(&m.fields))
+        };
+        o.line(&format!(
+            "fn {}(&self{}) -> Result<(), hg_ipc::SendError> {{",
+            m.id.name,
+            params(m, x.bound)
+        ));
+        o.line(&format!("self.send({built})"));
+        o.line("}");
+    }
+    o.line("}");
+    o.line("");
 }
 
 fn field_has_float(t: &Type, checked: &Checked) -> bool {
@@ -530,6 +897,7 @@ fn field_has_float(t: &Type, checked: &Checked) -> bool {
         Type::Bytes(_) | Type::Str(_) => false,
         Type::Vec(inner, _) | Type::Option(inner) => field_has_float(inner, checked),
         Type::Named(n, _) => checked.facts.get(n).is_some_and(|f| f.has_float),
+        Type::Remote(..) | Type::Receiver(..) => false,
     }
 }
 
@@ -696,7 +1064,7 @@ fn kani(o: &mut Out, protocol: &str, iface: &str, messages: &[Case], checked: &C
         o.line("let bytes = [o0, o1, t0, t1];");
         o.line("let Some(input) = bytes.get(..len) else { return };");
         o.line(&format!(
-            "assert!(hg_ipc::validate_exact::<{iface}>(input) == Err(BadMessage::UnknownOrdinal));"
+            "assert!({iface}::validate_bytes(input) == Err(BadMessage::UnknownOrdinal));"
         ));
         o.line("}");
         o.line("");

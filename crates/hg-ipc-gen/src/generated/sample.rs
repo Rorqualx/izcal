@@ -461,7 +461,16 @@ impl Strict {
         binding: hg_ipc::Binding::Bound,
         capacity: 8,
         overflow: hg_ipc::Overflow::Terminate,
-        max_message_len: <Self as Wire>::MAX_LEN,
+        max_message_len: hg_ipc::wire::len_add(
+            2,
+            hg_ipc::wire::len_max(
+                hg_ipc::wire::len_max(0, hg_ipc::wire::len_add(0, <Scalars as Wire>::MAX_LEN)),
+                hg_ipc::wire::len_add(
+                    hg_ipc::wire::len_add(0, <Shapes as Wire>::MAX_LEN),
+                    <Event as Wire>::MAX_LEN,
+                ),
+            ),
+        ),
     };
 }
 
@@ -572,6 +581,153 @@ impl Wire for Strict {
             ),
         ),
     );
+}
+
+impl Strict {
+    /// Checks that `bytes` are one valid message, allocating nothing.
+    ///
+    /// # Errors
+    /// [`BadMessage`] if they are not.
+    pub fn validate_bytes(bytes: &[u8]) -> Result<(), BadMessage> {
+        let mut r = Reader::new(bytes);
+        match u16::decode(&mut r)? {
+            0 => Self::validate_nothing(&mut r)?,
+            1 => Self::validate_scalars(&mut r)?,
+            2 => Self::validate_shapes(&mut r)?,
+            _ => return Err(BadMessage::UnknownOrdinal),
+        }
+        r.finish()
+    }
+}
+
+impl hg_ipc::Interface for Strict {
+    const INFO: hg_ipc::InterfaceInfo = Self::INFO;
+    fn into_wire(self) -> (Vec<u8>, Vec<hg_ipc::Handle>) {
+        let mut w = Writer::new();
+        match self {
+            Self::Nothing => {
+                0u16.encode(&mut w);
+                Self::encode_nothing(&mut w);
+            }
+            Self::Scalars { value } => {
+                1u16.encode(&mut w);
+                Self::encode_scalars(&mut w, &value);
+            }
+            Self::Shapes { value, event } => {
+                2u16.encode(&mut w);
+                Self::encode_shapes(&mut w, &value, &event);
+            }
+        }
+        (w.into_bytes(), Vec::new())
+    }
+    fn from_wire(
+        bytes: &[u8],
+        handles: Vec<hg_ipc::Handle>,
+        ipc: &std::sync::Arc<dyn hg_ipc::Ipc>,
+    ) -> Result<Self, BadMessage> {
+        let _ = ipc;
+        // Every check before any decoding: the bytes by the validator,
+        // which allocates nothing, then the handles' kinds (IPC-R1).
+        Self::validate_bytes(bytes)?;
+        let mut r = Reader::new(bytes);
+        let msg = match u16::decode(&mut r)? {
+            0 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let () = Self::decode_nothing(&mut r)?;
+                Self::Nothing
+            }
+            1 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (value,) = Self::decode_scalars(&mut r)?;
+                Self::Scalars { value }
+            }
+            2 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (value, event) = Self::decode_shapes(&mut r)?;
+                Self::Shapes { value, event }
+            }
+            _ => return Err(BadMessage::UnknownOrdinal),
+        };
+        r.finish()?;
+        Ok(msg)
+    }
+}
+
+impl hg_ipc::BoundInterface for Strict {}
+
+/// Receives `sample.Strict`'s messages, each already checked. An `Err`
+/// closes the endpoint and reports the sender (IPC-R5).
+pub trait StrictHandler {
+    /// No parameters.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn nothing(&mut self, from: &hg_ipc::CallerIdentity) -> Result<(), SampleError>;
+    /// Every scalar.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn scalars(&mut self, from: &hg_ipc::CallerIdentity, value: Scalars)
+    -> Result<(), SampleError>;
+    /// Variable-length values and a union.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn shapes(
+        &mut self,
+        from: &hg_ipc::CallerIdentity,
+        value: Shapes,
+        event: Event,
+    ) -> Result<(), SampleError>;
+}
+
+impl Strict {
+    /// Passes this message to its handler method.
+    ///
+    /// # Errors
+    /// The handler's.
+    pub fn dispatch<H: StrictHandler + ?Sized>(
+        self,
+        h: &mut H,
+        from: &hg_ipc::CallerIdentity,
+    ) -> Result<(), SampleError> {
+        match self {
+            Self::Nothing => h.nothing(from),
+            Self::Scalars { value } => h.scalars(from, value),
+            Self::Shapes { value, event } => h.shapes(from, value, event),
+        }
+    }
+}
+
+/// Sends `sample.Strict`'s messages; implemented for `hg_ipc::Remote<Strict>`.
+pub trait StrictRemote {
+    /// No parameters.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn nothing(&self) -> Result<(), hg_ipc::SendError>;
+    /// Every scalar.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn scalars(&self, value: Scalars) -> Result<(), hg_ipc::SendError>;
+    /// Variable-length values and a union.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn shapes(&self, value: Shapes, event: Event) -> Result<(), hg_ipc::SendError>;
+}
+
+impl StrictRemote for hg_ipc::Remote<Strict> {
+    fn nothing(&self) -> Result<(), hg_ipc::SendError> {
+        self.send(Strict::Nothing)
+    }
+    fn scalars(&self, value: Scalars) -> Result<(), hg_ipc::SendError> {
+        self.send(Strict::Scalars { value })
+    }
+    fn shapes(&self, value: Shapes, event: Event) -> Result<(), hg_ipc::SendError> {
+        self.send(Strict::Shapes { value, event })
+    }
 }
 
 #[cfg(test)]
@@ -837,7 +993,7 @@ fn verify_strict_unknown_ordinal() {
     let Some(input) = bytes.get(..len) else {
         return;
     };
-    assert!(hg_ipc::validate_exact::<Strict>(input) == Err(BadMessage::UnknownOrdinal));
+    assert!(Strict::validate_bytes(input) == Err(BadMessage::UnknownOrdinal));
 }
 
 /// A free interface that drops on overflow.
@@ -864,7 +1020,13 @@ impl Loose {
         binding: hg_ipc::Binding::Free,
         capacity: 1024,
         overflow: hg_ipc::Overflow::Drop,
-        max_message_len: <Self as Wire>::MAX_LEN,
+        max_message_len: hg_ipc::wire::len_add(
+            2,
+            hg_ipc::wire::len_max(
+                hg_ipc::wire::len_add(0, <u8 as Wire>::MAX_LEN),
+                hg_ipc::wire::len_add(0, <Option<Event> as Wire>::MAX_LEN),
+            ),
+        ),
     };
 }
 
@@ -944,6 +1106,119 @@ impl Wire for Loose {
             hg_ipc::wire::len_add(0, <Option<Event> as Wire>::MAX_LEN),
         ),
     );
+}
+
+impl Loose {
+    /// Checks that `bytes` are one valid message, allocating nothing.
+    ///
+    /// # Errors
+    /// [`BadMessage`] if they are not.
+    pub fn validate_bytes(bytes: &[u8]) -> Result<(), BadMessage> {
+        let mut r = Reader::new(bytes);
+        match u16::decode(&mut r)? {
+            0 => Self::validate_tick(&mut r)?,
+            1 => Self::validate_maybe_event(&mut r)?,
+            _ => return Err(BadMessage::UnknownOrdinal),
+        }
+        r.finish()
+    }
+}
+
+impl hg_ipc::Interface for Loose {
+    const INFO: hg_ipc::InterfaceInfo = Self::INFO;
+    fn into_wire(self) -> (Vec<u8>, Vec<hg_ipc::Handle>) {
+        let mut w = Writer::new();
+        match self {
+            Self::Tick { value } => {
+                0u16.encode(&mut w);
+                Self::encode_tick(&mut w, &value);
+            }
+            Self::MaybeEvent { event } => {
+                1u16.encode(&mut w);
+                Self::encode_maybe_event(&mut w, &event);
+            }
+        }
+        (w.into_bytes(), Vec::new())
+    }
+    fn from_wire(
+        bytes: &[u8],
+        handles: Vec<hg_ipc::Handle>,
+        ipc: &std::sync::Arc<dyn hg_ipc::Ipc>,
+    ) -> Result<Self, BadMessage> {
+        let _ = ipc;
+        // Every check before any decoding: the bytes by the validator,
+        // which allocates nothing, then the handles' kinds (IPC-R1).
+        Self::validate_bytes(bytes)?;
+        let mut r = Reader::new(bytes);
+        let msg = match u16::decode(&mut r)? {
+            0 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (value,) = Self::decode_tick(&mut r)?;
+                Self::Tick { value }
+            }
+            1 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (event,) = Self::decode_maybe_event(&mut r)?;
+                Self::MaybeEvent { event }
+            }
+            _ => return Err(BadMessage::UnknownOrdinal),
+        };
+        r.finish()?;
+        Ok(msg)
+    }
+}
+
+impl hg_ipc::FreeInterface for Loose {}
+
+/// Receives `sample.Loose`'s messages, each already checked. An `Err`
+/// closes the endpoint and reports the sender (IPC-R5).
+pub trait LooseHandler {
+    /// A single byte, the smallest message with a payload.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn tick(&mut self, value: u8) -> Result<(), SampleError>;
+    /// An optional event.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn maybe_event(&mut self, event: Option<Event>) -> Result<(), SampleError>;
+}
+
+impl Loose {
+    /// Passes this message to its handler method.
+    ///
+    /// # Errors
+    /// The handler's.
+    pub fn dispatch<H: LooseHandler + ?Sized>(self, h: &mut H) -> Result<(), SampleError> {
+        match self {
+            Self::Tick { value } => h.tick(value),
+            Self::MaybeEvent { event } => h.maybe_event(event),
+        }
+    }
+}
+
+/// Sends `sample.Loose`'s messages; implemented for `hg_ipc::Remote<Loose>`.
+pub trait LooseRemote {
+    /// A single byte, the smallest message with a payload.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn tick(&self, value: u8) -> Result<(), hg_ipc::SendError>;
+    /// An optional event.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn maybe_event(&self, event: Option<Event>) -> Result<(), hg_ipc::SendError>;
+}
+
+impl LooseRemote for hg_ipc::Remote<Loose> {
+    fn tick(&self, value: u8) -> Result<(), hg_ipc::SendError> {
+        self.send(Loose::Tick { value })
+    }
+    fn maybe_event(&self, event: Option<Event>) -> Result<(), hg_ipc::SendError> {
+        self.send(Loose::MaybeEvent { event })
+    }
 }
 
 #[cfg(test)]
@@ -1098,5 +1373,353 @@ fn verify_loose_unknown_ordinal() {
     let Some(input) = bytes.get(..len) else {
         return;
     };
-    assert!(hg_ipc::validate_exact::<Loose>(input) == Err(BadMessage::UnknownOrdinal));
+    assert!(Loose::validate_bytes(input) == Err(BadMessage::UnknownOrdinal));
+}
+
+/// A free interface whose messages carry handles.
+///
+/// Interface `sample.Handles`: free, capacity 4, overflow `terminate`.
+#[derive(Debug)]
+pub enum Handles {
+    /// Every handle form, with data beside it.
+    Connect {
+        /// A free interface's sender.
+        target: hg_ipc::Remote<Loose>,
+        /// A bound interface's sender: crosses as a grant.
+        privileged: hg_ipc::Grant<Strict>,
+        /// A free interface's receiver.
+        inbox: hg_ipc::Endpoint<Loose>,
+        /// Data beside the handles.
+        note: u8,
+    },
+    /// A handle and no data.
+    HandOver {
+        /// The sender.
+        target: hg_ipc::Remote<Loose>,
+    },
+}
+
+impl Handles {
+    /// What the `.hgidl` declared about this interface.
+    pub const INFO: hg_ipc::InterfaceInfo = hg_ipc::InterfaceInfo {
+        name: "sample.Handles",
+        binding: hg_ipc::Binding::Free,
+        capacity: 4,
+        overflow: hg_ipc::Overflow::Terminate,
+        max_message_len: hg_ipc::wire::len_add(
+            2,
+            hg_ipc::wire::len_max(hg_ipc::wire::len_add(0, <u8 as Wire>::MAX_LEN), 0),
+        ),
+    };
+}
+
+impl Handles {
+    /// Reads [`Self::Connect`]'s fields, after its ordinal.
+    fn decode_connect(r: &mut Reader<'_>) -> Result<(u8,), BadMessage> {
+        Ok((Wire::decode(r)?,))
+    }
+    /// Checks [`Self::Connect`]'s fields, after its ordinal.
+    fn validate_connect(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        <u8 as Wire>::validate(r)?;
+        Ok(())
+    }
+    /// Writes [`Self::Connect`]'s fields, after its ordinal.
+    fn encode_connect(w: &mut Writer, note: &u8) {
+        note.encode(w);
+    }
+    /// Reads [`Self::HandOver`]'s fields, after its ordinal.
+    fn decode_hand_over(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        let _ = r;
+        Ok(())
+    }
+    /// Checks [`Self::HandOver`]'s fields, after its ordinal.
+    fn validate_hand_over(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        let _ = r;
+        Ok(())
+    }
+    /// Writes [`Self::HandOver`]'s fields, after its ordinal.
+    fn encode_hand_over(w: &mut Writer) {
+        let _ = w;
+    }
+}
+
+impl Handles {
+    /// Checks that `bytes` are one valid message, allocating nothing.
+    ///
+    /// # Errors
+    /// [`BadMessage`] if they are not.
+    pub fn validate_bytes(bytes: &[u8]) -> Result<(), BadMessage> {
+        let mut r = Reader::new(bytes);
+        match u16::decode(&mut r)? {
+            0 => Self::validate_connect(&mut r)?,
+            1 => Self::validate_hand_over(&mut r)?,
+            _ => return Err(BadMessage::UnknownOrdinal),
+        }
+        r.finish()
+    }
+}
+
+impl hg_ipc::Interface for Handles {
+    const INFO: hg_ipc::InterfaceInfo = Self::INFO;
+    fn into_wire(self) -> (Vec<u8>, Vec<hg_ipc::Handle>) {
+        let mut w = Writer::new();
+        let mut handles = Vec::new();
+        match self {
+            Self::Connect {
+                target,
+                privileged,
+                inbox,
+                note,
+            } => {
+                0u16.encode(&mut w);
+                Self::encode_connect(&mut w, &note);
+                handles.push(target.into_handle());
+                handles.push(privileged.into_handle());
+                handles.push(inbox.into_handle());
+            }
+            Self::HandOver { target } => {
+                1u16.encode(&mut w);
+                Self::encode_hand_over(&mut w);
+                handles.push(target.into_handle());
+            }
+        }
+        (w.into_bytes(), handles)
+    }
+    fn from_wire(
+        bytes: &[u8],
+        handles: Vec<hg_ipc::Handle>,
+        ipc: &std::sync::Arc<dyn hg_ipc::Ipc>,
+    ) -> Result<Self, BadMessage> {
+        // Every check before any decoding: the bytes by the validator,
+        // which allocates nothing, then the handles' kinds (IPC-R1).
+        Self::validate_bytes(bytes)?;
+        let mut r = Reader::new(bytes);
+        let msg = match u16::decode(&mut r)? {
+            0 => {
+                hg_ipc::endpoint::expect_kinds(
+                    handles.iter().map(hg_ipc::Handle::kind),
+                    &[
+                        hg_ipc::HandleKind::ChannelSender,
+                        hg_ipc::HandleKind::BoundChannelSender,
+                        hg_ipc::HandleKind::ChannelReceiver,
+                    ],
+                )?;
+                let (note,) = Self::decode_connect(&mut r)?;
+                let mut h = handles.into_iter();
+                let target = hg_ipc::endpoint::take_remote::<Loose>(h.next(), ipc)?;
+                let privileged = hg_ipc::endpoint::take_grant::<Strict>(h.next())?;
+                let inbox = hg_ipc::endpoint::take_endpoint::<Loose>(h.next(), ipc)?;
+                Self::Connect {
+                    target,
+                    privileged,
+                    inbox,
+                    note,
+                }
+            }
+            1 => {
+                hg_ipc::endpoint::expect_kinds(
+                    handles.iter().map(hg_ipc::Handle::kind),
+                    &[hg_ipc::HandleKind::ChannelSender],
+                )?;
+                let () = Self::decode_hand_over(&mut r)?;
+                let mut h = handles.into_iter();
+                let target = hg_ipc::endpoint::take_remote::<Loose>(h.next(), ipc)?;
+                Self::HandOver { target }
+            }
+            _ => return Err(BadMessage::UnknownOrdinal),
+        };
+        r.finish()?;
+        Ok(msg)
+    }
+}
+
+impl hg_ipc::FreeInterface for Handles {}
+
+/// Receives `sample.Handles`'s messages, each already checked. An `Err`
+/// closes the endpoint and reports the sender (IPC-R5).
+pub trait HandlesHandler {
+    /// Every handle form, with data beside it.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn connect(
+        &mut self,
+        target: hg_ipc::Remote<Loose>,
+        privileged: hg_ipc::Grant<Strict>,
+        inbox: hg_ipc::Endpoint<Loose>,
+        note: u8,
+    ) -> Result<(), SampleError>;
+    /// A handle and no data.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn hand_over(&mut self, target: hg_ipc::Remote<Loose>) -> Result<(), SampleError>;
+}
+
+impl Handles {
+    /// Passes this message to its handler method.
+    ///
+    /// # Errors
+    /// The handler's.
+    pub fn dispatch<H: HandlesHandler + ?Sized>(self, h: &mut H) -> Result<(), SampleError> {
+        match self {
+            Self::Connect {
+                target,
+                privileged,
+                inbox,
+                note,
+            } => h.connect(target, privileged, inbox, note),
+            Self::HandOver { target } => h.hand_over(target),
+        }
+    }
+}
+
+/// Sends `sample.Handles`'s messages; implemented for `hg_ipc::Remote<Handles>`.
+pub trait HandlesRemote {
+    /// Every handle form, with data beside it.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn connect(
+        &self,
+        target: hg_ipc::Remote<Loose>,
+        privileged: hg_ipc::Grant<Strict>,
+        inbox: hg_ipc::Endpoint<Loose>,
+        note: u8,
+    ) -> Result<(), hg_ipc::SendError>;
+    /// A handle and no data.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn hand_over(&self, target: hg_ipc::Remote<Loose>) -> Result<(), hg_ipc::SendError>;
+}
+
+impl HandlesRemote for hg_ipc::Remote<Handles> {
+    fn connect(
+        &self,
+        target: hg_ipc::Remote<Loose>,
+        privileged: hg_ipc::Grant<Strict>,
+        inbox: hg_ipc::Endpoint<Loose>,
+        note: u8,
+    ) -> Result<(), hg_ipc::SendError> {
+        self.send(Handles::Connect {
+            target,
+            privileged,
+            inbox,
+            note,
+        })
+    }
+    fn hand_over(&self, target: hg_ipc::Remote<Loose>) -> Result<(), hg_ipc::SendError> {
+        self.send(Handles::HandOver { target })
+    }
+}
+
+/// VER-1 for `sample.Handles.connect` (IPC-R5): validating never
+/// panics, overflows or reads out of bounds. Bounds: messages of 2 to
+/// 3 bytes (its encodings are 3 to 3); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_handles_connect_validates() {
+    let bytes: [u8; 1] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 1);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let checked = Handles::validate_connect(&mut r).and_then(|()| r.finish());
+    kani::cover!(checked.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Handles.connect` (IPC-R5, IPC-R6): decoding
+/// never panics, and every accepted input re-encodes to the same
+/// bytes. Bounds: messages of 2 to 3 bytes (its encodings are 3
+/// to 3); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_handles_connect_round_trip() {
+    let bytes: [u8; 1] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 1);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let decoded = Handles::decode_connect(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "some input is accepted");
+    if let Ok((note,)) = decoded {
+        let mut w = Writer::new();
+        0u16.encode(&mut w);
+        Handles::encode_connect(&mut w, &note);
+        let out = w.into_bytes();
+        assert!(out.len() == len + 2);
+        assert!(out.first() == Some(&0));
+        assert!(out.get(1) == Some(&0));
+        if len > 0 {
+            assert!(out.get(2) == bytes.get(0));
+        }
+    }
+}
+
+/// VER-1 for `sample.Handles.hand_over` (IPC-R5): validating never
+/// panics, overflows or reads out of bounds. Bounds: messages of 2 to
+/// 2 bytes (its encodings are 2 to 2); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_handles_hand_over_validates() {
+    let bytes: [u8; 0] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 0);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let checked = Handles::validate_hand_over(&mut r).and_then(|()| r.finish());
+    kani::cover!(checked.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Handles.hand_over` (IPC-R5, IPC-R6): decoding
+/// never panics, and every accepted input re-encodes to the same
+/// bytes. Bounds: messages of 2 to 2 bytes (its encodings are 2
+/// to 2); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_handles_hand_over_round_trip() {
+    let bytes: [u8; 0] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 0);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let decoded = Handles::decode_hand_over(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "some input is accepted");
+    if let Ok(()) = decoded {
+        let mut w = Writer::new();
+        1u16.encode(&mut w);
+        Handles::encode_hand_over(&mut w);
+        let out = w.into_bytes();
+        assert!(out.len() == len + 2);
+        assert!(out.first() == Some(&1));
+        assert!(out.get(1) == Some(&0));
+    }
+}
+
+/// VER-1 for `sample.Handles`: an ordinal no message has is
+/// refused by the validator, which `decode_exact` runs first,
+/// whatever follows it (bounds: 2 to 4 bytes).
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(6)]
+fn verify_handles_unknown_ordinal() {
+    let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 2);
+    let tail: [u8; 2] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| (2..=4).contains(&n));
+    let [o0, o1] = ordinal.to_le_bytes();
+    let [t0, t1] = tail;
+    let bytes = [o0, o1, t0, t1];
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    assert!(Handles::validate_bytes(input) == Err(BadMessage::UnknownOrdinal));
 }

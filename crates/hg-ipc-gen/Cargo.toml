@@ -12,6 +12,9 @@ hg-ipc = { path = "../hg-ipc" }
 [dev-dependencies]
 hg-ipc-codegen = { path = "../hg-ipc-codegen" }
 hg-substrate = { path = "../hg-substrate" }
+hg-substrate-os = { path = "../hg-substrate-os" }
+hg-substrate-sim = { path = "../hg-substrate-sim" }
+hg-types = { path = "../hg-types" }
 
 [[test]]
 name = "it"

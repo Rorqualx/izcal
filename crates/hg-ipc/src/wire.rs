@@ -45,6 +45,9 @@ pub enum BadMessage {
     BadUtf8,
     /// Memory for a bounded value could not be reserved (CS-ER-9).
     OutOfMemory,
+    /// The message's handles are not exactly the kinds it declares, in
+    /// order (IPC-R1).
+    BadHandles,
 }
 
 impl core::fmt::Display for BadMessage {
@@ -58,6 +61,7 @@ impl core::fmt::Display for BadMessage {
             Self::OverBound => "a length is over its declared maximum",
             Self::BadUtf8 => "a string is not UTF-8",
             Self::OutOfMemory => "memory for the message could not be reserved",
+            Self::BadHandles => "the message's handles are not the declared kinds",
         })
     }
 }
