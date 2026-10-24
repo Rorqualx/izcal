@@ -106,3 +106,23 @@ interface Loose free capacity 1024 overflow drop {
         event: option<Event>,
     );
 }
+
+/// A free interface whose messages carry handles.
+interface Handles free capacity 4 overflow terminate {
+    /// Every handle form, with data beside it.
+    connect(
+        /// A free interface's sender.
+        target: remote<Loose>,
+        /// A bound interface's sender: crosses as a grant.
+        privileged: remote<Strict>,
+        /// A free interface's receiver.
+        inbox: receiver<Loose>,
+        /// Data beside the handles.
+        note: u8,
+    );
+    /// A handle and no data.
+    hand_over(
+        /// The sender.
+        target: remote<Loose>,
+    );
+}

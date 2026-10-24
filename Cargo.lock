@@ -6,6 +6,8 @@ version = 4
 name = "hg-dst"
 version = "0.0.0"
 dependencies = [
+ "hg-ipc",
+ "hg-ipc-gen",
  "hg-substrate",
  "hg-substrate-os",
  "hg-substrate-sim",
@@ -33,6 +35,9 @@ dependencies = [
  "hg-ipc",
  "hg-ipc-codegen",
  "hg-substrate",
+ "hg-substrate-os",
+ "hg-substrate-sim",
+ "hg-types",
 ]
 
 [[package]]

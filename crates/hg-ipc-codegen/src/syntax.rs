@@ -189,6 +189,19 @@ pub enum Type {
     Option(Box<Type>),
     /// A declared type.
     Named(String, Pos),
+    /// `remote<Iface>`: the right to send `Iface`'s messages (a handle;
+    /// message parameters only).
+    Remote(String, Pos),
+    /// `receiver<Iface>`: the right to receive them (a handle; message
+    /// parameters only).
+    Receiver(String, Pos),
+}
+
+impl Type {
+    /// Whether it is a handle, carried beside the bytes, not in them.
+    pub const fn is_handle(&self) -> bool {
+        matches!(self, Self::Remote(..) | Self::Receiver(..))
+    }
 }
 
 /// The fixed-width types.
@@ -443,6 +456,16 @@ impl Parser {
                 let inner = self.ty()?;
                 self.punct('>')?;
                 Type::Option(Box::new(inner))
+            }
+            "remote" | "receiver" => {
+                self.punct('<')?;
+                let (iface, ipos) = self.name()?;
+                self.punct('>')?;
+                if n == "remote" {
+                    Type::Remote(iface, ipos)
+                } else {
+                    Type::Receiver(iface, ipos)
+                }
             }
             _ => Type::Named(n, pos),
         })

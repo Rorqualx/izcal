@@ -6,21 +6,30 @@
 //! crate: the [`wire`] format, the [`bounded`] containers, and the
 //! [`InterfaceInfo`] each interface carries.
 //!
-//! M1 phase D1: the wire format and descriptors. Endpoints, handles,
-//! `CallerIdentity` and the transports follow in D2–D5.
+//! M1 phase D1 added the wire format and descriptors; D2 adds typed
+//! endpoints over the substrate's IPC transport ([`endpoint`]) and the
+//! caller identity ([`identity`]).
 
 pub mod bounded;
+pub mod endpoint;
+pub mod identity;
 mod utf8;
 pub mod wire;
 
 pub use bounded::{BoundedBytes, BoundedString, BoundedVec, OverBound};
+pub use endpoint::{
+    BoundInterface, EndReason, Endpoint, FreeInterface, Grant, Interface, Remote, SendError,
+    Serving, bound_channel, channel,
+};
+pub use hg_substrate::ipc::{Handle, HandleKind, Ipc, MAX_MESSAGE_HANDLES};
+pub use identity::{CallerIdentity, PeerBinding, PeerId};
 pub use wire::{BadMessage, Reader, Wire, Writer, decode_exact, encode_to_vec, validate_exact};
 
 /// The largest message any interface may declare: 64 KiB†. Bulk data
 /// crosses as read-only shared memory, never as a large message (Stage 1
 /// 4.1); `hg-ipc-codegen` rejects a message whose largest encoding is
 /// over this.
-pub const MAX_MESSAGE_LEN: usize = 64 * 1024;
+pub const MAX_MESSAGE_LEN: usize = hg_substrate::ipc::MAX_MESSAGE_BYTES;
 
 /// Whether an endpoint carries identity (IPC-R2 (a)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -15,6 +15,7 @@
 pub mod clock;
 pub mod entropy;
 pub mod executor;
+pub mod ipc;
 pub mod memory;
 pub mod os;
 pub mod sandbox;
@@ -92,6 +93,7 @@ pub fn os_substrate(threads: Threads) -> Result<Substrate, StartError> {
         entropy: Arc::new(entropy),
         exec: Arc::new(exec),
         mem: Arc::new(memory::OsMemory::new()),
+        ipc: Arc::new(ipc::OsIpc),
     })
 }
 
