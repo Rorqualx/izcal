@@ -13,6 +13,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-ipc"
+version = "0.0.0"
+dependencies = [
+ "hg-substrate",
+]
+
+[[package]]
+name = "hg-ipc-codegen"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+]
+
+[[package]]
+name = "hg-ipc-gen"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+ "hg-ipc-codegen",
+ "hg-substrate",
+]
+
+[[package]]
 name = "hg-substrate"
 version = "0.0.0"
 dependencies = [

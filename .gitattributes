@@ -1,0 +1,4 @@
+# Generated code (coding standard CS-ST-17 (b)): marked generated, and
+# kept LF on every OS so the freshness check compares the same bytes.
+**/src/generated/** linguist-generated=true merge=izcal-regen text eol=lf
+*.hgidl text eol=lf
