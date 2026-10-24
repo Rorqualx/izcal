@@ -7,8 +7,6 @@ publish.workspace = true
 description = "Izcal's IPC runtime (L1, tier P, B2): the fixed little-endian wire format, bounded types and endpoint descriptors that hg-ipc-codegen's output builds on (Stage 1 design 4; security scope 6.6)"
 
 [dependencies]
-
-[dev-dependencies]
 hg-substrate = { path = "../hg-substrate" }
 
 [lints.rust]

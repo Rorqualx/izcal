@@ -50,3 +50,32 @@ fn a_planted_bug_is_one_signature_with_a_working_replay() {
             .ends_with(&format!("--seed {} --bug", seeds[0]))
     );
 }
+
+#[test]
+fn ipc_seeds_pass_and_rerun_identically() {
+    let t = smoke(&["--ipc"]);
+    let results = t.run_seeds(0..24, 4);
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r.outcome, Outcome::Pass(_))),
+        "{results:?}"
+    );
+    assert!(t.rerun_mismatches(0..24, 4).is_empty());
+}
+
+#[test]
+fn a_planted_ipc_bug_is_one_signature() {
+    let t = smoke(&["--ipc", "--bug"]);
+    let results = t.run_seeds(0..40, 4);
+    let groups = group_failures(&results);
+    assert_eq!(groups.len(), 1, "{groups:?}");
+    let (signature, seeds) = groups.iter().next().unwrap();
+    assert!(signature.contains("dst-smoke.rs"), "{signature}");
+    assert!(
+        !seeds.is_empty() && seeds.len() < 40,
+        "only some seeds reach the bug: {seeds:?}"
+    );
+    let again = t.run_seed(seeds[0]);
+    assert_eq!(Some(&again), results.iter().find(|r| r.seed == seeds[0]));
+}

@@ -11,13 +11,14 @@
 //! closure that runs to completion on a named sequence. There is no
 //! `async` here and no executor of anyone else's.
 //!
-//! Phase A of M1 defines the traits M1 needs first. The IPC trait joins in
-//! phase D, and the code-memory, network and storage traits join with the
+//! Phase A of M1 defined the traits M1 needs first; the IPC trait joined
+//! in phase D. The code-memory, network and storage traits join with the
 //! milestones that first use them (Stage 1 design 3.1 lists all of them).
 
 mod clock;
 mod entropy;
 mod executor;
+pub mod ipc;
 mod memory;
 pub mod prng;
 
@@ -26,6 +27,7 @@ use std::sync::Arc;
 pub use clock::Clock;
 pub use entropy::{CryptoRandom, Entropy, EntropyError, EntropyPurpose, RandomStream};
 pub use executor::{Executor, PhasePool, PostError, Priority, SequenceHandle, Task};
+pub use ipc::Ipc;
 pub use memory::{Memory, MemoryError, MemoryKind, MemoryStats, Region};
 
 /// The substrate a process runs on: one instance per (real or simulated)
@@ -40,6 +42,8 @@ pub struct Substrate {
     pub exec: Arc<dyn Executor>,
     /// Address-space reservation and commit, charged to ledger lines.
     pub mem: Arc<dyn Memory>,
+    /// Channels to other processes (Stage 1 4.1).
+    pub ipc: Arc<dyn Ipc>,
 }
 
 #[cfg(test)]
@@ -134,12 +138,43 @@ mod tests {
         }
     }
 
+    struct NoIpc;
+    impl Ipc for NoIpc {
+        fn channel(
+            &self,
+            _capacity: u32,
+            _transfer: ipc::Transfer,
+        ) -> Result<(ipc::ChannelSender, ipc::ChannelReceiver), ipc::IpcError> {
+            Err(ipc::IpcError::Unsupported)
+        }
+        fn send(
+            &self,
+            _to: &ipc::ChannelSender,
+            _bytes: Vec<u8>,
+            _handles: Vec<ipc::Handle>,
+        ) -> Result<(), ipc::IpcError> {
+            Err(ipc::IpcError::Unsupported)
+        }
+        fn listen(
+            &self,
+            _from: ipc::ChannelReceiver,
+            _seq: SequenceHandle,
+            _sink: ipc::Sink,
+        ) -> Result<ipc::Listening, ipc::IpcError> {
+            Err(ipc::IpcError::Unsupported)
+        }
+        fn bootstrap(&self) -> Option<ipc::Bootstrap> {
+            None
+        }
+    }
+
     fn substrate() -> Substrate {
         Substrate {
             clock: Arc::new(FixedClock),
             entropy: Arc::new(FakeEntropy(NoCrypto)),
             exec: Arc::new(InlineExecutor(InlinePool)),
             mem: Arc::new(NoMemory),
+            ipc: Arc::new(NoIpc),
         }
     }
 
@@ -188,5 +223,11 @@ mod tests {
             s.mem.reserve(4096, MemoryKind::ProcessPart),
             Err(MemoryError::OutOfAddressSpace)
         );
+
+        assert_eq!(
+            s.ipc.channel(8, ipc::Transfer::Free).err(),
+            Some(ipc::IpcError::Unsupported)
+        );
+        assert!(s.ipc.bootstrap().is_none());
     }
 }

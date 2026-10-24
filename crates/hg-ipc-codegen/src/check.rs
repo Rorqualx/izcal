@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::syntax::{Case, Error, Field, File, Item, Named, Pos, Type, err};
+use crate::syntax::{Binding, Case, Error, Field, File, Item, Named, Pos, Type, err};
 
 /// Size bounds of a type's encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +77,8 @@ const RUST_KEYWORDS: &[&str] = &[
 /// Names the generated code binds next to fields (the reader, the writer,
 /// and the Kani harnesses' locals); a field with one would shadow it.
 const RESERVED_FIELDS: &[&str] = &[
-    "r", "w", "len", "bytes", "out", "input", "decoded", "checked",
+    "r", "w", "len", "bytes", "out", "input", "decoded", "checked", "ipc", "handles", "h", "v",
+    "ordinal", "msg", "from",
 ];
 
 const RESERVED_TYPES: &[&str] = &[
@@ -250,6 +251,12 @@ impl Ctx<'_> {
                 )
             }
             Type::Named(name, npos) => self.named(name, *npos)?,
+            Type::Remote(_, p) | Type::Receiver(_, p) => {
+                return err(
+                    *p,
+                    "`remote<…>` and `receiver<…>` are handles: only a message's own parameters may be one",
+                );
+            }
         })
     }
 
@@ -453,7 +460,59 @@ pub fn check(file: File) -> Result<Checked, Error> {
                 }
                 let mut sizes = Vec::new();
                 for m in messages {
-                    let facts = ctx.fields(&m.fields)?;
+                    unique(m.fields.iter().map(|f| &f.id), "parameter")?;
+                    let mut handles = 0usize;
+                    for f in m.fields.iter().filter(|f| f.ty.is_handle()) {
+                        snake(&f.id, "parameter")?;
+                        if RESERVED_FIELDS.contains(&f.id.name.as_str()) {
+                            return err(
+                                f.id.pos,
+                                format!("field `{}` is a name the generated code uses", f.id.name),
+                            );
+                        }
+                        let (Type::Remote(target, tpos) | Type::Receiver(target, tpos)) = &f.ty
+                        else {
+                            continue;
+                        };
+                        match ctx.decls.get(target.as_str()) {
+                            Some(Item::Interface { binding, .. }) => {
+                                if matches!(f.ty, Type::Receiver(..)) && *binding == Binding::Bound
+                                {
+                                    return err(
+                                        *tpos,
+                                        format!(
+                                            "`{target}` is bound: its receiver stays with the process that serves it (IPC-R2)"
+                                        ),
+                                    );
+                                }
+                            }
+                            Some(_) => {
+                                return err(
+                                    *tpos,
+                                    format!("`{target}` is a type, not an interface"),
+                                );
+                            }
+                            None => return err(*tpos, format!("unknown interface `{target}`")),
+                        }
+                        handles = handles.saturating_add(1);
+                    }
+                    if handles > hg_ipc::MAX_MESSAGE_HANDLES {
+                        return err(
+                            m.id.pos,
+                            format!(
+                                "message `{}` carries {handles} handles, over the {} cap",
+                                m.id.name,
+                                hg_ipc::MAX_MESSAGE_HANDLES
+                            ),
+                        );
+                    }
+                    let data: Vec<Field> = m
+                        .fields
+                        .iter()
+                        .filter(|f| !f.ty.is_handle())
+                        .cloned()
+                        .collect();
+                    let facts = ctx.fields(&data)?;
                     let size = facts.size.max.saturating_add(2);
                     sizes.push(MessageFacts {
                         size: Size {

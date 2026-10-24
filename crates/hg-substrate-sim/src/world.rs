@@ -20,7 +20,7 @@
 //! must not call [`World::step`] or [`World::run`].
 
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use hg_substrate::prng::{Xoshiro256StarStar, splitmix64};
 use hg_substrate::{Memory, MemoryKind, Priority, RandomStream, Region, Substrate, Task};
@@ -218,6 +218,10 @@ pub(crate) struct State {
     timers: BTreeMap<(u64, u64), TimerItem>,
     next_timer: u64,
     pub(crate) trace: Trace,
+    /// Every IPC channel.
+    pub(crate) ipc: crate::ipc::Channels,
+    /// The world itself, for tasks the state makes (IPC deliveries).
+    pub(crate) ipc_self: Weak<Shared>,
 }
 
 pub(crate) struct Shared {
@@ -325,11 +329,14 @@ impl State {
 struct Wreckage {
     tasks: Vec<Task>,
     regions: Vec<(Arc<dyn Memory>, Region)>,
+    /// IPC messages, handles and listeners the crash closed.
+    ipc: crate::ipc::Dropped,
 }
 
 impl Wreckage {
     fn clear(self) {
         drop(self.tasks);
+        drop(self.ipc);
         for (backing, region) in self.regions {
             backing.release(region);
         }
@@ -374,10 +381,16 @@ impl World {
             timers: BTreeMap::new(),
             next_timer: 0,
             trace: Trace::new(config.keep_trace_text),
+            ipc: crate::ipc::Channels::default(),
+            ipc_self: Weak::new(),
         };
         Self {
-            shared: Arc::new(Shared {
-                state: Mutex::new(state),
+            shared: Arc::new_cyclic(|me| {
+                let mut state = state;
+                state.ipc_self = me.clone();
+                Shared {
+                    state: Mutex::new(state),
+                }
             }),
         }
     }
@@ -487,6 +500,7 @@ impl World {
         }
         st.crashes = st.crashes.saturating_add(1);
         st.trace.record(format_args!("crash {name}.{generation}"));
+        crate::ipc::Channels::crash(st, pid, &mut wreck.ipc);
         if restart {
             let extra = u64::try_from(st.config.faults.restart_delay_max.as_nanos())
                 .unwrap_or(u64::MAX)
@@ -631,6 +645,22 @@ impl World {
         }
     }
 
+    /// Makes `child`'s launch channels to `parent`, which `child` takes
+    /// with `Ipc::bootstrap`, and returns `parent`'s ends: (from the
+    /// child, to the child). What launching a process gives its launcher;
+    /// `None` if either process is not running.
+    pub fn link(
+        &self,
+        parent: ProcessId,
+        child: ProcessId,
+        capacity: u32,
+    ) -> Option<(
+        hg_substrate::ipc::ChannelReceiver,
+        hg_substrate::ipc::ChannelSender,
+    )> {
+        crate::ipc::link(&self.shared, parent, child, capacity)
+    }
+
     /// Virtual time now.
     pub fn now(&self) -> Instant {
         self.shared.lock().now
@@ -686,6 +716,7 @@ impl Drop for World {
                 wreck.tasks.push(task);
             }
         }
+        st.ipc.drain(&mut wreck.ipc);
         drop(st);
         wreck.clear();
     }
