@@ -1,4 +1,4 @@
-# Runs tools/checks.sh and clippy on every pull request and push to main: the same
+# Runs tools/checks.sh, clippy, the tests and the Kani proofs on every pull request and push to main: the same
 # checks as the git hooks, so a commit made with --no-verify is still
 # caught. Branch protection requires this job ("checks"). The AI review runs
 # only in the pre-commit hook (it needs the Claude Code CLI and an account).
@@ -28,8 +28,8 @@ jobs:
       # gitleaks, actionlint, zizmor, cargo-deny and ast-grep, each pinned and checked
       # against its SHA-256 (tools/ci-install-tools.sh). shellcheck, python3
       # and rustfmt (stable) come with the runner image; the repo's
-      # rust-toolchain.toml pins 1.99.1 (CS-ST-9), which rustup
-      # auto-installs WITHOUT the rustfmt component — add it first.
+      # rust-toolchain.toml pins 1.99.1 (CS-ST-9) with clippy and rustfmt,
+      # which rustup installs on first use; the add below is a no-op then.
       - name: Install check tools
         run: |
           bash tools/ci-install-tools.sh "$RUNNER_TEMP/bin"
@@ -62,7 +62,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # rust-toolchain.toml pins 1.99.1; rustup installs it without clippy.
+      # rust-toolchain.toml lists clippy; this only makes the install visible.
       - name: Install clippy
         run: rustup component add clippy
 
@@ -87,3 +87,22 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --locked
+
+  # VER-1 (Stage 1 4.1; security scope 6.6): every Kani harness in the
+  # IPC crates, through tools/kani.sh, which also fails on a cover no
+  # input reaches. Kani 0.68.0 is pinned and its bundle checked against
+  # a SHA-256 (tools/ci-install-kani.sh). Measured on hueyj: 28 harnesses
+  # in 8.7 min, peak 4.1 GB on one harness (the runner has 16 GB).
+  kani:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Install Kani
+        run: bash tools/ci-install-kani.sh
+
+      - name: Kani
+        run: tools/kani.sh

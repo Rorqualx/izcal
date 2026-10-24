@@ -1,0 +1,52 @@
+[package]
+name = "hg-ipc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's IPC runtime (L1, tier P, B2): the fixed little-endian wire format, bounded types and endpoint descriptors that hg-ipc-codegen's output builds on (Stage 1 design 4; security scope 6.6)"
+
+[dependencies]
+
+[dev-dependencies]
+hg-substrate = { path = "../hg-substrate" }
+
+[lints.rust]
+# G5: deny, not forbid, so the inventoried `utf8` module can #[expect] it.
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+# Kani runs `cargo kani`, which sets cfg(kani) (VER-1 harnesses).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+# Tier P additions (coding standard A.2); written by hand until
+# `cargo xtask lints` generates them from tools/lints.toml.
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+arithmetic_side_effects = "deny"
+unwrap_in_result = "deny"
+panic_in_result_fn = "deny"
+as_conversions = "deny"
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+cast_possible_wrap = "deny"
+cast_lossless = "deny"
+checked_conversions = "deny"
+wildcard_enum_match_arm = "deny"
+unwrap_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+map_err_ignore = "deny"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+allow_attributes = "deny"
+

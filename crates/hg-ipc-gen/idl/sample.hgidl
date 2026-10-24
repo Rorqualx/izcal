@@ -1,0 +1,108 @@
+/// The generator's golden sample (coding standard CS-ST-17 (d)): every
+/// `.hgidl` feature once, so a generator change shows its effect in this
+/// file's diff. Compiled into tests only.
+protocol sample;
+
+/// The sample's error enum.
+error SampleError {
+    /// A first error.
+    First,
+    /// A second error.
+    Second,
+}
+
+/// A plain enum.
+enum Color {
+    /// Red.
+    Red,
+    /// Green.
+    Green,
+    /// Blue.
+    Blue,
+}
+
+/// A struct with every fixed-width type.
+struct Scalars {
+    /// A boolean.
+    flag: bool,
+    /// A byte.
+    byte: u8,
+    /// 16 bits.
+    short: u16,
+    /// 32 bits.
+    word: u32,
+    /// 64 bits.
+    long: u64,
+    /// Signed 32 bits.
+    signed: i32,
+    /// Signed 64 bits.
+    signed_long: i64,
+    /// A single-precision float.
+    single: f32,
+    /// A double-precision float.
+    double: f64,
+}
+
+/// A struct with every variable-length type.
+struct Shapes {
+    /// Up to 16 bytes.
+    blob: bytes<16>,
+    /// Up to 12 bytes of UTF-8.
+    label: string<12>,
+    /// Up to 3 colors.
+    colors: vec<Color, 3>,
+    /// Maybe a word.
+    maybe: option<u32>,
+    /// Up to 2 lists of up to 2 labels each.
+    nested: vec<vec<string<4>, 2>, 2>,
+}
+
+/// A union with unit and field cases.
+union Event {
+    /// Nothing happened.
+    Idle,
+    /// A key was pressed.
+    Key {
+        /// The key code.
+        code: u32,
+        /// Whether shift was held.
+        shift: bool,
+    },
+    /// A failure.
+    Failure {
+        /// Which.
+        error: SampleError,
+    },
+}
+
+/// A bound interface that terminates on overflow.
+interface Strict bound capacity 8 overflow terminate {
+    /// No parameters.
+    nothing();
+    /// Every scalar.
+    scalars(
+        /// The scalars.
+        value: Scalars,
+    );
+    /// Variable-length values and a union.
+    shapes(
+        /// The shapes.
+        value: Shapes,
+        /// An event.
+        event: Event,
+    );
+}
+
+/// A free interface that drops on overflow.
+interface Loose free capacity 1024 overflow drop {
+    /// A single byte, the smallest message with a payload.
+    tick(
+        /// The byte.
+        value: u8,
+    );
+    /// An optional event.
+    maybe_event(
+        /// The event, if any.
+        event: option<Event>,
+    );
+}

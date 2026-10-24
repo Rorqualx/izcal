@@ -15,3 +15,8 @@ entries = [
   "os::vm",                     # virtual memory calls (mmap/mprotect/madvise/munmap, VirtualAlloc/VirtualFree)
   "memory",                     # ledger-checked calls into os::vm, and the test's page write
 ]
+
+[crates.hg-ipc]
+entries = [
+  "utf8",                       # from_utf8_unchecked after the Table 3-7 validator (Kani-checked against core)
+]
