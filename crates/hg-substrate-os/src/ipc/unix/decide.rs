@@ -63,8 +63,8 @@ use hg_substrate::ipc::{Fault, FaultKind, HandleKind, MAX_MESSAGE_HANDLES};
 
 use super::accept::{AcceptCtx, FdFacts, Held, Refusal, accept, distinct};
 use super::cmsg::{CmsgError, ParsedControl};
-use super::codec::{CodecError, DataView, HandleDesc, WireKind, decode_data};
-use super::flow::{FlowError, ReceiverFlow, SenderFlow};
+use crate::ipc::common::codec::{CodecError, DataView, HandleDesc, WireKind, decode_data};
+use crate::ipc::common::flow::{FlowError, ReceiverFlow, SenderFlow};
 
 /// One record as read.
 #[derive(Debug, Clone, Copy)]
@@ -356,9 +356,9 @@ where
 #[cfg(kani)]
 mod proofs {
     use super::*;
+    use crate::ipc::common::codec::proofs::any_desc;
     use crate::ipc::unix::accept::proofs::any_facts;
     use crate::ipc::unix::cmsg::Ucred;
-    use crate::ipc::unix::codec::proofs::any_desc;
 
     /// Which part of the decision a harness covers.
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -613,9 +613,9 @@ mod proofs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::common::codec::encode_data;
     use crate::ipc::unix::accept::{AF_UNIX, SOCK_SEQPACKET};
     use crate::ipc::unix::cmsg::{CmsgError, Ucred};
-    use crate::ipc::unix::codec::encode_data;
 
     const PEER: i32 = 4242;
 

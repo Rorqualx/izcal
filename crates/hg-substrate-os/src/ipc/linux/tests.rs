@@ -18,7 +18,7 @@ use hg_substrate::{Executor, Priority};
 use super::sys::{self, SendOutcome};
 use super::{BOOTSTRAP_FDS, LinuxEnd, LinuxIpc, adopt_parent_ends, launch_ends, launch_pair};
 use crate::executor::OsExecutor;
-use crate::ipc::unix::codec::{HandleDesc, WireKind, encode_data};
+use crate::ipc::common::codec::{HandleDesc, WireKind, encode_data};
 
 const WAIT: Duration = Duration::from_secs(20);
 

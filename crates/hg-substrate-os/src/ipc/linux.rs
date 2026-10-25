@@ -78,13 +78,13 @@ use hg_substrate::ipc::{
 use hg_substrate::{SequenceHandle, Task};
 
 use crate::executor::OsExecutor;
-use crate::ipc::unix::accept::FdFacts;
-use crate::ipc::unix::codec::{
+use crate::ipc::common::codec::{
     CREDIT_LEN, Credit, HandleDesc, MAX_DATA_RECORD, WireKind, decode_credit, encode_credit,
     encode_data,
 };
+use crate::ipc::common::flow::{PendingCredit, ReceiverFlow, SenderFlow};
+use crate::ipc::unix::accept::FdFacts;
 use crate::ipc::unix::decide::{Binding, Decision, Record, decide};
-use crate::ipc::unix::flow::{PendingCredit, ReceiverFlow, SenderFlow};
 use sys::{Interest, RecvOutcome, SendOutcome};
 
 /// The send buffer each end asks for: room for several maximum records

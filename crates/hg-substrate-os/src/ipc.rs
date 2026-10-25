@@ -10,6 +10,9 @@
 /// Kani harnesses prove (security scope SEC-4 (b)).
 pub(crate) mod unix;
 
+/// The record codec and flow counters every backend shares.
+pub(crate) mod common;
+
 /// The Linux transport.
 #[cfg(target_os = "linux")]
 pub mod linux;

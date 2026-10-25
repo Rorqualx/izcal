@@ -373,7 +373,7 @@ mod proofs {
     #[kani::proof]
     fn credits_are_checked() {
         let d = HandleDesc {
-            kind: super::super::codec::WireKind::Sender,
+            kind: crate::ipc::common::codec::WireKind::Sender,
             capacity: kani::any(),
             sent: kani::any(),
             delivered: kani::any(),
@@ -405,7 +405,7 @@ mod proofs {
     #[kani::proof]
     fn records_are_in_sequence() {
         let d = HandleDesc {
-            kind: super::super::codec::WireKind::Receiver,
+            kind: crate::ipc::common::codec::WireKind::Receiver,
             capacity: kani::any(),
             sent: kani::any(),
             delivered: kani::any(),
@@ -431,7 +431,7 @@ mod proofs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::unix::codec::WireKind;
+    use crate::ipc::common::codec::WireKind;
 
     #[test]
     fn full_is_exact_and_credits_free_slots() {

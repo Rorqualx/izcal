@@ -1,10 +1,12 @@
-//! The record formats of the Unix transport (IPC-R6: one fixed
+//! The record formats of the OS transports (IPC-R6: one fixed
 //! little-endian layout, decoded without allocating).
 //!
-//! A channel is a `SOCK_SEQPACKET` socket pair, so each `sendmsg(2)` is
-//! one record and `recvmsg(2)` returns it whole (unix(7)). Two record
-//! kinds exist, one per direction, each with its own magic so a swapped
-//! end is caught on the first record:
+//! Every backend moves whole records: a `SOCK_SEQPACKET` record on Linux
+//! (one `sendmsg(2)`, returned whole by `recvmsg(2)`, unix(7)), the
+//! inline body of one Mach message on macOS, one message of a
+//! message-mode pipe on Windows. Two record kinds exist, one per
+//! direction, each with its own magic so a swapped end is caught on the
+//! first record:
 //!
 //! **Data record** (sender to receiver), [`DATA_HEADER_LEN`] bytes, then
 //! `count` descriptors of [`DESC_LEN`] bytes, then the payload:
@@ -21,8 +23,8 @@
 //! `capacity` (u32), `sent` (u64), `delivered` (u64). For a sender these
 //! are its holder's sent and delivered-known counts; for a receiver its
 //! delivered count and capacity, with `sent` = its received count. The
-//! descriptor table is in the same order as the record's `SCM_RIGHTS`
-//! descriptors.
+//! descriptor table is in the same order as the OS handles the record
+//! carries (Linux: its `SCM_RIGHTS` descriptors).
 //!
 //! **Credit record** (receiver to sender), exactly [`CREDIT_LEN`] bytes:
 //! [`CREDIT_MAGIC`], [`VERSION`], 3 reserved bytes (0), `capacity` (u32),
