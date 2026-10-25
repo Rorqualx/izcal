@@ -19,7 +19,8 @@ pub mod linux;
 
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
-    Bootstrap, ChannelReceiver, ChannelSender, Handle, Ipc, IpcError, Listening, Sink, Transfer,
+    Bootstrap, ChannelReceiver, ChannelSender, Handle, Ipc, IpcError, Listening, OsPeer, Sink,
+    Transfer,
 };
 
 /// The OS transport where no backend exists yet (macOS and Windows
@@ -48,6 +49,16 @@ impl Ipc for OsIpc {
     fn listen(
         &self,
         _from: ChannelReceiver,
+        _seq: SequenceHandle,
+        _sink: Sink,
+    ) -> Result<Listening, IpcError> {
+        Err(IpcError::Unsupported)
+    }
+
+    fn listen_bound(
+        &self,
+        _from: ChannelReceiver,
+        _peer: OsPeer,
         _seq: SequenceHandle,
         _sink: Sink,
     ) -> Result<Listening, IpcError> {

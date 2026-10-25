@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use hg_ipc::endpoint::{EndReason, SendError, Serving};
 use hg_ipc::{CallerIdentity, Endpoint, PeerBinding, PeerId, Remote, bound_channel, channel};
-use hg_substrate::ipc::{ChannelReceiver, ChannelSender};
+use hg_substrate::ipc::{ChannelReceiver, ChannelSender, OsPeer};
 use hg_substrate::{Memory, Priority, Substrate};
 use hg_substrate_os::memory::OsMemory;
 use hg_substrate_sim::{Limits, RunEnd, SimConfig, World};
@@ -32,6 +32,9 @@ fn note(log: &Log, s: String) {
 /// The broker's number for the child, and the child's for the broker.
 const CHILD: PeerId = PeerId::new(1, 0);
 const BROKER: PeerId = PeerId::new(0, 0);
+/// The child's process as the simulator identifies it: spawned second,
+/// first incarnation.
+const CHILD_OS: OsPeer = OsPeer::new(1, 0);
 
 fn who(from: &CallerIdentity) -> String {
     format!("{}.{}", from.peer().index(), from.peer().generation())
@@ -134,7 +137,7 @@ fn broker_serves(
         let serving = Endpoint::<ProcessHost>::from_receiver(&s.ipc, from_child)
             .serve_bound(
                 seq,
-                PeerBinding::new(CHILD),
+                PeerBinding::new(CHILD, CHILD_OS),
                 move |m, from| m.dispatch(&mut side, from),
                 move |why| note(&ends, format!("{why:?}")),
             )
@@ -156,7 +159,7 @@ fn child_runs(keep: &Keep) -> impl Fn(Substrate) + Send + Sync + 'static {
         let serving = Endpoint::<ProcessControl>::from_receiver(&s.ipc, boot.from_parent)
             .serve_bound(
                 seq,
-                PeerBinding::new(BROKER),
+                PeerBinding::new(BROKER, boot.parent),
                 move |m, from| m.dispatch(&mut side, from),
                 |_why| {},
             )
@@ -287,7 +290,7 @@ fn every_handle_form_crosses_and_works_in_the_new_process() {
             strict_ep
                 .serve_bound(
                     seq,
-                    PeerBinding::new(CHILD),
+                    PeerBinding::new(CHILD, CHILD_OS),
                     move |m, from| {
                         note(&l2, format!("broker got {m:?} from {}", who(from)));
                         Ok::<(), ()>(())

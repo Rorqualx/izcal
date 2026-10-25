@@ -121,9 +121,44 @@ pub enum Transfer {
     Free,
     /// The sender may be sent only by the process that created the
     /// channel, which grants it to one peer; the transport refuses to
-    /// carry it from anywhere else, so a holder cannot pass it on. The
-    /// receiver is never carried: it stays with the process serving it.
+    /// carry it from anywhere else. The receiver is never carried: it
+    /// stays with the process serving it, which listens with
+    /// [`Ipc::listen_bound`] and so names the one process whose records
+    /// it accepts. That check, made on every record by the receiving
+    /// transport from what the OS attests, is what holds: a holder can
+    /// still pass the sender on relabelled as a free one, which no
+    /// sending-side rule can see, but the receiver then refuses what the
+    /// new holder sends.
     Bound,
+}
+
+/// A process as the OS identifies it: its process ID and, where the OS
+/// keeps one, a generation that changes when the ID is reused (the pid
+/// version on macOS; 0 on Linux, where pids carry none, and in the
+/// simulator the incarnation). The process that starts another obtains
+/// it from the OS when it does (phase E's launcher); nothing a peer
+/// sends can produce one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct OsPeer {
+    pid: u32,
+    generation: u64,
+}
+
+impl OsPeer {
+    /// Process `pid`, incarnation `generation`.
+    pub const fn new(pid: u32, generation: u64) -> Self {
+        Self { pid, generation }
+    }
+
+    /// The OS process ID.
+    pub const fn pid(self) -> u32 {
+        self.pid
+    }
+
+    /// The generation (0 where the OS keeps none).
+    pub const fn generation(self) -> u64 {
+        self.generation
+    }
 }
 
 /// What a listener is given.
@@ -159,7 +194,9 @@ pub enum FaultKind {
     BadHandle,
     /// A record on a bound channel from a process other than the one the
     /// channel is bound to, or a bound sender passed on by a process
-    /// that did not create it (IPC-R2).
+    /// that did not create it (IPC-R2). For a record from the wrong
+    /// process, [`Fault::sender`] names the bound peer, not the record's
+    /// sender: only the bound peer could have passed the sender on.
     Identity,
     /// Flow-control state that cannot happen for an honest sender:
     /// sequence numbers out of order, or credits beyond what was sent.
@@ -172,9 +209,11 @@ pub enum FaultKind {
 pub struct Fault {
     /// What went wrong.
     pub kind: FaultKind,
-    /// The OS process ID of the record's sender, when the OS attests it
-    /// (Linux `SCM_CREDENTIALS`) and the fault is one only that sender
-    /// could cause. `None` when the transport cannot tell who is at
+    /// The OS process ID of the process at fault: the record's sender,
+    /// when the OS attests it (Linux `SCM_CREDENTIALS`, the macOS audit
+    /// token) and the fault is one only that sender could cause; for a
+    /// record from the wrong process on a bound channel, the bound peer
+    /// ([`FaultKind::Identity`]). `None` when the transport cannot tell who is at
     /// fault, for example when a former holder of a transferred end may
     /// have lied about its counters.
     pub sender: Option<u32>,
@@ -216,6 +255,9 @@ pub struct Bootstrap {
     pub to_parent: ChannelSender,
     /// From the launching process.
     pub from_parent: ChannelReceiver,
+    /// The launching process, to listen on `from_parent` with
+    /// ([`Ipc::listen_bound`]).
+    pub parent: OsPeer,
 }
 
 /// Why an IPC operation failed. Every case is the caller's to handle;
@@ -283,15 +325,35 @@ pub trait Ipc: Send + Sync {
         handles: Vec<Handle>,
     ) -> Result<(), IpcError>;
 
-    /// Delivers what arrives on `from`, and finally its closing, to
-    /// `sink`, each as a task on `seq`, in order.
+    /// Delivers what arrives on free receiver `from`, and finally its
+    /// closing, to `sink`, each as a task on `seq`, in order.
     ///
     /// # Errors
     /// [`IpcError::Refused`] for a receiver this process does not hold,
+    /// or for a bound one (it listens with [`Ipc::listen_bound`]),
     /// [`IpcError::Sequence`], [`IpcError::Unsupported`].
     fn listen(
         &self,
         from: ChannelReceiver,
+        seq: SequenceHandle,
+        sink: Sink,
+    ) -> Result<Listening, IpcError>;
+
+    /// As [`Ipc::listen`], accepting records from `peer` only, as the OS
+    /// attests the sender of each; a record from any other process ends
+    /// the channel with [`Delivery::Violation`]
+    /// ([`FaultKind::Identity`]). The receiver of a bound channel
+    /// listens only this way; any other receiver may, when its owner
+    /// knows the one process that should send on it (a launch channel's
+    /// child or parent).
+    ///
+    /// # Errors
+    /// [`IpcError::Refused`] for a receiver this process does not hold,
+    /// [`IpcError::Sequence`], [`IpcError::Unsupported`].
+    fn listen_bound(
+        &self,
+        from: ChannelReceiver,
+        peer: OsPeer,
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError>;

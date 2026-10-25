@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use hg_substrate::ipc::{
-    ChannelReceiver, ChannelSender, Delivery, Flow, Handle, IpcError, Listening, Transfer,
+    ChannelReceiver, ChannelSender, Delivery, Flow, Handle, IpcError, Listening, OsPeer, Transfer,
 };
 use hg_substrate::{Memory, Priority, Substrate};
 use hg_substrate_os::memory::OsMemory;
@@ -444,4 +444,104 @@ fn a_refused_record_is_a_violation_naming_its_sender() {
     let seen = seen.lock().unwrap().clone();
     assert_eq!(seen.len(), 1, "{seen:?}");
     assert!(seen[0].starts_with("violation Malformed Some("), "{seen:?}");
+}
+
+/// A bound receiver names the one process whose messages it accepts
+/// (IPC-R2): it cannot listen without one, takes its grantee's message,
+/// and refuses one from another process, naming the bound peer.
+#[test]
+fn a_bound_receiver_hears_only_the_peer_it_names() {
+    for (named_child, expect) in [(true, "hi"), (false, "violation Identity Some(99)")] {
+        let seen: Seen = Arc::default();
+        let refused = slot();
+        let keep: Slot<Listening> = slot();
+        let child_os: Slot<OsPeer> = slot();
+        let (seen2, refused2, keep2, cos) = (
+            Arc::clone(&seen),
+            Arc::clone(&refused),
+            Arc::clone(&keep),
+            Arc::clone(&child_os),
+        );
+        let p = pair(
+            17,
+            8,
+            move |s, _from_child, to_child| {
+                let nothing = || -> hg_substrate::ipc::Sink { Box::new(|_d| Flow::Continue) };
+                let seq = s.exec.sequence("bound", Priority::UserVisible);
+                let (tx, rx) = s.ipc.channel(8, Transfer::Bound).unwrap();
+                let (_tx2, rx2) = s.ipc.channel(8, Transfer::Bound).unwrap();
+                *refused2.lock().unwrap() = Some(s.ipc.listen(rx2, seq, nothing()).err());
+                let peer = if named_child {
+                    cos.lock().unwrap().unwrap()
+                } else {
+                    OsPeer::new(99, 0)
+                };
+                let seen3 = Arc::clone(&seen2);
+                let l = s
+                    .ipc
+                    .listen_bound(
+                        rx,
+                        peer,
+                        seq,
+                        Box::new(move |d| {
+                            seen3.lock().unwrap().push(match d {
+                                Delivery::Message { bytes, .. } => {
+                                    String::from_utf8_lossy(&bytes).into_owned()
+                                }
+                                Delivery::Closed => "closed".into(),
+                                Delivery::Violation(f) => {
+                                    format!("violation {:?} {:?}", f.kind, f.sender)
+                                }
+                            });
+                            Flow::Continue
+                        }),
+                    )
+                    .unwrap();
+                *keep2.lock().unwrap() = Some(l);
+                s.ipc
+                    .send(&to_child, b"grant".to_vec(), vec![tx.into_handle()])
+                    .unwrap();
+            },
+            |s| {
+                let boot = s.ipc.bootstrap().unwrap();
+                let s2 = s.clone();
+                let seq = s.exec.sequence("in", Priority::UserVisible);
+                let l = s
+                    .ipc
+                    .listen_bound(
+                        boot.from_parent,
+                        boot.parent,
+                        seq,
+                        Box::new(move |d| {
+                            if let Delivery::Message { mut handles, .. } = d
+                                && let Some(h) = handles.pop()
+                                && let Ok(grant) = ChannelSender::from_handle(h)
+                            {
+                                s2.ipc.send(&grant, b"hi".to_vec(), Vec::new()).unwrap();
+                                // Two more, each carrying a handle: refused
+                                // with the first when the peer is wrong, so
+                                // their handles close with the channel.
+                                for _ in 0..2 {
+                                    let (tx, _rx) = s2.ipc.channel(1, Transfer::Free).unwrap();
+                                    s2.ipc
+                                        .send(&grant, b"more".to_vec(), vec![tx.into_handle()])
+                                        .unwrap();
+                                }
+                            }
+                            Flow::Continue
+                        }),
+                    )
+                    .unwrap();
+                std::mem::forget(l);
+            },
+        );
+        *child_os.lock().unwrap() = p.world.os_peer(p.child);
+        assert_eq!(p.world.run(LIMITS), RunEnd::Idle);
+        assert_eq!(
+            refused.lock().unwrap().take(),
+            Some(Some(IpcError::Refused))
+        );
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.first().map(String::as_str), Some(expect), "{seen:?}");
+    }
 }

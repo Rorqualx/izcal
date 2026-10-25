@@ -191,7 +191,7 @@ mod ipc {
         BuildId, ExitReason, ProcessControl, ProcessControlHandler, ProcessControlRemote,
         ProcessError, ProcessHost, ProcessHostHandler, ProcessHostRemote, ProcessKind,
     };
-    use hg_substrate::ipc::{ChannelReceiver, ChannelSender};
+    use hg_substrate::ipc::{ChannelReceiver, ChannelSender, OsPeer};
     use hg_substrate::{
         EntropyPurpose, Memory, Priority, RandomStream, SequenceHandle, Substrate, Task,
     };
@@ -277,9 +277,19 @@ mod ipc {
         let backing = || -> Arc<dyn Memory> { Arc::new(OsMemory::new()) };
         let keep: Keep = Arc::default();
         let ends: Arc<Mutex<Option<(ChannelReceiver, ChannelSender)>>> = Arc::default();
-        let (e, k) = (Arc::clone(&ends), Arc::clone(&keep));
+        // The renderer's process, which the browser's launch endpoint
+        // accepts records from: known once it is spawned.
+        let renderer_os: Arc<Mutex<Option<OsPeer>>> = Arc::default();
+        let (e, k, ros) = (
+            Arc::clone(&ends),
+            Arc::clone(&keep),
+            Arc::clone(&renderer_os),
+        );
         let browser = world.spawn("browser", backing(), false, move |s| {
             let Some((from_renderer, to_renderer)) = e.lock().unwrap().take() else {
+                return;
+            };
+            let Some(renderer_os) = *ros.lock().unwrap() else {
                 return;
             };
             let seq = s.exec.sequence("host", Priority::UserVisible);
@@ -293,7 +303,7 @@ mod ipc {
             let serving = Endpoint::<ProcessHost>::from_receiver(&s.ipc, from_renderer)
                 .serve_bound(
                     seq,
-                    PeerBinding::new(PeerId::new(1, 0)),
+                    PeerBinding::new(PeerId::new(1, 0), renderer_os),
                     move |m, from| m.dispatch(&mut side, from),
                     |_why| {},
                 )
@@ -313,13 +323,14 @@ mod ipc {
             let serving = Endpoint::<ProcessControl>::from_receiver(&s.ipc, boot.from_parent)
                 .serve_bound(
                     seq,
-                    PeerBinding::new(PeerId::new(0, 0)),
+                    PeerBinding::new(PeerId::new(0, 0), boot.parent),
                     move |m, from| m.dispatch(&mut side, from),
                     |_why| {},
                 )
                 .unwrap();
             k.lock().unwrap().push(serving);
         });
+        *renderer_os.lock().unwrap() = world.os_peer(renderer);
         *ends.lock().unwrap() = world.link(browser, renderer, 64);
         keep
     }

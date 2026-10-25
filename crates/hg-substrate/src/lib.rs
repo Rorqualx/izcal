@@ -163,6 +163,15 @@ mod tests {
         ) -> Result<ipc::Listening, ipc::IpcError> {
             Err(ipc::IpcError::Unsupported)
         }
+        fn listen_bound(
+            &self,
+            _from: ipc::ChannelReceiver,
+            _peer: ipc::OsPeer,
+            _seq: SequenceHandle,
+            _sink: ipc::Sink,
+        ) -> Result<ipc::Listening, ipc::IpcError> {
+            Err(ipc::IpcError::Unsupported)
+        }
         fn bootstrap(&self) -> Option<ipc::Bootstrap> {
             None
         }
