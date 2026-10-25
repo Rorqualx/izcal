@@ -325,6 +325,18 @@ fn sample_tagged(o: &mut Out, name: &str, cases: &[(String, &[Field])]) {
     if cases.iter().any(|(_, fields)| !fields.is_empty()) {
         o.line("use crate::sample::Sample;");
     }
+    // One case: no choice to make, and a match with only a wildcard arm
+    // would be clippy's match_single_binding.
+    if let [(case, fields)] = cases {
+        if fields.is_empty() {
+            o.line(&format!("let _ = g; Self::{case}"));
+        } else {
+            o.line(&format!("Self::{case} {{ {} }}", sample_fields(fields)));
+        }
+        o.line("}");
+        o.line("}");
+        return;
+    }
     o.line(&format!("match g.below({}) {{", cases.len()));
     let last = cases.len().saturating_sub(1);
     for (i, (case, fields)) in cases.iter().enumerate() {

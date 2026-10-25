@@ -52,6 +52,18 @@ name = "hg-launch-wire"
 version = "0.0.0"
 
 [[package]]
+name = "hg-os-types"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+ "hg-ipc-codegen",
+ "hg-substrate",
+ "hg-substrate-os",
+ "hg-substrate-sim",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-substrate"
 version = "0.0.0"
 dependencies = [

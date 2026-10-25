@@ -14,14 +14,16 @@
 //! cryptographic source is seeded.
 //!
 //! M1 phase C: processes, sequences, timers, phases, memory, crashes and
-//! restarts. The simulated IPC transport joins in phase D and
-//! `hg-netsim` with the network stack.
+//! restarts. The simulated IPC transport joined in phase D, and the
+//! broker's scripted OS ([`OsScript`], OS integration 6.1) with M1's
+//! OS-integration inputs; `hg-netsim` joins with the network stack.
 
 mod clock;
 mod entropy;
 mod exec;
 mod ipc;
 mod memory;
+mod os;
 mod trace;
 mod world;
 
@@ -31,6 +33,7 @@ use std::sync::Arc;
 use hg_substrate::Memory;
 use hg_substrate::Substrate;
 
+pub use os::{OsAnswer, OsFrames, OsScript};
 pub use world::{
     Entry, FaultPlan, Limits, ProcessId, RunEnd, SEQUENCE_CAPACITY, SimConfig, Step, Summary, World,
 };
@@ -41,20 +44,32 @@ pub(crate) fn substrate_for(
     pid: ProcessId,
     generation: u32,
     seed: u64,
+    has_os: bool,
 ) -> Substrate {
+    let exec: Arc<dyn hg_substrate::Executor> = Arc::new(exec::SimExecutor {
+        shared: Arc::clone(shared),
+        pid,
+        generation,
+        pool: exec::SimPhasePool {
+            shared: Arc::clone(shared),
+        },
+    });
+    let os: Option<Arc<dyn hg_substrate::OsPort>> = if has_os {
+        Some(Arc::new(os::SimOsPort {
+            shared: Arc::clone(shared),
+            pid,
+            generation,
+            exec: Arc::clone(&exec),
+        }))
+    } else {
+        None
+    };
     Substrate {
         clock: Arc::new(clock::SimClock {
             shared: Arc::clone(shared),
         }),
         entropy: Arc::new(entropy::SimEntropy::new(seed)),
-        exec: Arc::new(exec::SimExecutor {
-            shared: Arc::clone(shared),
-            pid,
-            generation,
-            pool: exec::SimPhasePool {
-                shared: Arc::clone(shared),
-            },
-        }),
+        exec,
         mem: Arc::new(memory::SimMemory {
             shared: Arc::clone(shared),
             pid,
@@ -65,5 +80,6 @@ pub(crate) fn substrate_for(
             pid,
             generation,
         }),
+        os,
     }
 }

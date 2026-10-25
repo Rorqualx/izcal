@@ -129,6 +129,9 @@ fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
         exec,
         mem: Arc::new(memory::OsMemory::new()),
         ipc,
+        // The production OS port is OI-M1's (M5): the broker's per-OS
+        // modules. Until then no process has one.
+        os: None,
     })
 }
 

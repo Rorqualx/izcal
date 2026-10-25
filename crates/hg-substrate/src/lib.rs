@@ -12,7 +12,8 @@
 //! `async` here and no executor of anyone else's.
 //!
 //! Phase A of M1 defined the traits M1 needs first; the IPC trait joined
-//! in phase D. The code-memory, network and storage traits join with the
+//! in phase D, and the broker's [`OsPort`] with M1's OS-integration
+//! inputs (OI-M0). The code-memory, network and storage traits join with the
 //! milestones that first use them (Stage 1 design 3.1 lists all of them).
 
 mod clock;
@@ -20,6 +21,7 @@ mod entropy;
 mod executor;
 pub mod ipc;
 mod memory;
+pub mod os;
 pub mod prng;
 
 use std::sync::Arc;
@@ -29,6 +31,7 @@ pub use entropy::{CryptoRandom, Entropy, EntropyError, EntropyPurpose, RandomStr
 pub use executor::{Executor, PhasePool, PostError, Priority, SequenceHandle, Task};
 pub use ipc::Ipc;
 pub use memory::{Memory, MemoryError, MemoryKind, MemoryStats, Region};
+pub use os::OsPort;
 
 /// The substrate a process runs on: one instance per (real or simulated)
 /// process, handed to the process's entry function.
@@ -44,6 +47,9 @@ pub struct Substrate {
     pub mem: Arc<dyn Memory>,
     /// Channels to other processes (Stage 1 4.1).
     pub ipc: Arc<dyn Ipc>,
+    /// The operating system's inputs and commands (OS integration 6.1):
+    /// `Some` in the broker only.
+    pub os: Option<Arc<dyn OsPort>>,
 }
 
 #[cfg(test)]
@@ -184,6 +190,7 @@ mod tests {
             exec: Arc::new(InlineExecutor(InlinePool)),
             mem: Arc::new(NoMemory),
             ipc: Arc::new(NoIpc),
+            os: None,
         }
     }
 

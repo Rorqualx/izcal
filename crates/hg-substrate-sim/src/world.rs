@@ -229,6 +229,8 @@ pub(crate) struct State {
     pub(crate) ipc: crate::ipc::Channels,
     /// The world itself, for tasks the state makes (IPC deliveries).
     pub(crate) ipc_self: Weak<Shared>,
+    /// The scripted OS of each process that has one (the broker).
+    pub(crate) os: BTreeMap<ProcessId, crate::os::OsModel>,
 }
 
 pub(crate) struct Shared {
@@ -390,6 +392,7 @@ impl World {
             trace: Trace::new(config.keep_trace_text),
             ipc: crate::ipc::Channels::default(),
             ipc_self: Weak::new(),
+            os: BTreeMap::new(),
         };
         Self {
             shared: Arc::new_cyclic(|me| {
@@ -414,13 +417,41 @@ impl World {
         restart: bool,
         entry: impl Fn(Substrate) + Send + Sync + 'static,
     ) -> ProcessId {
+        self.spawn_inner(name, backing, restart, Arc::new(entry), None)
+    }
+
+    /// As [`World::spawn`], for the broker: its substrate's `os` is the
+    /// scripted OS `script` (OS integration 6.1). The script survives
+    /// restarts; inputs not yet delivered wait for the next listener.
+    pub fn spawn_broker(
+        &self,
+        name: &'static str,
+        backing: Arc<dyn Memory>,
+        restart: bool,
+        entry: impl Fn(Substrate) + Send + Sync + 'static,
+        script: crate::os::OsScript,
+    ) -> ProcessId {
+        self.spawn_inner(name, backing, restart, Arc::new(entry), Some(script))
+    }
+
+    fn spawn_inner(
+        &self,
+        name: &'static str,
+        backing: Arc<dyn Memory>,
+        restart: bool,
+        entry: Entry,
+        script: Option<crate::os::OsScript>,
+    ) -> ProcessId {
         let mut st = self.shared.lock();
         let pid = ProcessId(u32::try_from(st.procs.len()).unwrap_or(u32::MAX));
+        if let Some(script) = script {
+            st.os.insert(pid, crate::os::OsModel::new(script));
+        }
         st.procs.push(Proc {
             name,
             generation: 0,
             alive: false,
-            entry: Arc::new(entry),
+            entry,
             restart,
             backing,
             seqs: Vec::new(),
@@ -449,11 +480,13 @@ impl World {
             delayed: 0,
             posted: 1,
         }];
+        let has_os = st.os.contains_key(&pid);
         let substrate = crate::substrate_for(
             &self.shared,
             pid,
             generation,
             derive(&[seed, tag::PROCESS, u64::from(pid.0), u64::from(generation)]),
+            has_os,
         );
         let entry = Arc::clone(&p.entry);
         if let Some(main) = p.seqs.first_mut() {

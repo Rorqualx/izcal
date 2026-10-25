@@ -1,4 +1,5 @@
-//! Regenerates `hg-ipc-gen`'s checked-in code from its `.hgidl` files.
+//! Regenerates the checked-in code of `hg-ipc-gen` and `hg-os-types` from
+//! their `.hgidl` files.
 //!
 //! ```text
 //! cargo run -p hg-ipc-codegen            # write src/generated/*.rs
@@ -8,16 +9,23 @@
 use std::path::Path;
 use std::process::ExitCode;
 
+/// The crates whose `idl/*.hgidl` the generator writes into their
+/// `src/generated/`.
+const GENERATED_CRATES: [&str; 2] = ["hg-ipc-gen", "hg-os-types"];
+
 fn main() -> ExitCode {
     let check = std::env::args().any(|a| a == "--check");
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../hg-ipc-gen");
-    let pairs = match hg_ipc_codegen::pairs(&root, "hg-ipc-gen") {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("hg-ipc-codegen: {}: {e}", root.display());
-            return ExitCode::FAILURE;
+    let mut pairs = Vec::new();
+    for krate in GENERATED_CRATES {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(krate);
+        match hg_ipc_codegen::pairs(&root, krate) {
+            Ok(p) => pairs.extend(p),
+            Err(e) => {
+                eprintln!("hg-ipc-codegen: {}: {e}", root.display());
+                return ExitCode::FAILURE;
+            }
         }
-    };
+    }
     let mut stale = 0;
     for p in &pairs {
         let src = match std::fs::read_to_string(&p.idl) {
