@@ -15,6 +15,7 @@
 pub mod clock;
 pub mod entropy;
 pub mod executor;
+pub mod install;
 pub mod ipc;
 pub mod memory;
 pub mod os;

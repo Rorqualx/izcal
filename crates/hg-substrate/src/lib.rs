@@ -19,6 +19,7 @@
 mod clock;
 mod entropy;
 mod executor;
+pub mod install;
 pub mod ipc;
 mod memory;
 pub mod os;
@@ -29,6 +30,7 @@ use std::sync::Arc;
 pub use clock::Clock;
 pub use entropy::{CryptoRandom, Entropy, EntropyError, EntropyPurpose, RandomStream};
 pub use executor::{Executor, PhasePool, PostError, Priority, SequenceHandle, Task};
+pub use install::InstallDevice;
 pub use ipc::Ipc;
 pub use memory::{Memory, MemoryError, MemoryKind, MemoryStats, Region};
 pub use os::OsPort;

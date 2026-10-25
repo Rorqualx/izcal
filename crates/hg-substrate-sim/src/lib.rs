@@ -21,6 +21,7 @@
 mod clock;
 mod entropy;
 mod exec;
+mod install;
 mod ipc;
 mod memory;
 mod os;

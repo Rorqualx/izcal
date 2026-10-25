@@ -231,6 +231,8 @@ pub(crate) struct State {
     pub(crate) ipc_self: Weak<Shared>,
     /// The scripted OS of each process that has one (the broker).
     pub(crate) os: BTreeMap<ProcessId, crate::os::OsModel>,
+    /// The install tree every process shares.
+    pub(crate) install: crate::install::InstallTree,
 }
 
 pub(crate) struct Shared {
@@ -393,6 +395,7 @@ impl World {
             ipc: crate::ipc::Channels::default(),
             ipc_self: Weak::new(),
             os: BTreeMap::new(),
+            install: crate::install::InstallTree::default(),
         };
         Self {
             shared: Arc::new_cyclic(|me| {
@@ -750,6 +753,15 @@ impl World {
     /// The trace's text, if the config kept it.
     pub fn trace_text(&self) -> Option<String> {
         self.shared.lock().trace.text().map(str::to_owned)
+    }
+
+    /// The world's install device: one in-memory install tree that every
+    /// simulated process shares (distribution 13 item 3), so a scenario
+    /// can replace a child binary or a build between two launches.
+    pub fn install_device(&self) -> Arc<dyn hg_substrate::InstallDevice> {
+        Arc::new(crate::install::SimInstallDevice {
+            shared: Arc::clone(&self.shared),
+        })
     }
 
     /// This run as M1's recording (Stage 1 8.1: "recordings carry the
