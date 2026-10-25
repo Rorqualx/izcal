@@ -53,6 +53,9 @@ pub enum StartError {
     Entropy,
     /// A worker thread could not be started.
     Thread(std::io::Error),
+    /// The IPC transport could not start (its epoll instance, eventfd or
+    /// IO thread).
+    Ipc(std::io::Error),
 }
 
 impl std::fmt::Display for StartError {
@@ -60,6 +63,7 @@ impl std::fmt::Display for StartError {
         match self {
             Self::Entropy => f.write_str("the OS random source failed"),
             Self::Thread(e) => write!(f, "a substrate thread could not start: {e}"),
+            Self::Ipc(e) => write!(f, "the IPC transport could not start: {e}"),
         }
     }
 }
@@ -74,6 +78,22 @@ impl std::error::Error for StartError {}
 /// # Errors
 /// [`StartError`] if the OS random source or thread creation fails.
 pub fn os_substrate(threads: Threads) -> Result<Substrate, StartError> {
+    start(threads, false)
+}
+
+/// [`os_substrate`] for a process its launcher started with launch
+/// channels: on Linux, the descriptors at
+/// [`ipc::linux::BOOTSTRAP_FDS`], which `Ipc::bootstrap` then returns.
+/// Descriptors that are missing or not channel ends are ignored, and
+/// `bootstrap` returns `None`.
+///
+/// # Errors
+/// As [`os_substrate`].
+pub fn os_substrate_launched(threads: Threads) -> Result<Substrate, StartError> {
+    start(threads, true)
+}
+
+fn start(threads: Threads, launched: bool) -> Result<Substrate, StartError> {
     let entropy = entropy::OsEntropy::new();
     if !hg_types::process_hash_key_is_set() {
         let mut key = [0u8; 16];
@@ -86,15 +106,47 @@ pub fn os_substrate(threads: Threads) -> Result<Substrate, StartError> {
         // A second caller lost a race to the same end state: a key is set.
         let _ = hg_types::set_process_hash_key(word(k0), word(k1));
     }
-    let exec = executor::OsExecutor::new(threads.general, threads.may_block)
-        .map_err(StartError::Thread)?;
+    let exec = Arc::new(
+        executor::OsExecutor::new(threads.general, threads.may_block)
+            .map_err(StartError::Thread)?,
+    );
+    let ipc = os_ipc(&exec, launched)?;
     Ok(Substrate {
         clock: Arc::new(clock::OsClock::new()),
         entropy: Arc::new(entropy),
-        exec: Arc::new(exec),
+        exec,
         mem: Arc::new(memory::OsMemory::new()),
-        ipc: Arc::new(ipc::OsIpc),
+        ipc,
     })
+}
+
+/// This OS's IPC transport.
+#[cfg(target_os = "linux")]
+fn os_ipc(
+    exec: &Arc<executor::OsExecutor>,
+    launched: bool,
+) -> Result<Arc<dyn hg_substrate::Ipc>, StartError> {
+    let boot = if launched {
+        ipc::linux::launch_fds()
+    } else {
+        None
+    };
+    match ipc::linux::LinuxIpc::start(Arc::clone(exec), boot) {
+        Ok(t) => Ok(Arc::new(t)),
+        Err(ipc::linux::StartError::Os(e)) => Err(StartError::Ipc(e)),
+        Err(ipc::linux::StartError::Bootstrap) => Err(StartError::Ipc(std::io::Error::other(
+            "launch descriptors are not channel ends",
+        ))),
+    }
+}
+
+/// This OS's IPC transport (none yet: D4, D5).
+#[cfg(not(target_os = "linux"))]
+fn os_ipc(
+    _exec: &Arc<executor::OsExecutor>,
+    _launched: bool,
+) -> Result<Arc<dyn hg_substrate::Ipc>, StartError> {
+    Ok(Arc::new(ipc::OsIpc))
 }
 
 #[cfg(test)]

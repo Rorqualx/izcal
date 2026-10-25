@@ -1,10 +1,13 @@
 //! The simulated IPC transport (Stage 1 design 4.2, "in-memory queues
 //! delivered by the seeded scheduler").
 //!
-//! Channels live in the world's state. A send queues the message and
-//! puts one delivery task on the receiving sequence, so delivery order
-//! across processes is the scheduler's seeded choice and every send,
-//! delivery and close is in the trace. The transport keeps each end's
+//! Channels live in the world's state. A send queues the message; each
+//! listening channel keeps at most one delivery task on its sequence,
+//! which delivers the next item and posts itself again while more are
+//! queued (the drain-task model the OS transports use, so a sender can
+//! never be refused because the receiver's sequence is busy). Delivery
+//! order across processes is the scheduler's seeded choice and every
+//! send, delivery and close is in the trace. The transport keeps each end's
 //! owner, (process, incarnation), and enforces what the OS backends
 //! will:
 //! - a process sends only handles it holds, and only this transport's
@@ -12,7 +15,10 @@
 //! - a bound sender is sent at most once, by the process that made the
 //!   channel (IPC-R2 (a));
 //! - a crash closes every end the process held, so its peers see
-//!   [`Delivery::Closed`] (IPC-R8's closure fault).
+//!   [`Delivery::Closed`] (IPC-R8's closure fault);
+//! - a process marked with [`crate::World::corrupt_next_send`] sends one
+//!   record the receiving transport refuses, so its peer sees
+//!   [`Delivery::Violation`] (the adversarial-peer fault).
 //!
 //! Handle objects lock the world when dropped, so nothing that may hold
 //! one (a queued message, a sink) is dropped with the lock held: it is
@@ -23,8 +29,9 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use hg_substrate::ipc::{
-    Bootstrap, ChannelReceiver, ChannelSender, Delivery, Flow, Handle, HandleKind, HandleObject,
-    Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES, Sink, Transfer,
+    Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, FaultKind, Flow, Handle,
+    HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES,
+    Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
@@ -66,7 +73,12 @@ struct Chan {
     sender: End,
     receiver: End,
     queue: VecDeque<(Vec<u8>, Vec<Handle>)>,
+    /// A refused record, delivered after the queued messages; nothing
+    /// follows it.
+    fault: Option<Fault>,
     listen: Option<Listen>,
+    /// A delivery task for this channel is on its sequence.
+    draining: bool,
     closed_delivered: bool,
 }
 
@@ -89,6 +101,8 @@ pub(crate) struct Channels {
     next: u64,
     /// A process's launch channels: (to its parent, from its parent).
     boot: BTreeMap<ProcessId, (u64, u64)>,
+    /// Processes whose next send is refused by the receiving transport.
+    corrupt: BTreeMap<ProcessId, FaultKind>,
 }
 
 impl Channels {
@@ -118,7 +132,9 @@ impl Channels {
                     open: true,
                 },
                 queue: VecDeque::new(),
+                fault: None,
                 listen: None,
+                draining: false,
                 closed_delivered: false,
             },
         );
@@ -177,16 +193,7 @@ fn close(st: &mut State, id: u64, side: Side, out: &mut Dropped) {
     end.open = false;
     st.trace.record(format_args!("ipc close #{id} {side:?}"));
     match side {
-        Side::Sender => {
-            if let Some(c) = st.ipc.chans.get(&id)
-                && let Some(l) = &c.listen
-            {
-                let (pid, generation, seq) = (l.pid, l.generation, l.seq);
-                // The closing notice may exceed the sequence's capacity by
-                // one: it must not be lost.
-                let _queued = queue_delivery(st, id, pid, generation, seq, true);
-            }
-        }
+        Side::Sender => kick(st, id),
         Side::Receiver => {
             if let Some(c) = st.ipc.chans.get_mut(&id) {
                 for (_, handles) in c.queue.drain(..) {
@@ -202,8 +209,39 @@ fn close(st: &mut State, id: u64, side: Side, out: &mut Dropped) {
         && !c.sender.open
         && !c.receiver.open
         && c.queue.is_empty()
+        && c.fault.is_none()
     {
         st.ipc.chans.remove(&id);
+    }
+}
+
+/// Marks `pid`'s next send as refused by the receiver (see
+/// [`crate::World::corrupt_next_send`]).
+pub(crate) fn corrupt_next(st: &mut State, pid: ProcessId, kind: FaultKind) {
+    st.trace
+        .record(format_args!("ipc corrupt-next {} {kind:?}", pid.0));
+    st.ipc.corrupt.insert(pid, kind);
+}
+
+/// Starts channel `id`'s delivery task if it is listened to, has
+/// something to deliver, and has no task on its sequence yet. A drain
+/// task may exceed the sequence's capacity: there is at most one per
+/// listening channel, and a delivery must not be lost.
+fn kick(st: &mut State, id: u64) {
+    let Some(c) = st.ipc.chans.get(&id) else {
+        return;
+    };
+    let Some(l) = &c.listen else { return };
+    let pending =
+        !c.queue.is_empty() || c.fault.is_some() || (!c.sender.open && !c.closed_delivered);
+    if c.draining || !pending {
+        return;
+    }
+    let (pid, generation, seq) = (l.pid, l.generation, l.seq);
+    if queue_delivery(st, id, pid, generation, seq, true)
+        && let Some(c) = st.ipc.chans.get_mut(&id)
+    {
+        c.draining = true;
     }
 }
 
@@ -243,16 +281,22 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
     let Some(c) = st.ipc.chans.get_mut(&id) else {
         return;
     };
+    c.draining = false;
     let Some(l) = &c.listen else { return };
     let (pid, generation, sink) = (l.pid, l.generation, Arc::clone(&l.sink));
     let delivery = if let Some((bytes, handles)) = c.queue.pop_front() {
         Delivery::Message { bytes, handles }
+    } else if let Some(fault) = c.fault.take() {
+        c.closed_delivered = true;
+        Delivery::Violation(fault)
     } else if !c.sender.open && !c.closed_delivered {
         c.closed_delivered = true;
         Delivery::Closed
     } else {
         return;
     };
+    // After a violation the transport closes the channel: nothing follows.
+    let refused = matches!(delivery, Delivery::Violation(_));
     let what = match &delivery {
         Delivery::Message { bytes, handles } => {
             for h in handles {
@@ -265,17 +309,20 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
             format!("{} bytes {} handles", bytes.len(), handles.len())
         }
         Delivery::Closed => "closed".to_owned(),
+        Delivery::Violation(f) => format!("violation {:?}", f.kind),
     };
     st.trace.record(format_args!("ipc deliver #{id} {what}"));
     drop(st);
     let flow = sink.lock().unwrap_or_else(PoisonError::into_inner)(delivery);
-    if flow == Flow::Close {
-        let mut out = Dropped::new();
-        let mut st = shared.lock();
+    let mut out = Dropped::new();
+    let mut st = shared.lock();
+    if flow == Flow::Close || refused {
         close(&mut st, id, Side::Receiver, &mut out);
-        drop(st);
-        drop(out);
+    } else {
+        kick(&mut st, id);
     }
+    drop(st);
+    drop(out);
 }
 
 /// A channel end this transport made.
@@ -435,7 +482,7 @@ impl Ipc for SimIpc {
             drop(st);
             return Err(IpcError::Closed);
         };
-        if !c.receiver.open {
+        if !c.receiver.open || c.fault.is_some() {
             drop(st);
             return Err(IpcError::Closed);
         }
@@ -443,12 +490,23 @@ impl Ipc for SimIpc {
             drop(st);
             return Err(IpcError::Full);
         }
-        let listen = c.listen.as_ref().map(|l| (l.pid, l.generation, l.seq));
-        if let Some((pid, generation, seq)) = listen
-            && !queue_delivery(&mut st, id, pid, generation, seq, false)
-        {
+        if let Some(kind) = st.ipc.corrupt.remove(&self.pid) {
+            // The adversarial-peer fault: the receiving transport refuses
+            // this record. Its handles stay here and close when `handles`
+            // drops, after the lock is released, as a refused record's
+            // handles are closed by the receiving OS transport.
+            st.trace
+                .record(format_args!("ipc send #{id} refused {kind:?}"));
+            if let Some(c) = st.ipc.chans.get_mut(&id) {
+                c.fault = Some(Fault {
+                    kind,
+                    sender: Some(self.pid.0),
+                });
+            }
+            kick(&mut st, id);
             drop(st);
-            return Err(IpcError::Full);
+            drop(handles);
+            return Ok(());
         }
         for (hid, side) in moved {
             if let Some(hc) = st.ipc.chans.get_mut(&hid) {
@@ -466,6 +524,7 @@ impl Ipc for SimIpc {
         if let Some(c) = st.ipc.chans.get_mut(&id) {
             c.queue.push_back((bytes, handles));
         }
+        kick(&mut st, id);
         Ok(())
     }
 
@@ -500,15 +559,9 @@ impl Ipc for SimIpc {
             sink: Arc::new(Mutex::new(sink)),
         });
         let pending = c.queue.len();
-        let closed = !c.sender.open;
         st.trace
             .record(format_args!("ipc listen #{id} pending={pending}"));
-        for _ in 0..pending {
-            let _queued = queue_delivery(&mut st, id, self.pid, self.generation, si, true);
-        }
-        if closed {
-            let _queued = queue_delivery(&mut st, id, self.pid, self.generation, si, true);
-        }
+        kick(&mut st, id);
         drop(st);
         // The receiver object becomes the listener: disarm it, so only the
         // listener's drop closes the end.

@@ -9,6 +9,9 @@
 pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
+/// The Linux seccomp program as plain data: built and checked on every
+/// OS, installed by [`linux`].
+pub mod seccomp;
 #[cfg(windows)]
 pub mod windows;
 

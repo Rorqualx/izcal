@@ -26,7 +26,8 @@ fn slot<T>() -> Slot<T> {
     Arc::new(Mutex::new(None))
 }
 
-/// What a listener saw: message bytes as text, or "closed".
+/// What a listener saw: message bytes as text, "closed", or
+/// "violation <kind> <sender>".
 type Seen = Arc<Mutex<Vec<String>>>;
 
 /// Listens on `rx` in `s`, recording each delivery into `seen`, and
@@ -50,6 +51,10 @@ fn record(s: &Substrate, rx: ChannelReceiver, seen: &Seen, got: &Slot<Vec<Handle
                             .extend(handles);
                     }
                     Delivery::Closed => seen.lock().unwrap().push("closed".into()),
+                    Delivery::Violation(f) => seen
+                        .lock()
+                        .unwrap()
+                        .push(format!("violation {:?} {:?}", f.kind, f.sender)),
                 }
                 Flow::Continue
             }),
@@ -402,4 +407,41 @@ fn a_bound_receiver_never_moves() {
     });
     assert_eq!(w.run(LIMITS), RunEnd::Idle);
     assert_eq!(result.lock().unwrap().take(), Some(Err(IpcError::Refused)));
+}
+
+/// The adversarial-peer fault: a process's next record is refused by the
+/// receiving transport; the receiver gets a violation naming the sender,
+/// and nothing after.
+#[test]
+fn a_refused_record_is_a_violation_naming_its_sender() {
+    let seen: Seen = Arc::default();
+    let got = slot();
+    let keep: Slot<Listening> = slot();
+    let (seen2, got2, keep2) = (Arc::clone(&seen), Arc::clone(&got), Arc::clone(&keep));
+    let p = pair(
+        11,
+        64,
+        move |s, from_child, _to_child| {
+            *keep2.lock().unwrap() = Some(record(&s, from_child, &seen2, &got2));
+        },
+        |s| {
+            let boot = s.ipc.bootstrap().unwrap();
+            // The world marked this process before it ran: this send is
+            // refused at the receiver, though `send` reports success, as
+            // a compromised peer's would; the channel is then closed.
+            s.ipc
+                .send(&boot.to_parent, b"bad".to_vec(), Vec::new())
+                .unwrap();
+            assert_eq!(
+                s.ipc.send(&boot.to_parent, b"late".to_vec(), Vec::new()),
+                Err(IpcError::Closed)
+            );
+        },
+    );
+    p.world
+        .corrupt_next_send(p.child, hg_substrate::ipc::FaultKind::Malformed);
+    assert_eq!(p.world.run(LIMITS), RunEnd::Idle);
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert!(seen[0].starts_with("violation Malformed Some("), "{seen:?}");
 }

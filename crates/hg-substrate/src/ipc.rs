@@ -140,6 +140,44 @@ pub enum Delivery {
     /// The sender is gone (dropped, or its process ended). Nothing
     /// follows.
     Closed,
+    /// The transport refused what arrived: a record that breaks the
+    /// transport's own rules, before any message could be built. The
+    /// channel is closed and nothing follows. Unlike [`Delivery::Closed`]
+    /// this is the peer's fault, so the receiver's owner can ask for the
+    /// sender to be terminated (IPC-R5).
+    Violation(Fault),
+}
+
+/// What a peer did wrong at the transport level (IPC-R1, R2, R5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FaultKind {
+    /// A record that does not parse: bad framing, a truncated record, an
+    /// empty record, or ancillary data the transport never sends.
+    Malformed,
+    /// A handle of a kind or type the transport does not accept, one the
+    /// receiver already holds, or a count that disagrees with the record.
+    BadHandle,
+    /// A record on a bound channel from a process other than the one the
+    /// channel is bound to, or a bound sender passed on by a process
+    /// that did not create it (IPC-R2).
+    Identity,
+    /// Flow-control state that cannot happen for an honest sender:
+    /// sequence numbers out of order, or credits beyond what was sent.
+    Sequence,
+}
+
+/// A transport-level violation and, where the OS attests it, who sent
+/// the offending record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Fault {
+    /// What went wrong.
+    pub kind: FaultKind,
+    /// The OS process ID of the record's sender, when the OS attests it
+    /// (Linux `SCM_CREDENTIALS`) and the fault is one only that sender
+    /// could cause. `None` when the transport cannot tell who is at
+    /// fault, for example when a former holder of a transferred end may
+    /// have lied about its counters.
+    pub sender: Option<u32>,
 }
 
 /// What a listener does after a delivery.

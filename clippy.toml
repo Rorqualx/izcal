@@ -106,6 +106,9 @@ disallowed-methods = [
   { path = "std::backtrace::Backtrace::force_capture", reason = "CS-ER-10: crash handler only" },
   { path = "log::set_logger", reason = "CS-ER-14: the substrate installs the log adapter" },
   { path = "log::set_boxed_logger", reason = "CS-ER-14: the substrate installs the log adapter" },
+  # SEC-4 (d) (M1 D3): descriptor passing only in the IPC backend's sys module
+  { path = "libc::sendmsg", reason = "SEC-4 (d): handles cross processes only in hg_substrate_os::ipc::linux::sys" },
+  { path = "libc::recvmsg", reason = "SEC-4 (d): handles cross processes only in hg_substrate_os::ipc::linux::sys" },
   # CS-V8-3 retired with the fork (C-10): no v8::* paths exist. H-1 is enforced
   # by hg-heap's Field<T> types, which make a raw pointer a compile error.
 ]

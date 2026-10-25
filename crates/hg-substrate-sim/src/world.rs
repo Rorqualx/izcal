@@ -661,6 +661,16 @@ impl World {
         crate::ipc::link(&self.shared, parent, child, capacity)
     }
 
+    /// Makes `pid`'s next IPC send a record the receiving transport
+    /// refuses with `kind`: the peer sees [`hg_substrate::ipc::Delivery::Violation`]
+    /// naming `pid`, after the messages queued before it, and the channel
+    /// closes. The sender's `send` still returns `Ok`, as a compromised
+    /// peer's would. The adversarial-peer fault (security scope 6.6).
+    pub fn corrupt_next_send(&self, pid: ProcessId, kind: hg_substrate::ipc::FaultKind) {
+        let mut st = self.shared.lock();
+        crate::ipc::corrupt_next(&mut st, pid, kind);
+    }
+
     /// Virtual time now.
     pub fn now(&self) -> Instant {
         self.shared.lock().now
