@@ -539,9 +539,13 @@ pub(crate) struct Spawned {
 }
 
 #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
-/// Starts `program` with `bootstrap` as its bootstrap port (P27) and no
-/// descriptor beyond stdio inherited, suspended until its audit token is
-/// read (P3), then resumed.
+/// Starts `program` with `bootstrap` as its bootstrap port (P27), no
+/// descriptor beyond stdio inherited and exactly the environment `env`
+/// (nothing of the launcher's: it may hold secrets, and a sandboxed
+/// child should get no ambient authority), suspended until its audit
+/// token is read (P3), then resumed. With a bare environment the child
+/// sends a few messages to its bootstrap port before `main` (P27); the
+/// launcher refuses them while it waits for the hello.
 pub(crate) fn spawn(
     program: &std::ffi::CStr,
     args: &[&std::ffi::CStr],
@@ -552,16 +556,7 @@ pub(crate) fn spawn(
     argv.push(program.as_ptr().cast_mut());
     argv.extend(args.iter().map(|a| a.as_ptr().cast_mut()));
     argv.push(core::ptr::null_mut());
-    let inherited: Vec<std::ffi::CString> = std::env::vars_os()
-        .filter_map(|(k, v)| {
-            let mut kv = k.into_encoded_bytes();
-            kv.push(b'=');
-            kv.extend(v.into_encoded_bytes());
-            std::ffi::CString::new(kv).ok()
-        })
-        .collect();
-    let mut envp: Vec<*mut c_char> = inherited.iter().map(|e| e.as_ptr().cast_mut()).collect();
-    envp.extend(env.iter().map(|e| e.as_ptr().cast_mut()));
+    let mut envp: Vec<*mut c_char> = env.iter().map(|e| e.as_ptr().cast_mut()).collect();
     envp.push(core::ptr::null_mut());
 
     // SAFETY: an all-zero attributes object is valid storage for init.

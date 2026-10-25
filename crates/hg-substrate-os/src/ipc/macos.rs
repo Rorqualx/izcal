@@ -194,8 +194,10 @@ impl Held for State {
 }
 
 impl State {
-    fn insert(&mut self, role: Role) -> Option<u64> {
-        self.next = self.next.checked_add(1)?;
+    /// Registers an end under a new id. Ids are never reused: one per
+    /// nanosecond would take 584 years to run out of 64 bits.
+    fn insert(&mut self, role: Role) -> u64 {
+        self.next = self.next.wrapping_add(1);
         let id = self.next;
         match &role {
             Role::Sender { data, .. } => {
@@ -207,7 +209,7 @@ impl State {
             }
         }
         self.ends.insert(id, role);
-        Some(id)
+        id
     }
 
     /// Takes an end out of the registry. The caller releases its rights
@@ -551,14 +553,18 @@ impl Inner {
                             }
                         }
                     };
-                    if let Some(hid) = st.insert(role) {
-                        handles.push(Handle::new(Box::new(MacEnd {
-                            inner: Arc::clone(self),
-                            id: hid,
-                            kind: *kind,
-                            armed: true,
-                        })));
-                    }
+                    let hid = st.insert(role);
+                    handles.push(Handle::new(Box::new(MacEnd {
+                        inner: Arc::clone(self),
+                        id: hid,
+                        kind: *kind,
+                        armed: true,
+                    })));
+                }
+                // `decide` checked every slot, so none is left; if one
+                // were, its right would still be ours.
+                for f in slot {
+                    sys::release_right(f.name, f.disposition);
                 }
                 if let Some(Role::Receiver {
                     flow,
@@ -1214,8 +1220,19 @@ impl MacIpc {
         boot: u32,
         expected: Token,
     ) -> Option<(ChannelReceiver, ChannelSender)> {
+        let descs = [
+            SenderFlow::new(BOOTSTRAP_CAPACITY).to_desc(WireKind::Sender),
+            ReceiverFlow::new(BOOTSTRAP_CAPACITY).to_desc(),
+        ];
+        let body = encode_data(0, &descs, b"")
+            .ok()
+            .and_then(|r| wire::frame(&r));
         let deadline =
-            StdInstant::now().checked_add(Duration::from_millis(u64::from(LAUNCH_WAIT_MS)))?;
+            StdInstant::now().checked_add(Duration::from_millis(u64::from(LAUNCH_WAIT_MS)));
+        let (Some(body), Some(deadline)) = (body, deadline) else {
+            sys::destroy_receive(boot);
+            return None;
+        };
         let mut buf = Buf::new(RECEIVE_BUFFER);
         let reply = loop {
             let left = deadline.saturating_duration_since(StdInstant::now());
@@ -1242,13 +1259,6 @@ impl MacIpc {
             sys::destroy_receive(boot);
             return None;
         };
-        let descs = [
-            SenderFlow::new(BOOTSTRAP_CAPACITY).to_desc(WireKind::Sender),
-            ReceiverFlow::new(BOOTSTRAP_CAPACITY).to_desc(),
-        ];
-        let body = encode_data(0, &descs, b"")
-            .ok()
-            .and_then(|r| wire::frame(&r))?;
         let ports = [
             (up_data, MAKE_SEND),
             (up_credit, MOVE_RECEIVE),
@@ -1264,16 +1274,22 @@ impl MacIpc {
             body: &body,
         };
         let mut out = Buf::new(RECEIVE_BUFFER);
-        let size = wire::encode(&m, out.bytes_mut())?;
-        let sent = sys::send(&mut out, size);
+        let size = wire::encode(&m, out.bytes_mut());
+        let sent = size.map(|n| sys::send(&mut out, n));
         sys::destroy_receive(boot);
-        if sent.is_err() {
-            sys::release_outgoing(out.bytes().get(..size).unwrap_or(&[]));
-            sys::deallocate(reply);
-            drop(ours);
-            return None;
+        match (size, sent) {
+            (_, Some(Ok(()))) => return Some(ours),
+            // Not sent: the moved rights are back in this task under the
+            // names the kernel wrote into the message (P17, R7).
+            (Some(n), _) => sys::release_outgoing(out.bytes().get(..n).unwrap_or(&[])),
+            (None, _) => {
+                sys::destroy_receive(up_credit);
+                sys::destroy_receive(down_data);
+            }
         }
-        Some(ours)
+        sys::deallocate(reply);
+        drop(ours);
+        None
     }
 
     #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
@@ -1285,7 +1301,11 @@ impl MacIpc {
         // is sent. Our sender of `down` keeps its send right and credit
         // port; the child gets the data port's receive right.
         let (up_data, up_credit) = Self::new_ports(BOOTSTRAP_CAPACITY, false).ok()?;
-        let (down_data, down_credit) = Self::new_ports(BOOTSTRAP_CAPACITY, true).ok()?;
+        let Ok((down_data, down_credit)) = Self::new_ports(BOOTSTRAP_CAPACITY, true) else {
+            sys::destroy_receive(up_data);
+            sys::destroy_receive(up_credit);
+            return None;
+        };
         let mut st = self.inner.lock();
         let rx = st.insert(Role::Receiver {
             data: up_data,
@@ -1307,9 +1327,15 @@ impl MacIpc {
             carried: false,
         });
         drop(st);
-        let rx =
-            ChannelReceiver::from_handle(self.handle(rx?, HandleKind::ChannelReceiver)).ok()?;
-        let tx = ChannelSender::from_handle(self.handle(tx?, HandleKind::ChannelSender)).ok()?;
+        // From here the two ends release their own rights when dropped;
+        // the child's two receive rights are the caller's.
+        let rx = ChannelReceiver::from_handle(self.handle(rx, HandleKind::ChannelReceiver));
+        let tx = ChannelSender::from_handle(self.handle(tx, HandleKind::ChannelSender));
+        let (Ok(rx), Ok(tx)) = (rx, tx) else {
+            sys::destroy_receive(up_credit);
+            sys::destroy_receive(down_data);
+            return None;
+        };
         Some((up_data, up_credit, down_data, (rx, tx)))
     }
 }
@@ -1357,16 +1383,18 @@ fn hello() -> Option<Boot> {
         sys::release_received(bytes);
         return None;
     };
-    let (up_d, down_d) = match view.descs() {
-        [a, b] => (*a, *b),
-        _ => return None,
+    // `decide_launch` checked this shape; anything else is released.
+    let shape = match (view.descs(), facts.as_slice()) {
+        ([up_d, down_d], [a, b, c]) => SenderFlow::from_transfer(up_d)
+            .ok()
+            .zip(ReceiverFlow::from_transfer(down_d).ok())
+            .map(|(up, down)| (up, down, a.name, b.name, c.name)),
+        _ => None,
     };
-    let (up_data, up_credit, down_data) = match facts.as_slice() {
-        [a, b, c] => (a.name, b.name, c.name),
-        _ => return None,
+    let Some((up_flow, down_flow, up_data, up_credit, down_data)) = shape else {
+        sys::release_received(bytes);
+        return None;
     };
-    let up_flow = SenderFlow::from_transfer(&up_d).ok()?;
-    let down_flow = ReceiverFlow::from_transfer(&down_d).ok()?;
     let _ = sys::request_no_senders(down_data, 0);
     Some(Boot {
         up_data,
@@ -1421,9 +1449,6 @@ impl Ipc for MacIpc {
             listener: None,
         });
         drop(st);
-        let (Some(tx), Some(rx)) = (tx, rx) else {
-            return Err(IpcError::Closed);
-        };
         let tk = if bound {
             HandleKind::BoundChannelSender
         } else {
@@ -1688,9 +1713,9 @@ impl Ipc for MacIpc {
         });
         drop(st);
         let to_parent =
-            ChannelSender::from_handle(self.handle(tx?, HandleKind::ChannelSender)).ok()?;
+            ChannelSender::from_handle(self.handle(tx, HandleKind::ChannelSender)).ok()?;
         let from_parent =
-            ChannelReceiver::from_handle(self.handle(rx?, HandleKind::ChannelReceiver)).ok()?;
+            ChannelReceiver::from_handle(self.handle(rx, HandleKind::ChannelReceiver)).ok()?;
         Some(Bootstrap {
             to_parent,
             from_parent,
