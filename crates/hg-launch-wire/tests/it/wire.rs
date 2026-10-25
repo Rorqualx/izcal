@@ -2,15 +2,17 @@
 
 use hg_launch_wire::{
     Batch, Commit, EncodeError, Intent, MAX_FIELDS, MAX_OPERAND, MAX_OPERANDS, MAX_SHORT,
-    MAX_TOTAL, Message, Nonce, Origin, Outcome, Profile, Reason, Refusal, Reply, Request,
+    MAX_TOTAL, Message, Nonce, Operand, Origin, Outcome, Profile, Reason, Refusal, Reply, Request,
     SenderBuild, Started, decode, encode,
 };
 
 fn request() -> Request {
     Request {
         intent: Intent::Open,
-        urls: vec!["https://example.org/".into()],
-        paths: vec!["/home/a/notes.html".into()],
+        operands: vec![
+            Operand::Url("https://example.org/".into()),
+            Operand::Path("/home/a/notes.html".into()),
+        ],
         working_dir: Some("/home/a".into()),
         profile: Some(Profile::Default),
         activation_token: Some("tok-1".into()),
@@ -46,8 +48,7 @@ fn golden_messages() -> Vec<(&'static str, Message)> {
             "request-activate",
             Message::Request(Request {
                 intent: Intent::Activate,
-                urls: vec![],
-                paths: vec![],
+                operands: vec![],
                 working_dir: None,
                 profile: None,
                 activation_token: None,
@@ -228,12 +229,12 @@ fn a_request_needs_its_intent_once() {
 fn bounds_are_enforced_both_ways() {
     // Operands.
     let mut r = request();
-    r.urls = vec!["https://a/".into(); MAX_OPERANDS];
+    r.operands = vec![Operand::Url("https://a/".into()); MAX_OPERANDS + 1];
     assert_eq!(
         encode(&Message::Request(r.clone())),
         Err(EncodeError::TooLarge)
     );
-    r.paths.clear();
+    r.operands.pop();
     let ok = encode(&Message::Request(r.clone())).unwrap();
     assert!(decode(&ok).is_ok());
     // One more URL field appended by hand: too many operands.
@@ -246,10 +247,10 @@ fn bounds_are_enforced_both_ways() {
 
     // Value lengths.
     let mut r = request();
-    r.urls = vec!["h".repeat(MAX_OPERAND + 1)];
+    r.operands = vec![Operand::Url("h".repeat(MAX_OPERAND + 1))];
     assert_eq!(encode(&Message::Request(r)), Err(EncodeError::TooLarge));
     let mut r = request();
-    r.urls = vec!["h".repeat(MAX_OPERAND)];
+    r.operands = vec![Operand::Path("h".repeat(MAX_OPERAND))];
     assert!(decode(&encode(&Message::Request(r)).unwrap()).is_ok());
     let mut r = request();
     r.activation_token = Some("t".repeat(MAX_SHORT + 1));
@@ -257,8 +258,7 @@ fn bounds_are_enforced_both_ways() {
 
     // The total.
     let mut r = request();
-    r.paths.clear();
-    r.urls = vec!["u".repeat(MAX_OPERAND); MAX_OPERANDS];
+    r.operands = vec![Operand::Url("u".repeat(MAX_OPERAND)); MAX_OPERANDS];
     let b = encode(&Message::Request(r)).unwrap();
     assert!(b.len() <= MAX_TOTAL);
     let mut big = vec![0u8; MAX_TOTAL + 1];
@@ -279,7 +279,7 @@ fn bounds_are_enforced_both_ways() {
 #[test]
 fn text_must_be_well_formed_and_nul_free() {
     let mut r = request();
-    r.urls = vec!["a\0b".into()];
+    r.operands = vec![Operand::Url("a\0b".into())];
     assert_eq!(encode(&Message::Request(r)), Err(EncodeError::Invalid));
     let b = encode(&Message::Request(request())).unwrap();
     // The URL is the second field: replace its first byte with 0xff.
@@ -308,4 +308,43 @@ fn every_message_round_trips() {
         ..request()
     });
     assert_eq!(encode(&bad), Err(EncodeError::Invalid));
+}
+
+/// A request's fields, hand-laid in the order given.
+fn raw_request(fields: &[(u16, bool, &[u8])]) -> Vec<u8> {
+    let mut b = b"IZLH\x01\x00\x01\x00\0\0\0\0".to_vec();
+    for &(tag, critical, v) in fields {
+        b.extend_from_slice(&tag.to_le_bytes());
+        b.push(u8::from(critical));
+        b.push(0);
+        b.extend_from_slice(&u32::try_from(v.len()).unwrap().to_le_bytes());
+        b.extend_from_slice(v);
+    }
+    let total = u32::try_from(b.len()).unwrap().to_le_bytes();
+    b[8..12].copy_from_slice(&total);
+    b
+}
+
+#[test]
+fn interleaved_urls_and_paths_keep_their_order() {
+    // `izcal a.html https://x b.html`: path, URL, path.
+    let bytes = raw_request(&[
+        (1, true, &[1]),
+        (3, true, b"/home/a/a.html"),
+        (2, true, b"https://x/"),
+        (3, true, b"/home/a/b.html"),
+    ]);
+    let d = decode(&bytes).unwrap();
+    let Message::Request(r) = &d.message else {
+        panic!("{:?}", d.message)
+    };
+    assert_eq!(
+        r.operands,
+        [
+            Operand::Path("/home/a/a.html".into()),
+            Operand::Url("https://x/".into()),
+            Operand::Path("/home/a/b.html".into()),
+        ]
+    );
+    assert_eq!(encode(&d.message).unwrap(), bytes);
 }

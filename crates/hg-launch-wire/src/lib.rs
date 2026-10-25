@@ -36,7 +36,9 @@
 //! | 8 | Sender build ([`SenderBuild`]) | no | build id u64; version and channel, each a u16 length and text |
 //! | 9 | Nonce and batch ([`Nonce`]) | no | nonce u64, then optionally batch index u16 and count u16 |
 //!
-//! URLs plus paths: at most [`MAX_OPERANDS`] per request. "Text" is
+//! URLs and paths are the request's operands, in the order the user
+//! gave them (`izcal a.html https://x b.html`), at most [`MAX_OPERANDS`]
+//! per request; they may interleave, and the order is kept. "Text" is
 //! well-formed UTF-8 with no NUL.
 //!
 //! The spec lists the request's tags and the reply's codes but not how
@@ -154,6 +156,13 @@ impl Intent {
 }
 
 /// Where a launch came from.
+///
+/// The codes follow the order of OS integration 6.2's field table
+/// (command-line, os-open, jump-list, notification, dock-menu).
+/// `os.hgidl`'s `LaunchOrigin` follows 6.1's `Launch` row, which lists
+/// notification before jump-list, so the two orders differ for those
+/// two; the broker maps by name, never by number. The spec does not say
+/// which order is canonical, so neither is renumbered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Origin {
     /// A command line.
@@ -233,15 +242,23 @@ pub struct Nonce {
     pub batch: Option<Batch>,
 }
 
+/// One URL or path a launch opens.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Operand {
+    /// A URL (tag 2).
+    Url(String),
+    /// An absolute file path (tag 3).
+    Path(String),
+}
+
 /// A launch request.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Request {
     /// What to do.
     pub intent: Intent,
-    /// URLs, in order.
-    pub urls: Vec<String>,
-    /// Absolute file paths, in order.
-    pub paths: Vec<String>,
+    /// URLs and absolute file paths, in the order given (as
+    /// `os.hgidl`'s `LaunchRequest.operands`).
+    pub operands: Vec<Operand>,
     /// To resolve relative paths the launcher could not.
     pub working_dir: Option<String>,
     /// The profile; absent means the default.
@@ -677,8 +694,7 @@ fn once<T>(slot: &mut Option<T>, v: T) -> Result<(), Refusal> {
 #[derive(Default)]
 struct RequestParts {
     intent: Option<Intent>,
-    urls: Vec<String>,
-    paths: Vec<String>,
+    operands: Vec<Operand>,
     working_dir: Option<String>,
     profile: Option<Profile>,
     activation_token: Option<String>,
@@ -693,16 +709,15 @@ impl RequestParts {
         match tag {
             tag::INTENT => once(&mut self.intent, decode_intent(v)?)?,
             tag::URL | tag::PATH => {
-                let operands = self.urls.len().saturating_add(self.paths.len());
-                if operands >= MAX_OPERANDS {
+                if self.operands.len() >= MAX_OPERANDS {
                     return Err(Refusal::TooLarge);
                 }
                 let s = decode_text(v, MAX_OPERAND)?;
-                if tag == tag::URL {
-                    self.urls.push(s);
+                self.operands.push(if tag == tag::URL {
+                    Operand::Url(s)
                 } else {
-                    self.paths.push(s);
-                }
+                    Operand::Path(s)
+                });
             }
             tag::WORKING_DIR => once(&mut self.working_dir, decode_text(v, MAX_OPERAND)?)?,
             tag::PROFILE => once(&mut self.profile, decode_profile(v)?)?,
@@ -718,8 +733,7 @@ impl RequestParts {
     fn finish(self) -> Result<Request, Refusal> {
         Ok(Request {
             intent: self.intent.ok_or(Refusal::Malformed)?,
-            urls: self.urls,
-            paths: self.paths,
+            operands: self.operands,
             working_dir: self.working_dir,
             profile: self.profile,
             activation_token: self.activation_token,
@@ -847,7 +861,8 @@ fn sender_build_bytes(b: &SenderBuild) -> Result<Vec<u8>, EncodeError> {
     Ok(v)
 }
 
-/// Encodes `m` as a v1.0 message, fields in tag order.
+/// Encodes `m` as a v1.0 message: fields in tag order, except that the
+/// operands (tags 2 and 3) keep their own order.
 ///
 /// # Errors
 /// [`EncodeError`] if `m` breaks a bound or holds invalid text.
@@ -861,15 +876,15 @@ pub fn encode(m: &Message) -> Result<Vec<u8>, EncodeError> {
     o.buf.extend_from_slice(&[0u8; 4]);
     match m {
         Message::Request(r) => {
-            if r.urls.len().saturating_add(r.paths.len()) > MAX_OPERANDS {
+            if r.operands.len() > MAX_OPERANDS {
                 return Err(EncodeError::TooLarge);
             }
             o.field(tag::INTENT, true, &[r.intent.code()])?;
-            for u in &r.urls {
-                o.text(tag::URL, true, u, MAX_OPERAND)?;
-            }
-            for p in &r.paths {
-                o.text(tag::PATH, true, p, MAX_OPERAND)?;
+            for operand in &r.operands {
+                match operand {
+                    Operand::Url(u) => o.text(tag::URL, true, u, MAX_OPERAND)?,
+                    Operand::Path(p) => o.text(tag::PATH, true, p, MAX_OPERAND)?,
+                }
             }
             if let Some(w) = &r.working_dir {
                 o.text(tag::WORKING_DIR, false, w, MAX_OPERAND)?;
