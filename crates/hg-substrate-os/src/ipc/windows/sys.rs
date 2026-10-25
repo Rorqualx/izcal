@@ -140,19 +140,14 @@ pub(crate) fn forget(h: OwnedHandle) {
     let _ = h.into_raw_handle();
 }
 
-/// Adopts a value the broker duplicated into this process's table (a
-/// `Hello` or `Redeemed` record), or the launch link handed over by the
-/// process's entry point.
-///
-/// The caller must know that `v` names a handle this process holds and
-/// that nothing else owns it: the transport calls it only for values the
-/// broker reports having duplicated in for it, once each.
-pub(crate) fn adopt(v: u64) -> Option<OwnedHandle> {
+/// Takes ownership of handle value `v`. Private: every caller goes
+/// through [`adopt_pipe`], which checks the value first.
+fn adopt(v: u64) -> Option<OwnedHandle> {
     let addr = usize::try_from(v).ok().filter(|&a| a != 0)?;
     let raw_handle: RawHandle = core::ptr::without_provenance_mut(addr);
-    // SAFETY: by the caller's contract, `v` names a handle in this
-    // process's table that nothing else owns, so it becomes owned here
-    // exactly once.
+    // SAFETY: `adopt_pipe` checked `v` is a well-formed handle value and
+    // owns what it adopts only once it names the expected pipe end; the
+    // broker that put it in this table handed it over to this process.
     Some(unsafe { OwnedHandle::from_raw_handle(raw_handle) })
 }
 

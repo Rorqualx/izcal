@@ -221,7 +221,7 @@ fn child(case: &str) -> i32 {
     let Some(link) = std::env::var(super::LINK_VAR)
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .and_then(super::sys::adopt)
+        .and_then(|v| super::sys::adopt_pipe(v, false))
     else {
         return 10;
     };

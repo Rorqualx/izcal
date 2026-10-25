@@ -576,6 +576,7 @@ impl Inner {
             return Vec::new();
         };
         let mut events = Vec::new();
+        let mut later: Vec<Box<dyn Any + Send>> = Vec::new();
         let reply = match c {
             Ctl::Relay {
                 req,
@@ -623,7 +624,8 @@ impl Inner {
                         let handles = b.held.remove(&ticket).unwrap_or_default();
                         let mut items = Vec::with_capacity(handles.len());
                         let mut ok = handles.len() == held.ends.len();
-                        if let Some(c) = b.children.get(&from) {
+                        let child = b.children.get(&from);
+                        if let Some(c) = child {
                             for (h, (_, _, kind)) in handles.iter().zip(&held.ends) {
                                 match sys::give(&c.process, h) {
                                     Ok(v) => items.push(CtlItem {
@@ -636,11 +638,26 @@ impl Inner {
                         } else {
                             ok = false;
                         }
-                        drop(handles);
-                        match Items::from_slice(&items) {
-                            Some(items) if ok => Ctl::Redeemed { req, items },
-                            _ => Ctl::RedeemRefused { req, reason: 0 },
-                        }
+                        later.push(Box::new(handles));
+                        let reply = match Items::from_slice(&items) {
+                            Some(items) if ok => Some(Ctl::Redeemed { req, items }),
+                            _ => None,
+                        };
+                        reply.unwrap_or_else(|| {
+                            // Take back what was given, closing the
+                            // child's copies, so no end stays open there
+                            // unreported; the ends are gone.
+                            if let Some(c) = child {
+                                for i in &items {
+                                    if let Ok(h) = sys::pull(&c.process, i.value, true) {
+                                        later.push(Box::new(h));
+                                    }
+                                }
+                            }
+                            b.ledger.lost(&held.ends);
+                            b.ledger.sweep();
+                            Ctl::RedeemRefused { req, reason: 0 }
+                        })
                     }
                     Err(e) => Ctl::RedeemRefused {
                         req,
@@ -671,7 +688,7 @@ impl Inner {
             self.send_ctl(st, Some(from), &r);
         }
         self.dispatch(st, events);
-        Vec::new()
+        later
     }
 
     /// Tells binders their receivers broke.
@@ -1157,8 +1174,10 @@ impl Inner {
             match Arc::try_unwrap(e.h) {
                 Ok(h) => taken.push((h, *kind)),
                 Err(shared) => {
-                    // Still referenced by an operation: cannot move.
+                    // Still referenced by an operation: cannot move. Every
+                    // handle is dropped outside the lock.
                     later.push(Box::new(shared));
+                    later.push(Box::new(core::mem::take(&mut taken)));
                     Self::break_sender(st, id);
                     return;
                 }

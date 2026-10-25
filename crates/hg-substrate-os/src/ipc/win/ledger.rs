@@ -375,6 +375,19 @@ impl Ledger {
         dead
     }
 
+    /// Ends the broker failed to hand over after a redemption: it took
+    /// them back and closed them, so they are gone.
+    pub(crate) fn lost(&mut self, ends: &[(PipeKey, End, WireKind)]) {
+        for &(pipe, end, _) in ends {
+            if let Some(e) = self.entries.get_mut(&pipe) {
+                match end {
+                    End::Sender => e.sender = Holder::Gone,
+                    End::Receiver => e.receiver = Holder::Gone,
+                }
+            }
+        }
+    }
+
     /// Forgets channels whose two ends are both gone.
     pub(crate) fn sweep(&mut self) {
         let gone: Vec<PipeKey> = self
@@ -571,6 +584,25 @@ mod tests {
         // A held the carrier's receiver: the ticket dies with A, and
         // the sender it held with it.
         assert_eq!(l.gone(A), vec![[4; 16]]);
+        let _ = l.gone(B);
+        l.sweep();
+        assert_eq!(l.view(carried, End::Sender), None);
+    }
+
+    #[test]
+    fn ends_lost_after_a_redemption_are_gone_and_swept() {
+        let mut l = ledger();
+        let carried = pipe(B, 1);
+        l.place(carried, End::Receiver, B).unwrap();
+        l.place(pipe(A, 9), End::Receiver, A).unwrap();
+        let held = Held {
+            carrier: pipe(A, 9),
+            from: B,
+            ends: vec![(carried, End::Sender, WireKind::Sender)],
+        };
+        l.relay([5; 16], held).unwrap();
+        let (held, _) = l.redeem(A, &[5; 16], pipe(A, 9)).unwrap();
+        l.lost(&held.ends);
         let _ = l.gone(B);
         l.sweep();
         assert_eq!(l.view(carried, End::Sender), None);
