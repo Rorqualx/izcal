@@ -41,6 +41,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-launch-wire"
+version = "0.0.0"
+
+[[package]]
 name = "hg-substrate"
 version = "0.0.0"
 dependencies = [
