@@ -19,15 +19,15 @@
 //!
 //! The rules, in the order applied, each with its reason:
 //!
-//! 1. A layout the parser cannot read past the header (a descriptor of
-//!    an unknown type, a count past the message) → Violation: the kernel
-//!    builds descriptors only from what the sender asked for. No audit
-//!    token → Closed: the kernel always writes one when asked (P1), so
-//!    its absence is this process's own mistake.
+//! 1. No audit token → Closed: the kernel always writes one when asked
+//!    (P1), so its absence is this process's own mistake.
 //! 2. A bound receiver (IPC-R2): the token must be the peer the receiver
 //!    was bound to (pid and pid version, P3); a message from any other
 //!    process is blamed on the bound peer, the only process that could
-//!    have passed its sender on.
+//!    have passed its sender on, whatever the message holds. Then a
+//!    layout the parser cannot read past the header (a descriptor of an
+//!    unknown type, a count past the message) → Violation: the kernel
+//!    builds descriptors only from what the sender asked for.
 //! 3. The message itself: our data id, sent on a send right (a message
 //!    that arrived on a send-once right to a data port was not sent by
 //!    this transport: no peer is ever given one), and carrying a
@@ -214,11 +214,10 @@ where
     };
     let sender = (token.pid != 0).then_some(token.pid);
     let refuse = |reason: Reason| Decision::Violation { reason, sender };
-    if let Err(e) = a.walk {
-        return refuse(Reason::Layout(e));
-    }
 
-    // Rule 2: the binding.
+    // Rule 2: the binding, before anything the sender wrote is read: a
+    // message from another process is the bound peer's fault whatever
+    // its shape.
     if let Some(peer) = binding.peer
         && token != peer
     {
@@ -226,6 +225,9 @@ where
             reason: Reason::WrongPeer,
             sender: (peer.pid != 0).then_some(peer.pid),
         };
+    }
+    if let Err(e) = a.walk {
+        return refuse(Reason::Layout(e));
     }
 
     // Rule 3: the message itself.
@@ -436,6 +438,19 @@ mod proofs {
             receiver: kani::any(),
         };
         let d = decide_with(&a, binding, &mut flow, &held, |_b| decoded);
+        // A bound receiver's message from any other process is the bound
+        // peer's violation, whatever else is wrong with it.
+        if let (Some(p), Ok(t)) = (binding.peer, token)
+            && t != p
+        {
+            assert!(matches!(
+                d,
+                Decision::Violation {
+                    reason: Reason::WrongPeer,
+                    sender,
+                } if sender == (p.pid != 0).then_some(p.pid)
+            ));
+        }
         match d {
             Decision::Accept { view, kinds, count } => {
                 assert!(count == ND);
@@ -750,6 +765,13 @@ mod tests {
             let mut c = Case::new(&[]);
             c.binding = Binding { peer: Some(PEER) };
             c.token = Ok(other);
+            assert_eq!(c.violation(), (Reason::WrongPeer, Some(4242)));
+            // A wrong process's unreadable message is still the bound
+            // peer's fault, not the sender's to be blamed for.
+            let mut c = Case::new(&[]);
+            c.binding = Binding { peer: Some(PEER) };
+            c.token = Ok(other);
+            c.walk = Err(WireError::UnknownDescriptor);
             assert_eq!(c.violation(), (Reason::WrongPeer, Some(4242)));
         }
     }
