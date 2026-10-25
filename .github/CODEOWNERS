@@ -4,13 +4,17 @@
 # self-approval line in the pull request (security scope 9.2, SEC-6).
 # The standard names the role, not a handle; the repository owner holds
 # it. Paths that do not exist yet are listed so they are owned from the
-# commit that creates them.
+# commit that creates them. `tools/checks.sh` and `hg-graph-lint` are
+# not on CS-GA-1's list but are the gate's own code, so they are owned
+# the same way.
 
 /clippy.toml                          @Rorqualx
 /crates/hg-substrate-os/clippy.toml   @Rorqualx
 /tools/lints.toml                     @Rorqualx
 /tools/tiers.toml                     @Rorqualx
 /tools/graph-rules.toml               @Rorqualx
+/tools/checks.sh                      @Rorqualx
+/crates/hg-graph-lint/                @Rorqualx
 /tools/deny.toml                      @Rorqualx
 /unsafe-inventory.toml                @Rorqualx
 /nondeterminism-inventory.toml        @Rorqualx
