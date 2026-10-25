@@ -190,9 +190,13 @@ impl Ledger {
         if n >= MAX_TICKETS_PER_PROC || !self.room_for(&held.ends) {
             return Err(LedgerError::Quota);
         }
-        let mut updates = Vec::with_capacity(held.ends.len());
+        // Folded per channel: a relay may carry both ends of one.
+        let mut updates: BTreeMap<PipeKey, Entry> = BTreeMap::new();
         for &(pipe, end, kind) in &held.ends {
-            let mut e = self.entry(pipe);
+            let mut e = updates
+                .get(&pipe)
+                .copied()
+                .unwrap_or_else(|| self.entry(pipe));
             match end {
                 End::Sender => e.sender = Holder::Ticket(ticket),
                 End::Receiver => e.receiver = Holder::Ticket(ticket),
@@ -200,7 +204,7 @@ impl Ledger {
             if kind == WireKind::BoundSender {
                 e.bound = true;
             }
-            updates.push((pipe, e));
+            updates.insert(pipe, e);
         }
         for (pipe, e) in updates {
             self.put(pipe, e)?;
@@ -316,9 +320,11 @@ impl Ledger {
             return Err(LedgerError::NotHolder);
         }
         let consistent = match e.sender {
-            // Still with the binder (its creator, before the grant), in
-            // flight, or with the peer.
-            Holder::Proc(p) => p == binder || self.pids.get(&p) == Some(&peer_pid),
+            // Still with the binder or the channel's creator (before the
+            // grant), in flight, or with the peer.
+            Holder::Proc(p) => {
+                p == binder || p == pipe.creator || self.pids.get(&p) == Some(&peer_pid)
+            }
             Holder::Ticket(_) | Holder::Gone => true,
         };
         e.binding = Some(Binding {
@@ -432,6 +438,36 @@ mod tests {
         l.add_proc(A, 101);
         l.add_proc(B, 102);
         l
+    }
+
+    #[test]
+    fn both_ends_of_one_channel_in_one_relay_are_both_recorded() {
+        let mut l = ledger();
+        l.relay(
+            [7; 16],
+            Held {
+                carrier: pipe(BROKER, 9),
+                from: A,
+                ends: vec![
+                    (pipe(A, 1), End::Sender, WireKind::Sender),
+                    (pipe(A, 1), End::Receiver, WireKind::Receiver),
+                ],
+            },
+        )
+        .unwrap();
+        // Both ends are in the ticket: neither is still A's.
+        assert_eq!(l.view(pipe(A, 1), End::Sender).unwrap().holder, None);
+        assert_eq!(l.view(pipe(A, 1), End::Receiver).unwrap().holder, None);
+    }
+
+    #[test]
+    fn a_receiver_binds_while_the_sender_is_still_with_its_creator() {
+        let mut l = ledger();
+        // Channel 1 made by A; its receiver given to B; the sender still A's.
+        l.place(pipe(A, 1), End::Receiver, B).unwrap();
+        l.place(pipe(A, 1), End::Sender, A).unwrap();
+        // B binds to some other peer (pid 555) before A grants the sender.
+        assert_eq!(l.bind(B, pipe(A, 1), 0x40, 555), Ok(None));
     }
 
     #[test]
