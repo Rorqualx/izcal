@@ -1,0 +1,61 @@
+[env] broker token: integrity=medium appcontainer=no privileges=1 user-file-read=not-probed sam-read=denied mitigations=lockdown+job (not-applied:appcontainer,untrusted,win32k,acg,cig,cet)
+[env] broker pid=30816 user=S-1-5-21-<machine>-1001 session=0
+[W1] broker server end, fresh: HandleCount=1 PointerCount=32768
+[W1] broker server end after a 2nd broker-local copy: HandleCount=2 PointerCount=32768
+[W1] client end: broker's own copy counts: HandleCount=2 PointerCount=32769
+[W1]   child: HandleCount=2 PointerCount=65536 access=0x100002
+[W1]   child: dupself OK -> 216 type=File access=0x100002
+[W1]   child: HandleCount=3 PointerCount=98302 access=0x100002
+[W1] after pull (child had made a 2nd copy; broker also holds one): pulled copy HandleCount=3 PointerCount=98303
+[child] pid=29040 boot (main reached)
+[child] pid=29040 hello pid=29040 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[W2]   child: h=156 type=Event access=0x1f0003
+[W2] child event handle value=156 (low2=0)
+[W2]   child: value 156: GetHandleInformation ok=1 err=0 flags=0 filetype=0 type=Event access=0x1f0003
+[W2] broker dup(child, 156) OK -> type=Event access=0x1f0003
+[W2]   child: value 157: GetHandleInformation ok=1 err=0 flags=0 filetype=0 type=Event access=0x1f0003
+[W2] broker dup(child, 157) OK -> type=Event access=0x1f0003
+[W2]   child: value 158: GetHandleInformation ok=1 err=0 flags=0 filetype=0 type=Event access=0x1f0003
+[W2] broker dup(child, 158) OK -> type=Event access=0x1f0003
+[W2]   child: value 159: GetHandleInformation ok=1 err=0 flags=0 filetype=0 type=Event access=0x1f0003
+[W2] broker dup(child, 159) OK -> type=Event access=0x1f0003
+[W3]   child: postread h=4 ok=0 err=997 (0=pending)
+[W3] cancel_first=false: broker wrote one 64 B message: Ok(64)
+[W3] A (old holder) read state:
+[W3]   child: readpoll h=4: event-signalled=true status=0x0 bytes=64 first=42
+[W3] B (new holder) read:
+[W3]   child: err=258 len=0
+[W3]   child: postread h=4 ok=0 err=997 (0=pending)
+[W3]   child: CancelIoEx ok=1 err=0
+[W3] cancel_first=true: broker wrote one 64 B message: Ok(64)
+[W3] A (old holder) read state:
+[W3]   child: readpoll h=4: event-signalled=true status=0xc0000120 bytes=0 first=-1
+[W3] B (new holder) read:
+[W3]   child: ok len=64 first=42
+[W4] A: boot (main reached)
+[W4] A: hello pid=25084 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[W4]   child: CreateNamedPipeW OK h=204 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-956144074-1680805562-440342826-3280806706-2864381561-2726534011-2574527243\izcal-d5-5739ee41b0e781533eec3121d8b68fc9 sd=O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-956144074-1680805562-440342826-3280806706-2864381561-2726534011-2574527243)(A;;FA;;;S-1-5-21-<machine>-1001)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0)
+[W4] B opens A's LOCAL pipe by its full name \\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-956144074-1680805562-440342826-3280806706-2864381561-2726534011-2574527243\izcal-d5-5739ee41b0e781533eec3121d8b68fc9:
+[W4]   child: CreateFileW OK h=200 type=File access=0x100082
+[W4] A GetNamedPipeClientProcessId on its server end (expect B pid=23944):
+[W4]   child: ClientPid=23944 (ok=1 err=0) ServerPid=25084 (ok=1)
+[W4prof] 100 profiles: Create median 5006 us (mean 5139, max 14796); Delete median 1964 us (mean 2081, max 4154)
+[W5] server end: FileNameInfo=\izcal-d5-620236f043292de2326acd32f48e6be7 NtQueryObject-name=\Device\NamedPipe\izcal-d5-620236f043292de2326acd32f48e6be7 GetNamedPipeInfo flags=0xd out=65536 in=65536 max=1 flags-serverbit=true
+[W5] client end: FileNameInfo=\izcal-d5-620236f043292de2326acd32f48e6be7 NtQueryObject-name=\Device\NamedPipe\izcal-d5-620236f043292de2326acd32f48e6be7 GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1 flags-serverbit=false
+[W5] client end pulled from child: FileNameInfo=\izcal-d5-620236f043292de2326acd32f48e6be7 NtQueryObject-name=\Device\NamedPipe\izcal-d5-620236f043292de2326acd32f48e6be7 GetNamedPipeInfo err=5
+[W6] DuplicateHandle x16 into a sandboxed child: median 3.9 us/batch (0.24 us/handle), min 3.7, max 4.0
+[W7] child: boot (main reached)
+[W7] child: hello pid=15776 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[W7]   child: value 828: GetHandleInformation ok=1 err=0 flags=1 filetype=3 type=File access=0x100183
+[W7] broker's boot_c value was 828
+[W7]   child: ok len=3 first=52
+[W7]   child: type=File access=0x100002
+[W7]   child: type=File access=0x100001
+[W7]   child: write 0: Ok(20)
+[W7] broker reads on s1: ok len=20 first=0
+[W7] isolation: broker-only handle values checked in the child (expect all FAILED err=6):
+[W7]   child: dupself FAILED err=6
+[W7]   child: dupself FAILED err=6
+[W7]   child: dupself FAILED err=6
+[W7]   child: dupself FAILED err=6
+[env] Medium-token broker exited code=0x0

@@ -149,6 +149,30 @@ fn main() {
     if want("p27") {
         p27();
     }
+    if want("w1") {
+        w1();
+    }
+    if want("w2") {
+        w2();
+    }
+    if want("w3") {
+        w3();
+    }
+    if want("w4") {
+        w4();
+    }
+    if want("w4prof") {
+        w4_profiles();
+    }
+    if want("w5") {
+        w5();
+    }
+    if want("w6") {
+        w6();
+    }
+    if want("w7") {
+        w7();
+    }
     if want("rtt") {
         rtt();
     }
@@ -2070,9 +2094,396 @@ fn relaunch_medium(rest: &[String]) {
     println!("[env] Medium-token broker exited code={code:#x}");
 }
 
+// ======================= round 2 (design review) =======================
+
+fn counts_str(h: H) -> String {
+    match counts(h) {
+        Ok((hc, pc)) => format!("HandleCount={hc} PointerCount={pc}"),
+        Err(st) => format!("counts ntstatus={st:#x}"),
+    }
+}
+
+// W1: does ObjectBasicInformation's HandleCount span processes?
+fn w1() {
+    let t = "W1";
+    let (s, c, _) = make_pair(Some(&user_dacl()), 65536, 65536).unwrap();
+    say(t, format!("broker server end, fresh: {}", counts_str(s)));
+    let sdup = dup(me(), s, me(), 0, DUPLICATE_SAME_ACCESS).unwrap();
+    say(
+        t,
+        format!(
+            "broker server end after a 2nd broker-local copy: {}",
+            counts_str(s)
+        ),
+    );
+    unsafe { CloseHandle(sdup) };
+    // The client end goes into the child; the child makes a 2nd copy of
+    // it in its own table; then the broker pulls the end with
+    // close-source and reads the counts of the pulled copy.
+    let mut a = launch(&Launch::default()).unwrap();
+    let cc = a.give(c, SEND, 0).unwrap(); // a copy stays in the broker too
+    a.resume();
+    a.collect(Duration::from_secs(20));
+    say(
+        t,
+        format!("client end: broker's own copy counts: {}", counts_str(c)),
+    );
+    says(t, a.cmd(&format!("counts {cc}")));
+    says(t, a.cmd(&format!("dupself {cc}")));
+    says(t, a.cmd(&format!("counts {cc}")));
+    // Broker pulls the child's primary copy with close-source.
+    let pulled = dup(
+        a.process,
+        hp(cc),
+        me(),
+        0,
+        DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS,
+    )
+    .expect("pull");
+    say(
+        t,
+        format!(
+            "after pull (child had made a 2nd copy; broker also holds one): pulled copy {}",
+            counts_str(pulled)
+        ),
+    );
+    unsafe {
+        CloseHandle(pulled);
+        CloseHandle(c);
+        CloseHandle(s);
+    }
+    a.kill();
+}
+
+// W2: do the low two bits of a handle value matter?
+fn w2() {
+    let t = "W2";
+    let mut a = start("izcal.d5probe.a");
+    // An event the child owns, at a 4-aligned value if we can get one.
+    let rep = a.cmd("mkevent");
+    says(t, rep.clone());
+    let base: isize = info_field(&rep, "h").parse().unwrap_or(0);
+    say(
+        t,
+        format!("child event handle value={base} (low2={})", base & 3),
+    );
+    for d in 0..4 {
+        let v = base | d;
+        says(t, a.cmd(&format!("checkh {v}")));
+        // Broker duplicates from the child's table using the tagged value.
+        match dup(a.process, hp(v), me(), 0, DUPLICATE_SAME_ACCESS) {
+            Ok(h) => {
+                say(t, format!("broker dup(child, {v}) OK -> {}", describe(h)));
+                unsafe { CloseHandle(h) };
+            }
+            Err(e) => say(t, format!("broker dup(child, {v}) FAILED err={e}")),
+        }
+    }
+    a.kill();
+}
+
+// W3: a pending read across a close-source move.
+fn w3() {
+    let t = "W3";
+    for cancel in [false, true] {
+        let (s, c, _) = make_pair(Some(&user_dacl()), 65536, 65536).unwrap();
+        // The old holder (child A) gets the server (receiver) end.
+        let mut a = launch(&Launch::default()).unwrap();
+        let rs = a.give(s, RECV | FILE_READ_ATTRIBUTES, 0).unwrap();
+        a.resume();
+        a.collect(Duration::from_secs(20));
+        says(t, a.cmd(&format!("postread {rs} 4096")));
+        if cancel {
+            says(t, a.cmd(&format!("cancelread {rs}")));
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        // Broker pulls the receiver end out of A with close-source into B.
+        let mut b = launch(&Launch::default()).unwrap();
+        let in_b =
+            dup(a.process, hp(rs), b.process, RECV, DUPLICATE_CLOSE_SOURCE).expect("pull to B");
+        b.resume();
+        b.collect(Duration::from_secs(20));
+        // Broker writes one message to the pipe (from the client end).
+        let w = write_msg(c, vec![42u8; 64]);
+        say(
+            t,
+            format!("cancel_first={cancel}: broker wrote one 64 B message: {w:?}"),
+        );
+        std::thread::sleep(Duration::from_millis(200));
+        say(t, "A (old holder) read state:");
+        says(t, a.cmd(&format!("readpoll {rs}")));
+        say(t, "B (new holder) read:");
+        says(t, b.cmd(&format!("read {} 4096 1000", hv(in_b))));
+        a.kill();
+        b.kill();
+        unsafe {
+            CloseHandle(c);
+            CloseHandle(s);
+        }
+    }
+}
+
+// W4: two children in the SAME AppContainer profile.
+fn w4() {
+    let t = "W4";
+    let mut a = launch(&Launch {
+        container: "izcal.d5probe.shared",
+        ..Default::default()
+    })
+    .unwrap();
+    a.resume();
+    let ha = a.collect(Duration::from_secs(20));
+    for l in &ha {
+        say(t, format!("A: {l}"));
+    }
+    let mut b = launch(&Launch {
+        container: "izcal.d5probe.shared",
+        ..Default::default()
+    })
+    .unwrap();
+    b.resume();
+    b.collect(Duration::from_secs(20));
+    // A creates a LOCAL\ pipe (server) and reports the handle + name.
+    let name = format!(r"\\.\pipe\LOCAL\izcal-d5-{}", rand_hex());
+    let rep = a.cmd(&format!("mkpipe {name}"));
+    says(t, rep.clone());
+    let a_server: isize = info_field(&rep, "h").parse().unwrap_or(0);
+    let fname = info_field(&rep, "filename");
+    let full = format!(r"\\.\pipe{fname}");
+    // B opens it by name.
+    say(
+        t,
+        format!("B opens A's LOCAL pipe by its full name {full}:"),
+    );
+    let repb = b.cmd(&format!("open {full} {SEND:#x}"));
+    says(t, repb.clone());
+    if !info_field(&repb, "h").is_empty() {
+        std::thread::sleep(Duration::from_millis(100));
+        say(
+            t,
+            format!(
+                "A GetNamedPipeClientProcessId on its server end (expect B pid={}):",
+                b.pid
+            ),
+        );
+        says(t, a.cmd(&format!("clientpid {a_server}")));
+    }
+    a.kill();
+    b.kill();
+}
+
+// W4 (profiles): create/delete 100 derived AppContainer profiles, timed.
+fn w4_profiles() {
+    use windows_sys::Win32::Security::Isolation::{
+        CreateAppContainerProfile, DeleteAppContainerProfile,
+    };
+    let t = "W4prof";
+    let n = 100;
+    let mut create_us = vec![];
+    let mut del_us = vec![];
+    for i in 0..n {
+        let name = format!("izcal.d5probe.perf.{i}");
+        let nw = w(&name);
+        let mut sid: windows_sys::Win32::Security::PSID = null_mut();
+        let t0 = Instant::now();
+        let hr = unsafe {
+            CreateAppContainerProfile(nw.as_ptr(), nw.as_ptr(), nw.as_ptr(), null(), 0, &mut sid)
+        };
+        create_us.push(t0.elapsed().as_secs_f64() * 1e6);
+        if hr != 0 {
+            say(
+                t,
+                format!("profile {i}: CreateAppContainerProfile hr={hr:#x}"),
+            );
+            break;
+        }
+    }
+    for i in 0..n {
+        let name = format!("izcal.d5probe.perf.{i}");
+        let t0 = Instant::now();
+        let hr = unsafe { DeleteAppContainerProfile(w(&name).as_ptr()) };
+        del_us.push(t0.elapsed().as_secs_f64() * 1e6);
+        if hr != 0 {
+            say(t, format!("profile {i}: Delete hr={hr:#x}"));
+        }
+    }
+    let med = |v: &mut Vec<f64>| {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        (
+            v[v.len() / 2],
+            v[v.len() - 1],
+            v.iter().sum::<f64>() / v.len() as f64,
+        )
+    };
+    let (cm, cmax, cmean) = med(&mut create_us);
+    let (dm, dmax, dmean) = med(&mut del_us);
+    say(
+        t,
+        format!(
+            "{n} profiles: Create median {cm:.0} us (mean {cmean:.0}, max {cmax:.0}); Delete median {dm:.0} us (mean {dmean:.0}, max {dmax:.0})"
+        ),
+    );
+}
+
+// W5: read a pipe's name and end from a handle, incl. one from a child.
+fn w5() {
+    let t = "W5";
+    let (s, c, _) = make_pair(Some(&user_dacl()), 65536, 65536).unwrap();
+    for (label, h) in [("server end", s), ("client end", c)] {
+        say(
+            t,
+            format!(
+                "{label}: FileNameInfo={} NtQueryObject-name={} {} flags-serverbit={}",
+                file_name(h),
+                object_name(h),
+                pipe_info(h),
+                pipe_info(h).contains("flags=0xd")
+            ),
+        );
+    }
+    // A child holds the client end; broker pulls it and reads the name.
+    let mut a = launch(&Launch::default()).unwrap();
+    let cc = a.give(c, SEND, 0).unwrap();
+    a.resume();
+    a.collect(Duration::from_secs(20));
+    let pulled = dup(a.process, hp(cc), me(), 0, DUPLICATE_SAME_ACCESS).unwrap();
+    say(
+        t,
+        format!(
+            "client end pulled from child: FileNameInfo={} NtQueryObject-name={} {}",
+            file_name(pulled),
+            object_name(pulled),
+            pipe_info(pulled)
+        ),
+    );
+    unsafe {
+        CloseHandle(pulled);
+        CloseHandle(s);
+        CloseHandle(c);
+    }
+    a.kill();
+}
+
+// W6: cost of duplicating 16 ends into a child in one batch.
+fn w6() {
+    let t = "W6";
+    let mut a = launch(&Launch::default()).unwrap();
+    a.resume();
+    a.collect(Duration::from_secs(20));
+    let mut pairs = vec![];
+    for _ in 0..16 {
+        pairs.push(make_pair(Some(&user_dacl()), 65536, 65536).unwrap());
+    }
+    // Warm the AppContainer/target-process path once, then time 5 batches.
+    let mut times = vec![];
+    for round in 0..6 {
+        let t0 = Instant::now();
+        let mut hs = vec![];
+        for (_, c, _) in &pairs {
+            hs.push(dup(me(), *c, a.process, SEND, 0).unwrap());
+        }
+        let us = t0.elapsed().as_secs_f64() * 1e6;
+        if round > 0 {
+            times.push(us);
+        }
+        // Close the duplicates in the child before the next round.
+        for h in hs {
+            let _ = dup(a.process, h, me(), 0, DUPLICATE_CLOSE_SOURCE);
+        }
+    }
+    times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    say(
+        t,
+        format!(
+            "DuplicateHandle x16 into a sandboxed child: median {:.1} us/batch ({:.2} us/handle), min {:.1}, max {:.1}",
+            times[times.len() / 2],
+            times[times.len() / 2] / 16.0,
+            times[0],
+            times[times.len() - 1]
+        ),
+    );
+    for (s, c, _) in pairs {
+        unsafe {
+            CloseHandle(s);
+            CloseHandle(c);
+        }
+    }
+    a.kill();
+}
+
+// W7: bootstrap over one inherited pipe; confirm isolation.
+fn w7() {
+    let t = "W7";
+    // The bootstrap pipe: broker keeps the server end, the child gets the
+    // client end as its ONE extra inheritable handle (beyond stdio).
+    let (boot_s, boot_c, _) = make_pair(Some(&user_dacl()), 65536, 65536).unwrap();
+    unsafe { SetHandleInformation(boot_c, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
+    // Two channel ends to hand over after creation.
+    let (s1, c1, _) = make_pair(Some(&user_dacl()), 65536, 65536).unwrap();
+    let (s2, c2, _) = make_pair(Some(&user_dacl()), 65536, 65536).unwrap();
+    // A few broker-only handles whose values we will test in the child.
+    let probe_handles = [event(), boot_s, s1, s2];
+    let mut a = launch(&Launch {
+        extra_inherit: vec![boot_c],
+        ..Default::default()
+    })
+    .unwrap();
+    // Duplicate the two channel ends into the suspended child.
+    let v1 = a.give(c1, SEND, DUPLICATE_CLOSE_SOURCE).unwrap();
+    let v2 = a.give(s2, RECV, DUPLICATE_CLOSE_SOURCE).unwrap();
+    a.resume();
+    let hello = a.collect(Duration::from_secs(20));
+    for l in &hello {
+        say(t, format!("child: {l}"));
+    }
+    // The child reports the value of its inherited bootstrap end; compare.
+    says(t, a.cmd(&format!("checkh {}", hv(boot_c))));
+    say(t, format!("broker's boot_c value was {}", hv(boot_c)));
+    // Broker sends the two channel values over the bootstrap pipe; the
+    // child reads them from the bootstrap end and uses them.
+    let msg = format!("{v1} {v2}");
+    write_msg(boot_s, msg.into_bytes()).unwrap();
+    says(t, a.cmd(&format!("read {} 256 1000", hv(boot_c))));
+    says(t, a.cmd(&format!("access {v1}")));
+    says(t, a.cmd(&format!("access {v2}")));
+    // Use them: broker writes on s1 -> child reads v1? v1 is the SENDER
+    // (client) end, so the child writes and the broker reads on s1.
+    says(t, a.cmd(&format!("write {v1} 1 20")));
+    say(
+        t,
+        format!("broker reads on s1: {}", fmt_read(&read_msg(s1, 256, 1000))),
+    );
+    // Isolation: test known broker handle values in the child with
+    // dupself (DuplicateHandle self->self), which returns err 6 for an
+    // invalid value instead of raising under strict handle checks (so it
+    // does not kill the child). An OK would mean the value names a live
+    // object in the child, i.e. a leak.
+    say(
+        t,
+        "isolation: broker-only handle values checked in the child (expect all FAILED err=6):",
+    );
+    for h in probe_handles {
+        says(t, a.cmd(&format!("dupself {}", hv(h))));
+    }
+    a.kill();
+    unsafe {
+        CloseHandle(boot_s);
+        CloseHandle(boot_c);
+        // c1 and s2 went to the child with DUPLICATE_CLOSE_SOURCE: the
+        // broker no longer holds them.
+        CloseHandle(s1);
+        CloseHandle(c2);
+        for h in probe_handles {
+            if h != boot_s && h != s1 && h != s2 {
+                CloseHandle(h);
+            }
+        }
+    }
+}
+
 fn cleanup() {
     use windows_sys::Win32::Security::Isolation::DeleteAppContainerProfile;
-    for n in ["izcal.d5probe.a", "izcal.d5probe.b"] {
+    for n in ["izcal.d5probe.a", "izcal.d5probe.b", "izcal.d5probe.shared"] {
         let hr = unsafe { DeleteAppContainerProfile(w(n).as_ptr()) };
         say(
             "cleanup",

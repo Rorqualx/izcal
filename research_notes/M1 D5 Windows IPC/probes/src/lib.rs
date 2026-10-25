@@ -104,6 +104,37 @@ pub fn handle_count(h: H) -> Option<u32> {
     let (st, _rl, buf) = nt_query_len(h, 0, 56);
     (st == 0).then(|| (buf[1] & 0xffff_ffff) as u32)
 }
+/// ObjectBasicInformation (HandleCount, PointerCount) or the NTSTATUS.
+pub fn counts(h: H) -> Result<(u32, u32), u32> {
+    let (st, _rl, buf) = nt_query_len(h, 0, 56);
+    if st == 0 {
+        Ok(((buf[1] & 0xffff_ffff) as u32, (buf[1] >> 32) as u32))
+    } else {
+        Err(st as u32)
+    }
+}
+/// NtQueryObject ObjectNameInformation (class 1): a single UNICODE_STRING.
+pub fn object_name(h: H) -> String {
+    let (st, _rl, buf) = nt_query_len(h, 1, 4096);
+    if st != 0 {
+        return format!("ntstatus={:#x}", st as u32);
+    }
+    unicode_string_at(&buf)
+}
+/// GetFileInformationByHandleEx(FileNameInfo): the device-relative path.
+pub fn file_name(h: H) -> String {
+    use windows_sys::Win32::Storage::FileSystem::{FileNameInfo, GetFileInformationByHandleEx};
+    let mut buf = [0u32; 256];
+    let ok = unsafe {
+        GetFileInformationByHandleEx(h, FileNameInfo, buf.as_mut_ptr() as *mut c_void, 1024)
+    };
+    if ok == 0 {
+        return format!("name-err={}", le());
+    }
+    let len = buf[0] as usize / 2;
+    let p = unsafe { (buf.as_ptr() as *const u16).add(2) };
+    String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(p, len) })
+}
 pub fn describe(h: H) -> String {
     format!(
         "type={} access={}",

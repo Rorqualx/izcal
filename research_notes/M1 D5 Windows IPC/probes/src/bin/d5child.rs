@@ -27,6 +27,10 @@ use windows_sys::Win32::System::Threading::*;
 struct St {
     port: H,
     wakes: Arc<AtomicU32>,
+    /// Round 2 W3: overlapped reads posted and left pending, keyed by
+    /// the handle value they were posted on. The handle may be closed
+    /// (DUPLICATE_CLOSE_SOURCE) while the OVERLAPPED lives on here.
+    pending: Vec<(isize, Box<OVERLAPPED>, Vec<u8>)>,
 }
 
 fn main() {
@@ -59,6 +63,7 @@ fn main() {
     let mut st = St {
         port: null_mut(),
         wakes: Arc::new(AtomicU32::new(0)),
+        pending: vec![],
     };
     let stdin = std::io::stdin();
     for line in stdin.lock().lines() {
@@ -594,6 +599,97 @@ fn run(p: &[&str], st: &mut St) -> Vec<String> {
                 x => format!("unknown api {x}"),
             };
             o.push(format!("{} on {}: returned {r}", p[1], p[2]));
+        }
+        "mkevent" => {
+            // W2: an event this child owns, for the tag-bit test.
+            let h = unsafe { CreateEventW(null(), 1, 0, null()) };
+            o.push(format!("h={} {}", hv(h), describe(h)));
+        }
+        "counts" => {
+            // W1: NtQueryObject ObjectBasicInformation HandleCount and
+            // PointerCount of this handle.
+            let h = hp(n(p[1]));
+            let (st2, _rl, buf) = nt_query_len(h, 0, 56);
+            if st2 != 0 {
+                o.push(format!("counts: ntstatus={:#x}", st2 as u32));
+            } else {
+                o.push(format!(
+                    "HandleCount={} PointerCount={} access={:#x}",
+                    buf[1] & 0xffff_ffff,
+                    buf[1] >> 32,
+                    (buf[0] >> 32) as u32
+                ));
+            }
+        }
+        "dupself" => {
+            // W1: a second, same-access copy of this handle in our own
+            // table (source = target = this process).
+            match dup(me(), hp(n(p[1])), me(), 0, DUPLICATE_SAME_ACCESS) {
+                Ok(h2) => o.push(format!("dupself OK -> {} {}", hv(h2), describe(h2))),
+                Err(e) => o.push(format!("dupself FAILED err={e}")),
+            }
+        }
+        "clientpid" => {
+            // W4: GetNamedPipeClientProcessId on a server-end handle.
+            let (mut cp, mut sp) = (0u32, 0u32);
+            let a = unsafe { GetNamedPipeClientProcessId(hp(n(p[1])), &mut cp) };
+            let ea = le();
+            let b = unsafe { GetNamedPipeServerProcessId(hp(n(p[1])), &mut sp) };
+            o.push(format!(
+                "ClientPid={cp} (ok={a} err={}) ServerPid={sp} (ok={b})",
+                if a == 0 { ea } else { 0 }
+            ));
+        }
+        "postread" => {
+            // W3: post an overlapped read and leave it pending.
+            let h = hp(n(p[1]));
+            let cap = u(p[2]) as usize;
+            let mut ov: Box<OVERLAPPED> = Box::new(unsafe { zeroed() });
+            ov.hEvent = event();
+            let mut buf = vec![0u8; cap];
+            let ok = unsafe { ReadFile(h, buf.as_mut_ptr(), cap as u32, null_mut(), &mut *ov) };
+            let e = le();
+            o.push(format!(
+                "postread h={} ok={ok} err={} (0=pending)",
+                n(p[1]),
+                if ok == 0 { e } else { 0 }
+            ));
+            st.pending.push((n(p[1]), ov, buf));
+        }
+        "cancelread" => {
+            // W3: cancel the pending read on this handle (still open).
+            let h = hp(n(p[1]));
+            if let Some((_, ov, _)) = st.pending.iter().find(|(v, ..)| *v == n(p[1])) {
+                let ok = unsafe { CancelIoEx(h, &**ov) };
+                o.push(format!(
+                    "CancelIoEx ok={ok} err={}",
+                    if ok == 0 { le() } else { 0 }
+                ));
+            } else {
+                o.push("cancelread: no pending read for that handle".into());
+            }
+        }
+        "readpoll" => {
+            // W3: report the pending read's state via its event and the
+            // OVERLAPPED status word (Internal = NTSTATUS, InternalHigh =
+            // bytes). The handle may already be closed, so GetOverlapped-
+            // Result is not used.
+            let v = n(p[1]);
+            if let Some((_, ov, buf)) = st.pending.iter().find(|(x, ..)| *x == v) {
+                let sig = unsafe { WaitForSingleObject(ov.hEvent, 0) } == 0;
+                let status = ov.Internal as u32;
+                let bytes = ov.InternalHigh;
+                let first = if sig && status == 0 && bytes > 0 {
+                    buf[0] as i32
+                } else {
+                    -1
+                };
+                o.push(format!(
+                    "readpoll h={v}: event-signalled={sig} status={status:#x} bytes={bytes} first={first}"
+                ));
+            } else {
+                o.push("readpoll: no such pending read".into());
+            }
         }
         "time" => {
             // In-process timing of a self round trip on a given pair (h1 -> h2).
