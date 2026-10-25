@@ -1,0 +1,38 @@
+[package]
+name = "hg-build-id"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's build identity tool (tier T): the digest of a build's inputs that becomes its BuildId (distribution 13 item 5, DU-M0a), with the SHA-256 it is computed by"
+
+[[bin]]
+name = "hg-build-id"
+path = "src/main.rs"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[dev-dependencies]
+hg-types = { path = "../hg-types" }
+
+# Tier T: the base table (coding standard A.1) with A.2's tier T changes.
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"

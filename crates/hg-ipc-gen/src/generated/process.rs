@@ -106,7 +106,8 @@ impl crate::sample::Sample for ProcessKind {
 /// Identifies a build; a child from another build is refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildId {
-    /// The build's identifier, from the release process.
+    /// The truncated digest of the build's inputs, compiled into every
+    /// binary of the build (`hg_types::BUILD_ID`; distribution 13 item 5).
     pub id: u64,
 }
 

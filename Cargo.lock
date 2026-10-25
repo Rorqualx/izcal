@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "hg-build-id"
+version = "0.0.0"
+dependencies = [
+ "hg-types",
+]
+
+[[package]]
 name = "hg-dst"
 version = "0.0.0"
 dependencies = [

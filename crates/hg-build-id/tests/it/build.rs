@@ -1,0 +1,154 @@
+//! The `BuildId` definition (distribution 13 item 5): what it depends on,
+//! and the constant `hg-types` compiles in.
+
+use std::collections::BTreeSet;
+use std::path::Path;
+
+use hg_build_id::{Inputs, collect, schema_hash, unpinned};
+
+fn base() -> Inputs {
+    Inputs {
+        commit: "0123456789abcdef0123456789abcdef01234567".into(),
+        specs_lock: Some(b"wpt 1\n".to_vec()),
+        downloads_lock: None,
+        toolchain: b"[toolchain]\nchannel = \"1.99.1\"\n".to_vec(),
+        profile: "release".into(),
+        target: "x86_64-unknown-linux-gnu".into(),
+        channel: "stable".into(),
+        version: "1.0.0".into(),
+        schema: [7; 32],
+    }
+}
+
+#[test]
+fn the_unpinned_constant_is_the_unpinned_inputs_digest() {
+    assert_eq!(hg_types::UNPINNED_BUILD_ID, unpinned().build_id());
+}
+
+#[test]
+fn this_test_binary_reports_its_build() {
+    // Built without the variable, it carries the unpinned value; built
+    // with it, that value.
+    match std::env::var("IZCAL_BUILD_ID") {
+        Ok(hex) if hg_types::BUILD_IS_PINNED => {
+            assert_eq!(format!("{:016x}", hg_types::BUILD_ID), hex.to_lowercase());
+        }
+        _ => assert_eq!(hg_types::BUILD_ID, hg_types::UNPINNED_BUILD_ID),
+    }
+}
+
+#[test]
+fn every_input_changes_the_id() {
+    let b = base();
+    let id = b.build_id();
+    let mut variants = vec![];
+    let mut v = b.clone();
+    v.commit.push('x');
+    variants.push(v);
+    let mut v = b.clone();
+    v.specs_lock = None;
+    variants.push(v);
+    let mut v = b.clone();
+    v.downloads_lock = Some(Vec::new());
+    variants.push(v);
+    let mut v = b.clone();
+    v.toolchain.push(b'\n');
+    variants.push(v);
+    let mut v = b.clone();
+    v.profile = "dev".into();
+    variants.push(v);
+    let mut v = b.clone();
+    v.target = "aarch64-apple-darwin".into();
+    variants.push(v);
+    let mut v = b.clone();
+    v.channel = "beta".into();
+    variants.push(v);
+    let mut v = b.clone();
+    v.version = "1.0.1".into();
+    variants.push(v);
+    let mut v = b.clone();
+    v.schema[0] ^= 1;
+    variants.push(v);
+    for v in variants {
+        assert_ne!(v.build_id(), id, "{v:?}");
+    }
+}
+
+#[test]
+fn values_cannot_slide_between_inputs() {
+    // An absent lock and an empty one differ, and moving bytes from one
+    // field to the next changes the encoding.
+    let mut a = base();
+    a.downloads_lock = Some(Vec::new());
+    assert_ne!(a.encoding(), base().encoding());
+    let mut a = base();
+    a.profile = "releasex".into();
+    a.target = "86_64-unknown-linux-gnu".into();
+    assert_ne!(a.build_id(), base().build_id());
+}
+
+#[test]
+fn many_builds_do_not_collide() {
+    // DU's T1 check, on synthetic inputs: 20,000 builds differing in
+    // commit and version give 20,000 distinct 64-bit ids.
+    let mut seen = BTreeSet::new();
+    for i in 0..20_000u32 {
+        let mut b = base();
+        b.commit = format!("{i:040x}");
+        b.version = format!("1.{}.{}", i / 100, i % 100);
+        assert!(seen.insert(b.build_id()), "collision at {i}");
+    }
+}
+
+#[test]
+fn the_checkout_has_a_build_id() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // Two reads of one checkout agree, and the schema hash covers the
+    // .hgidl files that exist.
+    let a = collect(&root, "release", "x86_64-unknown-linux-gnu", "dev", "0.0.0").unwrap();
+    let b = collect(&root, "release", "x86_64-unknown-linux-gnu", "dev", "0.0.0").unwrap();
+    assert_eq!(a.build_id(), b.build_id());
+    assert_eq!(a.schema, schema_hash(&root).unwrap());
+    assert_ne!(a.schema, [0; 32]);
+    let other = collect(&root, "release", "aarch64-apple-darwin", "dev", "0.0.0").unwrap();
+    assert_ne!(a.build_id(), other.build_id());
+}
+
+#[test]
+fn an_untracked_file_changes_the_commit_input() {
+    // A scratch repository: one commit, then an untracked file.
+    let dir = std::env::temp_dir().join(format!("hg-build-id-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("crates/x/idl")).unwrap();
+    std::fs::write(dir.join("rust-toolchain.toml"), "[toolchain]\n").unwrap();
+    std::fs::write(dir.join("crates/x/idl/a.hgidl"), "protocol a;\n").unwrap();
+    let git = |args: &[&str]| {
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(args)
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    git(&[
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "t",
+    ]);
+    let clean = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
+    assert!(!clean.commit.contains("+dirty"));
+    std::fs::write(dir.join("crates/x/new.rs"), "fn f() {}\n").unwrap();
+    let dirty = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
+    assert!(dirty.commit.contains("+dirty:"));
+    assert_ne!(clean.build_id(), dirty.build_id());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
