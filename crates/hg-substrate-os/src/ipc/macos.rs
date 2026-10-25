@@ -504,11 +504,11 @@ impl Inner {
         let kind = classify(&l.header, l.token);
         match kind {
             Kind::Ignore | Kind::SendPossible => {
-                sys::release_received(bytes);
+                sys::release_received(buf);
                 return;
             }
             Kind::NoSenders => {
-                sys::release_received(bytes);
+                sys::release_received(buf);
                 let mut st = self.lock();
                 // Only the request this process armed on the port means
                 // Closed; any other is ignored.
@@ -518,7 +518,7 @@ impl Inner {
                 return;
             }
             Kind::NoToken => {
-                sys::release_received(bytes);
+                sys::release_received(buf);
                 let mut st = self.lock();
                 self.end_listener(&mut st, id, Item::Closed);
                 return;
@@ -548,12 +548,12 @@ impl Inner {
         }) = st.ends.get_mut(&id)
         else {
             drop(st);
-            sys::release_received(bytes);
+            sys::release_received(buf);
             return;
         };
         if lis.ended {
             drop(st);
-            sys::release_received(bytes);
+            sys::release_received(buf);
             return;
         }
         let binding = Binding { peer: lis.peer };
@@ -644,18 +644,20 @@ impl Inner {
                     lis.queue.push_back(Item::Message(payload, handles));
                 }
                 self.kick(&mut st, id);
+                // Its rights are handles and a kept reply right now.
+                buf.adopted();
                 sys::deallocate(l.header.voucher);
             }
             Decision::Violation { .. } => {
                 let fault = decision.fault();
                 self.end_listener(&mut st, id, fault.map_or(Item::Closed, Item::Violation));
                 drop(st);
-                sys::release_received(bytes);
+                sys::release_received(buf);
             }
             Decision::Closed => {
                 self.end_listener(&mut st, id, Item::Closed);
                 drop(st);
-                sys::release_received(bytes);
+                sys::release_received(buf);
             }
         }
     }
@@ -958,7 +960,7 @@ impl Inner {
             .map(|h| h.local)
             .unwrap_or(NAME_NULL);
         if local == self.wake {
-            sys::release_received(buf.bytes());
+            sys::release_received(buf);
             if self.lock().stopping {
                 return true;
             }
@@ -967,7 +969,7 @@ impl Inner {
             // Send possible, or a request's port went away: either way the
             // requests are spent; try the outboxes, which re-arm what is
             // still full.
-            sys::release_received(buf.bytes());
+            sys::release_received(buf);
             for role in self.lock().ends.values_mut() {
                 if let Role::Sender { armed, .. } = role {
                     *armed = false;
@@ -978,7 +980,7 @@ impl Inner {
             let mut st = self.lock();
             if st.sinks.remove(&local) {
                 drop(st);
-                sys::release_received(buf.bytes());
+                sys::release_received(buf);
                 sys::extract_member(local, self.set);
                 sys::destroy_receive(local);
                 return false;
@@ -987,7 +989,7 @@ impl Inner {
             drop(st);
             match id {
                 Some(id) => self.on_message(id, buf),
-                None => sys::release_received(buf.bytes()),
+                None => sys::release_received(buf),
             }
         }
         false
@@ -1063,20 +1065,20 @@ fn drain_credits(credit: u32, flow: &mut SenderFlow) -> Result<(), ()> {
             Kind::Peer(_) => {}
             Kind::NoSenders | Kind::SendPossible | Kind::Ignore => {
                 // A reply right destroyed unused (P36), and so on.
-                sys::release_received(bytes);
+                sys::release_received(&buf);
                 continue;
             }
             Kind::NoToken => {
-                sys::release_received(bytes);
+                sys::release_received(&buf);
                 return Err(());
             }
         }
         if l.header.id != ID_CREDIT || l.header.complex() {
-            sys::release_received(bytes);
+            sys::release_received(&buf);
             return Err(());
         }
         let c = wire::unframe(bytes.get(l.body_at..l.end).unwrap_or(&[])).map(decode_credit);
-        sys::release_received(bytes);
+        sys::release_received(&buf);
         let Some(Ok(c)) = c else {
             return Err(());
         };
@@ -1357,9 +1359,11 @@ impl MacIpc {
                 && l.token == Ok(expected)
                 && l.header.remote_disposition() == wire::PORT_SEND_ONCE;
             if hello {
+                // Its reply right is ours to answer on.
+                buf.adopted();
                 break l.header.remote;
             }
-            sys::release_received(buf.bytes());
+            sys::release_received(&buf);
         };
         let built = self.launch_ends();
         let Some((up_data, up_credit, down_data, ours)) = built else {
@@ -1490,7 +1494,7 @@ fn hello() -> Option<Boot> {
     };
     let empty = State::default();
     let Ok((parent, view)) = decide_launch(&arrival, &empty) else {
-        sys::release_received(bytes);
+        sys::release_received(&buf);
         return None;
     };
     // `decide_launch` checked this shape; anything else is released.
@@ -1502,10 +1506,12 @@ fn hello() -> Option<Boot> {
         _ => None,
     };
     let Some((up_flow, down_flow, up_data, up_credit, down_data)) = shape else {
-        sys::release_received(bytes);
+        sys::release_received(&buf);
         return None;
     };
     let down_closes = sys::request_no_senders(down_data, 0).is_ok();
+    // Its three rights are the launch channels now.
+    buf.adopted();
     Some(Boot {
         up_data,
         up_credit,

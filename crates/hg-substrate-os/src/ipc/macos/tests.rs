@@ -426,6 +426,42 @@ fn a_transfer_whose_stand_in_fails_still_carries_the_real_end() {
     expect_fault(&out, FaultKind::Sequence, None);
 }
 
+/// Finding 8: a received buffer's rights are released once, and only a
+/// received buffer's.
+#[test]
+fn a_received_message_is_released_once() {
+    let dest = test_support::port_with_send();
+    let p = test_support::port_with_send();
+    let refs = || {
+        sys::slot_facts(wire::Desc::Port {
+            name: p,
+            disposition: wire::PORT_SEND,
+        })
+        .send_refs
+    };
+    test_support::send_raw(&Outgoing {
+        dest,
+        dest_disposition: COPY_SEND,
+        reply: 0,
+        reply_disposition: 0,
+        id: 99,
+        ports: &[(p, COPY_SEND)],
+        body: &[0; 4],
+    })
+    .unwrap();
+    // Unreceived, the buffer holds nothing.
+    let mut buf = sys::Buf::new(wire::RECEIVE_BUFFER);
+    sys::release_received(&buf);
+    assert_eq!(refs(), 1);
+    sys::receive_now(dest, &mut buf).unwrap();
+    assert_eq!(refs(), 2, "the carried copy merged into our name (R5)");
+    sys::release_received(&buf);
+    sys::release_received(&buf);
+    assert_eq!(refs(), 1);
+    sys::destroy_receive(p);
+    sys::destroy_receive(dest);
+}
+
 // ---- hostile messages ----
 
 /// A data message from this process to `dest` with the given rights and

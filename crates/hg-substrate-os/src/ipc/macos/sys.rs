@@ -348,8 +348,16 @@ pub(crate) fn receive_status(name: PortName) -> Option<[i32; RECEIVE_STATUS_WORD
 
 /// A receive buffer, 8-byte aligned as the kernel writes 64-bit
 /// addresses into out-of-line descriptors.
+///
+/// A buffer that a receive filled holds the rights of the message in it
+/// until [`release_received`] releases them or [`Buf::adopted`] says
+/// they became this process's own: only then, and only once, can they be
+/// released. Releasing anything else (an outgoing message, a message
+/// already released or adopted) does nothing, so no caller can release
+/// names it does not own through this buffer.
 pub(crate) struct Buf {
     words: Vec<u64>,
+    holds: core::cell::Cell<bool>,
 }
 
 impl Buf {
@@ -357,7 +365,20 @@ impl Buf {
     pub(crate) fn new(bytes: usize) -> Self {
         Self {
             words: vec![0u64; bytes.div_ceil(8)],
+            holds: core::cell::Cell::new(false),
         }
+    }
+
+    /// The received message's rights became this process's own (handles,
+    /// a kept reply right): they are no longer the buffer's to release.
+    pub(crate) fn adopted(&self) {
+        self.holds.set(false);
+    }
+
+    /// Records the outcome of a receive into this buffer.
+    fn received(&self, r: Result<(), Kr>) -> Result<(), Kr> {
+        self.holds.set(r.is_ok());
+        r
     }
 
     /// The bytes.
@@ -418,7 +439,7 @@ pub(crate) fn receive(port: PortName, buf: &mut Buf) -> Result<(), Kr> {
     let ptr = buf.ptr();
     // SAFETY: `buf` has room for `len` bytes, which the kernel never
     // exceeds; no send is requested.
-    kr(unsafe {
+    let r = kr(unsafe {
         mach_msg_overwrite(
             ptr,
             RCV_OPTIONS,
@@ -430,7 +451,8 @@ pub(crate) fn receive(port: PortName, buf: &mut Buf) -> Result<(), Kr> {
             core::ptr::null_mut(),
             0,
         )
-    })
+    });
+    buf.received(r)
 }
 
 /// Receives one message from `port` if one is queued, without waiting.
@@ -440,7 +462,7 @@ pub(crate) fn receive_now(port: PortName, buf: &mut Buf) -> Result<(), Kr> {
     let len = buf.len32();
     let ptr = buf.ptr();
     // SAFETY: as `receive`, with a zero timeout and without RCV_LARGE.
-    kr(unsafe {
+    let r = kr(unsafe {
         mach_msg_overwrite(
             ptr,
             OPT_RCV | OPT_RCV_TIMEOUT | OPT_TRAILER_AUDIT,
@@ -452,7 +474,8 @@ pub(crate) fn receive_now(port: PortName, buf: &mut Buf) -> Result<(), Kr> {
             core::ptr::null_mut(),
             0,
         )
-    })
+    });
+    buf.received(r)
 }
 
 /// Receives one message from `port`, waiting up to `ms` milliseconds.
@@ -460,7 +483,7 @@ pub(crate) fn receive_within(port: PortName, buf: &mut Buf, ms: u32) -> Result<(
     let len = buf.len32();
     let ptr = buf.ptr();
     // SAFETY: as `receive_now`, with a timeout.
-    kr(unsafe {
+    let r = kr(unsafe {
         mach_msg_overwrite(
             ptr,
             OPT_RCV | OPT_RCV_TIMEOUT | OPT_TRAILER_AUDIT,
@@ -472,12 +495,19 @@ pub(crate) fn receive_within(port: PortName, buf: &mut Buf, ms: u32) -> Result<(
             core::ptr::null_mut(),
             0,
         )
-    })
+    });
+    buf.received(r)
 }
 
-/// Releases every right and region a received message carries, and its
-/// reply and voucher rights, as far as its layout reads.
-pub(crate) fn release_received(bytes: &[u8]) {
+/// Releases every right and region the message received into `buf`
+/// carries, and its reply and voucher rights, as far as its layout
+/// reads; once only, and only for a message received and neither
+/// released nor adopted since ([`Buf`]).
+pub(crate) fn release_received(buf: &Buf) {
+    if !buf.holds.replace(false) {
+        return;
+    }
+    let bytes = buf.bytes();
     let Ok(l) = wire::layout(bytes) else {
         return;
     };
