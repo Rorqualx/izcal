@@ -1189,6 +1189,7 @@ impl Inner {
         let due = since.checked_add(TRANSFER_DEADLINE).unwrap_or(since);
         let late = StdInstant::now() >= due;
         let mut quiet = true;
+        let mut stuck = false;
         let mut cancel_reads = Vec::new();
         for (cid, _) in &carried {
             let Some(e) = st.ends.get(cid) else {
@@ -1201,6 +1202,7 @@ impl Inner {
             if e.writing || draining {
                 // Still writing: wait (the deadline bounds the wait).
                 quiet = false;
+                stuck = true;
             } else if e.reading {
                 // Drained: stop the leftover read before the move (W3).
                 quiet = false;
@@ -1208,7 +1210,11 @@ impl Inner {
             }
         }
         if !quiet {
-            if late {
+            // Abandon only when writes are genuinely stuck past the
+            // deadline; a transfer whose writes have all drained and
+            // whose only leftover is the read it is about to cancel is
+            // let through on the next pass, even at the deadline.
+            if late && stuck {
                 // The carried ends could not quiesce in time. Close them
                 // and the carrier deterministically (as Linux's SHUT_WR
                 // does), rather than move with messages still unwritten.
@@ -1225,7 +1231,11 @@ impl Inner {
                     sys::cancel(&e.h);
                 }
             }
-            *deadline = Some(deadline.map_or(due, |d| d.min(due)));
+            // Keep a future deadline only while writes may still stall;
+            // once only the read remains, its completion wakes us.
+            if stuck {
+                *deadline = Some(deadline.map_or(due, |d| d.min(due)));
+            }
             return;
         }
         // Encode the record now, with the carried ends' final counters.
