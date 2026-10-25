@@ -20,11 +20,12 @@
 //! CS-TY-12) although the crate is tier O: they parse what a peer sends.
 //! The lints below enforce that here until the generated tier table does.
 
-// The sys and io modules (later D3 steps) are the callers; until they
-// land, only the tests and the Kani harnesses use these items.
+// Only the Linux transport (`ipc::linux`) calls this code outside the
+// tests and the Kani harnesses; elsewhere (macOS and Windows until D4
+// and D5) it is unused.
 #![cfg_attr(
-    not(any(test, kani)),
-    expect(dead_code, reason = "used by the sys and io modules of later D3 steps")
+    not(any(test, kani, target_os = "linux")),
+    expect(dead_code, reason = "only the Linux transport uses it until D4 and D5")
 )]
 #![deny(
     clippy::unwrap_used,

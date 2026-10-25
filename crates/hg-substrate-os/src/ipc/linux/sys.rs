@@ -15,6 +15,7 @@
 //! still change, so the transport never relies on it.
 #![expect(unsafe_code, reason = "G5: ipc::linux::sys (socket, epoll FFI)")]
 
+use std::collections::BTreeMap;
 use std::io;
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 
@@ -27,11 +28,11 @@ pub(crate) const CONTROL_LEN: usize = cmsg::CONTROL_LEN;
 
 /// An 8-byte-aligned control buffer.
 #[repr(C, align(8))]
-pub(crate) struct ControlBuf(pub(crate) [u8; CONTROL_LEN]);
+struct ControlBuf([u8; CONTROL_LEN]);
 
 impl ControlBuf {
     /// Zeroed.
-    pub(crate) const fn new() -> Self {
+    const fn new() -> Self {
         Self([0; CONTROL_LEN])
     }
 }
@@ -257,10 +258,10 @@ pub(crate) struct Received {
 
 /// How a receive ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RecvOutcome {
+pub(crate) enum RecvOutcome<T = Received> {
     /// A record (a zero `len` is an empty record or end of file; the
     /// caller tells them apart by the hang-up event, D3 probe 1 test 5).
-    Record(Received),
+    Record(T),
     /// Nothing queued now.
     WouldBlock,
     /// `ECONNRESET`: the peer closed with records it never read. Reported
@@ -270,19 +271,66 @@ pub(crate) enum RecvOutcome {
     Failed(i32),
 }
 
-/// Receives one record and its ancillary data, never blocking; received
-/// descriptors are close-on-exec (`MSG_CMSG_CLOEXEC`). With `ctl` `None`
-/// no descriptors can be installed: any sent are discarded by the kernel
-/// and `control_truncated` is set (the credit-record path).
+/// Receives one record with no control buffer, never blocking: no
+/// descriptor can be installed (any sent are discarded by the kernel and
+/// `control_truncated` is set). The credit-record path, and the probe
+/// that tells end of file from an empty record.
+pub(crate) fn recv_record(fd: BorrowedFd<'_>, buf: &mut [u8]) -> RecvOutcome {
+    recvmsg(fd, buf, None)
+}
+
+/// A data record with what came with it.
+#[derive(Debug)]
+pub(crate) struct WithRights {
+    /// The record.
+    pub(crate) rec: Received,
+    /// Its parsed control data.
+    pub(crate) control: cmsg::ParsedControl,
+    /// Every descriptor the kernel installed for it, owned, by number:
+    /// each closes exactly once, when dropped, unless the caller keeps it.
+    pub(crate) owned: BTreeMap<RawFd, OwnedFd>,
+}
+
+/// Receives one data record and its ancillary data, never blocking, and
+/// takes ownership of every descriptor the kernel installed for it, in
+/// the same call, so a number is never owned twice. Received descriptors
+/// are close-on-exec (`MSG_CMSG_CLOEXEC`).
+pub(crate) fn recv_with_rights(fd: BorrowedFd<'_>, buf: &mut [u8]) -> RecvOutcome<WithRights> {
+    let mut ctl = ControlBuf::new();
+    let rec = match recvmsg(fd, buf, Some(&mut ctl)) {
+        RecvOutcome::Record(r) => r,
+        RecvOutcome::WouldBlock => return RecvOutcome::WouldBlock,
+        RecvOutcome::Reset => return RecvOutcome::Reset,
+        RecvOutcome::Failed(e) => return RecvOutcome::Failed(e),
+    };
+    let control_len = rec.control_len.min(CONTROL_LEN);
+    let control = cmsg::parse(ctl.0.get(..control_len).unwrap_or(&[]));
+    let mut owned = BTreeMap::new();
+    for &raw in control.close_set() {
+        if raw < 0 || owned.contains_key(&raw) || !is_open(raw) {
+            continue;
+        }
+        // The parser reads descriptor numbers only from `SCM_RIGHTS`
+        // messages in the control bytes the kernel wrote (unix(7)); each
+        // installed number is new and distinct, and no other code has seen
+        // it. The map check above keeps one owner per number.
+        // SAFETY: `raw` was installed in this process by the recvmsg above
+        // and has no other owner (see above).
+        let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+        owned.insert(raw, fd);
+    }
+    RecvOutcome::Record(WithRights {
+        rec,
+        control,
+        owned,
+    })
+}
+
 #[expect(
     clippy::disallowed_methods,
     reason = "SEC-4 (d): this is the IPC backend"
 )]
-pub(crate) fn recv_record(
-    fd: BorrowedFd<'_>,
-    buf: &mut [u8],
-    ctl: Option<&mut ControlBuf>,
-) -> RecvOutcome {
+fn recvmsg(fd: BorrowedFd<'_>, buf: &mut [u8], ctl: Option<&mut ControlBuf>) -> RecvOutcome {
     let mut iov = libc::iovec {
         iov_base: buf.as_mut_ptr().cast(),
         iov_len: buf.len(),
@@ -319,18 +367,23 @@ pub(crate) fn recv_record(
     })
 }
 
-/// Takes ownership of a descriptor the kernel installed in this process
-/// (from `SCM_RIGHTS`, or a launch descriptor), so it closes exactly once.
-///
-/// The caller must pass a descriptor that is open, owned by nothing else
-/// in this process: one just reported by [`recv_record`]'s ancillary
-/// data, or a bootstrap descriptor the launcher placed.
-pub(crate) fn adopt(fd: RawFd) -> Option<OwnedFd> {
-    if fd < 0 || !is_open(fd) {
+/// Takes the two descriptors a test child was started with at `fds`
+/// (tests only). A once-only claim: a second call in the same process
+/// gets `None`, so the numbers are never owned twice.
+#[cfg(test)]
+pub(crate) fn take_test_child_fds(fds: (RawFd, RawFd)) -> Option<(OwnedFd, OwnedFd)> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static TAKEN: AtomicBool = AtomicBool::new(false);
+    if fds.0 == fds.1 || !is_open(fds.0) || !is_open(fds.1) || TAKEN.swap(true, Ordering::SeqCst) {
         return None;
     }
-    // SAFETY: per the contract above, `fd` is open and has no other owner.
-    Some(unsafe { OwnedFd::from_raw_fd(fd) })
+    // SAFETY: the test harness started this process with exactly these
+    // descriptors placed by `spawn_with_fds`, and the once-only claim
+    // above makes this the only owner in the process.
+    let up = unsafe { OwnedFd::from_raw_fd(fds.0) };
+    // SAFETY: as above, for the second descriptor.
+    let down = unsafe { OwnedFd::from_raw_fd(fds.1) };
+    Some((up, down))
 }
 
 /// Whether `fd` names an open descriptor (`fcntl(F_GETFD)`).
@@ -743,19 +796,19 @@ mod tests {
             SendOutcome::Sent
         );
         let mut buf = [0u8; 64];
-        let mut ctl = ControlBuf::new();
-        let RecvOutcome::Record(r) = recv_record(b.as_fd(), &mut buf, Some(&mut ctl)) else {
+        let RecvOutcome::Record(r) = recv_with_rights(b.as_fd(), &mut buf) else {
             panic!("no record");
         };
-        assert_eq!(&buf[..r.len], b"hello");
-        assert!(!r.truncated && !r.control_truncated);
-        let parsed = cmsg::parse(&ctl.0[..r.control_len]);
+        assert_eq!(&buf[..r.rec.len], b"hello");
+        assert!(!r.rec.truncated && !r.rec.control_truncated);
+        let parsed = &r.control;
         assert!(parsed.outcome.is_ok());
         assert_eq!(parsed.fd_count(), 1);
         let pid = i32::try_from(std::process::id()).unwrap();
         assert_eq!(parsed.cred.map(|c| c.pid), Some(pid));
-        for &fd in parsed.fds() {
-            let owned = adopt(fd).unwrap();
+        assert_eq!(r.owned.len(), 1);
+        for fd in parsed.fds() {
+            let owned = &r.owned[fd];
             let facts = fd_facts(owned.as_fd()).unwrap();
             assert!(facts.is_socket);
             assert_eq!(facts.domain, libc::AF_UNIX);

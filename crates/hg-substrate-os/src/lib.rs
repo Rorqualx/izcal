@@ -78,22 +78,34 @@ impl std::error::Error for StartError {}
 /// # Errors
 /// [`StartError`] if the OS random source or thread creation fails.
 pub fn os_substrate(threads: Threads) -> Result<Substrate, StartError> {
-    start(threads, false)
+    start(threads, None)
 }
 
+/// The launch channels a process was started with, already checked.
+#[cfg(target_os = "linux")]
+type Launch = Option<(std::os::fd::OwnedFd, std::os::fd::OwnedFd)>;
+#[cfg(not(target_os = "linux"))]
+type Launch = Option<core::convert::Infallible>;
+
 /// [`os_substrate`] for a process its launcher started with launch
-/// channels: on Linux, the descriptors at
-/// [`ipc::linux::BOOTSTRAP_FDS`], which `Ipc::bootstrap` then returns.
-/// Descriptors that are missing or not channel ends are ignored, and
-/// `bootstrap` returns `None`.
+/// channels. On Linux these are the descriptors at
+/// [`ipc::linux::BOOTSTRAP_FDS`], which the process's entry point takes
+/// ownership of (it alone can know nothing else owns them) and passes
+/// here; `Ipc::bootstrap` then returns them as channels. Descriptors that
+/// are not channel ends are closed, and `bootstrap` returns `None`.
 ///
 /// # Errors
 /// As [`os_substrate`].
-pub fn os_substrate_launched(threads: Threads) -> Result<Substrate, StartError> {
-    start(threads, true)
+#[cfg(target_os = "linux")]
+pub fn os_substrate_launched(
+    threads: Threads,
+    up: std::os::fd::OwnedFd,
+    down: std::os::fd::OwnedFd,
+) -> Result<Substrate, StartError> {
+    start(threads, ipc::linux::launch_ends(up, down).ok())
 }
 
-fn start(threads: Threads, launched: bool) -> Result<Substrate, StartError> {
+fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
     let entropy = entropy::OsEntropy::new();
     if !hg_types::process_hash_key_is_set() {
         let mut key = [0u8; 16];
@@ -110,7 +122,7 @@ fn start(threads: Threads, launched: bool) -> Result<Substrate, StartError> {
         executor::OsExecutor::new(threads.general, threads.may_block)
             .map_err(StartError::Thread)?,
     );
-    let ipc = os_ipc(&exec, launched)?;
+    let ipc = os_ipc(&exec, launch)?;
     Ok(Substrate {
         clock: Arc::new(clock::OsClock::new()),
         entropy: Arc::new(entropy),
@@ -124,13 +136,8 @@ fn start(threads: Threads, launched: bool) -> Result<Substrate, StartError> {
 #[cfg(target_os = "linux")]
 fn os_ipc(
     exec: &Arc<executor::OsExecutor>,
-    launched: bool,
+    boot: Launch,
 ) -> Result<Arc<dyn hg_substrate::Ipc>, StartError> {
-    let boot = if launched {
-        ipc::linux::launch_fds()
-    } else {
-        None
-    };
     match ipc::linux::LinuxIpc::start(Arc::clone(exec), boot) {
         Ok(t) => Ok(Arc::new(t)),
         Err(ipc::linux::StartError::Os(e)) => Err(StartError::Ipc(e)),
@@ -144,7 +151,7 @@ fn os_ipc(
 #[cfg(not(target_os = "linux"))]
 fn os_ipc(
     _exec: &Arc<executor::OsExecutor>,
-    _launched: bool,
+    _boot: Launch,
 ) -> Result<Arc<dyn hg_substrate::Ipc>, StartError> {
     Ok(Arc::new(ipc::OsIpc))
 }

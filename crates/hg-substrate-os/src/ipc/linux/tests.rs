@@ -16,7 +16,7 @@ use hg_substrate::ipc::{
 use hg_substrate::{Executor, Priority};
 
 use super::sys::{self, SendOutcome};
-use super::{BOOTSTRAP_FDS, LinuxEnd, LinuxIpc, adopt_parent_ends, launch_fds, launch_pair};
+use super::{BOOTSTRAP_FDS, LinuxEnd, LinuxIpc, adopt_parent_ends, launch_ends, launch_pair};
 use crate::executor::OsExecutor;
 use crate::ipc::unix::codec::{HandleDesc, WireKind, encode_data};
 
@@ -409,7 +409,8 @@ fn child(case: &str) -> i32 {
         // TSYNC would cover it anyway).
         crate::sandbox::linux::apply_empty_process_profile().unwrap();
     }
-    let r = rig_with(launch_fds());
+    let boot = sys::take_test_child_fds(BOOTSTRAP_FDS).and_then(|(u, d)| launch_ends(u, d).ok());
+    let r = rig_with(boot);
     let Some(boot) = r.ipc.bootstrap() else {
         return 10;
     };

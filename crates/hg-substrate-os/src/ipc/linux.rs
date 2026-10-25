@@ -79,7 +79,6 @@ use hg_substrate::{SequenceHandle, Task};
 
 use crate::executor::OsExecutor;
 use crate::ipc::unix::accept::FdFacts;
-use crate::ipc::unix::cmsg;
 use crate::ipc::unix::codec::{
     CREDIT_LEN, Credit, HandleDesc, MAX_DATA_RECORD, WireKind, decode_credit, encode_credit,
     encode_data,
@@ -449,9 +448,12 @@ impl Inner {
                 return;
             }
             drop(st);
-            let mut ctl = sys::ControlBuf::new();
-            let outcome = sys::recv_record(fd.as_fd(), buf, Some(&mut ctl));
-            let rec = match outcome {
+            let outcome = sys::recv_with_rights(fd.as_fd(), buf);
+            let sys::WithRights {
+                rec,
+                control: parsed,
+                owned,
+            } = match outcome {
                 RecvOutcome::WouldBlock => break,
                 RecvOutcome::Reset => {
                     let _ = sys::take_error(fd.as_fd());
@@ -463,23 +465,16 @@ impl Inner {
                 }
                 RecvOutcome::Record(r) => r,
             };
-            let control_len = rec.control_len.min(sys::CONTROL_LEN);
-            let parsed = cmsg::parse(ctl.0.get(..control_len).unwrap_or(&[]));
-            // Own every descriptor the kernel installed, so each closes
-            // exactly once whatever the verdict.
-            let mut owned: BTreeMap<RawFd, OwnedFd> = BTreeMap::new();
-            for &raw in parsed.close_set() {
-                if let Some(o) = sys::adopt(raw) {
-                    owned.insert(raw, o);
-                }
-            }
+            // `owned` holds every descriptor the kernel installed, so each
+            // closes exactly once whatever the verdict.
+            let mut owned = owned;
             // An empty record and end of file both read as 0: end of file
             // reads 0 again, an empty record does not.
             let mut hang_up = false;
             if rec.len == 0 && parsed.fd_count() == 0 {
                 let mut probe = [0u8; 1];
                 hang_up = matches!(
-                    sys::recv_record(fd.as_fd(), &mut probe, None),
+                    sys::recv_record(fd.as_fd(), &mut probe),
                     RecvOutcome::Record(r) if r.len == 0
                 );
             }
@@ -1349,7 +1344,7 @@ fn drain_credits(st: &mut State, id: u64, fd: &Arc<OwnedFd>) -> Result<(), ()> {
     loop {
         // No control buffer: a descriptor sent the wrong way is never
         // installed (the kernel discards it and sets MSG_CTRUNC).
-        match sys::recv_record(fd.as_fd(), &mut buf, None) {
+        match sys::recv_record(fd.as_fd(), &mut buf) {
             RecvOutcome::WouldBlock => return Ok(()),
             RecvOutcome::Reset => {
                 let _ = sys::take_error(fd.as_fd());
@@ -1375,39 +1370,32 @@ fn drain_credits(st: &mut State, id: u64, fd: &Arc<OwnedFd>) -> Result<(), ()> {
     }
 }
 
-/// Takes the launch descriptors at [`BOOTSTRAP_FDS`], if both are open
-/// channel ends (Unix seqpacket sockets above the stdio numbers, with
-/// stdio open). Marks them close-on-exec.
-pub fn launch_fds() -> Option<(OwnedFd, OwnedFd)> {
-    if !(0..=2).all(sys::is_open) {
-        return None;
-    }
-    let (a, b) = BOOTSTRAP_FDS;
-    let up = sys::adopt(a);
-    let down = sys::adopt(b);
-    let is_end = |fd: &Option<OwnedFd>| {
-        fd.as_ref()
-            .and_then(|fd| sys::fd_facts(fd.as_fd()).ok())
-            .is_some_and(|f| {
-                f.fd > 2
-                    && f.is_socket
-                    && f.domain == libc::AF_UNIX
-                    && f.sock_type == libc::SOCK_SEQPACKET
-                    && f.protocol == 0
-            })
+/// Checks the launch descriptors a process was started with (the ones
+/// its launcher placed at [`BOOTSTRAP_FDS`], which the process's entry
+/// point takes ownership of): both must be channel ends (Unix seqpacket
+/// sockets above the stdio numbers) and stdio must be open. Marks them
+/// close-on-exec. Anything else hands both back, untouched.
+///
+/// # Errors
+/// The two descriptors, unchanged, when they are not launch channels.
+pub fn launch_ends(up: OwnedFd, down: OwnedFd) -> Result<(OwnedFd, OwnedFd), (OwnedFd, OwnedFd)> {
+    let is_end = |fd: &OwnedFd| {
+        sys::fd_facts(fd.as_fd()).is_ok_and(|f| {
+            f.fd > 2
+                && f.is_socket
+                && f.domain == libc::AF_UNIX
+                && f.sock_type == libc::SOCK_SEQPACKET
+                && f.protocol == 0
+        })
     };
-    if !(is_end(&up) && is_end(&down)) {
-        // Not launch channels: hand both numbers back unclosed, they are
-        // not this transport's to close.
-        core::mem::forget(up);
-        core::mem::forget(down);
-        return None;
+    if !(0..=2).all(sys::is_open) || !is_end(&up) || !is_end(&down) {
+        return Err((up, down));
     }
-    let (up, down) = (up?, down?);
-    sys::set_cloexec(up.as_fd()).ok()?;
-    sys::set_cloexec(down.as_fd()).ok()?;
+    if sys::set_cloexec(up.as_fd()).is_err() || sys::set_cloexec(down.as_fd()).is_err() {
+        return Err((up, down));
+    }
     let _ = sys::set_passcred(down.as_fd());
-    Some((up, down))
+    Ok((up, down))
 }
 
 /// Makes a pair of launch channels for a child: the parent's ends (from
