@@ -391,6 +391,30 @@ fn launch(r: &Rig, case: &str, sandboxed: bool) -> Kid {
 }
 
 #[test]
+fn two_children_cannot_share_one_app_container_sid() {
+    let r = rig();
+    let exe = std::env::current_exe().unwrap();
+    let name = format!("izcal.d5test.dup.{}", std::process::id());
+    let sid = crate::sandbox::windows::app_container(&name, &name).unwrap();
+    let token = crate::sandbox::windows::restricted_token().unwrap();
+    let job = crate::sandbox::windows::job_object().unwrap();
+    let args = "--exact ipc::windows::tests::d5_child --nocapture --test-threads 1";
+    let spec = || super::LaunchSpec {
+        exe: &exe,
+        args,
+        env: vec![("IZCAL_D5_CHILD".to_owned(), "sandboxed-echo".to_owned())],
+        sandbox: Some((&sid, &token, &job)),
+    };
+    let first = r.ipc.launch(spec()).expect("first launch");
+    // The second launch names the same container: refused.
+    let second = r.ipc.launch(spec());
+    assert!(second.is_err(), "a second child reused the SID");
+    super::sys::spawn::kill(&first.child);
+    let _ = super::sys::spawn::wait(&first.child, 5000);
+    super::sys::spawn::delete_container(&name);
+}
+
+#[test]
 fn a_dead_childs_messages_all_arrive_then_closed() {
     let r = rig();
     let c = launch(&r, "burst-exit", false);

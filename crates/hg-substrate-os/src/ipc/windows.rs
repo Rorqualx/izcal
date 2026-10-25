@@ -2040,7 +2040,16 @@ impl WindowsIpc {
         let inherit = sys::inheritable(&link_client)?;
         let mut env = spec.env;
         env.push((LINK_VAR.to_owned(), sys::value(&inherit).to_string()));
-        let sid = spec.sandbox.and_then(|(c, _, _)| sys::sid_string(c));
+        // A sandboxed launch must have a SID to key its channels and to
+        // enforce one container per child; without one, refuse before
+        // spawning (fail closed).
+        let sid = match spec.sandbox {
+            Some((c, _, _)) => Some(
+                sys::sid_string(c)
+                    .ok_or_else(|| std::io::Error::other("no AppContainer SID string"))?,
+            ),
+            None => None,
+        };
         let child = sys::spawn::start(&sys::spawn::Spec {
             exe: spec.exe,
             args: spec.args,
@@ -2079,6 +2088,16 @@ impl WindowsIpc {
             sys::spawn::kill(&child);
             return Err(std::io::Error::other("only a broker launches"));
         };
+        // One AppContainer SID per live child (M10, probe W4): siblings
+        // sharing a container could open each other's pipes directly,
+        // outside the broker, and the ledger keys channels by that SID.
+        if sid.is_some() && b.children.values().any(|c| c.sid == sid) {
+            drop(st);
+            sys::spawn::kill(&child);
+            return Err(std::io::Error::other(
+                "the AppContainer SID is already in use",
+            ));
+        }
         let p = b.next_proc;
         b.next_proc = b.next_proc.saturating_add(1);
         b.ledger.add_proc(p, child.pid);
