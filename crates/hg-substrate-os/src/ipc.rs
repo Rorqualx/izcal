@@ -13,6 +13,11 @@ pub(crate) mod unix;
 /// The record codec and flow counters every backend shares.
 pub(crate) mod common;
 
+/// The libc-free parts of the macOS transport: message layout and
+/// parser, handle acceptance, the per-message decision and notification
+/// classification. Pure code, tested on every OS and proved by Kani.
+pub(crate) mod mach;
+
 /// The Linux transport.
 #[cfg(target_os = "linux")]
 pub mod linux;
