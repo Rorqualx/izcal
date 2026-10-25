@@ -208,3 +208,53 @@ fn a_dirty_tree_has_one_id_whatever_the_git_config() {
     std::fs::remove_dir_all(&dir).unwrap();
     std::fs::remove_file(&ignore).unwrap();
 }
+
+#[test]
+fn a_nested_checkout_counts_by_its_commit_and_changes() {
+    // Git lists a nested checkout (or a submodule) as one directory
+    // entry; what is in it must still reach the id.
+    let (dir, _git) = scratch("nested", &[]);
+    let inner = dir.join("inner");
+    std::fs::create_dir_all(&inner).unwrap();
+    std::fs::write(inner.join("x.txt"), "one\n").unwrap();
+    let git_in = |args: &[&str]| {
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&inner)
+            .args(args)
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    git_in(&["init", "-q"]);
+    git_in(&["add", "-A"]);
+    git_in(&[
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "t",
+    ]);
+    let first = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
+    // A change inside it, then a new commit of that change.
+    std::fs::write(inner.join("x.txt"), "two\n").unwrap();
+    let edited = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
+    assert_ne!(first.commit, edited.commit);
+    git_in(&[
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qam",
+        "u",
+    ]);
+    let committed = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
+    assert_ne!(first.commit, committed.commit);
+    assert_ne!(edited.commit, committed.commit);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

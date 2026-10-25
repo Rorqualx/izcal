@@ -186,25 +186,81 @@ fn optional(p: &Path) -> Result<Option<Vec<u8>>, InputError> {
     }
 }
 
+/// The uncommitted changes of the checkout at `root`: each changed or
+/// untracked path, with what is there now. Only the list of paths comes
+/// from git, from commands whose output no git setting changes:
+/// `status --porcelain` for tracked files (its format is fixed, and the
+/// flags override the settings that choose what it lists) and `ls-files`
+/// with only the checkout's own `.gitignore` files for untracked ones
+/// (not core.excludesFile or .git/info/exclude, which differ between
+/// machines). Empty for a clean checkout.
+fn changes(root: &Path) -> Result<Vec<u8>, InputError> {
+    let status = git(
+        root,
+        &[
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=no",
+            "--no-renames",
+            "--ignore-submodules=none",
+        ],
+    )?;
+    let untracked = git(
+        root,
+        &[
+            "ls-files",
+            "--others",
+            "--exclude-per-directory=.gitignore",
+            "-z",
+        ],
+    )?;
+    let mut paths: Vec<&[u8]> = status
+        .split(|&b| b == 0)
+        .filter_map(|e| e.get(3..))
+        .chain(untracked.split(|&b| b == 0))
+        .filter(|p| !p.is_empty())
+        .collect();
+    paths.sort_unstable();
+    paths.dedup();
+    let mut out = Vec::new();
+    for p in paths {
+        out.extend_from_slice(b"\0path\0");
+        out.extend_from_slice(p);
+        out.push(0);
+        let content = path_content(root, p)?;
+        out.extend_from_slice(&(content.len() as u64).to_le_bytes());
+        out.extend_from_slice(&content);
+    }
+    Ok(out)
+}
+
 /// What a changed or untracked path contributes beyond its path: a kind
 /// byte, then a regular file's bytes (1), a symbolic link's target (2),
-/// nothing for anything else, such as a nested checkout that git lists as
-/// `dir/` (3), or nothing for a deleted file (0). The kind byte keeps the
-/// four apart.
-fn path_content(root: &Path, p: &[u8]) -> std::io::Result<Vec<u8>> {
+/// a nested checkout's or submodule's commit and its own
+/// [`changes`] (4), nothing for any other directory or object (3), or
+/// nothing for a deleted file (0). The kind byte keeps them apart.
+fn path_content(root: &Path, p: &[u8]) -> Result<Vec<u8>, InputError> {
     let path = root.join(path_from_git(p));
     let meta = match std::fs::symlink_metadata(&path) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![0]),
-        Err(e) => return Err(e),
+        Err(e) => return Err(InputError::Io(e)),
     };
     if meta.is_file() {
         let mut v = vec![1];
-        v.extend_from_slice(&std::fs::read(&path)?);
+        v.extend_from_slice(&std::fs::read(&path).map_err(InputError::Io)?);
         Ok(v)
     } else if meta.file_type().is_symlink() {
         let mut v = vec![2];
-        v.extend_from_slice(target_bytes(&std::fs::read_link(&path)?).as_slice());
+        let target = std::fs::read_link(&path).map_err(InputError::Io)?;
+        v.extend_from_slice(target_bytes(&target).as_slice());
+        Ok(v)
+    } else if meta.is_dir() && path.join(".git").exists() {
+        let mut v = vec![4];
+        // A checkout with no commit yet has no HEAD: its files alone count.
+        v.extend_from_slice(&git(&path, &["rev-parse", "HEAD"]).unwrap_or_default());
+        v.extend_from_slice(&sha256::sha256(&changes(&path)?));
         Ok(v)
     } else {
         Ok(vec![3])
@@ -250,51 +306,8 @@ pub fn collect(
     let head = git(root, &["rev-parse", "HEAD"])?;
     let mut commit = String::from_utf8_lossy(&head).trim().to_owned();
     // Uncommitted changes make a different build from the same commit, so
-    // they join the commit: each changed or untracked path, with what is
-    // there now (its bytes, its link target, or that it is gone). Only the
-    // list of paths comes from git, from commands whose output no git
-    // setting changes: `status --porcelain` for tracked files (its format
-    // is fixed, and the flags below override the settings that choose
-    // what it lists) and `ls-files` with only the checkout's own
-    // `.gitignore` files for untracked ones (not core.excludesFile or
-    // .git/info/exclude, which differ between machines).
-    let status = git(
-        root,
-        &[
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=no",
-            "--no-renames",
-            "--ignore-submodules=none",
-        ],
-    )?;
-    let untracked = git(
-        root,
-        &[
-            "ls-files",
-            "--others",
-            "--exclude-per-directory=.gitignore",
-            "-z",
-        ],
-    )?;
-    let mut paths: Vec<&[u8]> = status
-        .split(|&b| b == 0)
-        .filter_map(|e| e.get(3..))
-        .chain(untracked.split(|&b| b == 0))
-        .filter(|p| !p.is_empty())
-        .collect();
-    paths.sort_unstable();
-    paths.dedup();
-    let mut changes = Vec::new();
-    for p in paths {
-        changes.extend_from_slice(b"\0path\0");
-        changes.extend_from_slice(p);
-        changes.push(0);
-        let content = path_content(root, p).map_err(InputError::Io)?;
-        changes.extend_from_slice(&(content.len() as u64).to_le_bytes());
-        changes.extend_from_slice(&content);
-    }
+    // they join the commit (see `changes`).
+    let changes = changes(root)?;
     if !changes.is_empty() {
         commit.push_str("+dirty:");
         commit.push_str(&sha256::hex(&sha256::sha256(&changes)));
