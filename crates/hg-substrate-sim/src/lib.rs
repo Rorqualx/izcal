@@ -60,7 +60,6 @@ pub(crate) fn substrate_for(
             shared: Arc::clone(shared),
             pid,
             generation,
-            exec: Arc::clone(&exec),
         }))
     } else {
         None

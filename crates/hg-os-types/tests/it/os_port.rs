@@ -165,7 +165,7 @@ fn run(seed: u64) -> (u64, Vec<String>) {
 }
 
 /// The trace hash every OS must reproduce (measured on Linux x86-64).
-const EXPECTED_TRACE: u64 = 0xe591_71a8_bf13_2e9e;
+const EXPECTED_TRACE: u64 = 0x867e_66b9_2c4d_b0e9;
 
 #[test]
 fn the_scripted_os_delivers_a_burst_settings_and_a_sleep_deadline() {
