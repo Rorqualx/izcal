@@ -30,8 +30,17 @@ use super::accept::{End, PipeKey, Proc, View};
 use super::frame::Ticket;
 use crate::ipc::common::codec::WireKind;
 
-/// The most tickets one process may have outstanding.
-pub(crate) const MAX_TICKETS_PER_PROC: usize = 1024;
+/// The most tickets outstanding on one carrier channel (design review
+/// B1: per channel, not per process, so a channel a peer never reads
+/// cannot pin another's relays). Flow control already caps records in
+/// flight per channel at the channel's capacity; this is the broker's
+/// backstop above that. The broker does not track per-channel capacity,
+/// so a fixed bound stands in for B1's capacity x 16.
+pub(crate) const MAX_TICKETS_PER_CHANNEL: usize = 1024;
+
+/// The most tickets one process may have outstanding across all its
+/// carriers (the per-child total, to bound the broker's memory).
+pub(crate) const MAX_TICKETS_PER_PROC: usize = 16_384;
 
 /// The most channels the ledger tracks for one creator.
 pub(crate) const MAX_PIPES_PER_PROC: usize = 16_384;
@@ -126,6 +135,7 @@ pub(crate) struct Ledger {
     tickets: BTreeMap<Ticket, Held>,
     pids: BTreeMap<Proc, u32>,
     outstanding: BTreeMap<Proc, usize>,
+    by_carrier: BTreeMap<PipeKey, usize>,
     per_creator: BTreeMap<Proc, usize>,
 }
 
@@ -188,7 +198,11 @@ impl Ledger {
     /// outstanding; nothing changes.
     pub(crate) fn relay(&mut self, ticket: Ticket, held: Held) -> Result<(), LedgerError> {
         let n = self.outstanding.get(&held.from).copied().unwrap_or(0);
-        if n >= MAX_TICKETS_PER_PROC || !self.room_for(&held.ends) {
+        let per_channel = self.by_carrier.get(&held.carrier).copied().unwrap_or(0);
+        if n >= MAX_TICKETS_PER_PROC
+            || per_channel >= MAX_TICKETS_PER_CHANNEL
+            || !self.room_for(&held.ends)
+        {
             return Err(LedgerError::Quota);
         }
         // Folded per channel: a relay may carry both ends of one.
@@ -211,6 +225,8 @@ impl Ledger {
             self.put(pipe, e)?;
         }
         self.outstanding.insert(held.from, n.saturating_add(1));
+        let c = self.by_carrier.entry(held.carrier).or_insert(0);
+        *c = c.saturating_add(1);
         self.tickets.insert(ticket, held);
         Ok(())
     }
@@ -271,7 +287,7 @@ impl Ledger {
             return Err(LedgerError::NotHolder);
         }
         let held = self.tickets.remove(ticket).ok_or(LedgerError::NoTicket)?;
-        self.release_count(held.from);
+        self.release_counts(&held);
         let mut events = Vec::new();
         for &(pipe, end, _) in &held.ends {
             let mut e = self.entry(pipe);
@@ -297,9 +313,15 @@ impl Ledger {
         Ok((held, events))
     }
 
-    fn release_count(&mut self, from: Proc) {
-        if let Some(n) = self.outstanding.get_mut(&from) {
+    fn release_counts(&mut self, held: &Held) {
+        if let Some(n) = self.outstanding.get_mut(&held.from) {
             *n = n.saturating_sub(1);
+        }
+        if let Some(n) = self.by_carrier.get_mut(&held.carrier) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                self.by_carrier.remove(&held.carrier);
+            }
         }
     }
 
@@ -386,7 +408,7 @@ impl Ledger {
         }
         for t in &dead {
             if let Some(h) = self.tickets.remove(t) {
-                self.release_count(h.from);
+                self.release_counts(&h);
             }
         }
         self.pids.remove(&p);
@@ -743,27 +765,84 @@ mod tests {
         }
     }
 
+    fn ticket_bytes(i: usize) -> [u8; 16] {
+        let mut t = [0u8; 16];
+        let n = u64::try_from(i).unwrap_or(0).wrapping_add(1);
+        t[..8].copy_from_slice(&n.to_le_bytes());
+        t
+    }
+
     #[test]
-    fn tickets_are_limited_per_process() {
+    fn tickets_are_limited_per_channel() {
         let mut l = ledger();
-        for i in 0..MAX_TICKETS_PER_PROC {
-            let mut t = [0u8; 16];
-            t[..8].copy_from_slice(&u64::try_from(i + 1).unwrap().to_le_bytes());
+        let carrier = pipe(BROKER, 9);
+        for i in 0..MAX_TICKETS_PER_CHANNEL {
             l.relay(
-                t,
+                ticket_bytes(i),
                 Held {
-                    carrier: pipe(BROKER, 9),
+                    carrier,
                     from: A,
                     ends: Vec::new(),
                 },
             )
             .unwrap();
         }
+        // One more on the same carrier is refused.
         assert_eq!(
             l.relay(
                 [0xff; 16],
                 Held {
-                    carrier: pipe(BROKER, 9),
+                    carrier,
+                    from: A,
+                    ends: Vec::new(),
+                },
+            ),
+            Err(LedgerError::Quota)
+        );
+        // But a different carrier (same process) still has room: a
+        // channel a peer never reads does not pin another's relays.
+        assert!(
+            l.relay(
+                [0xfe; 16],
+                Held {
+                    carrier: pipe(BROKER, 10),
+                    from: A,
+                    ends: Vec::new(),
+                },
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn tickets_are_also_limited_per_process_across_channels() {
+        let mut l = ledger();
+        // Spread tickets over many carriers so the per-channel cap never
+        // bites; the per-process total should.
+        let mut i = 0usize;
+        'outer: for carrier_n in 0..u8::MAX {
+            for _ in 0..MAX_TICKETS_PER_CHANNEL {
+                if i >= MAX_TICKETS_PER_PROC {
+                    break 'outer;
+                }
+                l.relay(
+                    ticket_bytes(i),
+                    Held {
+                        carrier: pipe(BROKER, carrier_n),
+                        from: A,
+                        ends: Vec::new(),
+                    },
+                )
+                .unwrap();
+                i += 1;
+            }
+        }
+        assert_eq!(i, MAX_TICKETS_PER_PROC);
+        assert_eq!(
+            l.relay(
+                [0xff; 16],
+                Held {
+                    carrier: pipe(BROKER, u8::MAX),
                     from: A,
                     ends: Vec::new(),
                 },
