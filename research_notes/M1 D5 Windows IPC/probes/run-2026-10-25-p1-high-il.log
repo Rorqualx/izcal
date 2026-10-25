@@ -1,0 +1,47 @@
+[env] broker pid=29980 user=S-1-5-21-<machine>-1001 session=0
+[child] pid=30868 hello pid=30868 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P1-4]   child: pid=30868 session=0 ac-sid=S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744 ac-path=AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744
+[P1-4]   child: GetCurrentProcess=-1 GetCurrentThread=-2
+[P1-4]   child: value -8: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -7: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -6: GetTokenInformation ok=0 err=122 token-type=1 impersonation-level=0 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -5: GetTokenInformation ok=0 err=1008 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -4: GetTokenInformation ok=0 err=122 token-type=1 impersonation-level=0 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -3: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -2: GetTokenInformation ok=0 err=6 ntq=Thread
+[P1-4]   child: value -1: GetTokenInformation ok=0 err=6 ntq=Process
+[P1-4] P1/P2 child CreateNamedPipeW(\\.\pipe\izcal-d5-1d91700abc20424353231c1f23b73843-plain) [INBOUND|OVERLAPPED|FIRST_INSTANCE, MESSAGE|READMODE_MESSAGE|REJECT_REMOTE, 1,0,0,0,NULL]
+[P1-4]   child: CreateNamedPipeW FAILED err=5
+[P1-4] P1/P2 child CreateNamedPipeW(\\.\pipe\LOCAL\izcal-d5-1d91700abc20424353231c1f23b73843-local) [INBOUND|OVERLAPPED|FIRST_INSTANCE, MESSAGE|READMODE_MESSAGE|REJECT_REMOTE, 1,0,0,0,NULL]
+[P1-4]   child: CreateNamedPipeW OK h=204 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-local sd=O:BAG:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;BA)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0)
+[P1-4] P1/P2 child CreateNamedPipeW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full) [INBOUND|OVERLAPPED|FIRST_INSTANCE, MESSAGE|READMODE_MESSAGE|REJECT_REMOTE, 1,0,0,0,NULL]
+[P1-4]   child: CreateNamedPipeW OK h=296 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full sd=O:BAG:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;BA)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0)
+[P1-4] P3 same child CreateFileW(\\.\pipe\LOCAL\izcal-d5-1d91700abc20424353231c1f23b73843-local, GENERIC_WRITE)
+[P1-4]   child: CreateFileW OK h=300 type=File access=0x120196
+[P1-4] P3 same child CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full, GENERIC_WRITE)
+[P1-4]   child: CreateFileW OK h=156 type=File access=0x120196
+[P1-4] P3 child CreateNamedPipeW(\\.\pipe\izcal-d5-1d91700abc20424353231c1f23b73843-plain-sd0) with SD D:(A;;GA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;GA;;;RC)(A;;GA;;;OW)
+[P1-4]   child: CreateNamedPipeW FAILED err=5
+[P1-4] P3 child CreateNamedPipeW(\\.\pipe\LOCAL\izcal-d5-1d91700abc20424353231c1f23b73843-local-sd1) with SD D:(A;;GA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;GA;;;RC)(A;;GA;;;OW)
+[P1-4]   child: CreateNamedPipeW OK h=308 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-local-sd1 sd=O:BAG:S-1-5-21-<machine>-513D:(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;RC)(A;;FA;;;OW)S:(ML;;NW;;;S-1-16-0)
+[P1-4]   child: CreateFileW OK h=312 type=File access=0x120196
+[P1-4] P3 child CreateNamedPipeW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full-sd2) with SD D:(A;;GA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;GA;;;RC)(A;;GA;;;OW)
+[P1-4]   child: CreateNamedPipeW OK h=320 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full-sd2 sd=O:BAG:S-1-5-21-<machine>-513D:(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;RC)(A;;FA;;;OW)S:(ML;;NW;;;S-1-16-0)
+[P1-4]   child: CreateFileW OK h=324 type=File access=0x120196
+[child] pid=19268 hello pid=19268 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P1-4] P4 broker GetSecurityInfo on child's \\.\pipe\LOCAL\izcal-d5-1d91700abc20424353231c1f23b73843-local: O:BAG:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;BA)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0) [type=File access=0x20000]
+[P1-4] P4 broker CreateFileW(\\.\pipe\LOCAL\izcal-d5-1d91700abc20424353231c1f23b73843-local, GENERIC_WRITE): FAILED err=2
+[P1-4] P4 broker CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-local, GENERIC_WRITE): FAILED err=231
+[P1-4] P4 child B (other AppContainer) CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-local)
+[P1-4]   child: CreateFileW FAILED err=5
+[P1-4] P4 broker GetSecurityInfo on child's \\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full: O:BAG:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;BA)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0) [type=File access=0x20000]
+[P1-4] P4 broker CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full, GENERIC_WRITE): FAILED err=231
+[P1-4] P4 broker CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full, GENERIC_WRITE): FAILED err=231
+[P1-4] P4 child B (other AppContainer) CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-1d91700abc20424353231c1f23b73843-full)
+[P1-4]   child: CreateFileW FAILED err=5
+[P1-4]   child: CreateNamedPipeW OK h=164 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-37ad420a6f4deedd9c992722c7eb20da-free sd=O:BAG:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;BA)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0)
+[P1-4] P4 broker CreateFileW(unconnected child pipe, 0x40000000): OK type=File access=0x120196
+[P1-4] P4 child B CreateFileW(unconnected child-A pipe, 0x40000000):
+[P1-4]   child: CreateFileW FAILED err=5
+[P1-4] P4 child B CreateFileW(unconnected child-A pipe, 0x100002):
+[P1-4]   child: CreateFileW FAILED err=5

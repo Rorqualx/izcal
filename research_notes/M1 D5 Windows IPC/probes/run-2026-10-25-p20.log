@@ -1,0 +1,10 @@
+[env] broker token: integrity=medium appcontainer=no privileges=1 user-file-read=not-probed sam-read=denied mitigations=lockdown+job (not-applied:appcontainer,untrusted,win32k,acg,cig,cet)
+[env] broker pid=31732 user=S-1-5-21-<machine>-1001 session=0
+[P20]   child: pending reads=64 io thread started
+[P20] child pid=22608; counting context switches for 30 s
+[P20] holding the idle child 45 s for the external counter
+[P20]   child: wakes=0
+[P20]   child: posted ok=1 wakes=1
+[P20] after one message on pipe 5:
+[P20]   child: wakes=2
+[env] Medium-token broker exited code=0x0
