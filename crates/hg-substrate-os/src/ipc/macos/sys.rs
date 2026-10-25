@@ -628,9 +628,11 @@ pub(crate) fn spawn(
     // file actions, so stdio is named to stay.
     // SAFETY: an all-zero file-actions object is valid storage for init.
     let mut actions: libc::posix_spawn_file_actions_t = unsafe { core::mem::zeroed() };
+    let mut actions_ready = false;
     if rc == 0 {
         // SAFETY: initialises the object just declared.
         rc = unsafe { libc::posix_spawn_file_actions_init(&raw mut actions) };
+        actions_ready = rc == 0;
     }
     for fd in 0..3 {
         if rc == 0 {
@@ -654,27 +656,41 @@ pub(crate) fn spawn(
             )
         };
     }
-    // SAFETY: destroys the object initialised above.
-    let _ = unsafe { libc::posix_spawn_file_actions_destroy(&raw mut actions) };
-    // SAFETY: destroys the object initialised above.
+    if actions_ready {
+        // SAFETY: destroys the file-actions object, which init set up
+        // (`actions_ready`); it is not used after.
+        let _ = unsafe { libc::posix_spawn_file_actions_destroy(&raw mut actions) };
+    }
+    // SAFETY: destroys the attributes object, which init set up (a
+    // failed init returned above); it is not used after.
     let _ = unsafe { libc::posix_spawnattr_destroy(&raw mut attr) };
     if rc != 0 {
         return Err(std::io::Error::from_raw_os_error(rc));
     }
-    let token = child_token(pid);
+    #[cfg(test)]
+    test_support::LAST_PID.set(pid);
+    let Some(token) = child_token(pid) else {
+        // A child whose identity cannot be checked never runs: it is
+        // killed while still suspended, and reaped.
+        // SAFETY: signals the child just spawned, which has not run.
+        let _ = unsafe { libc::kill(pid, libc::SIGKILL) };
+        let _ = wait_child(pid);
+        return Err(std::io::Error::other(
+            "the child's audit token could not be read",
+        ));
+    };
     // SAFETY: resumes the suspended child (P3: SIGCONT ends the suspended
     // start).
     let _ = unsafe { libc::kill(pid, libc::SIGCONT) };
-    match token {
-        Some(token) => Ok(Spawned { pid, token }),
-        None => Err(std::io::Error::other(
-            "the child's audit token could not be read",
-        )),
-    }
+    Ok(Spawned { pid, token })
 }
 
 #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 fn child_token(pid: libc::pid_t) -> Option<Token> {
+    #[cfg(test)]
+    if test_support::FAIL_CHILD_TOKEN.get() {
+        return None;
+    }
     let mut name: PortName = NAME_NULL;
     // SAFETY: a valid out-pointer.
     if unsafe { task_name_for_pid(task(), pid, &raw mut name) } != 0 {
@@ -716,6 +732,15 @@ pub(crate) mod test_support {
 
     use crate::ipc::mach::wire::{self, Outgoing};
 
+    std::thread_local! {
+        /// Makes this thread's next spawns fail to read the child's token.
+        pub(crate) static FAIL_CHILD_TOKEN: core::cell::Cell<bool> =
+            const { core::cell::Cell::new(false) };
+        /// The pid of this thread's last spawned child.
+        pub(crate) static LAST_PID: core::cell::Cell<libc::pid_t> =
+            const { core::cell::Cell::new(0) };
+    }
+
     /// Encodes and sends `m`, without waiting.
     pub(crate) fn send_raw(m: &Outgoing<'_>) -> Result<(), Kr> {
         let room = wire::RECEIVE_BUFFER.max(m.body.len().saturating_add(4096));
@@ -733,6 +758,18 @@ pub(crate) mod test_support {
         // SAFETY: takes no arguments and returns a send right to the
         // host name port, which the caller owns.
         unsafe { super::mach_host_self() }
+    }
+
+    /// Reaps child `pid` if it has exited, without waiting: its pid, or
+    /// 0 while it runs.
+    pub(crate) fn reap_now(pid: libc::pid_t) -> std::io::Result<libc::pid_t> {
+        let mut status: libc::c_int = 0;
+        // SAFETY: a valid out-pointer; WNOHANG never blocks.
+        let rc = unsafe { libc::waitpid(pid, &raw mut status, libc::WNOHANG) };
+        if rc < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(rc)
     }
 
     /// Sends `bytes` as a message exactly as given, without waiting.

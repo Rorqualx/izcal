@@ -801,6 +801,40 @@ fn a_peer_s_own_credit_port_as_a_receiver_is_blamed_on_it() {
     assert_eq!(sys::wait_child(c.pid).unwrap(), 0);
 }
 
+/// A child whose audit token cannot be read is killed before it runs,
+/// and reaped (finding 7: it was resumed and left running).
+#[test]
+fn a_child_without_a_token_never_runs() {
+    let boot = test_support::port_with_send();
+    let exe = CString::new(
+        std::env::current_exe()
+            .unwrap()
+            .into_os_string()
+            .into_encoded_bytes(),
+    )
+    .unwrap();
+    let args = [
+        CString::new("--exact").unwrap(),
+        CString::new("ipc::macos::tests::d4_child").unwrap(),
+    ];
+    let arg_refs: Vec<&std::ffi::CStr> = args.iter().map(CString::as_c_str).collect();
+    let env = CString::new("IZCAL_D4_CHILD=burst-exit").unwrap();
+    test_support::FAIL_CHILD_TOKEN.set(true);
+    let got = sys::spawn(&exe, &arg_refs, &[env.as_c_str()], boot);
+    test_support::FAIL_CHILD_TOKEN.set(false);
+    sys::destroy_receive(boot);
+    assert!(got.is_err());
+    let pid = test_support::LAST_PID.get();
+    assert!(pid > 0);
+    // Already reaped: no such child of ours.
+    let got = test_support::reap_now(pid);
+    assert_eq!(
+        got.map_err(|e| e.raw_os_error()),
+        Err(Some(libc::ECHILD)),
+        "the child is still ours to reap"
+    );
+}
+
 #[test]
 fn a_dead_child_s_messages_all_arrive_then_closed() {
     let r = rig();
