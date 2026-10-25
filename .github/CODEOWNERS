@@ -1,0 +1,23 @@
+# Gate files (coding standard CS-GA-1): a change to any of these needs the
+# security owner's review ("Require review from Code Owners" on main).
+# Until a second maintainer exists the approval is a recorded
+# self-approval line in the pull request (security scope 9.2, SEC-6).
+# The standard names the role, not a handle; the repository owner holds
+# it. Paths that do not exist yet are listed so they are owned from the
+# commit that creates them.
+
+/clippy.toml                          @Rorqualx
+/crates/hg-substrate-os/clippy.toml   @Rorqualx
+/tools/lints.toml                     @Rorqualx
+/tools/tiers.toml                     @Rorqualx
+/tools/graph-rules.toml               @Rorqualx
+/tools/deny.toml                      @Rorqualx
+/unsafe-inventory.toml                @Rorqualx
+/nondeterminism-inventory.toml        @Rorqualx
+/tests/quarantine.toml                @Rorqualx
+/.config/nextest.toml                 @Rorqualx
+/tools/ast-grep/                      @Rorqualx
+/tools/coding-standard/               @Rorqualx
+/.gitattributes                       @Rorqualx
+/.github/workflows/                   @Rorqualx
+/.github/CODEOWNERS                   @Rorqualx

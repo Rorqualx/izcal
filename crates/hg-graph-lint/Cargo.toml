@@ -1,0 +1,39 @@
+[package]
+name = "hg-graph-lint"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's crate-graph lint (tier T): the layer, tier and linkage rules on cargo metadata, Q-CS-1's simulator rule, and the coding standard's A.6 graph checks (Stage 1 design 2.2; coding standard 6.2, A.6)"
+
+# No dependencies: it reads cargo metadata's JSON and the TOML gate files
+# with its own small readers (src/json.rs, src/toml.rs).
+
+[[bin]]
+name = "hg-graph-lint"
+path = "src/main.rs"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+# Tier T: the base table (coding standard A.1) with A.2's tier T changes.
+# unsafe_code is forbid, not deny: the crate is not in the inventory (G5).
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"

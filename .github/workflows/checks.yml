@@ -1,7 +1,9 @@
-# Runs tools/checks.sh, clippy, the tests and the Kani proofs on every pull request and push to main: the same
-# checks as the git hooks, so a commit made with --no-verify is still
-# caught. Branch protection requires this job ("checks"). The AI review runs
-# only in the pre-commit hook (it needs the Claude Code CLI and an account).
+# Runs tools/checks.sh (including the `graph` crate-graph lint), clippy,
+# the tests and the Kani proofs on every pull request and push to main:
+# the same checks as the git hooks, so a commit made with --no-verify is
+# still caught. Branch protection requires this job ("checks"). The AI
+# review runs only in the pre-commit hook (it needs the Claude Code CLI and
+# an account).
 
 name: checks
 
@@ -46,6 +48,16 @@ jobs:
           base=$PR_BASE
           [ "$EVENT" = pull_request ] || base=$PUSH_BEFORE
           tools/checks.sh --range "$base" "$GITHUB_SHA"
+
+      # The graph lint's own tests, with the pinned ast-grep required, so
+      # its code-level checks (G5's crate roots and inventory, Q-CS-1's
+      # crypto check) are tested here; the test jobs below skip them
+      # where ast-grep is not installed. tools/checks.sh above runs the
+      # lint itself on every push and pull request (the `graph` check).
+      - name: Graph lint tests
+        env:
+          IZCAL_REQUIRE_AST_GREP: "1"
+        run: cargo test -p hg-graph-lint --locked
 
   # Clippy with -D warnings on all three reference OSes: the substrate's
   # sandbox backends are cfg-gated per OS, so a lint error in one backend
