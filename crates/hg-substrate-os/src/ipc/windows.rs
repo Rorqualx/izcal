@@ -76,7 +76,7 @@ pub(crate) mod sys;
 mod tests;
 
 use core::any::Any;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::os::windows::io::OwnedHandle;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
@@ -217,8 +217,22 @@ struct Broker {
     ledger: Ledger,
     held: BTreeMap<Ticket, Vec<OwnedHandle>>,
     children: BTreeMap<Proc, ChildEntry>,
+    /// AppContainer SIDs of launches in progress, reserved before the
+    /// child is spawned so a duplicate never runs (M10, probe W4).
+    reserved_sids: BTreeSet<String>,
     #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher reads it"))]
     next_proc: Proc,
+}
+
+impl Broker {
+    /// Whether a live child or a launch in progress already holds `sid`.
+    fn sid_in_use(&self, sid: &str) -> bool {
+        self.reserved_sids.contains(sid)
+            || self
+                .children
+                .values()
+                .any(|c| c.sid.as_deref() == Some(sid))
+    }
 }
 
 #[derive(Default)]
@@ -1620,6 +1634,7 @@ impl WindowsIpc {
                 ledger,
                 held: BTreeMap::new(),
                 children: BTreeMap::new(),
+                reserved_sids: BTreeSet::new(),
                 next_proc: 1,
             });
         }
@@ -2050,13 +2065,41 @@ impl WindowsIpc {
             ),
             None => None,
         };
-        let child = sys::spawn::start(&sys::spawn::Spec {
+        // Reserve the SID under the lock before spawning, so a duplicate
+        // child never runs even briefly in a shared container.
+        if let Some(s) = &sid {
+            let mut st = self.inner.lock();
+            let Some(b) = st.broker.as_mut() else {
+                return Err(std::io::Error::other("only a broker launches"));
+            };
+            if b.sid_in_use(s) {
+                return Err(std::io::Error::other(
+                    "the AppContainer SID is already in use",
+                ));
+            }
+            b.reserved_sids.insert(s.clone());
+        }
+        // From here, every exit must release the reservation.
+        let release = |inner: &Inner| {
+            if let Some(s) = &sid
+                && let Some(b) = inner.lock().broker.as_mut()
+            {
+                b.reserved_sids.remove(s);
+            }
+        };
+        let child = match sys::spawn::start(&sys::spawn::Spec {
             exe: spec.exe,
             args: spec.args,
             env: &env,
             inherit: &inherit,
             sandbox: spec.sandbox,
-        })?;
+        }) {
+            Ok(c) => c,
+            Err(e) => {
+                release(&self.inner);
+                return Err(e);
+            }
+        };
         drop(inherit);
         drop(link_client);
         let started = (|| -> std::io::Result<(u64, u64)> {
@@ -2069,6 +2112,7 @@ impl WindowsIpc {
         let (v_up, v_down) = match started {
             Ok(v) => v,
             Err(e) => {
+                release(&self.inner);
                 sys::spawn::kill(&child);
                 return Err(e);
             }
@@ -2079,25 +2123,18 @@ impl WindowsIpc {
         let process = match sys::spawn::process_handle(&child) {
             Ok(p) => p,
             Err(e) => {
+                release(&self.inner);
                 sys::spawn::kill(&child);
                 return Err(e);
             }
         };
         let mut st = self.inner.lock();
         let Some(b) = st.broker.as_mut() else {
+            drop(st);
+            release(&self.inner);
             sys::spawn::kill(&child);
             return Err(std::io::Error::other("only a broker launches"));
         };
-        // One AppContainer SID per live child (M10, probe W4): siblings
-        // sharing a container could open each other's pipes directly,
-        // outside the broker, and the ledger keys channels by that SID.
-        if sid.is_some() && b.children.values().any(|c| c.sid == sid) {
-            drop(st);
-            sys::spawn::kill(&child);
-            return Err(std::io::Error::other(
-                "the AppContainer SID is already in use",
-            ));
-        }
         let p = b.next_proc;
         b.next_proc = b.next_proc.saturating_add(1);
         b.ledger.add_proc(p, child.pid);
@@ -2118,12 +2155,18 @@ impl WindowsIpc {
             if let Some(b) = st.broker.as_mut() {
                 let _ = b.ledger.gone(p);
                 b.ledger.sweep();
+                if let Some(s) = &sid {
+                    b.reserved_sids.remove(s);
+                }
             }
             drop(st);
             sys::spawn::kill(&child);
             return Err(std::io::Error::other("no room for the link"));
         };
         if let Some(b) = st.broker.as_mut() {
+            if let Some(s) = &sid {
+                b.reserved_sids.remove(s);
+            }
             b.children.insert(p, ChildEntry { process, sid, link });
         }
         let hello = Ctl::Hello {
