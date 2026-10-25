@@ -17,6 +17,11 @@ pub(crate) mod common;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
+/// The libc-free core of the Windows transport: framing, handle
+/// acceptance, the broker's ledger and the receive decision. Pure code,
+/// compiled and tested on every OS and proved by the Kani harnesses.
+pub(crate) mod win;
+
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, Handle, Ipc, IpcError, Listening, OsPeer, Sink,
