@@ -1,0 +1,62 @@
+[W9] start: server message/wait (0x2) client message/wait (0x2)
+[W9] set server byte+nowait: ok
+[W9] now: server byte/nowait (0x1) client message/wait (0x2)
+[W9] reset server: ok
+[W9] set client byte: ok
+[W9] now: server message/wait (0x2) client byte/wait (0x0)
+[W9] reset client: ok
+[W9] set the client's same-access duplicate byte: ok
+[W9] now: client byte/wait (0x0) duplicate byte/wait (0x0)
+[W9] reset via duplicate: ok
+[W9] move-mask duplicate: state message/wait (0x2) set byte: err=5
+[W9] move-mask server duplicate: state message/wait (0x2) set nowait: err=5
+[W9] set server byte: ok
+[W9] byte-mode read of two 10-byte messages: ok len=20 first=1
+[W9] set server message+nowait: ok
+[W9] nowait overlapped read on an empty pipe: err=232 len=0
+[W8b] sync file object mode, server end (overlapped): FileModeInformation: status=0x0 mode=0x0 (0 ms)
+[W8b] pull with close-source while the child's read is pending: Ok(268)
+[W8b] NtQueryObject(basic) on the pulled end: Ok((1, 32771))
+[W8b] GetFileType: 3
+[W8b] FileModeInfo on the pulled end: FileModeInformation: STILL WAITING after 2000 ms
+[W8b] GetNamedPipeInfo(pulled): STILL WAITING after 2000 ms
+[W8b] broker CancelIoEx on the pulled end: ok=0 err=1168
+[W8b] after CancelIoEx: GetNamedPipeInfo still waiting
+[W8b] wrote one message from the server end
+[W8b child] ReadFile ok=1 n=4 err=0 after 6525 ms
+[W8b] after the write: GetNamedPipeInfo(pulled): GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1 (returned at 4017 ms)
+[W8b] GetNamedPipeInfo(pulled) after the child ended: GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1 (0 ms)
+[W8] same GetFileType: 3 (0 ms)
+[W8] same GetNamedPipeInfo: STILL WAITING after 2000 ms
+[W8] same GetNamedPipeHandleStateW: STILL WAITING after 2000 ms
+[W8] same GetFileInformationByHandleEx(FileNameInfo): STILL WAITING after 2000 ms
+[W8] same NtQueryObject(basic): Ok((2, 32769)) (0 ms)
+[W8] same NtQueryObject(name): STILL WAITING after 2000 ms
+[W8] same PeekNamedPipe: STILL WAITING after 2000 ms
+[W8] same DuplicateHandle: Ok(284) (0 ms)
+[W8] same CompareObjectHandles: 1 (0 ms)
+[W8] dup GetFileType: 3 (0 ms)
+[W8] dup GetNamedPipeInfo: STILL WAITING after 2000 ms
+[W8] dup GetNamedPipeHandleStateW: STILL WAITING after 2000 ms
+[W8] dup GetFileInformationByHandleEx(FileNameInfo): STILL WAITING after 2000 ms
+[W8] dup NtQueryObject(basic): Ok((3, 65535)) (0 ms)
+[W8] dup NtQueryObject(name): STILL WAITING after 2000 ms
+[W8] dup PeekNamedPipe: STILL WAITING after 2000 ms
+[W8] dup DuplicateHandle: Ok(292) (0 ms)
+[W8] dup CompareObjectHandles: 1 (0 ms)
+[W8] server write to release the read: Ok(8)
+[W8] ReadFile(sync): ok=1 n=8 err=0 returned at 20433 ms
+[W8] after release: same GetNamedPipeInfo: GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1 (returned at 20131 ms)
+[W8] after release: same GetNamedPipeHandleStateW: ok=1 state=0x2 (returned at 18115 ms)
+[W8] after release: same GetFileInformationByHandleEx(FileNameInfo): \izcal-d5-c7e7adb7585f03994fea800d57c68436 (returned at 16098 ms)
+[W8] after release: same NtQueryObject(name): \Device\NamedPipe\izcal-d5-c7e7adb7585f03994fea800d57c68436 (returned at 14096 ms)
+[W8] after release: same PeekNamedPipe: ok=1 avail=0 (returned at 12080 ms)
+[W8] after release: dup GetNamedPipeInfo: GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1 (returned at 10062 ms)
+[W8] after release: dup GetNamedPipeHandleStateW: ok=1 state=0x2 (returned at 8046 ms)
+[W8] after release: dup GetFileInformationByHandleEx(FileNameInfo): \izcal-d5-c7e7adb7585f03994fea800d57c68436 (returned at 6030 ms)
+[W8] after release: dup NtQueryObject(name): \Device\NamedPipe\izcal-d5-c7e7adb7585f03994fea800d57c68436 (returned at 4028 ms)
+[W8] after release: dup PeekNamedPipe: ok=1 avail=0 (returned at 2017 ms)
+[W8] CancelIoEx on the duplicate: ok=1 err=0
+[W8] ReadFile(sync) #2: ok=0 n=0 err=995 returned at 300 ms
+[W8] FileModeInfo, sync client end, idle: FileModeInformation: status=0x0 mode=0x20 (0 ms)
+[W8] FileModeInfo, sync client end, read pending: FileModeInformation: STILL WAITING after 2000 ms
