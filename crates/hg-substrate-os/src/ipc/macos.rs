@@ -326,6 +326,9 @@ pub(crate) struct Inner {
     state: Mutex<State>,
     token: Token,
     boot: Mutex<Option<Boot>>,
+    /// Tests only: the transfer deadline's stand-in cannot be built.
+    #[cfg(test)]
+    fail_stand_in: std::sync::atomic::AtomicBool,
 }
 
 impl Drop for Inner {
@@ -800,55 +803,83 @@ impl Inner {
     /// waiting message are swapped for a stand-in channel's.
     fn give_up(&self, st: &mut State, id: u64, dep: u64) {
         let Some(Role::Sender {
-            data: dep_data,
-            credit: dep_credit,
+            data,
+            credit,
             outbox: dep_box,
-            broken,
-            carried,
             ..
         }) = st.ends.get_mut(&dep)
         else {
             return;
         };
+        // Its queued messages are given up either way.
         for o in dep_box.drain(..) {
             release_unsent(&o);
         }
-        *broken = true;
-        // Its rights are swapped out of the waiting message below, so they
-        // are its own again, released when it leaves the table: its
-        // receiver then sees no senders, and reports Closed.
-        *carried = false;
-        let (old_data, old_credit) = (*dep_data, *dep_credit);
-        // The stand-in's data port is a sink this process keeps: valid
-        // when the waiting message arrives, and destroyed by the IO
-        // thread at the first message sent to it, so its new holder's
-        // next send reports Closed (eventually, as on Linux).
-        let (Ok(stand_data), Ok(stand_credit)) = (sys::allocate_receive(), sys::allocate_receive())
-        else {
+        let (old_data, old_credit) = (*data, *credit);
+        let has_head = matches!(st.ends.get(&id),
+            Some(Role::Sender { outbox, .. }) if !outbox.is_empty());
+        // Until the stand-in is in the waiting message, the end's real
+        // rights belong to that message: everything that can fail comes
+        // before anything changes.
+        let stand = if has_head { self.stand_in() } else { None };
+        let Some((stand_data, stand_credit)) = stand else {
+            // No stand-in: the end goes as it is, without its queued
+            // messages; its receiver sees the gap as a sequence violation,
+            // unblamed.
+            if let Some(Role::Sender { outbox, .. }) = st.ends.get_mut(&id)
+                && let Some(head) = outbox.front_mut()
+            {
+                head.after.retain(|d| *d != dep);
+            }
             return;
         };
-        if sys::make_send(stand_data).is_err() || sys::insert_member(stand_data, self.set).is_err()
+        if let Some(Role::Sender { outbox, .. }) = st.ends.get_mut(&id)
+            && let Some(head) = outbox.front_mut()
         {
-            sys::destroy_receive(stand_data);
-            sys::destroy_receive(stand_credit);
-            return;
+            let size = head.size;
+            swap_ports(
+                head.buf.bytes_mut().get_mut(..size).unwrap_or(&mut []),
+                &[(old_data, stand_data), (old_credit, stand_credit)],
+            );
+            head.after.retain(|d| *d != dep);
         }
-        let _ = sys::request_no_senders(stand_data, 1);
         st.sinks.insert(stand_data);
-        let Some(Role::Sender { outbox, .. }) = st.ends.get_mut(&id) else {
-            return;
+        // Its rights are its own again, released when it leaves the
+        // table: its receiver then sees no senders, and reports Closed.
+        if let Some(Role::Sender {
+            broken, carried, ..
+        }) = st.ends.get_mut(&dep)
+        {
+            *broken = true;
+            *carried = false;
+        }
+    }
+
+    /// A stand-in sender end for the transfer deadline: a data port that
+    /// is a sink this process keeps (valid when the waiting message
+    /// arrives, and destroyed by the IO thread at the first message sent
+    /// to it, so its new holder's next send reports Closed, eventually,
+    /// as on Linux), and a credit port.
+    fn stand_in(&self) -> Option<(u32, u32)> {
+        #[cfg(test)]
+        if self
+            .fail_stand_in
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return None;
+        }
+        let data = sys::allocate_receive().ok()?;
+        let Ok(credit) = sys::allocate_receive() else {
+            sys::destroy_receive(data);
+            return None;
         };
-        let Some(head) = outbox.front_mut() else {
-            return;
-        };
-        let size = head.size;
-        swap_ports(
-            head.buf.bytes_mut().get_mut(..size).unwrap_or(&mut []),
-            &[(old_data, stand_data), (old_credit, stand_credit)],
-        );
-        head.after.retain(|d| *d != dep);
-        // The real rights stay with `dep`, released with it (its handle
-        // was dropped when it was carried).
+        if sys::make_send(data).is_err() || sys::insert_member(data, self.set).is_err() {
+            sys::destroy_receive(data);
+            sys::destroy_receive(credit);
+            return None;
+        }
+        let _ = sys::request_no_senders(data, 1);
+        Some((data, credit))
     }
 
     /// The IO thread.
@@ -1169,6 +1200,8 @@ impl MacIpc {
             state: Mutex::new(State::default()),
             token,
             boot: Mutex::new(boot),
+            #[cfg(test)]
+            fail_stand_in: std::sync::atomic::AtomicBool::new(false),
         });
         let io = Arc::clone(&inner);
         crate::thread::spawn("hg-ipc-io", move || io.io_loop()).map_err(StartError::Os)?;

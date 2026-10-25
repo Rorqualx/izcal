@@ -356,6 +356,39 @@ fn a_transfer_gives_up_on_an_unread_queue_at_its_deadline() {
     }
 }
 
+/// The transfer deadline when no stand-in can be built: the carried end
+/// goes as it is, without its queued messages, and its receiver sees the
+/// gap (finding 3: its rights were released while the waiting message
+/// still named them, and the carrier was lost).
+#[test]
+fn a_transfer_whose_stand_in_fails_still_carries_the_real_end() {
+    let r = rig();
+    r.ipc
+        .inner
+        .fail_stand_in
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    let (tx, rx) = r.ipc.channel(1500, Transfer::Free).unwrap();
+    for i in 0u32..1100 {
+        r.ipc
+            .send(&tx, i.to_le_bytes().to_vec(), Vec::new())
+            .unwrap();
+    }
+    let (carrier, crx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let (cout, _cl) = r.listen(crx);
+    r.ipc
+        .send(&carrier, b"take".to_vec(), vec![tx.into_handle()])
+        .unwrap();
+    let (_, mut hs) = expect_msg(&cout);
+    let moved = ChannelSender::from_handle(hs.remove(0)).unwrap();
+    // The kernel queue held the first 1024 (P16); the rest were given up.
+    let (out, _l) = r.listen(rx);
+    for i in 0u32..1024 {
+        assert_eq!(expect_msg(&out).0, i.to_le_bytes(), "message {i}");
+    }
+    r.ipc.send(&moved, b"x".to_vec(), Vec::new()).unwrap();
+    expect_fault(&out, FaultKind::Sequence, None);
+}
+
 // ---- hostile messages ----
 
 /// A data message from this process to `dest` with the given rights and
