@@ -124,18 +124,22 @@ fn no_policy_is_the_digest_of_the_empty_policy() {
     assert_eq!(hg_types::NO_POLICY.0, hg_build_id::sha256::sha256(&enc));
 }
 
-#[test]
-fn an_untracked_file_changes_the_commit_input() {
-    // A scratch repository: one commit, then an untracked file.
-    let dir = std::env::temp_dir().join(format!("hg-build-id-{}", std::process::id()));
+/// A scratch repository named `name` with one commit of `files`; its
+/// path and a function that runs git in it.
+fn scratch(name: &str, files: &[(&str, &str)]) -> (std::path::PathBuf, impl Fn(&[&str])) {
+    let dir = std::env::temp_dir().join(format!("hg-build-id-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("crates/x/idl")).unwrap();
     std::fs::write(dir.join("rust-toolchain.toml"), "[toolchain]\n").unwrap();
     std::fs::write(dir.join("crates/x/idl/a.hgidl"), "protocol a;\n").unwrap();
-    let git = |args: &[&str]| {
+    for (path, text) in files {
+        std::fs::write(dir.join(path), text).unwrap();
+    }
+    let at = dir.clone();
+    let git = move |args: &[&str]| {
         let ok = std::process::Command::new("git")
             .arg("-C")
-            .arg(&dir)
+            .arg(&at)
             .args(args)
             .output()
             .unwrap()
@@ -154,6 +158,12 @@ fn an_untracked_file_changes_the_commit_input() {
         "-qm",
         "t",
     ]);
+    (dir, git)
+}
+
+#[test]
+fn an_untracked_file_changes_the_commit_input() {
+    let (dir, _git) = scratch("untracked", &[]);
     let clean = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
     assert!(!clean.commit.contains("+dirty"));
     std::fs::write(dir.join("crates/x/new.rs"), "fn f() {}\n").unwrap();
@@ -161,4 +171,40 @@ fn an_untracked_file_changes_the_commit_input() {
     assert!(dirty.commit.contains("+dirty:"));
     assert_ne!(clean.build_id(), dirty.build_id());
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_dirty_tree_has_one_id_whatever_the_git_config() {
+    let (dir, git) = scratch("config", &[("a.txt", "one\ntwo\n"), ("b.txt", "gone\n")]);
+    // A changed file, a deleted one and an untracked one.
+    std::fs::write(dir.join("a.txt"), "one\nthree\n").unwrap();
+    std::fs::remove_file(dir.join("b.txt")).unwrap();
+    std::fs::write(dir.join("c.txt"), "new\n").unwrap();
+    let before = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
+    assert!(before.commit.contains("+dirty:"));
+    // Settings that change what `git diff` or `git status` print, or which
+    // untracked files they see.
+    let ignore = dir.with_extension("ignore");
+    std::fs::write(&ignore, "c.txt\n").unwrap();
+    std::fs::write(dir.join(".git/info/exclude"), "c.txt\n").unwrap();
+    for (key, value) in [
+        ("diff.external", "echo hostile"),
+        ("color.ui", "always"),
+        ("color.diff", "always"),
+        ("color.status", "always"),
+        ("diff.noprefix", "true"),
+        ("diff.mnemonicPrefix", "true"),
+        ("diff.algorithm", "patience"),
+        ("diff.renames", "copies"),
+        ("diff.context", "9"),
+        ("status.renames", "copies"),
+        ("status.showUntrackedFiles", "no"),
+        ("core.excludesFile", ignore.to_str().unwrap()),
+    ] {
+        git(&["config", key, value]);
+    }
+    let after = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
+    assert_eq!(before.commit, after.commit);
+    std::fs::remove_dir_all(&dir).unwrap();
+    std::fs::remove_file(&ignore).unwrap();
 }

@@ -186,13 +186,18 @@ fn optional(p: &Path) -> Result<Option<Vec<u8>>, InputError> {
     }
 }
 
-/// What an untracked entry contributes beyond its path: a kind byte,
-/// then a regular file's bytes (1), a symbolic link's target (2), or
+/// What a changed or untracked path contributes beyond its path: a kind
+/// byte, then a regular file's bytes (1), a symbolic link's target (2),
 /// nothing for anything else, such as a nested checkout that git lists as
-/// `dir/` (3). The kind byte keeps the three apart.
-fn untracked_content(root: &Path, p: &[u8]) -> std::io::Result<Vec<u8>> {
+/// `dir/` (3), or nothing for a deleted file (0). The kind byte keeps the
+/// four apart.
+fn path_content(root: &Path, p: &[u8]) -> std::io::Result<Vec<u8>> {
     let path = root.join(path_from_git(p));
-    let meta = std::fs::symlink_metadata(&path)?;
+    let meta = match std::fs::symlink_metadata(&path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![0]),
+        Err(e) => return Err(e),
+    };
     if meta.is_file() {
         let mut v = vec![1];
         v.extend_from_slice(&std::fs::read(&path)?);
@@ -245,20 +250,48 @@ pub fn collect(
     let head = git(root, &["rev-parse", "HEAD"])?;
     let mut commit = String::from_utf8_lossy(&head).trim().to_owned();
     // Uncommitted changes make a different build from the same commit, so
-    // they join the commit: the diff of tracked files, then each untracked
-    // file that git does not ignore (its path and bytes).
-    let mut changes = git(root, &["diff", "HEAD", "--binary"])?;
-    let untracked = git(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
-    let mut paths: Vec<&[u8]> = untracked
+    // they join the commit: each changed or untracked path, with what is
+    // there now (its bytes, its link target, or that it is gone). Only the
+    // list of paths comes from git, from commands whose output no git
+    // setting changes: `status --porcelain` for tracked files (its format
+    // is fixed, and the flags below override the settings that choose
+    // what it lists) and `ls-files` with only the checkout's own
+    // `.gitignore` files for untracked ones (not core.excludesFile or
+    // .git/info/exclude, which differ between machines).
+    let status = git(
+        root,
+        &[
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=no",
+            "--no-renames",
+            "--ignore-submodules=none",
+        ],
+    )?;
+    let untracked = git(
+        root,
+        &[
+            "ls-files",
+            "--others",
+            "--exclude-per-directory=.gitignore",
+            "-z",
+        ],
+    )?;
+    let mut paths: Vec<&[u8]> = status
         .split(|&b| b == 0)
+        .filter_map(|e| e.get(3..))
+        .chain(untracked.split(|&b| b == 0))
         .filter(|p| !p.is_empty())
         .collect();
     paths.sort_unstable();
+    paths.dedup();
+    let mut changes = Vec::new();
     for p in paths {
-        changes.extend_from_slice(b"\0untracked\0");
+        changes.extend_from_slice(b"\0path\0");
         changes.extend_from_slice(p);
         changes.push(0);
-        let content = untracked_content(root, p).map_err(InputError::Io)?;
+        let content = path_content(root, p).map_err(InputError::Io)?;
         changes.extend_from_slice(&(content.len() as u64).to_le_bytes());
         changes.extend_from_slice(&content);
     }
