@@ -512,10 +512,14 @@ impl Inner {
                 for (kind, desc) in kinds.iter().zip(&descs) {
                     let role = match kind {
                         HandleKind::ChannelSender | HandleKind::BoundChannelSender => {
-                            let (Some(d), Some(c)) = (slot.next(), slot.next()) else {
+                            let Ok(flow) = SenderFlow::from_transfer(desc) else {
                                 break;
                             };
-                            let Ok(flow) = SenderFlow::from_transfer(desc) else {
+                            let (d, c) = (slot.next(), slot.next());
+                            let (Some(d), Some(c)) = (d, c) else {
+                                for f in d.into_iter().chain(c) {
+                                    sys::release_right(f.name, f.disposition);
+                                }
                                 break;
                             };
                             Role::Sender {
@@ -533,10 +537,10 @@ impl Inner {
                             }
                         }
                         HandleKind::ChannelReceiver => {
-                            let Some(d) = slot.next() else {
+                            let Ok(flow) = ReceiverFlow::from_transfer(desc) else {
                                 break;
                             };
-                            let Ok(flow) = ReceiverFlow::from_transfer(desc) else {
+                            let Some(d) = slot.next() else {
                                 break;
                             };
                             // A moved receive right keeps its queue limit
