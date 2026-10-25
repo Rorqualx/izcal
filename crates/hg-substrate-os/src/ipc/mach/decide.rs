@@ -31,7 +31,8 @@
 //! 3. The message itself: our data id, sent on a send right (a message
 //!    that arrived on a send-once right to a data port was not sent by
 //!    this transport: no peer is ever given one), and carrying a
-//!    send-once reply right, which the credit goes back on → else
+//!    send-once reply right, which the credit goes back on (a dead one is
+//!    fine: the sender end was dropped after sending, P22) → else
 //!    Violation.
 //! 4. Out-of-line memory or port arrays → Violation: this transport
 //!    sends neither (an array of ports is also fatal to an entitled
@@ -52,8 +53,8 @@ use super::super::common::codec::{CodecError, DataView, HandleDesc, WireKind, de
 use super::super::common::flow::{FlowError, ReceiverFlow, SenderFlow};
 use super::accept::{Held, Refusal, SlotFacts, accept_slot, distinct, handle_kind, wire_slots};
 use super::wire::{
-    DESC_PORT, Header, ID_DATA, ID_HELLO_REPLY, NAME_DEAD, NAME_NULL, PORT_SEND, PORT_SEND_ONCE,
-    Token, WireError,
+    DESC_PORT, Header, ID_DATA, ID_HELLO_REPLY, NAME_NULL, PORT_SEND, PORT_SEND_ONCE, Token,
+    WireError,
 };
 
 /// One data message as received.
@@ -234,10 +235,9 @@ where
     if a.header.local_disposition() != PORT_SEND {
         return refuse(Reason::NotSent);
     }
-    if a.header.remote_disposition() != PORT_SEND_ONCE
-        || a.header.remote == NAME_NULL
-        || a.header.remote == NAME_DEAD
-    {
+    // A reply right whose credit port is gone arrives as a dead name
+    // (P22): its sender end was dropped after sending, which is honest.
+    if a.header.remote_disposition() != PORT_SEND_ONCE || a.header.remote == NAME_NULL {
         return refuse(Reason::NoReply);
     }
 
@@ -670,6 +670,15 @@ mod tests {
         };
         assert_eq!(view.payload, b"hello");
         assert_eq!(c.flow.received, 1);
+    }
+
+    /// A sender end dropped after sending destroys its credit port, so
+    /// its queued messages' reply rights arrive dead (P22): still honest.
+    #[test]
+    fn a_dead_reply_right_is_accepted() {
+        let mut c = Case::new(&[]);
+        c.header.remote = super::super::wire::NAME_DEAD;
+        assert!(matches!(c.run(), Decision::Accept { .. }));
     }
 
     #[test]

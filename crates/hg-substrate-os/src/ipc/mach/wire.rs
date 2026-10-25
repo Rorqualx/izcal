@@ -180,9 +180,12 @@ pub(crate) const TRAILER_MAX: usize = 68;
 /// send right and its credit receive right; a receiver end, its data
 /// receive right.
 pub(crate) const MAX_SLOTS: usize = MAX_MESSAGE_HANDLES * 2;
+/// The length word in front of a data record (a message body is padded
+/// to 4 bytes, so the record's own end must be stated).
+pub(crate) const FRAME_LEN: usize = 4;
 /// The largest data message this transport sends.
 pub(crate) const MAX_DATA_MESSAGE: usize =
-    HEADER_LEN + COUNT_LEN + MAX_SLOTS * PORT_DESC_LEN + MAX_DATA_RECORD + 3;
+    HEADER_LEN + COUNT_LEN + MAX_SLOTS * PORT_DESC_LEN + FRAME_LEN + MAX_DATA_RECORD + 3;
 /// The receive buffer: the largest data message and the largest trailer.
 /// A larger message is a peer's doing (P24 reports it; the transport
 /// refuses it).
@@ -560,6 +563,29 @@ pub(crate) fn encode(m: &Outgoing<'_>, out: &mut [u8]) -> Option<usize> {
     Some(size)
 }
 
+/// A data record framed for a message body: its length, then the
+/// record. The kernel pads a body to 4 bytes (P11), so without the length
+/// the receiver could not tell the record's end; `None` past `u32`.
+pub(crate) fn frame(record: &[u8]) -> Option<Vec<u8>> {
+    let len = u32::try_from(record.len()).ok()?;
+    let mut out = Vec::with_capacity(record.len().checked_add(FRAME_LEN)?);
+    out.extend_from_slice(&len.to_le_bytes());
+    out.extend_from_slice(record);
+    Some(out)
+}
+
+/// The record in a framed body: the stated length must fit, and what
+/// follows it can only be the kernel's padding (fewer than 4 bytes).
+pub(crate) fn unframe(body: &[u8]) -> Option<&[u8]> {
+    let len = usize::try_from(word(body, 0)?).ok()?;
+    let rest = body.get(FRAME_LEN..)?;
+    let pad = rest.len().checked_sub(len)?;
+    if pad >= 4 {
+        return None;
+    }
+    rest.get(..len)
+}
+
 /// VER-1 for the parser: no panic and no read outside the buffer for any
 /// bytes, a walk that stops, and every descriptor the iterator yields
 /// lies inside the message.
@@ -583,6 +609,31 @@ mod proofs {
             assert!(n <= l.count);
             kani::cover!(l.walk.is_ok() && l.count == 2, "two descriptors read");
             kani::cover!(l.token.is_ok(), "a trailer read");
+        }
+    }
+
+    /// `unframe` never reads outside the body, and what it returns ends
+    /// within the body's last 3 bytes; what `frame` writes it reads back.
+    #[kani::proof]
+    #[kani::unwind(12)]
+    fn unframe_reads_any_bytes_and_inverts_frame() {
+        let body: [u8; 10] = kani::any();
+        let n: usize = kani::any_where(|&n: &usize| n <= 10);
+        if let Some(r) = unframe(&body[..n]) {
+            assert!(r.len() + FRAME_LEN <= n);
+            assert!(n - r.len() - FRAME_LEN < 4);
+        }
+        let rec: [u8; 5] = kani::any();
+        let m: usize = kani::any_where(|&m: &usize| m <= 5);
+        if let Some(f) = frame(&rec[..m]) {
+            let mut padded = [0u8; 12];
+            padded[..f.len()].copy_from_slice(&f);
+            let p: usize = kani::any_where(|&p: &usize| p < 4 && f.len() + p <= 12);
+            let back = unframe(&padded[..f.len() + p]);
+            assert!(back.is_some());
+            if let Some(b) = back {
+                assert!(b.len() == m);
+            }
         }
     }
 
@@ -728,6 +779,21 @@ mod tests {
         );
         // No trailer.
         assert_eq!(layout(&out).unwrap().token, Err(WireError::NoTrailer));
+    }
+
+    #[test]
+    fn framing_survives_padding_and_refuses_lies() {
+        let f = frame(b"abcde").unwrap();
+        let mut padded = f.clone();
+        padded.extend_from_slice(&[0, 0, 0]);
+        assert_eq!(unframe(&padded), Some(&b"abcde"[..]));
+        assert_eq!(unframe(&f), Some(&b"abcde"[..]));
+        padded.push(0);
+        assert_eq!(unframe(&padded), None);
+        let mut lie = f.clone();
+        lie[0] = 200;
+        assert_eq!(unframe(&lie), None);
+        assert_eq!(unframe(&[1, 0]), None);
     }
 
     #[test]
