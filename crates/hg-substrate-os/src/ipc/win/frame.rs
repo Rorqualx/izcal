@@ -223,18 +223,28 @@ pub(crate) enum Ctl {
     /// The child's receiver `rx` accepts records from `peer` only
     /// (`Ipc::listen_bound`).
     Bind {
-        /// The child's receiver end.
+        /// The child's receiver end, by handle value, so the broker can
+        /// find its channel.
         rx: u64,
+        /// The binder's own never-reused id for that listener, echoed in
+        /// `BindBroken` so a closed-and-reused handle value cannot be
+        /// mistaken for it (design review item 8).
+        rx_id: u64,
         /// The peer's process ID.
         peer: u32,
     },
     /// The sender end of the channel the child bound with `Bind` is no
     /// longer held by `peer` alone.
     BindBroken {
-        /// The child's receiver end, as given in `Bind`.
-        rx: u64,
+        /// The binder's listener id, as given in `Bind`.
+        rx_id: u64,
         /// The peer it was bound to.
         peer: u32,
+    },
+    /// The child closed the bound receiver `rx_id`: drop its binding.
+    Unbind {
+        /// The binder's listener id, as given in `Bind`.
+        rx_id: u64,
     },
 }
 
@@ -250,6 +260,7 @@ impl Ctl {
             Self::RedeemRefused { .. } => 7,
             Self::Bind { .. } => 8,
             Self::BindBroken { .. } => 9,
+            Self::Unbind { .. } => 10,
         }
     }
 }
@@ -292,7 +303,8 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
         | Ctl::Redeem { .. }
         | Ctl::RedeemRefused { .. }
         | Ctl::Bind { .. }
-        | Ctl::BindBroken { .. } => 0,
+        | Ctl::BindBroken { .. }
+        | Ctl::Unbind { .. } => 0,
     };
     let mut o = Out(Vec::with_capacity(MAX_CTL_LEN));
     o.u32(CTL_MAGIC);
@@ -339,10 +351,20 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
             o.u64(*req);
             o.items(items);
         }
-        Ctl::Bind { rx, peer } | Ctl::BindBroken { rx, peer } => {
+        Ctl::Bind { rx, rx_id, peer } => {
             o.u64(*rx);
+            o.u64(*rx_id);
             o.u32(*peer);
             o.u32(0);
+        }
+        Ctl::BindBroken { rx_id, peer } => {
+            o.u64(*rx_id);
+            o.u32(*peer);
+            o.u32(0);
+        }
+        Ctl::Unbind { rx_id } => {
+            o.u64(*rx_id);
+            o.zeros(8);
         }
     }
     o.0
@@ -466,15 +488,23 @@ pub(crate) fn decode_ctl(input: &[u8]) -> Result<Ctl, FrameError> {
             let items = r.items(count)?;
             Ctl::Redeemed { req, items }
         }
-        8 | 9 => {
+        8 => {
             let rx = r.u64()?;
+            let rx_id = r.u64()?;
             let peer = r.u32()?;
             r.zeros::<4>()?;
-            if kind == 8 {
-                Ctl::Bind { rx, peer }
-            } else {
-                Ctl::BindBroken { rx, peer }
-            }
+            Ctl::Bind { rx, rx_id, peer }
+        }
+        9 => {
+            let rx_id = r.u64()?;
+            let peer = r.u32()?;
+            r.zeros::<4>()?;
+            Ctl::BindBroken { rx_id, peer }
+        }
+        10 => {
+            let rx_id = r.u64()?;
+            r.zeros::<8>()?;
+            Ctl::Unbind { rx_id }
         }
         _ => return Err(FrameError::BadKind),
     };
@@ -589,8 +619,16 @@ mod tests {
                 items: items(3),
             },
             Ctl::RedeemRefused { req: 8, reason: 1 },
-            Ctl::Bind { rx: 0x30, peer: 77 },
-            Ctl::BindBroken { rx: 0x30, peer: 77 },
+            Ctl::Bind {
+                rx: 0x30,
+                rx_id: 0x44,
+                peer: 77,
+            },
+            Ctl::BindBroken {
+                rx_id: 0x44,
+                peer: 77,
+            },
+            Ctl::Unbind { rx_id: 0x44 },
         ]
     }
 
@@ -605,7 +643,11 @@ mod tests {
 
     #[test]
     fn malformed_records_are_refused() {
-        let good = encode_ctl(&Ctl::Bind { rx: 4, peer: 1 });
+        let good = encode_ctl(&Ctl::Bind {
+            rx: 4,
+            rx_id: 5,
+            peer: 1,
+        });
         let mut bad = good.clone();
         bad[0] ^= 1;
         assert_eq!(decode_ctl(&bad), Err(FrameError::BadMagic));

@@ -52,8 +52,9 @@ enum Holder {
 struct Binding {
     /// The process holding the receiver.
     binder: Proc,
-    /// The receiver's handle value in the binder, to name it in events.
-    rx: u64,
+    /// The binder's never-reused id for the listener, to name it in
+    /// events (not a handle value, which can be reused: item 8).
+    rx_id: u64,
     /// The peer's process ID.
     peer_pid: u32,
     /// Already reported broken.
@@ -87,8 +88,8 @@ pub(crate) struct Held {
 pub(crate) struct BindEvent {
     /// The process to tell.
     pub(crate) binder: Proc,
-    /// Its receiver's handle value.
-    pub(crate) rx: u64,
+    /// The binder's never-reused listener id.
+    pub(crate) rx_id: u64,
     /// The peer it was bound to.
     pub(crate) peer_pid: u32,
 }
@@ -286,7 +287,7 @@ impl Ledger {
                 b.broken = true;
                 events.push(BindEvent {
                     binder: b.binder,
-                    rx: b.rx,
+                    rx_id: b.rx_id,
                     peer_pid: b.peer_pid,
                 });
             }
@@ -312,7 +313,7 @@ impl Ledger {
         &mut self,
         binder: Proc,
         pipe: PipeKey,
-        rx: u64,
+        rx_id: u64,
         peer_pid: u32,
     ) -> Result<Option<BindEvent>, LedgerError> {
         let mut e = self.entry(pipe);
@@ -329,16 +330,28 @@ impl Ledger {
         };
         e.binding = Some(Binding {
             binder,
-            rx,
+            rx_id,
             peer_pid,
             broken: !consistent,
         });
         self.put(pipe, e)?;
         Ok((!consistent).then_some(BindEvent {
             binder,
-            rx,
+            rx_id,
             peer_pid,
         }))
+    }
+
+    /// Drops the binding `binder` holds as listener `rx_id`, because its
+    /// receiver closed (item 8). A no-op if there is no such binding.
+    pub(crate) fn unbind(&mut self, binder: Proc, rx_id: u64) {
+        for e in self.entries.values_mut() {
+            if e.binding
+                .is_some_and(|b| b.binder == binder && b.rx_id == rx_id)
+            {
+                e.binding = None;
+            }
+        }
     }
 
     /// Process `p` ended: the ends it held are gone, the tickets only it
@@ -554,10 +567,35 @@ mod tests {
             events,
             vec![BindEvent {
                 binder: BROKER,
-                rx: 0x40,
+                rx_id: 0x40,
                 peer_pid: 101
             }]
         );
+    }
+
+    #[test]
+    fn a_closed_receivers_binding_is_cleared() {
+        let mut l = ledger();
+        let ch = pipe(BROKER, 1);
+        l.place(ch, End::Receiver, B).unwrap();
+        l.place(ch, End::Sender, B).unwrap();
+        assert_eq!(l.bind(B, ch, 0x40, 101), Ok(None));
+        // B closes its listener 0x40: the binding is gone, so a later
+        // move of the sender raises no event.
+        l.unbind(B, 0x40);
+        let carrier = pipe(BROKER, 9);
+        l.place(carrier, End::Receiver, A).unwrap();
+        l.relay(
+            [3; 16],
+            Held {
+                carrier,
+                from: B,
+                ends: vec![(ch, End::Sender, WireKind::Sender)],
+            },
+        )
+        .unwrap();
+        let (_, events) = l.redeem(A, &[3; 16], carrier).unwrap();
+        assert!(events.is_empty(), "a cleared binding still fired");
     }
 
     #[test]
@@ -569,7 +607,7 @@ mod tests {
             l.bind(BROKER, ch, 0x40, 101),
             Ok(Some(BindEvent {
                 binder: BROKER,
-                rx: 0x40,
+                rx_id: 0x40,
                 peer_pid: 101
             }))
         );

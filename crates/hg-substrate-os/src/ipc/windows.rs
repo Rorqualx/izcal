@@ -167,6 +167,9 @@ struct Listener {
     /// Nothing more will be read.
     ended: bool,
     credit: PendingCredit,
+    /// Set for a `listen_bound` listener: the ledger has a binding to
+    /// drop when this receiver closes (item 8).
+    bound_peer: Option<u32>,
 }
 
 /// What an end is.
@@ -307,6 +310,26 @@ impl Inner {
         Some(end)
     }
 
+    /// If end `id` is a bound listener, drops its binding: in a child, a
+    /// single `Unbind` to the broker; in the broker, the ledger itself
+    /// (item 8). Call before closing a bound receiver.
+    fn drop_binding(&self, st: &mut State, id: u64) {
+        let peer = match st.ends.get_mut(&id).map(|e| &mut e.role) {
+            Some(Role::Receiver {
+                listener: Some(l), ..
+            }) => l.bound_peer.take(),
+            _ => None,
+        };
+        if peer.is_none() {
+            return;
+        }
+        if let Some(b) = st.broker.as_mut() {
+            b.ledger.unbind(BROKER, id);
+        } else {
+            self.send_ctl(st, None, &Ctl::Unbind { rx_id: id });
+        }
+    }
+
     /// A new random id for a pipe name or a ticket.
     fn random16() -> Option<[u8; 16]> {
         let mut b = [0u8; 16];
@@ -392,6 +415,7 @@ impl Inner {
         let flow_after = sink.lock().unwrap_or_else(PoisonError::into_inner)(delivery);
         let mut st = self.lock();
         let gone = if flow_after == Flow::Close || final_item {
+            self.drop_binding(&mut st, id);
             Self::remove(&mut st, id)
         } else {
             self.kick(&mut st, id);
@@ -683,12 +707,16 @@ impl Inner {
                     },
                 })
             }
-            Ctl::Bind { rx, peer } => {
+            Ctl::Bind { rx, rx_id, peer } => {
                 if let Some(k) = Self::peek_key(b, from, rx, true)
-                    && let Ok(Some(ev)) = b.ledger.bind(from, k, rx, peer)
+                    && let Ok(Some(ev)) = b.ledger.bind(from, k, rx_id, peer)
                 {
                     events.push(ev);
                 }
+                None
+            }
+            Ctl::Unbind { rx_id } => {
+                b.ledger.unbind(from, rx_id);
                 None
             }
             // Records only a broker sends: a child that sends one has
@@ -713,13 +741,13 @@ impl Inner {
     fn dispatch(self: &Arc<Self>, st: &mut State, events: Vec<BindEvent>) {
         for ev in events {
             if ev.binder == BROKER {
-                self.bind_broken(st, ev.rx, ev.peer_pid);
+                self.bind_broken(st, ev.rx_id, ev.peer_pid);
             } else {
                 self.send_ctl(
                     st,
                     Some(ev.binder),
                     &Ctl::BindBroken {
-                        rx: ev.rx,
+                        rx_id: ev.rx_id,
                         peer: ev.peer_pid,
                     },
                 );
@@ -727,28 +755,22 @@ impl Inner {
         }
     }
 
-    /// Ends the listener on the receiver whose handle value is `rx`,
-    /// with an Identity fault naming `peer`.
-    fn bind_broken(self: &Arc<Self>, st: &mut State, rx: u64, peer: u32) {
-        let id = st
-            .ends
-            .iter()
-            .find(|(_, e)| {
-                matches!(
-                    e.role,
-                    Role::Receiver {
-                        listener: Some(_),
-                        ..
-                    }
-                ) && sys::value(&e.h) == rx
+    /// Ends listener `rx_id` (the holder's own never-reused end id) with
+    /// an Identity fault naming `peer`, if it is still a live listener.
+    fn bind_broken(self: &Arc<Self>, st: &mut State, rx_id: u64, peer: u32) {
+        let live = matches!(
+            st.ends.get(&rx_id).map(|e| &e.role),
+            Some(Role::Receiver {
+                listener: Some(_),
+                ..
             })
-            .map(|(id, _)| *id);
-        if let Some(id) = id {
+        );
+        if live {
             let fault = Fault {
                 kind: FaultKind::Identity,
                 sender: Some(peer),
             };
-            self.end_listener(st, id, Item::Violation(fault));
+            self.end_listener(st, rx_id, Item::Violation(fault));
         }
     }
 
@@ -846,9 +868,13 @@ impl Inner {
                     out.extend(self.redeemed(st, rx, req, None));
                 }
             }
-            Ctl::BindBroken { rx, peer } => self.bind_broken(st, rx, peer),
+            Ctl::BindBroken { rx_id, peer } => self.bind_broken(st, rx_id, peer),
             // Records only a child sends, or a second Hello: ignored.
-            Ctl::Hello { .. } | Ctl::Relay { .. } | Ctl::Redeem { .. } | Ctl::Bind { .. } => {}
+            Ctl::Hello { .. }
+            | Ctl::Relay { .. }
+            | Ctl::Redeem { .. }
+            | Ctl::Bind { .. }
+            | Ctl::Unbind { .. } => {}
         }
         out
     }
@@ -1560,6 +1586,7 @@ impl HandleObject for WinListening {
 impl Drop for WinListening {
     fn drop(&mut self) {
         let mut st = self.inner.lock();
+        self.inner.drop_binding(&mut st, self.id);
         let gone = Inner::remove(&mut st, self.id);
         drop(st);
         drop(gone);
@@ -1713,11 +1740,13 @@ impl WindowsIpc {
             draining: false,
             ended: false,
             credit: PendingCredit::default(),
+            bound_peer: peer,
         });
         if let Some(p) = peer {
+            // `id` is this listener's never-reused key (item 8).
             if let Some(b) = st.broker.as_mut() {
                 let key = rx_facts.and_then(|f| Inner::key_of(b, &f));
-                let ev = key.and_then(|k| b.ledger.bind(BROKER, k, rx_value, p).ok().flatten());
+                let ev = key.and_then(|k| b.ledger.bind(BROKER, k, id, p).ok().flatten());
                 if let Some(ev) = ev {
                     self.inner.dispatch(&mut st, vec![ev]);
                 }
@@ -1727,6 +1756,7 @@ impl WindowsIpc {
                     None,
                     &Ctl::Bind {
                         rx: rx_value,
+                        rx_id: id,
                         peer: p,
                     },
                 );
