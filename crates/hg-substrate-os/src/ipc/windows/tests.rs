@@ -620,3 +620,38 @@ fn measure_round_trip_and_throughput() {
         "D5-MEASURE rtt64B p50={p50:.1}us p99={p99:.1}us max={max:.1}us | with a receiver end each way p50={m50:.1}us p99={m99:.1}us | 64KiB echo {mib:.0} MiB/s (both ways) over {n} msgs"
     );
 }
+
+/// Item 5: the broker keeps a channel's creator key after the creator
+/// dies, so a channel a dead child made is still resolved for the live
+/// processes that hold its ends.
+#[test]
+fn a_dead_creators_channel_is_still_keyed() {
+    use super::{BROKER, Broker, Inner};
+    use crate::ipc::win::ledger::Ledger;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let sid = "S-1-15-2-1-2-3-4-5-6-7";
+    let name = format!(
+        r"\Sessions\0\AppContainerNamedObjects\{sid}\izcal-{}",
+        "a".repeat(32)
+    );
+    let facts = super::sys::RawFacts {
+        is_pipe: true,
+        name: Some(name),
+        ..Default::default()
+    };
+    let mut b = Broker {
+        ledger: Ledger::default(),
+        held: BTreeMap::new(),
+        children: BTreeMap::new(),
+        reserved_sids: BTreeSet::new(),
+        creator_sids: BTreeMap::new(),
+        next_proc: 9,
+    };
+    // Child 7 made the channel, then died: it is gone from `children`,
+    // but its SID is still mapped because the ledger holds its channel.
+    b.creator_sids.insert(sid.to_owned(), 7);
+    let key = Inner::key_of(&b, &facts).expect("the dead creator's channel is still keyed");
+    assert_eq!(key.creator, 7);
+    assert_ne!(key.creator, BROKER);
+}

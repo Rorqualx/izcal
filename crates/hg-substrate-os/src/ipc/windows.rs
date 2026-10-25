@@ -223,6 +223,11 @@ struct Broker {
     /// AppContainer SIDs of launches in progress, reserved before the
     /// child is spawned so a duplicate never runs (M10, probe W4).
     reserved_sids: BTreeSet<String>,
+    /// Each sandboxed child's container SID to its process number. Kept
+    /// after the child dies for as long as the ledger has a channel it
+    /// created, so those channels can still be keyed and redeemed by the
+    /// live processes that hold their ends (item 5).
+    creator_sids: BTreeMap<String, Proc>,
     #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher reads it"))]
     next_proc: Proc,
 }
@@ -235,6 +240,16 @@ impl Broker {
                 .children
                 .values()
                 .any(|c| c.sid.as_deref() == Some(sid))
+    }
+
+    /// Sweeps dead channels and forgets the SID of any creator that is no
+    /// longer a live child and now has no channels (item 5).
+    fn sweep(&mut self) {
+        for creator in self.ledger.sweep() {
+            if !self.children.contains_key(&creator) {
+                self.creator_sids.retain(|_, p| *p != creator);
+            }
+        }
     }
 }
 
@@ -476,12 +491,10 @@ impl Inner {
         let (sid, id) = parse_name(f.name.as_deref()?)?;
         let creator = match sid {
             None => BROKER,
-            Some(s) => {
-                *b.children
-                    .iter()
-                    .find(|(_, c)| c.sid.as_deref() == Some(s))?
-                    .0
-            }
+            // The map outlives the child, so a channel a dead creator
+            // made is still keyed for the live processes holding its ends
+            // (item 5).
+            Some(s) => *b.creator_sids.get(s)?,
         };
         Some(PipeKey { creator, id })
     }
@@ -666,8 +679,7 @@ impl Inner {
                         let handles = b.held.remove(&ticket).unwrap_or_default();
                         let mut items = Vec::with_capacity(handles.len());
                         let mut ok = handles.len() == held.ends.len();
-                        let child = b.children.get(&from);
-                        if let Some(c) = child {
+                        if let Some(c) = b.children.get(&from) {
                             for (h, (_, _, kind)) in handles.iter().zip(&held.ends) {
                                 match sys::give(&c.process, h) {
                                     Ok(v) => items.push(CtlItem {
@@ -681,25 +693,24 @@ impl Inner {
                             ok = false;
                         }
                         later.push(Box::new(handles));
-                        let reply = match Items::from_slice(&items) {
-                            Some(items) if ok => Some(Ctl::Redeemed { req, items }),
-                            _ => None,
-                        };
-                        reply.unwrap_or_else(|| {
-                            // Take back what was given, closing the
-                            // child's copies, so no end stays open there
-                            // unreported; the ends are gone.
-                            if let Some(c) = child {
-                                for i in &items {
-                                    if let Ok(h) = sys::pull(&c.process, i.value, true) {
-                                        later.push(Box::new(h));
+                        match Items::from_slice(&items) {
+                            Some(items) if ok => Ctl::Redeemed { req, items },
+                            _ => {
+                                // Take back what was given, closing the
+                                // child's copies, so no end stays open
+                                // there unreported; the ends are gone.
+                                if let Some(c) = b.children.get(&from) {
+                                    for i in &items {
+                                        if let Ok(h) = sys::pull(&c.process, i.value, true) {
+                                            later.push(Box::new(h));
+                                        }
                                     }
                                 }
+                                b.ledger.lost(&held.ends);
+                                b.sweep();
+                                Ctl::RedeemRefused { req, reason: 0 }
                             }
-                            b.ledger.lost(&held.ends);
-                            b.ledger.sweep();
-                            Ctl::RedeemRefused { req, reason: 0 }
-                        })
+                        }
                     }
                     Err(e) => Ctl::RedeemRefused {
                         req,
@@ -808,7 +819,7 @@ impl Inner {
                 out.push(Box::new(hs));
             }
         }
-        b.ledger.sweep();
+        b.sweep();
         out.push(Box::new(c.process));
         if let Some(e) = Self::remove(st, c.link) {
             out.push(Box::new(e.h));
@@ -946,15 +957,25 @@ impl Inner {
         let Some(Item::Pending { payload, descs, .. }) = l.queue.remove(pos) else {
             return out;
         };
-        let checked = got.as_ref().map_or(Err(Reason::Redeem), |g| {
-            let kinds: Vec<WireKind> = g.iter().map(|(_, k)| *k).collect();
-            if g.iter().any(|(h, _)| h.is_none()) {
-                return Err(Reason::Redeem);
+        // The broker refused the redemption: the ticket and its handles
+        // are gone (e.g. the channel's creator died, item 5). That is a
+        // close, not a fault by the current sender, so the channel ends
+        // in Closed. A record whose descriptors do not match what the
+        // broker handed over is still a BadHandle violation.
+        let Some(got) = got else {
+            self.end_listener(st, rx, Item::Closed);
+            return out;
+        };
+        let checked = {
+            let kinds: Vec<WireKind> = got.iter().map(|(_, k)| *k).collect();
+            if got.iter().any(|(h, _)| h.is_none()) {
+                Err(Reason::Redeem)
+            } else {
+                check_redeemed(&descs, &kinds)
             }
-            check_redeemed(&descs, &kinds)
-        });
-        match (checked, got) {
-            (Ok(kinds), Some(got)) => {
+        };
+        match checked {
+            Ok(kinds) => {
                 let mut handles = Vec::with_capacity(got.len());
                 for (((h, _), kind), desc) in got.into_iter().zip(kinds).zip(&descs) {
                     let Some(h) = h else { continue };
@@ -1007,17 +1028,14 @@ impl Inner {
                 }
                 self.kick(st, rx);
             }
-            (Err(r), got) => {
-                if let Some(g) = got {
-                    out.push(Box::new(g));
-                }
+            Err(r) => {
+                out.push(Box::new(got));
                 let fault = Fault {
                     kind: r.fault_kind(),
                     sender: None,
                 };
                 self.end_listener(st, rx, Item::Violation(fault));
             }
-            (Ok(_), None) => {}
         }
         out
     }
@@ -1662,6 +1680,7 @@ impl WindowsIpc {
                 held: BTreeMap::new(),
                 children: BTreeMap::new(),
                 reserved_sids: BTreeSet::new(),
+                creator_sids: BTreeMap::new(),
                 next_proc: 1,
             });
         }
@@ -2184,7 +2203,7 @@ impl WindowsIpc {
         let Some(link) = link else {
             if let Some(b) = st.broker.as_mut() {
                 let _ = b.ledger.gone(p);
-                b.ledger.sweep();
+                b.sweep();
                 if let Some(s) = &sid {
                     b.reserved_sids.remove(s);
                 }
@@ -2196,6 +2215,9 @@ impl WindowsIpc {
         if let Some(b) = st.broker.as_mut() {
             if let Some(s) = &sid {
                 b.reserved_sids.remove(s);
+            }
+            if let Some(s) = &sid {
+                b.creator_sids.insert(s.clone(), p);
             }
             b.children.insert(p, ChildEntry { process, sid, link });
         }

@@ -407,20 +407,28 @@ impl Ledger {
         }
     }
 
-    /// Forgets channels whose two ends are both gone.
-    pub(crate) fn sweep(&mut self) {
+    /// Forgets channels whose two ends are both gone. Returns the
+    /// creators left with no channels, so the broker can drop a dead
+    /// creator's name map (item 5).
+    pub(crate) fn sweep(&mut self) -> Vec<Proc> {
         let gone: Vec<PipeKey> = self
             .entries
             .iter()
             .filter(|(_, e)| e.sender == Holder::Gone && e.receiver == Holder::Gone)
             .map(|(k, _)| *k)
             .collect();
+        let mut emptied = Vec::new();
         for k in gone {
             self.entries.remove(&k);
             if let Some(n) = self.per_creator.get_mut(&k.creator) {
                 *n = n.saturating_sub(1);
+                if *n == 0 {
+                    self.per_creator.remove(&k.creator);
+                    emptied.push(k.creator);
+                }
             }
         }
+        emptied
     }
 
     /// Tickets outstanding.
