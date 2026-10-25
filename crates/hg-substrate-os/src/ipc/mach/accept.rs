@@ -24,7 +24,18 @@
 //!   bootstrap port, a reply port), and neither may become a handle;
 //! - a receive slot is a receive right (disposition 16) to a plain
 //!   queue; the name holds nothing else, except send rights this
-//!   process's own sender end holds;
+//!   process's own sender end holds; and no port-destroyed request rides
+//!   on it (one would hand the right back to whoever asked when this
+//!   process destroys it, R8);
+//! - a receiver end's data port also has no send-once rights anywhere
+//!   (status `sorights`, R8): a former holder that kept one could make
+//!   the kernel send a notification to it, or queue past its limit
+//!   (P18). The sending transport cancels its own no-senders request
+//!   before moving the right, so an honest one has none;
+//! - a sender end's credit port is a receive slot whose send-once rights
+//!   are the reply rights of messages not yet credited, so the decision
+//!   allows at most the carried end's in-flight count
+//!   ([`Slot::Credit`]);
 //! - no name twice in one record.
 //!
 //! The kernel cannot say which channel two rights belong to, so a
@@ -61,6 +72,12 @@ pub(crate) struct SlotFacts {
     /// For a receive right, whether its receive status could be read: a
     /// plain queue's can (P6).
     pub(crate) plain_queue: bool,
+    /// For a receive right, the send-once rights to its port that exist
+    /// anywhere (status word 5, R8); 0 if the query failed.
+    pub(crate) send_once: u32,
+    /// For a receive right, whether a port-destroyed request is set on it
+    /// (status word 7, R8); true if the query failed.
+    pub(crate) destroy_request: bool,
 }
 
 /// Which names this process's transport already holds as ends.
@@ -86,6 +103,12 @@ pub(crate) enum Refusal {
     AlreadyHeld,
     /// A receive right that is not a plain queue.
     NotAQueue,
+    /// A receive right whose port has a port-destroyed request set.
+    DestroyRequest,
+    /// A receive right whose port has send-once rights a sender could
+    /// still use: any for a receiver end, more than the messages in
+    /// flight for a credit port.
+    SendOnce,
     /// The same name twice in one record.
     Duplicate,
 }
@@ -95,15 +118,18 @@ pub(crate) enum Refusal {
 pub(crate) enum Slot {
     /// A data port's send right (the sender end's first right).
     Send,
-    /// A receive right: the sender end's credit port, or a receiver end's
-    /// data port.
+    /// A receiver end's data port's receive right.
     Receive,
+    /// A sender end's credit port's receive right: as [`Slot::Receive`],
+    /// except that its send-once rights are checked against the carried
+    /// end's counters, in the decision.
+    Credit,
 }
 
 /// The slots a claimed kind takes on the wire, and how many.
 pub(crate) const fn slots(kind: WireKind) -> ([Slot; 2], usize) {
     match kind {
-        WireKind::Sender | WireKind::BoundSender => ([Slot::Send, Slot::Receive], 2),
+        WireKind::Sender | WireKind::BoundSender => ([Slot::Send, Slot::Credit], 2),
         WireKind::Receiver => ([Slot::Receive, Slot::Receive], 1),
     }
 }
@@ -151,7 +177,7 @@ pub(crate) fn accept_slot<H: Held>(slot: Slot, f: &SlotFacts, held: &H) -> Resul
             }
             Ok(())
         }
-        Slot::Receive => {
+        Slot::Receive | Slot::Credit => {
             if f.disposition != PORT_RECEIVE {
                 return Err(Refusal::Disposition);
             }
@@ -165,6 +191,12 @@ pub(crate) fn accept_slot<H: Held>(slot: Slot, f: &SlotFacts, held: &H) -> Resul
             }
             if !f.plain_queue {
                 return Err(Refusal::NotAQueue);
+            }
+            if f.destroy_request {
+                return Err(Refusal::DestroyRequest);
+            }
+            if slot == Slot::Receive && f.send_once != 0 {
+                return Err(Refusal::SendOnce);
             }
             Ok(())
         }
@@ -219,15 +251,17 @@ pub(crate) mod proofs {
             send_refs: kani::any(),
             kobject: kani::any(),
             plain_queue: kani::any(),
+            send_once: kani::any(),
+            destroy_request: kani::any(),
         }
     }
 
     /// Any slot.
     pub(crate) fn any_slot() -> Slot {
-        if kani::any() {
-            Slot::Send
-        } else {
-            Slot::Receive
+        match kani::any::<u8>() % 3 {
+            0 => Slot::Send,
+            1 => Slot::Receive,
+            _ => Slot::Credit,
         }
     }
 
@@ -251,8 +285,10 @@ pub(crate) mod proofs {
     /// Exactly the stated set passes: a port descriptor with a real name;
     /// for a send slot, a fresh send right (one reference, none held
     /// before) to a plain port, with at most this process's own receive
-    /// right beside it; for a receive slot, a receive right to a plain
-    /// queue with at most this process's own send references beside it.
+    /// right beside it; for a receive or credit slot, a receive right to
+    /// a plain queue with no port-destroyed request and at most this
+    /// process's own send references beside it, and for a receive slot
+    /// no send-once right anywhere.
     /// Everything else is refused.
     #[kani::proof]
     fn acceptance_is_exactly_the_stated_set() {
@@ -276,9 +312,11 @@ pub(crate) mod proofs {
                             || (held.receiver(f.name) && f.type_bits == TYPE_SEND | TYPE_RECEIVE))
                         && f.send_refs == 1
                 }
-                Slot::Receive => {
+                Slot::Receive | Slot::Credit => {
                     f.disposition == PORT_RECEIVE
                         && f.plain_queue
+                        && !f.destroy_request
+                        && (slot == Slot::Credit || f.send_once == 0)
                         && f.send_refs == held.send_refs(f.name)
                         && (f.type_bits == TYPE_RECEIVE
                             || (held.send_refs(f.name) > 0
@@ -288,6 +326,10 @@ pub(crate) mod proofs {
         assert!(ok == expected);
         kani::cover!(ok && slot == Slot::Send, "a send right accepted");
         kani::cover!(ok && slot == Slot::Receive, "a receive right accepted");
+        kani::cover!(
+            ok && slot == Slot::Credit && f.send_once > 0,
+            "a credit port with reply rights out accepted"
+        );
         kani::cover!(
             ok && slot == Slot::Send && f.type_bits != TYPE_SEND,
             "a send right to this process's own receiver accepted"
@@ -346,6 +388,8 @@ mod tests {
             send_refs: 1,
             kobject: KOBJECT_NONE,
             plain_queue: false,
+            send_once: 0,
+            destroy_request: false,
         }
     }
 
@@ -358,6 +402,8 @@ mod tests {
             send_refs: 0,
             kobject: 0,
             plain_queue: true,
+            send_once: 0,
+            destroy_request: false,
         }
     }
 
@@ -420,6 +466,33 @@ mod tests {
         );
     }
 
+    /// A receive right with a port-destroyed request would go back to
+    /// whoever asked; one with send-once rights out lets their holder
+    /// aim notifications at it (R8). A credit port may have its
+    /// in-flight messages' reply rights.
+    #[test]
+    fn requests_and_send_once_rights_on_a_received_port() {
+        let f = SlotFacts {
+            destroy_request: true,
+            ..recv(0x207)
+        };
+        for slot in [Slot::Receive, Slot::Credit] {
+            assert_eq!(
+                accept_slot(slot, &f, &Nothing),
+                Err(Refusal::DestroyRequest)
+            );
+        }
+        let f = SlotFacts {
+            send_once: 1,
+            ..recv(0x207)
+        };
+        assert_eq!(
+            accept_slot(Slot::Receive, &f, &Nothing),
+            Err(Refusal::SendOnce)
+        );
+        assert_eq!(accept_slot(Slot::Credit, &f, &Nothing), Ok(()));
+    }
+
     #[test]
     fn a_right_this_process_already_held_is_refused() {
         // A second send reference: the port's send right was here before
@@ -470,7 +543,7 @@ mod tests {
         assert_eq!(distinct(&[send(1), recv(2)]), Ok(()));
         assert_eq!(distinct(&[send(1), recv(1)]), Err(Refusal::Duplicate));
         let (s, n) = wire_slots(&[WireKind::Sender, WireKind::Receiver]).unwrap();
-        assert_eq!(&s[..n], &[Slot::Send, Slot::Receive, Slot::Receive]);
+        assert_eq!(&s[..n], &[Slot::Send, Slot::Credit, Slot::Receive]);
         assert!(wire_slots(&[WireKind::Receiver; 17]).is_none());
     }
 }

@@ -127,6 +127,9 @@ pub(crate) const NOTIFY_NO_SENDERS: u32 = 70;
 pub(crate) const NOTIFY_SEND_ONCE: u32 = 71;
 /// See [`NOTIFY_PORT_DELETED`].
 pub(crate) const NOTIFY_DEAD_NAME: u32 = 72;
+/// A no-senders notification's size: the header, 8 bytes of NDR record
+/// and the make-send count (R2a, R9).
+pub(crate) const NO_SENDERS_SIZE: u32 = 36;
 
 /// Port attribute flavor: the queue limit, one word, 0 to 1024 (P16).
 pub(crate) const ATTR_LIMITS: i32 = 1;
@@ -134,6 +137,12 @@ pub(crate) const ATTR_LIMITS: i32 = 1;
 pub(crate) const ATTR_RECEIVE_STATUS: i32 = 2;
 /// Words of [`ATTR_RECEIVE_STATUS`] (P10).
 pub(crate) const RECEIVE_STATUS_WORDS: usize = 10;
+/// The receive status word counting the port's send-once rights,
+/// wherever they are (R8).
+pub(crate) const STATUS_SEND_ONCE: usize = 5;
+/// The receive status word that is nonzero when a port-destroyed
+/// request is set (R8).
+pub(crate) const STATUS_DESTROY_REQUEST: usize = 7;
 /// The highest queue limit a port takes (P16).
 pub(crate) const QLIMIT_MAX: u32 = 1024;
 

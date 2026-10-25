@@ -166,6 +166,9 @@ enum Role {
         flow: ReceiverFlow,
         bound: bool,
         listener: Option<Listener>,
+        /// This process's own no-senders request is armed on the port:
+        /// only then does a no-senders notification mean `Closed`.
+        closes: bool,
     },
 }
 
@@ -234,6 +237,48 @@ impl State {
     }
 }
 
+/// Takes this process's own notification requests off end `id`'s port
+/// before its rights move: a receiver's no-senders request, and a
+/// sender's send-possible request unless its own outbox still needs it
+/// (then it comes off when that outbox drains, before the message that
+/// carries it is sent).
+fn unrequest(st: &mut State, id: u64) {
+    match st.ends.get_mut(&id) {
+        Some(Role::Receiver { data, closes, .. }) => {
+            sys::cancel_no_senders(*data);
+            *closes = false;
+        }
+        Some(Role::Sender {
+            data,
+            armed,
+            outbox,
+            ..
+        }) if *armed && outbox.is_empty() => {
+            sys::cancel_send_possible(*data);
+            *armed = false;
+        }
+        Some(Role::Sender { .. }) | None => {}
+    }
+}
+
+/// The ends carried in the head of sender `id`'s outbox that waited for
+/// their own queues.
+fn outbox_head_after(st: &State, id: u64) -> Vec<u64> {
+    match st.ends.get(&id) {
+        Some(Role::Sender { outbox, .. }) => {
+            outbox.front().map(|h| h.after.clone()).unwrap_or_default()
+        }
+        Some(Role::Receiver { .. }) | None => Vec::new(),
+    }
+}
+
+/// Re-arms what [`unrequest`] took off, when the rights did not move.
+fn rerequest(st: &mut State, id: u64) {
+    if let Some(Role::Receiver { data, closes, .. }) = st.ends.get_mut(&id) {
+        *closes = sys::request_no_senders(*data, 1).is_ok();
+    }
+}
+
 /// Releases an end's rights and whatever it still holds.
 fn release_role(role: Role, set: u32) -> Vec<Item> {
     match role {
@@ -298,6 +343,7 @@ struct Boot {
     up_flow: SenderFlow,
     down_data: u32,
     down_flow: ReceiverFlow,
+    down_closes: bool,
     parent: Token,
 }
 
@@ -454,7 +500,11 @@ impl Inner {
             Kind::NoSenders => {
                 sys::release_received(bytes);
                 let mut st = self.lock();
-                self.end_listener(&mut st, id, Item::Closed);
+                // Only the request this process armed on the port means
+                // Closed; any other is ignored.
+                if matches!(st.ends.get(&id), Some(Role::Receiver { closes: true, .. })) {
+                    self.end_listener(&mut st, id, Item::Closed);
+                }
                 return;
             }
             Kind::NoToken => {
@@ -548,12 +598,13 @@ impl Inner {
                             // reset the one, re-arm the other (its
                             // make-send count restarted at 0, P10).
                             let _ = sys::set_qlimit(d.name, desc.capacity);
-                            let _ = sys::request_no_senders(d.name, 0);
+                            let closes = sys::request_no_senders(d.name, 0).is_ok();
                             Role::Receiver {
                                 data: d.name,
                                 flow,
                                 bound: false,
                                 listener: None,
+                                closes,
                             }
                         }
                     };
@@ -685,6 +736,17 @@ impl Inner {
                 // sent: their new holder sees them closed.
                 for dep in waiting {
                     self.give_up(st, id, dep);
+                }
+            }
+            // The carried senders' queues are done: their send-possible
+            // requests come off before their rights move (R9).
+            let carried: Vec<u64> = outbox_head_after(st, id);
+            for dep in carried {
+                if let Some(Role::Sender { data, armed, .. }) = st.ends.get_mut(&dep)
+                    && *armed
+                {
+                    sys::cancel_send_possible(*data);
+                    *armed = false;
                 }
             }
             let Some(Role::Sender { outbox, .. }) = st.ends.get_mut(&id) else {
@@ -1316,6 +1378,8 @@ impl MacIpc {
             flow: ReceiverFlow::new(BOOTSTRAP_CAPACITY),
             bound: false,
             listener: None,
+            // `new_ports` armed it.
+            closes: true,
         });
         let tx = st.insert(Role::Sender {
             data: down_data,
@@ -1399,13 +1463,14 @@ fn hello() -> Option<Boot> {
         sys::release_received(bytes);
         return None;
     };
-    let _ = sys::request_no_senders(down_data, 0);
+    let down_closes = sys::request_no_senders(down_data, 0).is_ok();
     Some(Boot {
         up_data,
         up_credit,
         up_flow,
         down_data,
         down_flow,
+        down_closes,
         parent,
     })
 }
@@ -1451,6 +1516,8 @@ impl Ipc for MacIpc {
             flow: ReceiverFlow::new(capacity),
             bound,
             listener: None,
+            // `new_ports` armed it.
+            closes: true,
         });
         drop(st);
         let tk = if bound {
@@ -1601,6 +1668,12 @@ impl Ipc for MacIpc {
             return Err(IpcError::TooLarge);
         };
         let queue_first = !outbox.is_empty() || !after.is_empty();
+        // Before any right moves, this process's own requests come off
+        // the carried ports (R8): a receiver's no-senders request is a
+        // send-once right to its port, which the receiving side refuses.
+        for &id in &ids {
+            unrequest(&mut st, id);
+        }
         let outcome = if queue_first {
             Err(Kr(SEND_TIMED_OUT))
         } else {
@@ -1609,13 +1682,18 @@ impl Ipc for MacIpc {
         let queued = match outcome {
             Ok(()) => false,
             Err(Kr(SEND_TIMED_OUT)) => true,
-            Err(Kr(SEND_INVALID_DEST)) => {
-                if let Some(Role::Sender { broken, .. }) = st.ends.get_mut(&to_id) {
+            Err(e) => {
+                // Not sent: the carried rights are still ours (R7).
+                for &id in &ids {
+                    rerequest(&mut st, id);
+                }
+                if e == Kr(SEND_INVALID_DEST)
+                    && let Some(Role::Sender { broken, .. }) = st.ends.get_mut(&to_id)
+                {
                     *broken = true;
                 }
                 return Err(IpcError::Closed);
             }
-            Err(_) => return Err(IpcError::Closed),
         };
         // Committed: count it, mark grants, retire the carried ends (their
         // rights left in the message, or wait in it in the outbox).
@@ -1714,6 +1792,7 @@ impl Ipc for MacIpc {
             flow: b.down_flow,
             bound: false,
             listener: None,
+            closes: b.down_closes,
         });
         drop(st);
         let to_parent =

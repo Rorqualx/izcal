@@ -70,6 +70,16 @@ impl Rig {
         (out, l)
     }
 
+    /// The data and credit port names behind one of this transport's
+    /// sender ends (tests only).
+    fn sender_names(&self, h: &Handle) -> (u32, u32) {
+        let e = h.object().downcast_ref::<MacEnd>().unwrap();
+        match self.ipc.inner.lock().ends.get(&e.id).unwrap() {
+            Role::Sender { data, credit, .. } => (*data, *credit),
+            Role::Receiver { .. } => panic!("not a sender"),
+        }
+    }
+
     /// The data port name behind one of this transport's sender ends
     /// (tests only: to send messages the transport itself never would).
     fn data_name(&self, h: &Handle) -> u32 {
@@ -629,6 +639,27 @@ fn child(case: &str) -> i32 {
             let _ = next(&from_parent);
             0
         }
+        // A hostile child: its own credit port, whose reply right this
+        // very message carries, passed off as a receiver end.
+        "credit-as-receiver" => {
+            let (data, credit) = r.sender_names(up.handle());
+            let body =
+                wire::frame(&encode_data(0, &[desc(WireKind::Receiver)], b"c").unwrap()).unwrap();
+            let sent = test_support::send_raw(&Outgoing {
+                dest: data,
+                dest_disposition: COPY_SEND,
+                reply: credit,
+                reply_disposition: MAKE_SEND_ONCE,
+                id: ID_DATA,
+                ports: &[(credit, MOVE_RECEIVE)],
+                body: &body,
+            });
+            if sent.is_err() {
+                return 12;
+            }
+            let _ = next(&from_parent);
+            0
+        }
         "sandbox" => {
             let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
             r.ipc
@@ -684,6 +715,20 @@ fn spawn(r: &Rig, case: &str) -> Child {
         to_child: tx,
         _l: l,
     }
+}
+
+/// Scenario C: a peer's own credit port, passed off as a receiver end,
+/// is refused and blamed on that peer (R8: its reply right in the same
+/// message is a send-once right to the port). Accepted, the credit for
+/// it would come back on that port from this process, and the fault
+/// would name this process.
+#[test]
+fn a_peer_s_own_credit_port_as_a_receiver_is_blamed_on_it() {
+    let r = rig();
+    let c = spawn(&r, "credit-as-receiver");
+    expect_fault(&c.from_child, FaultKind::BadHandle, Some(c.peer.pid()));
+    drop(c.to_child);
+    assert_eq!(sys::wait_child(c.pid).unwrap(), 0);
 }
 
 #[test]

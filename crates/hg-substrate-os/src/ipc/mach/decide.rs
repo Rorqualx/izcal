@@ -40,8 +40,10 @@
 //! 5. A body that does not decode → Violation.
 //! 6. Handles: the rights must be exactly the slots the descriptor table
 //!    names ([`super::accept::slots`]), all distinct, each accepted, and
-//!    every carried end's counters possible → else Violation. The table
-//!    and the rights are the sending transport's own doing.
+//!    every carried end's counters possible, and a carried sender's
+//!    credit port with no more send-once rights than its messages in
+//!    flight (R8) → else Violation. The table and the rights are the
+//!    sending transport's own doing.
 //! 7. `seq` not the next expected, or a message over capacity →
 //!    Violation, *not* attributed: a transferred sender carries its
 //!    counters, and a former holder that lied about them makes the next,
@@ -51,7 +53,9 @@ use hg_substrate::ipc::{Fault, FaultKind, HandleKind, MAX_MESSAGE_HANDLES};
 
 use super::super::common::codec::{CodecError, DataView, HandleDesc, WireKind, decode_data};
 use super::super::common::flow::{FlowError, ReceiverFlow, SenderFlow};
-use super::accept::{Held, Refusal, SlotFacts, accept_slot, distinct, handle_kind, wire_slots};
+use super::accept::{
+    Held, Refusal, SlotFacts, accept_slot, distinct, handle_kind, slots, wire_slots,
+};
 use super::wire::{
     DESC_PORT, Header, ID_DATA, ID_HELLO_REPLY, NAME_NULL, PORT_SEND, PORT_SEND_ONCE, Token,
     WireError,
@@ -279,10 +283,21 @@ where
         }
     }
     let mut kinds = [HandleKind::ChannelReceiver; MAX_MESSAGE_HANDLES];
+    let mut at = 0usize;
     for (k, d) in kinds.iter_mut().zip(descs) {
         if let Err(e) = counters(d) {
             return refuse(Reason::Counters(e));
         }
+        // A carried sender's credit port: its send-once rights are the
+        // reply rights of its messages not yet credited (R8), no more.
+        let (_, n) = slots(d.kind);
+        if n == 2
+            && let Some(c) = a.slots.get(at.saturating_add(1))
+            && u64::from(c.send_once) > d.sent.saturating_sub(d.delivered)
+        {
+            return refuse(Reason::Handle(Refusal::SendOnce));
+        }
+        at = at.saturating_add(n);
         *k = handle_kind(d.kind);
     }
 
@@ -465,8 +480,17 @@ mod proofs {
                         assert!(facts[i].name != facts[j].name);
                     }
                 }
+                let mut at = 0usize;
                 for i in 0..ND {
                     assert!(kinds[i] == handle_kind(table_kinds[i]));
+                    let (_, n) = slots(table_kinds[i]);
+                    if n == 2 {
+                        assert!(
+                            u64::from(facts[at + 1].send_once)
+                                <= table[i].sent - table[i].delivered
+                        );
+                    }
+                    at += n;
                 }
                 let _ = view;
                 let Ok(t) = token else { panic!() };
@@ -577,6 +601,8 @@ mod tests {
             send_refs: 1,
             kobject: KOBJECT_NONE,
             plain_queue: false,
+            send_once: 0,
+            destroy_request: false,
         }
     }
 
@@ -589,6 +615,8 @@ mod tests {
             send_refs: 0,
             kobject: 0,
             plain_queue: true,
+            send_once: 0,
+            destroy_request: false,
         }
     }
 
@@ -670,6 +698,33 @@ mod tests {
             assert_eq!(self.flow, before);
             (reason, sender)
         }
+    }
+
+    /// A carried sender's credit port may hold the reply rights of its
+    /// messages in flight, and no more (R8).
+    #[test]
+    fn a_credit_port_s_send_once_rights_are_its_messages_in_flight() {
+        let mut c = Case::new(&[WireKind::Sender]);
+        c.slots[1].send_once = 1;
+        assert_eq!(
+            c.violation(),
+            (Reason::Handle(Refusal::SendOnce), Some(4242))
+        );
+        let mut c = Case::new(&[WireKind::Sender]);
+        c.slots[1].send_once = 1;
+        let one_out = HandleDesc {
+            sent: 1,
+            ..desc(WireKind::Sender)
+        };
+        c.body = encode_data(0, &[one_out], b"hello").unwrap();
+        assert!(matches!(c.run(), Decision::Accept { .. }));
+        // A receiver end's data port may have none.
+        let mut c = Case::new(&[WireKind::Receiver]);
+        c.slots[0].send_once = 1;
+        assert_eq!(
+            c.violation(),
+            (Reason::Handle(Refusal::SendOnce), Some(4242))
+        );
     }
 
     #[test]

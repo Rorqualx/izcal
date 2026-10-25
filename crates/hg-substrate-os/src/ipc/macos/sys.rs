@@ -25,8 +25,8 @@ use crate::ipc::mach::wire::{
     self, ATTR_LIMITS, ATTR_RECEIVE_STATUS, Desc, MAKE_SEND, MAKE_SEND_ONCE, NAME_DEAD, NAME_NULL,
     NOTIFY_NO_SENDERS, NOTIFY_SEND_POSSIBLE, OPT_RCV, OPT_RCV_TIMEOUT, OPT_TRAILER_AUDIT,
     PORT_RECEIVE, PORT_SEND, PORT_SEND_ONCE, QLIMIT_MAX, RCV_OPTIONS, RECEIVE_STATUS_WORDS,
-    RIGHT_PORT_SET, RIGHT_RECEIVE, RIGHT_SEND, SEND_OPTIONS, TASK_AUDIT_TOKEN, TASK_BOOTSTRAP_PORT,
-    Token,
+    RIGHT_PORT_SET, RIGHT_RECEIVE, RIGHT_SEND, SEND_OPTIONS, STATUS_DESTROY_REQUEST,
+    STATUS_SEND_ONCE, TASK_AUDIT_TOKEN, TASK_BOOTSTRAP_PORT, Token,
 };
 
 type KernReturn = c_int;
@@ -236,6 +236,41 @@ pub(crate) fn request_send_possible(name: PortName, notify: PortName) {
     }
 }
 
+/// Takes request `id` (a notification kind) off `name`, and releases
+/// the send-once right it held (R2c, R8, R9). Nothing armed is no error.
+fn cancel_request(name: PortName, id: u32) {
+    let mut previous: PortName = NAME_NULL;
+    // SAFETY: plain values (a null notify port cancels) and a valid
+    // out-pointer for the previous notify right.
+    let rc = unsafe {
+        mach_port_request_notification(
+            task(),
+            name,
+            i32::try_from(id).unwrap_or(0),
+            0,
+            NAME_NULL,
+            u32::from(MAKE_SEND_ONCE),
+            &raw mut previous,
+        )
+    };
+    if rc == 0 {
+        deallocate(previous);
+    }
+}
+
+/// Cancels this process's no-senders request on receive right `name`
+/// before the right moves: the request holds a send-once right to the
+/// port, which the receiving side would refuse (R8).
+pub(crate) fn cancel_no_senders(name: PortName) {
+    cancel_request(name, NOTIFY_NO_SENDERS);
+}
+
+/// Cancels the send-possible request on send right `name` before the
+/// right moves (R9).
+pub(crate) fn cancel_send_possible(name: PortName) {
+    cancel_request(name, NOTIFY_SEND_POSSIBLE);
+}
+
 /// What the kernel says about one received right, for acceptance.
 pub(crate) fn slot_facts(desc: Desc) -> SlotFacts {
     let Desc::Port { name, disposition } = desc else {
@@ -247,6 +282,8 @@ pub(crate) fn slot_facts(desc: Desc) -> SlotFacts {
             send_refs: 0,
             kobject: 0,
             plain_queue: false,
+            send_once: 0,
+            destroy_request: true,
         };
     };
     let mut type_bits = 0u32;
@@ -267,7 +304,11 @@ pub(crate) fn slot_facts(desc: Desc) -> SlotFacts {
             kobject = 0;
         }
     }
-    let plain_queue = disposition == PORT_RECEIVE && receive_status(name).is_some();
+    let status = if disposition == PORT_RECEIVE {
+        receive_status(name)
+    } else {
+        None
+    };
     SlotFacts {
         desc_type: wire::DESC_PORT,
         name,
@@ -275,7 +316,14 @@ pub(crate) fn slot_facts(desc: Desc) -> SlotFacts {
         type_bits,
         send_refs,
         kobject,
-        plain_queue,
+        plain_queue: status.is_some(),
+        send_once: status
+            .and_then(|w| w.get(STATUS_SEND_ONCE).copied())
+            .and_then(|n| u32::try_from(n).ok())
+            .unwrap_or(0),
+        destroy_request: status
+            .and_then(|w| w.get(STATUS_DESTROY_REQUEST).copied())
+            .is_none_or(|n| n != 0),
     }
 }
 
