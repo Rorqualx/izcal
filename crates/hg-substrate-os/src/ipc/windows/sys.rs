@@ -51,9 +51,9 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeInfo, PIPE_READMODE_MESSAGE,
-    PIPE_REJECT_REMOTE_CLIENTS, PIPE_SERVER_END, PIPE_TYPE_MESSAGE, PIPE_WAIT,
-    SetNamedPipeHandleState,
+    ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeHandleStateW, GetNamedPipeInfo, PIPE_NOWAIT,
+    PIPE_READMODE_MESSAGE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_SERVER_END, PIPE_TYPE_MESSAGE,
+    PIPE_WAIT, SetNamedPipeHandleState,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, GetCurrentProcessId, GetCurrentThread, OpenProcessToken,
@@ -364,6 +364,10 @@ pub(crate) struct RawFacts {
     pub(crate) message: bool,
     /// The most instances the pipe allows.
     pub(crate) max_instances: u32,
+    /// `GetNamedPipeHandleState`: this end reads in message mode.
+    pub(crate) read_message: bool,
+    /// `GetNamedPipeHandleState`: this end blocks (not `PIPE_NOWAIT`).
+    pub(crate) wait: bool,
     /// `GetFileInformationByHandleEx(FileNameInfo)`: the pipe's name
     /// relative to the pipe device.
     pub(crate) name: Option<String>,
@@ -390,14 +394,42 @@ pub(crate) fn facts(h: &OwnedHandle) -> RawFacts {
             &raw mut max,
         )
     } != 0;
+    let (read_message, wait) = read_wait_mode(h);
     RawFacts {
         is_pipe,
         server_end: info_ok && flags & PIPE_SERVER_END != 0,
         message: info_ok && flags & PIPE_TYPE_MESSAGE != 0,
         max_instances: if info_ok { max } else { 0 },
+        read_message,
+        wait,
         name: pipe_name(h),
         handle_count: handle_count(h),
     }
+}
+
+/// `GetNamedPipeHandleState`: whether this end reads in message mode and
+/// blocks. A failed query reports neither, so accept refuses the end. On
+/// a synchronous end with a read pending the call blocks (probe W8), so
+/// the broker runs `facts` off its IO thread (M8).
+fn read_wait_mode(h: &OwnedHandle) -> (bool, bool) {
+    let mut state = 0u32;
+    // SAFETY: valid handle; one out-pointer for the state word, the rest
+    // null as documented for "not wanted".
+    let ok = unsafe {
+        GetNamedPipeHandleStateW(
+            raw(h),
+            &raw mut state,
+            core::ptr::null_mut(),
+            core::ptr::null_mut(),
+            core::ptr::null_mut(),
+            core::ptr::null_mut(),
+            0,
+        )
+    };
+    if ok == 0 {
+        return (false, false);
+    }
+    (state & PIPE_READMODE_MESSAGE != 0, state & PIPE_NOWAIT == 0)
 }
 
 /// `GetFileInformationByHandleEx(FileNameInfo)`: the name relative to

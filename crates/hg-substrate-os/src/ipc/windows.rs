@@ -457,6 +457,8 @@ impl Inner {
                 server_end: false,
                 message: false,
                 max_instances: 0,
+                read_message: false,
+                wait: false,
                 pipe: None,
                 handle_count: 0,
             };
@@ -469,6 +471,8 @@ impl Inner {
             server_end: f.server_end,
             message: f.message,
             max_instances: f.max_instances,
+            read_message: f.read_message,
+            wait: f.wait,
             pipe: Self::key_of(b, &f),
             handle_count: f.handle_count,
         }

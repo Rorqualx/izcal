@@ -73,6 +73,10 @@ pub(crate) struct Facts {
     pub(crate) message: bool,
     /// `GetNamedPipeInfo`: the most instances the pipe allows.
     pub(crate) max_instances: u32,
+    /// `GetNamedPipeHandleState`: this end reads in message mode.
+    pub(crate) read_message: bool,
+    /// `GetNamedPipeHandleState`: this end blocks (not `PIPE_NOWAIT`).
+    pub(crate) wait: bool,
     /// The channel its name names; `None` for a name that is not an
     /// Izcal channel's, or a namespace the broker did not give a child.
     pub(crate) pipe: Option<PipeKey>,
@@ -117,8 +121,10 @@ pub(crate) enum Refusal {
     PullFailed,
     /// Not a pipe.
     NotPipe,
-    /// A byte-mode pipe.
+    /// A byte-mode pipe, or an end reading in byte mode.
     NotMessage,
+    /// An end set to return at once instead of blocking (`PIPE_NOWAIT`).
+    NoWait,
     /// A pipe that allows more than one instance.
     Instances,
     /// Not an Izcal channel's pipe.
@@ -166,6 +172,7 @@ impl Refusal {
             Self::Duplicate => 15,
             Self::Quota => 16,
             Self::NoTicket => 17,
+            Self::NoWait => 18,
         }
     }
 }
@@ -206,8 +213,11 @@ pub(crate) fn accept(claimed: WireKind, f: &Facts, ctx: &Ctx) -> Result<(PipeKey
     if !f.is_pipe {
         return Err(Refusal::NotPipe);
     }
-    if !f.message {
+    if !f.message || !f.read_message {
         return Err(Refusal::NotMessage);
+    }
+    if !f.wait {
+        return Err(Refusal::NoWait);
     }
     if f.max_instances != 1 {
         return Err(Refusal::Instances);
@@ -349,6 +359,8 @@ mod proofs {
             server_end: kani::any(),
             message: kani::any(),
             max_instances: kani::any(),
+            read_message: kani::any(),
+            wait: kani::any(),
             pipe: if kani::any() { Some(any_pipe()) } else { None },
             handle_count: kani::any(),
         }
@@ -458,6 +470,8 @@ mod tests {
             is_pipe: true,
             server_end: end == End::Receiver,
             message: true,
+            read_message: true,
+            wait: true,
             max_instances: 1,
             pipe: Some(pipe(CHILD)),
             handle_count: 1,
@@ -629,6 +643,23 @@ mod tests {
     }
 
     #[test]
+    fn a_byte_read_mode_end_is_refused() {
+        let mut f = good(End::Sender);
+        f.read_message = false;
+        assert_eq!(
+            accept(WireKind::Sender, &f, &ctx()),
+            Err(Refusal::NotMessage)
+        );
+    }
+
+    #[test]
+    fn a_nowait_end_is_refused() {
+        let mut f = good(End::Sender);
+        f.wait = false;
+        assert_eq!(accept(WireKind::Sender, &f, &ctx()), Err(Refusal::NoWait));
+    }
+
+    #[test]
     fn a_handle_of_the_wrong_kind_is_refused() {
         let mut f = good(End::Sender);
         f.is_pipe = false;
@@ -659,6 +690,7 @@ mod tests {
             Refusal::Duplicate,
             Refusal::Quota,
             Refusal::NoTicket,
+            Refusal::NoWait,
         ];
         for (i, a) in all.iter().enumerate() {
             assert_ne!(a.code(), 0);
