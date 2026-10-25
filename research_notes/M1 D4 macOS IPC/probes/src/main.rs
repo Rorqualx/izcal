@@ -125,7 +125,7 @@ fn discover() {
     );
     unsafe { ffi::mach_port_mod_refs(t, y, k::RIGHT_RECEIVE, -1) };
     assert_eq!(recv(n, Some(100)).unwrap().id, k::NOTIFY_DEAD_NAME);
-    println!("discover: all {} constant checks hold", 30);
+    println!("discover: every constant check above holds");
 }
 
 /// In-process probes. Run unsandboxed in the parent and inside the deny-default sandbox in a child.
