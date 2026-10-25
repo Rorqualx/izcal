@@ -42,6 +42,33 @@ impl OsInstallDevice {
         }
         out
     }
+
+    /// Whether a component of `p` above it is a file (or anything but a
+    /// directory). Checked first, so each OS gives the contract's error
+    /// rather than its own (Unix says "not a directory", Windows "not
+    /// found").
+    fn file_above(&self, p: &InstallPath) -> bool {
+        let mut at = self.root.clone();
+        let mut parts = p.components().peekable();
+        while let Some(c) = parts.next() {
+            if parts.peek().is_none() {
+                break;
+            }
+            at.push(c);
+            if std::fs::symlink_metadata(&at).is_ok_and(|m| !m.is_dir()) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Whether `p` is `root` or under it.
+fn at_or_under(p: &InstallPath, root: &InstallPath) -> bool {
+    let (p, root) = (p.as_str(), root.as_str());
+    p == root
+        || p.strip_prefix(root)
+            .is_some_and(|rest| rest.starts_with('/'))
 }
 
 fn map(e: &std::io::Error) -> InstallError {
@@ -82,6 +109,12 @@ impl InstalledFile for OsInstalledFile {
 impl InstallDevice for OsInstallDevice {
     fn write_new(&self, path: &InstallPath, bytes: &[u8]) -> Result<(), InstallError> {
         let full = self.path(path);
+        if self.file_above(path) {
+            return Err(InstallError::Invalid);
+        }
+        if std::fs::symlink_metadata(&full).is_ok() {
+            return Err(InstallError::AlreadyExists);
+        }
         if let Some(parent) = full.parent() {
             std::fs::create_dir_all(parent).map_err(|e| map(&e))?;
         }
@@ -100,11 +133,19 @@ impl InstallDevice for OsInstallDevice {
 
     fn rename(&self, from: &InstallPath, to: &InstallPath) -> Result<(), InstallError> {
         let (a, b) = (self.path(from), self.path(to));
-        std::fs::symlink_metadata(&a).map_err(|e| map(&e))?;
+        if self.file_above(from) {
+            return Err(InstallError::NotFound);
+        }
+        let moving = std::fs::symlink_metadata(&a).map_err(|e| map(&e))?;
         if from == to {
             return Ok(());
         }
-        if std::fs::symlink_metadata(&b).is_ok_and(|m| m.is_dir()) {
+        let target = std::fs::symlink_metadata(&b).ok();
+        let refused = self.file_above(to)
+            || target.as_ref().is_some_and(std::fs::Metadata::is_dir)
+            || (moving.is_dir() && target.is_some())
+            || at_or_under(to, from);
+        if refused {
             return Err(InstallError::Invalid);
         }
         if let Some(parent) = b.parent() {
@@ -119,6 +160,9 @@ impl InstallDevice for OsInstallDevice {
 
     fn delete_tree(&self, path: &InstallPath) -> Result<(), InstallError> {
         let full = self.path(path);
+        if self.file_above(path) {
+            return Err(InstallError::NotFound);
+        }
         let meta = std::fs::symlink_metadata(&full).map_err(|e| map(&e))?;
         if meta.is_dir() {
             std::fs::remove_dir_all(&full).map_err(|e| map(&e))
@@ -129,6 +173,9 @@ impl InstallDevice for OsInstallDevice {
 
     fn open_read(&self, path: &InstallPath) -> Result<Box<dyn InstalledFile>, InstallError> {
         let full = self.path(path);
+        if self.file_above(path) {
+            return Err(InstallError::NotFound);
+        }
         // Checked before opening: Windows refuses to open a directory
         // (access denied) where Unix opens it.
         if std::fs::metadata(&full).map_err(|e| map(&e))?.is_dir() {
@@ -140,6 +187,9 @@ impl InstallDevice for OsInstallDevice {
 
     fn lock(&self, path: &InstallPath, mode: LockMode) -> Result<InstallLock, InstallError> {
         let full = self.path(path);
+        if self.file_above(path) || std::fs::metadata(&full).is_ok_and(|m| m.is_dir()) {
+            return Err(InstallError::Invalid);
+        }
         if let Some(parent) = full.parent() {
             std::fs::create_dir_all(parent).map_err(|e| map(&e))?;
         }

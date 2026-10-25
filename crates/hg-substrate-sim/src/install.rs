@@ -5,10 +5,13 @@
 //!
 //! Files are immutable byte strings shared by reference: an open file
 //! holds the one it opened, so a later rename over its path does not
-//! change what it reads, as on the real file system. Directories exist
-//! where files are under them.
+//! change what it reads, as on the real file system. Directories are
+//! entries of their own: made for a file's parents, and left, empty, when
+//! the last file under one moves away, as on the OS. Every refusal is the
+//! one [`InstallDevice`] names, which the OS device gives too (the
+//! conformance test runs one script against both).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use hg_substrate::install::{
@@ -17,10 +20,11 @@ use hg_substrate::install::{
 
 use crate::world::Shared;
 
-/// The tree: files by path, and each lock's holders.
+/// The tree: files and directories by path, and each lock's holders.
 #[derive(Default)]
 pub(crate) struct InstallTree {
     files: BTreeMap<String, Arc<Vec<u8>>>,
+    dirs: BTreeSet<String>,
     locks: BTreeMap<String, Holders>,
 }
 
@@ -30,23 +34,77 @@ struct Holders {
     exclusive: bool,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    File,
+    Dir,
+}
+
+/// The proper prefixes of `p`: `a`, `a/b` for `a/b/c`.
+fn ancestors(p: &str) -> impl Iterator<Item = &str> {
+    p.match_indices('/')
+        .map(move |(i, _)| p.get(..i).unwrap_or(p))
+}
+
+/// Whether `p` is `root` or under it.
+fn at_or_under(p: &str, root: &str) -> bool {
+    p == root
+        || p.strip_prefix(root)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
 impl InstallTree {
-    fn is_dir(&self, p: &str) -> bool {
-        let prefix = format!("{p}/");
-        self.files
-            .range(prefix.clone()..)
-            .next()
-            .is_some_and(|(k, _)| k.starts_with(&prefix))
+    fn kind(&self, p: &str) -> Option<Kind> {
+        if self.files.contains_key(p) {
+            Some(Kind::File)
+        } else if self.dirs.contains(p) {
+            Some(Kind::Dir)
+        } else {
+            None
+        }
     }
 
-    /// Every file at or under `p`.
-    fn under(&self, p: &str) -> Vec<String> {
-        let prefix = format!("{p}/");
-        self.files
+    /// Whether a component of `p` above it is a file.
+    fn file_above(&self, p: &str) -> bool {
+        ancestors(p).any(|a| self.files.contains_key(a))
+    }
+
+    fn make_parents(&mut self, p: &str) {
+        for a in ancestors(p) {
+            self.dirs.insert(a.to_owned());
+        }
+    }
+
+    /// Moves every entry at or under `a` to the same place under `b`.
+    fn move_tree(&mut self, a: &str, b: &str) {
+        let files: Vec<String> = self
+            .files
             .keys()
-            .filter(|k| *k == p || k.starts_with(&prefix))
+            .filter(|k| at_or_under(k, a))
             .cloned()
-            .collect()
+            .collect();
+        for old in files {
+            if let Some(content) = self.files.remove(&old) {
+                let rest = old.get(a.len()..).unwrap_or_default();
+                self.files.insert(format!("{b}{rest}"), content);
+            }
+        }
+        let dirs: Vec<String> = self
+            .dirs
+            .iter()
+            .filter(|k| at_or_under(k, a))
+            .cloned()
+            .collect();
+        for old in dirs {
+            self.dirs.remove(&old);
+            let rest = old.get(a.len()..).unwrap_or_default();
+            self.dirs.insert(format!("{b}{rest}"));
+        }
+    }
+
+    fn remove_tree(&mut self, p: &str) {
+        self.files.retain(|k, _| !at_or_under(k, p));
+        self.dirs.retain(|k| !at_or_under(k, p));
     }
 }
 
@@ -92,9 +150,13 @@ impl InstallDevice for SimInstallDevice {
     fn write_new(&self, path: &InstallPath, bytes: &[u8]) -> Result<(), InstallError> {
         let mut st = self.shared.lock();
         let p = path.as_str();
-        if st.install.files.contains_key(p) || st.install.is_dir(p) {
+        if st.install.file_above(p) {
+            return Err(InstallError::Invalid);
+        }
+        if st.install.kind(p).is_some() {
             return Err(InstallError::AlreadyExists);
         }
+        st.install.make_parents(p);
         st.install
             .files
             .insert(p.to_owned(), Arc::new(bytes.to_vec()));
@@ -106,25 +168,24 @@ impl InstallDevice for SimInstallDevice {
     fn rename(&self, from: &InstallPath, to: &InstallPath) -> Result<(), InstallError> {
         let mut st = self.shared.lock();
         let (a, b) = (from.as_str(), to.as_str());
-        let moving = st.install.under(a);
-        if moving.is_empty() {
+        let t = &mut st.install;
+        let Some(moving) = t.kind(a) else {
             return Err(InstallError::NotFound);
-        }
+        };
         if a == b {
             return Ok(());
         }
-        // A directory at the target is refused, as the OS refuses to
-        // rename over a non-empty one; a file there goes in the same step.
-        if st.install.is_dir(b) {
+        let target = t.kind(b);
+        let refused = t.file_above(b)
+            || target == Some(Kind::Dir)
+            || (moving == Kind::Dir && target == Some(Kind::File))
+            || at_or_under(b, a);
+        if refused {
             return Err(InstallError::Invalid);
         }
-        st.install.files.remove(b);
-        for old in moving {
-            if let Some(content) = st.install.files.remove(&old) {
-                let rest = old.strip_prefix(a).unwrap_or_default();
-                st.install.files.insert(format!("{b}{rest}"), content);
-            }
-        }
+        t.make_parents(b);
+        t.files.remove(b);
+        t.move_tree(a, b);
         st.trace.record(format_args!("install rename {a} {b}"));
         Ok(())
     }
@@ -132,13 +193,10 @@ impl InstallDevice for SimInstallDevice {
     fn delete_tree(&self, path: &InstallPath) -> Result<(), InstallError> {
         let mut st = self.shared.lock();
         let p = path.as_str();
-        let gone = st.install.under(p);
-        if gone.is_empty() {
+        if st.install.kind(p).is_none() {
             return Err(InstallError::NotFound);
         }
-        for f in gone {
-            st.install.files.remove(&f);
-        }
+        st.install.remove_tree(p);
         st.trace.record(format_args!("install delete {p}"));
         Ok(())
     }
@@ -147,18 +205,26 @@ impl InstallDevice for SimInstallDevice {
         let mut st = self.shared.lock();
         let p = path.as_str();
         let found = st.install.files.get(p).cloned();
-        let is_dir = st.install.is_dir(p);
+        let kind = st.install.kind(p);
         st.trace.record(format_args!("install open {p}"));
-        match found {
-            Some(content) => Ok(Box::new(SimFile(content))),
-            None if is_dir => Err(InstallError::Invalid),
-            None => Err(InstallError::NotFound),
+        match (found, kind) {
+            (Some(content), _) => Ok(Box::new(SimFile(content))),
+            (None, Some(Kind::Dir)) => Err(InstallError::Invalid),
+            (None, _) => Err(InstallError::NotFound),
         }
     }
 
     fn lock(&self, path: &InstallPath, mode: LockMode) -> Result<InstallLock, InstallError> {
         let mut st = self.shared.lock();
         let p = path.as_str().to_owned();
+        if st.install.file_above(&p) || st.install.kind(&p) == Some(Kind::Dir) {
+            return Err(InstallError::Invalid);
+        }
+        // The lock file, made empty if missing, as the OS device makes it.
+        if st.install.kind(&p).is_none() {
+            st.install.make_parents(&p);
+            st.install.files.insert(p.clone(), Arc::new(Vec::new()));
+        }
         let h = st.install.locks.entry(p.clone()).or_default();
         let free = match mode {
             LockMode::Shared => !h.exclusive,

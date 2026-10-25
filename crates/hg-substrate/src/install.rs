@@ -133,12 +133,19 @@ impl core::fmt::Debug for InstallLock {
 }
 
 /// The install tree's file operations.
+///
+/// Every implementation refuses alike, so a simulated update means what
+/// a real one does: a path under a file is [`InstallError::NotFound`]
+/// when read, renamed from or deleted, and [`InstallError::Invalid`] when
+/// written, renamed to or locked. Directories are made for a file's
+/// parents and stay, empty, when what was in them moves away.
 pub trait InstallDevice: Send + Sync {
     /// Creates `path` with `bytes`, making missing parent directories,
     /// and makes it durable before returning.
     ///
     /// # Errors
-    /// [`InstallError::AlreadyExists`], [`InstallError::Io`].
+    /// [`InstallError::AlreadyExists`] if anything is at `path`,
+    /// [`InstallError::Invalid`] under a file, [`InstallError::Io`].
     fn write_new(&self, path: &InstallPath, bytes: &[u8]) -> Result<(), InstallError>;
 
     /// Renames `from` (a file or a directory) to `to` in one step,
@@ -149,8 +156,9 @@ pub trait InstallDevice: Send + Sync {
     /// Renaming a path to itself changes nothing.
     ///
     /// # Errors
-    /// [`InstallError::NotFound`], [`InstallError::Invalid`] for a
-    /// directory at `to`, [`InstallError::Io`].
+    /// [`InstallError::NotFound`]; [`InstallError::Invalid`] for a
+    /// directory at `to`, a directory onto a file, `to` inside `from`, or
+    /// `to` under a file; [`InstallError::Io`].
     fn rename(&self, from: &InstallPath, to: &InstallPath) -> Result<(), InstallError>;
 
     /// Deletes `path` and everything under it.
@@ -178,11 +186,12 @@ pub trait InstallDevice: Send + Sync {
         paths.iter().map(|p| self.open_read(p)).collect()
     }
 
-    /// Takes the lock at `path` (a lock file, created if missing) in
-    /// `mode`, without waiting.
+    /// Takes the lock at `path` (a lock file, created empty if missing,
+    /// and a file like any other) in `mode`, without waiting.
     ///
     /// # Errors
     /// [`InstallError::WouldBlock`] if held in a conflicting mode,
+    /// [`InstallError::Invalid`] for a directory or a path under a file,
     /// [`InstallError::Io`].
     fn lock(&self, path: &InstallPath, mode: LockMode) -> Result<InstallLock, InstallError>;
 }
