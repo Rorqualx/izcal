@@ -1,8 +1,8 @@
 //! The OS IPC transports (Stage 1 4.2). Linux has its backend
-//! ([`linux`], M1 phase D3: Unix seqpacket sockets with `SCM_RIGHTS`).
-//! Until D4 and D5 add macOS (Mach ports) and Windows (named pipes with
-//! brokered `DuplicateHandle`), [`OsIpc`] reports
-//! [`IpcError::Unsupported`] there: nothing pretends to send.
+//! ([`linux`], M1 phase D3: Unix seqpacket sockets with `SCM_RIGHTS`),
+//! and so has macOS (`macos`, M1 phase D4: Mach ports). Until D5 adds
+//! Windows (named pipes with brokered `DuplicateHandle`), [`OsIpc`]
+//! reports [`IpcError::Unsupported`] there: nothing pretends to send.
 
 /// The libc-free parts of the Unix transport: record codec, control-data
 /// parser, handle acceptance, flow control and the per-message decision.
@@ -22,14 +22,17 @@ pub(crate) mod mach;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
+/// The macOS transport.
+#[cfg(target_os = "macos")]
+pub mod macos;
+
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, Handle, Ipc, IpcError, Listening, OsPeer, Sink,
     Transfer,
 };
 
-/// The OS transport where no backend exists yet (macOS and Windows
-/// until D4 and D5).
+/// The OS transport where no backend exists yet (Windows until D5).
 #[derive(Debug, Default)]
 pub struct OsIpc;
 
