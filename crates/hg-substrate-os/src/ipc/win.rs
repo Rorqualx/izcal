@@ -21,11 +21,11 @@
 //! These modules follow the tier P rules (coding standard CS-ER-3,
 //! CS-TY-12) although the crate is tier O: they parse what a peer sends.
 
-// Only the tests and the Kani harnesses call this code until the
-// Windows transport lands on top of it.
+// Only the Windows transport calls this code outside the tests and the
+// Kani harnesses.
 #![cfg_attr(
-    not(any(test, kani)),
-    expect(dead_code, reason = "the Windows transport is not wired in yet")
+    not(any(test, kani, windows)),
+    expect(dead_code, reason = "only the Windows transport uses it")
 )]
 #![deny(
     clippy::unwrap_used,

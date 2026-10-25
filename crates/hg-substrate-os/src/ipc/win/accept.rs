@@ -139,6 +139,10 @@ pub(crate) enum Refusal {
     BoundReceiver,
     /// The same end twice in one relay.
     Duplicate,
+    /// The relayer is over its ledger quota (tickets or channels).
+    Quota,
+    /// The broker had no randomness to make a ticket.
+    NoTicket,
 }
 
 impl Refusal {
@@ -160,6 +164,8 @@ impl Refusal {
             Self::Relabelled => 13,
             Self::BoundReceiver => 14,
             Self::Duplicate => 15,
+            Self::Quota => 16,
+            Self::NoTicket => 17,
         }
     }
 }
@@ -651,6 +657,8 @@ mod tests {
             Refusal::Relabelled,
             Refusal::BoundReceiver,
             Refusal::Duplicate,
+            Refusal::Quota,
+            Refusal::NoTicket,
         ];
         for (i, a) in all.iter().enumerate() {
             assert_ne!(a.code(), 0);

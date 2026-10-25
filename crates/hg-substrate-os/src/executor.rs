@@ -375,10 +375,10 @@ impl OsExecutor {
     ///
     /// [`IpcError::Sequence`]: hg_substrate::ipc::IpcError::Sequence
     #[cfg_attr(
-        not(any(target_os = "linux", test)),
+        not(any(target_os = "linux", windows, test)),
         expect(
             dead_code,
-            reason = "used by the Linux IPC transport; D4 and D5 add the others"
+            reason = "used by the Linux and Windows IPC transports; D4 adds macOS"
         )
     )]
     pub(crate) fn has_sequence(&self, seq: SequenceHandle) -> bool {
@@ -396,10 +396,10 @@ impl OsExecutor {
     /// # Errors
     /// [`PostError::ShuttingDown`] or [`PostError::UnknownSequence`].
     #[cfg_attr(
-        not(any(target_os = "linux", test)),
+        not(any(target_os = "linux", windows, test)),
         expect(
             dead_code,
-            reason = "used by the Linux IPC transport; D4 and D5 add the others"
+            reason = "used by the Linux and Windows IPC transports; D4 adds macOS"
         )
     )]
     pub(crate) fn post_reserved(&self, seq: SequenceHandle, task: Task) -> Result<(), PostError> {

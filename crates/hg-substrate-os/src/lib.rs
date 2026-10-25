@@ -84,7 +84,10 @@ pub fn os_substrate(threads: Threads) -> Result<Substrate, StartError> {
 /// The launch channels a process was started with, already checked.
 #[cfg(target_os = "linux")]
 type Launch = Option<(std::os::fd::OwnedFd, std::os::fd::OwnedFd)>;
-#[cfg(not(target_os = "linux"))]
+/// The control link to the broker a process was started with.
+#[cfg(windows)]
+type Launch = Option<std::os::windows::io::OwnedHandle>;
+#[cfg(not(any(target_os = "linux", windows)))]
 type Launch = Option<core::convert::Infallible>;
 
 /// [`os_substrate`] for a process its launcher started with launch
@@ -103,6 +106,24 @@ pub fn os_substrate_launched(
     down: std::os::fd::OwnedFd,
 ) -> Result<Substrate, StartError> {
     start(threads, ipc::linux::launch_ends(up, down).ok())
+}
+
+/// [`os_substrate`] for a process its broker started. On Windows the
+/// launcher hands the child one inherited handle, its control link to
+/// the broker, whose value it finds in the `IZCAL_IPC_LINK` environment
+/// variable; the process's entry point takes ownership of it (it alone
+/// can know nothing else owns it) and passes it here. The transport
+/// reads the broker's `Hello` (the launch channels) before it returns.
+///
+/// # Errors
+/// As [`os_substrate`]; a link that carries no valid `Hello` is an
+/// [`StartError::Ipc`].
+#[cfg(windows)]
+pub fn os_substrate_launched(
+    threads: Threads,
+    link: std::os::windows::io::OwnedHandle,
+) -> Result<Substrate, StartError> {
+    start(threads, Some(link))
 }
 
 fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
@@ -147,8 +168,23 @@ fn os_ipc(
     }
 }
 
-/// This OS's IPC transport (none yet: D4, D5).
-#[cfg(not(target_os = "linux"))]
+/// This OS's IPC transport.
+#[cfg(windows)]
+fn os_ipc(
+    exec: &Arc<executor::OsExecutor>,
+    link: Launch,
+) -> Result<Arc<dyn hg_substrate::Ipc>, StartError> {
+    match ipc::windows::WindowsIpc::start(Arc::clone(exec), link) {
+        Ok(t) => Ok(Arc::new(t)),
+        Err(ipc::windows::StartError::Os(e)) => Err(StartError::Ipc(e)),
+        Err(ipc::windows::StartError::Bootstrap) => Err(StartError::Ipc(std::io::Error::other(
+            "the launch link carried no valid Hello",
+        ))),
+    }
+}
+
+/// This OS's IPC transport (none yet: D4).
+#[cfg(not(any(target_os = "linux", windows)))]
 fn os_ipc(
     _exec: &Arc<executor::OsExecutor>,
     _boot: Launch,
