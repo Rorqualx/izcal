@@ -1181,32 +1181,50 @@ impl Inner {
             },
             _ => return,
         };
-        // Quiet: no I/O in flight on any carried end, and every carried
-        // sender's own outbox sent (order across a transfer), or given up
-        // at the deadline.
+        // A carried end is quiet once its writes have drained (a carried
+        // sender's queued messages all written, order across a transfer)
+        // and its leftover credit-read is cancelled. Writes are never
+        // cancelled, so the move never loses a message or lies about the
+        // counters (item 4).
         let due = since.checked_add(TRANSFER_DEADLINE).unwrap_or(since);
         let late = StdInstant::now() >= due;
         let mut quiet = true;
+        let mut cancel_reads = Vec::new();
         for (cid, _) in &carried {
-            let Some(e) = st.ends.get_mut(cid) else {
+            let Some(e) = st.ends.get(cid) else {
                 continue;
             };
-            if e.reading || e.writing {
+            let draining = matches!(
+                &e.role,
+                Role::Sender { outbox, broken, .. } if !outbox.is_empty() && !*broken
+            );
+            if e.writing || draining {
+                // Still writing: wait (the deadline bounds the wait).
                 quiet = false;
-            }
-            if let Role::Sender { outbox, broken, .. } = &mut e.role
-                && !outbox.is_empty()
-                && !*broken
-            {
-                if late {
-                    outbox.clear();
-                    *broken = true;
-                } else {
-                    quiet = false;
-                }
+            } else if e.reading {
+                // Drained: stop the leftover read before the move (W3).
+                quiet = false;
+                cancel_reads.push(*cid);
             }
         }
         if !quiet {
+            if late {
+                // The carried ends could not quiesce in time. Close them
+                // and the carrier deterministically (as Linux's SHUT_WR
+                // does), rather than move with messages still unwritten.
+                Self::break_sender(st, id);
+                for (cid, _) in &carried {
+                    if let Some(e) = Self::remove(st, *cid) {
+                        later.push(Box::new(e.h));
+                    }
+                }
+                return;
+            }
+            for cid in cancel_reads {
+                if let Some(e) = st.ends.get(&cid) {
+                    sys::cancel(&e.h);
+                }
+            }
             *deadline = Some(deadline.map_or(due, |d| d.min(due)));
             return;
         }
@@ -1355,7 +1373,11 @@ impl Inner {
         };
         if c.write {
             end.writing = false;
+            // A cancelled write (the end is being torn down) is not a
+            // broken peer; only a real write failure breaks the end
+            // (item 4).
             if c.error != 0
+                && c.error != sys::ERROR_OPERATION_ABORTED
                 && let Role::Sender { broken, outbox, .. } = &mut end.role
             {
                 *broken = true;
@@ -1967,8 +1989,11 @@ impl Ipc for WindowsIpc {
             }));
         }
         *flow = next;
-        // The carried ends stop their own I/O now (a read left pending on
-        // a moved end would steal the next message, probe W3).
+        // Mark the carried ends in transit: pump starts no new reads on
+        // them, but a carried sender keeps draining its outbox so its
+        // queued messages are written before it moves (its leftover
+        // credit-read is cancelled in advance_carry once drained, not
+        // here, so the move never cancels a pending write: item 4, W3).
         for (id, _) in &carried {
             if let Some(e) = st.ends.get_mut(id) {
                 match &mut e.role {
@@ -1983,7 +2008,6 @@ impl Ipc for WindowsIpc {
                     Role::Receiver { in_transit, .. } => *in_transit = true,
                     Role::Link { .. } => {}
                 }
-                sys::cancel(&e.h);
             }
         }
         drop(st);

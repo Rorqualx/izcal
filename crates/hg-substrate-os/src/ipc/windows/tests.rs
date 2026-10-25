@@ -298,6 +298,28 @@ fn child(case: &str) -> i32 {
             let _ = from_parent.recv_timeout(WAIT);
             0
         }
+        "slow-reader" => {
+            // Receives a receiver end, then reads it slowly so the
+            // parent's writes back up, counting messages until a 2 s
+            // idle gap, then reports the count.
+            let Ok(Ev::Msg(_, mut hs)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            let Ok(rx2) = ChannelReceiver::from_handle(hs.remove(0)) else {
+                return 17;
+            };
+            let (out, _l) = r.listen(rx2);
+            let mut count = 0u32;
+            while let Ok(Ev::Msg(..)) = out.recv_timeout(Duration::from_secs(2)) {
+                count = count.saturating_add(1);
+                std::thread::sleep(Duration::from_millis(30));
+            }
+            r.ipc
+                .send(&up, count.to_le_bytes().to_vec(), Vec::new())
+                .unwrap();
+            let _ = from_parent.recv_timeout(WAIT);
+            0
+        }
         _ => 14,
     }
 }
@@ -483,6 +505,35 @@ fn round_trips(sandboxed: bool) {
 #[test]
 fn messages_and_handles_cross_processes() {
     round_trips(false);
+}
+
+#[test]
+fn moving_a_sender_waits_for_a_remote_slow_readers_drain() {
+    // A deterministic version of the above: the receiver is held by a
+    // separate, slow child, so the parent's writes genuinely back up in
+    // the pipe. Moving the sender must wait for that backlog to drain
+    // rather than cancel the pending write (item 4). The slow reader
+    // must see every one of the queued messages plus the echo child's
+    // one message.
+    let r = rig();
+    let reader = launch(&r, "slow-reader", false);
+    let echoer = launch(&r, "echo", false);
+    let (tx, rx) = r.ipc.channel(256, Transfer::Free).unwrap();
+    r.ipc
+        .send(&reader.to_child, b"rx".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    // 120 messages of 2 KiB is 240 KiB, well past the 128 KiB pipe
+    // buffer, so writes pend and one is in flight at the move.
+    const N: u32 = 120;
+    for i in 0..N {
+        r.ipc.send(&tx, vec![i as u8; 2000], Vec::new()).unwrap();
+    }
+    r.ipc
+        .send(&echoer.to_child, b"take".to_vec(), vec![tx.into_handle()])
+        .unwrap();
+    let (b, _) = expect_msg(&reader.from_child);
+    let count = u32::from_le_bytes(b.try_into().expect("a u32 count"));
+    assert_eq!(count, N + 1, "the slow reader lost messages at the move");
 }
 
 #[test]
