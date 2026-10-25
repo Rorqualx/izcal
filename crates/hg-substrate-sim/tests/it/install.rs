@@ -32,10 +32,12 @@ const SCRIPT: &[(Op, &str)] = &[
     (Op::Read("a/f"), "one"),
     (Op::Read("d/g"), "four"),
     // A lock file is created, empty, and is a file like any other.
+    // (Read only once unlocked: Windows locks are mandatory, so a locked
+    // file cannot be read there, where Unix reads it.)
     (Op::Lock("l/lk", LockMode::Exclusive), "ok"),
-    (Op::Read("l/lk"), ""),
     (Op::Lock("l/lk", LockMode::Shared), "WouldBlock"),
     (Op::Unlock, "ok"),
+    (Op::Read("l/lk"), ""),
     (Op::Write("l/lk", "five"), "AlreadyExists"),
     (Op::Lock("a", LockMode::Shared), "Invalid"),
     (Op::Lock("a/f/z", LockMode::Shared), "Invalid"),

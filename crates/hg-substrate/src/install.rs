@@ -187,7 +187,9 @@ pub trait InstallDevice: Send + Sync {
     }
 
     /// Takes the lock at `path` (a lock file, created empty if missing,
-    /// and a file like any other) in `mode`, without waiting.
+    /// and a file like any other) in `mode`, without waiting. Nothing
+    /// reads a lock file while it is locked: Windows locks are mandatory,
+    /// so that read fails there and succeeds on Unix.
     ///
     /// # Errors
     /// [`InstallError::WouldBlock`] if held in a conflicting mode,
