@@ -72,3 +72,15 @@ Windows does not attest:
 
 - **the sender of each message.** A pipe does not report who wrote a message. Faults a receiver detects therefore carry no sender (`Fault::sender` is `None`). Identity rests on the broker's record of who holds the channel's single sender end instead.
 - **process generations.** Process IDs carry none, so `OsPeer` generation is 0, as on Linux.
+
+It also has one known limit, from probe W3 (D5 review item 6):
+
+- **a compromised holder can keep reading an end it gives away.** A well-behaved process cancels an end's reads before it relays the end (the M9 move protocol). A compromised process need not: it can relay an end while a `ReadFile` is still pending on it. The broker's `DUPLICATE_CLOSE_SOURCE` pull does not cancel that read, which keeps completing with records meant for the new holder (W3), and the broker cannot cancel another process's read (W8b). `HandleCount == 1` does not detect it, since a pending read is not a handle. The reach is confined to channels the process already held.
+
+  Options considered, and their costs:
+
+  1. **The broker splices every moved channel.** On a move, the broker makes a fresh pipe pair, keeps the old ends itself, and copies bytes between old and new for the channel's life. This removes the old holder from the data path, but the broker then proxies every message of every once-moved channel, forever: a large, permanent latency and CPU cost, and it abandons the direct-pipe design.
+  2. **A fresh pipe per holder (rebuild on move).** On a move, the broker re-establishes the channel on a new pipe, which both ends' holders must adopt, and migrates any buffered and in-flight data. A move becomes a two-sided channel rebuild needing the receiver holder's cooperation and careful data migration; complex, and still has a window during the rebuild.
+  3. **Accept the limit and document it (chosen for M1).** The exposure is a process stealing records on a channel it already belonged to, after it gives an end away — no worse in reach than what it could already read while it held the end, and reaching no channel it never held. Zero cost. The broker's other checks (one copy, the ledger, one container per child) are unaffected.
+
+  The recommendation is option 3 for M1, revisited if a channel is ever moved between two mutually untrusting processes where the giver is assumed hostile.

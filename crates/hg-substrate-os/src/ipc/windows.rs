@@ -60,6 +60,23 @@
 //! design review B3). `OsPeer` generations are 0: Windows process IDs
 //! carry none.
 //!
+//! **A compromised holder can keep reading an end it gives away.** The
+//! move protocol has the giving transport cancel the carried end's
+//! reads and wait for them to abort before the broker pulls it (M9,
+//! probe W3), which a well-behaved process does. A compromised process,
+//! though, drives its own transport: it can ask the broker to relay an
+//! end while it still has a `ReadFile` pending on that end. A pending
+//! read is not cancelled by the broker's `DUPLICATE_CLOSE_SOURCE` pull
+//! and keeps completing with messages the new holder should receive
+//! (probe W3), and the broker cannot cancel another process's read
+//! (probe W8b, `ERROR_NOT_FOUND`). `HandleCount == 1` does not catch
+//! this, because a pending read is not a handle. So a process that gives
+//! away an end of a channel it was already part of can keep stealing
+//! records sent on that channel afterwards. It is confined to channels
+//! that process already held; it reaches no other. This limit is
+//! accepted for M1 and recorded for the design review (D5 item 6); the
+//! m1-d5 measurement README lists the options considered.
+//!
 //! **`Closed` is eventual**, as on Linux: a write accepted while any
 //! handle to the reading end exists (one in flight in a ticket, or a
 //! write already pending when the reader closed, probe P10) can be
