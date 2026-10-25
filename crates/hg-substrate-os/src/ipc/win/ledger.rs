@@ -350,11 +350,15 @@ impl Ledger {
             })
             .map(|(t, _)| *t)
             .collect();
+        // The broker closes the ends a dropped ticket held, so they are
+        // gone too, and their channels can be swept.
+        let lost =
+            |h: Holder| h == Holder::Proc(p) || matches!(h, Holder::Ticket(t) if dead.contains(&t));
         for e in self.entries.values_mut() {
-            if e.sender == Holder::Proc(p) {
+            if lost(e.sender) {
                 e.sender = Holder::Gone;
             }
-            if e.receiver == Holder::Proc(p) {
+            if lost(e.receiver) {
                 e.receiver = Holder::Gone;
             }
             if e.binding.is_some_and(|b| b.binder == p) {
@@ -547,6 +551,29 @@ mod tests {
         let _ = l.gone(A);
         l.sweep();
         assert_eq!(l.view(pipe(A, 5), End::Sender), None);
+    }
+
+    #[test]
+    fn an_end_in_a_dropped_ticket_is_gone_and_its_channel_swept() {
+        let mut l = ledger();
+        let carried = pipe(B, 1);
+        l.place(carried, End::Receiver, B).unwrap();
+        l.place(pipe(A, 9), End::Receiver, A).unwrap();
+        l.relay(
+            [4; 16],
+            Held {
+                carrier: pipe(A, 9),
+                from: B,
+                ends: vec![(carried, End::Sender, WireKind::Sender)],
+            },
+        )
+        .unwrap();
+        // A held the carrier's receiver: the ticket dies with A, and
+        // the sender it held with it.
+        assert_eq!(l.gone(A), vec![[4; 16]]);
+        let _ = l.gone(B);
+        l.sweep();
+        assert_eq!(l.view(carried, End::Sender), None);
     }
 
     #[test]
