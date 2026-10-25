@@ -212,6 +212,43 @@ fn bursts_wait_in_the_outbox_never_spuriously_full() {
     }
 }
 
+/// Rule M3: however many messages wait undelivered, the receiver holds
+/// one reply right to the sender's credit port, not one per message.
+#[test]
+fn a_receiver_holds_one_reply_right_per_channel() {
+    let r = rig();
+    let (tx, rx) = r.ipc.channel(64, Transfer::Free).unwrap();
+    let (data, credit) = r.sender_names(tx.handle());
+    let (gate_tx, gate_rx) = sync_channel::<()>(64);
+    let gate = Mutex::new(gate_rx);
+    let seq = r.exec.sequence("blocked", Priority::UserVisible);
+    let _l = r
+        .ipc
+        .listen(
+            rx,
+            seq,
+            Box::new(move |_d| {
+                let _ = gate.lock().unwrap().recv_timeout(WAIT);
+                Flow::Continue
+            }),
+        )
+        .unwrap();
+    for i in 0u8..64 {
+        r.ipc.send(&tx, vec![i], Vec::new()).unwrap();
+    }
+    // Wait for the IO thread to have read all 64 off the data port.
+    let until = std::time::Instant::now() + WAIT;
+    while sys::receive_status(data).unwrap()[4] != 0 {
+        assert!(std::time::Instant::now() < until, "not read in time");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let send_once = sys::receive_status(credit).unwrap()[wire::STATUS_SEND_ONCE];
+    assert!(send_once <= 1, "{send_once} reply rights held");
+    for _ in 0..64 {
+        let _ = gate_tx.send(());
+    }
+}
+
 #[test]
 fn closed_comes_after_every_queued_message() {
     let r = rig();

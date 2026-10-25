@@ -7,10 +7,13 @@
 //! **Shape.** A channel is two ports. The data port's receive right is
 //! the receiver end; its send right, with the credit port's receive
 //! right, is the sender end. Every data message carries a send-once
-//! reply right made from the sender's credit port, and when a delivery
-//! task starts the receiver sends a credit record back on one of them,
-//! so a sender knows exactly how many of its messages are undelivered
-//! (`Full` at the channel's capacity, as in the simulator) and the
+//! reply right made from the sender's credit port. Credits are
+//! cumulative (the count delivered so far), so the receiver keeps only
+//! the newest reply right, releasing the older (rule M3: at most one per
+//! channel), and when a delivery task starts with no further message
+//! queued it sends the credit back on it. A sender so knows exactly how
+//! many of its messages are undelivered by the end of each batch
+//! (`Full` at the channel's capacity, as in the simulator), and the
 //! credit always reaches whoever holds the credit port now, wherever the
 //! sender end has moved. The receiver end holds no right to the credit
 //! port at all. Each data port's queue limit is the channel's capacity
@@ -130,9 +133,11 @@ struct Listener {
     ended: bool,
     /// For a bound receiver, the one process whose messages it accepts.
     peer: Option<Token>,
-    /// Credit reply rights, one per message received and not yet
-    /// credited, oldest first.
-    replies: VecDeque<u32>,
+    /// The reply right of the newest message received, if no credit has
+    /// gone back on it yet (rule M3): at most one per channel. Credits
+    /// are cumulative, so one right is enough; an older one is released
+    /// when a newer arrives.
+    reply: Option<u32>,
 }
 
 /// What an end is.
@@ -301,8 +306,8 @@ fn release_role(role: Role, set: u32) -> Vec<Item> {
             let Some(l) = listener else {
                 return Vec::new();
             };
-            for r in &l.replies {
-                sys::deallocate(*r);
+            if let Some(r) = l.reply {
+                sys::deallocate(r);
             }
             l.queue.into_iter().collect()
         }
@@ -412,10 +417,12 @@ impl Inner {
         let mut final_item = false;
         let delivery = match item {
             Item::Message(bytes, handles) => {
-                // The credit goes back before the sink runs, on the reply
-                // right of the oldest message not yet credited.
+                // The credit goes back before the sink runs, on the one
+                // reply right held, once no further message is queued: it
+                // counts every delivery so far, so Full stays exact.
                 if let Ok(c) = flow.on_deliver()
-                    && let Some(reply) = l.replies.pop_front()
+                    && !l.queue.iter().any(|i| matches!(i, Item::Message(..)))
+                    && let Some(reply) = l.reply.take()
                 {
                     send_credit(reply, c);
                 }
@@ -631,7 +638,9 @@ impl Inner {
                 }) = st.ends.get_mut(&id)
                 {
                     *flow = flow_now;
-                    lis.replies.push_back(l.header.remote);
+                    if let Some(older) = lis.reply.replace(l.header.remote) {
+                        sys::deallocate(older);
+                    }
                     lis.queue.push_back(Item::Message(payload, handles));
                 }
                 self.kick(&mut st, id);
@@ -1295,7 +1304,7 @@ impl MacIpc {
             draining: false,
             ended: false,
             peer,
-            replies: VecDeque::new(),
+            reply: None,
         });
         st.listening.insert(d, id);
         drop(st);
