@@ -13,6 +13,8 @@ pub(crate) struct Trace {
     hasher: ProcessHasher,
     line: String,
     text: Option<String>,
+    /// Records so far.
+    entries: u64,
 }
 
 impl Trace {
@@ -21,6 +23,7 @@ impl Trace {
             hasher: ProcessHasher::with_keys(0x4947_4441_5354_0001, 0x4947_4441_5354_0002),
             line: String::new(),
             text: keep_text.then(String::new),
+            entries: 0,
         }
     }
 
@@ -30,6 +33,7 @@ impl Trace {
         let _ = self.line.write_fmt(args);
         self.line.push('\n');
         self.hasher.write(self.line.as_bytes());
+        self.entries = self.entries.saturating_add(1);
         if let Some(text) = &mut self.text {
             text.push_str(&self.line);
         }
@@ -37,6 +41,10 @@ impl Trace {
 
     pub(crate) fn hash(&self) -> u64 {
         self.hasher.finish()
+    }
+
+    pub(crate) const fn entries(&self) -> u64 {
+        self.entries
     }
 
     pub(crate) fn text(&self) -> Option<&str> {

@@ -24,9 +24,16 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use hg_substrate::prng::{Xoshiro256StarStar, splitmix64};
 use hg_substrate::{Memory, MemoryKind, Priority, RandomStream, Region, Substrate, Task};
-use hg_types::{Duration, Instant, SystemTime};
+use hg_types::{
+    Common, DecisionLogRef, Duration, HeaderError, Instant, NO_POLICY, ProcessKind,
+    ProfileIdentity, RecordingHeader, SandboxTier, SystemTime, Text,
+};
 
 use crate::trace::Trace;
+
+/// Mixed into the seed for the recording's profile identity, so it is
+/// drawn from a stream the run itself never uses.
+const PROFILE_STREAM: u64 = 0x5052_4f46_494c_4531;
 
 /// Pending tasks a sequence may hold, queued and delayed together, as in
 /// the OS executor (CS-AS-6 (c)): 1024†.
@@ -710,6 +717,43 @@ impl World {
     /// The trace's text, if the config kept it.
     pub fn trace_text(&self) -> Option<String> {
         self.shared.lock().trace.text().map(str::to_owned)
+    }
+
+    /// This run as M1's recording (Stage 1 8.1: "recordings carry the
+    /// engine build ID, the data versions and the decision-point log"):
+    /// the shared header ([`RecordingHeader`]) for a simulation of every
+    /// process, whose decision-point log is this run's trace (its hash and
+    /// its number of records). The simulator uses no data sets, M1 has no
+    /// policy sources ([`NO_POLICY`]), and the profile identity is drawn
+    /// from the seed, so the header is a function of the run.
+    ///
+    /// # Errors
+    /// None in practice: the header has no data versions to bound.
+    pub fn recording_header(&self) -> Result<RecordingHeader, HeaderError> {
+        let st = self.shared.lock();
+        let log = DecisionLogRef {
+            trace_hash: st.trace.hash(),
+            entries: st.trace.entries(),
+        };
+        // A stream of its own, so drawing it changes nothing in the run.
+        let mut rng = Xoshiro256StarStar::from_seed(st.config.seed ^ PROFILE_STREAM);
+        drop(st);
+        let mut profile = [0u8; 16];
+        let (lo, hi) = profile.split_at_mut(8);
+        lo.copy_from_slice(&rng.next_u64().to_le_bytes());
+        hi.copy_from_slice(&rng.next_u64().to_le_bytes());
+        RecordingHeader::recording(
+            Common {
+                build_id: hg_types::BUILD_ID,
+                data_versions: Vec::new(),
+                os_version: Text::new("simulated")?,
+                process: ProcessKind::Simulation,
+                sandbox: SandboxTier::Simulated,
+            },
+            log,
+            NO_POLICY,
+            ProfileIdentity(profile),
+        )
     }
 }
 

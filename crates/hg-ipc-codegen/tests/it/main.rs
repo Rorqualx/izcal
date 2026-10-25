@@ -2,3 +2,6 @@
 
 #[cfg(test)]
 mod rules;
+
+#[cfg(test)]
+mod golden;

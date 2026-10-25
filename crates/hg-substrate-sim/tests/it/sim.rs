@@ -343,3 +343,33 @@ fn limits_stop_the_run() {
     assert_eq!(w.run(LIMITS), RunEnd::Idle);
     assert_eq!(w.now().as_nanos(), 10_000_000_000);
 }
+
+/// M1's recording: a run's header carries this build's ID, its data
+/// versions (none) and its decision-point log (the trace), and decodes
+/// back; a header without the log is refused.
+#[test]
+fn a_run_is_a_recording_with_the_shared_header() {
+    let run = |seed| {
+        let w = workload(seed, false);
+        let _ = w.run(LIMITS);
+        (w.summary(), w.recording_header().unwrap())
+    };
+    let (summary, h) = run(5);
+    assert_eq!(h.build_id(), hg_types::BUILD_ID);
+    assert!(h.data_versions().is_empty());
+    let log = h.decision_log().unwrap();
+    assert_eq!(log.trace_hash, summary.trace_hash);
+    assert!(log.entries > 0);
+    assert_eq!(
+        h.policy(),
+        hg_types::HeaderPolicy::Digest(hg_types::NO_POLICY)
+    );
+    assert_eq!(h.process(), hg_types::ProcessKind::Simulation);
+    assert_eq!(
+        hg_types::RecordingHeader::decode(&h.encode()),
+        Ok(h.clone())
+    );
+    // A function of the run: the same seed gives the same header.
+    assert_eq!(run(5).1, h);
+    assert_ne!(run(6).1.profile(), h.profile());
+}

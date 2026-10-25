@@ -115,6 +115,16 @@ fn the_checkout_has_a_build_id() {
 }
 
 #[test]
+fn no_policy_is_the_digest_of_the_empty_policy() {
+    // Enterprise policy 6.21: the encoding of the empty entry set with the
+    // catalogue version fixed at 0 is the tag `izcal-policy-v1` and the
+    // version as a u32 little-endian, with no entries.
+    let mut enc = b"izcal-policy-v1".to_vec();
+    enc.extend_from_slice(&0u32.to_le_bytes());
+    assert_eq!(hg_types::NO_POLICY.0, hg_build_id::sha256::sha256(&enc));
+}
+
+#[test]
 fn an_untracked_file_changes_the_commit_input() {
     // A scratch repository: one commit, then an untracked file.
     let dir = std::env::temp_dir().join(format!("hg-build-id-{}", std::process::id()));

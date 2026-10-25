@@ -7,6 +7,8 @@
 //!   invariant in tier P code (CS-ER-1, CS-ER-3; coding standard A.2).
 //! - [`BUILD_ID`]: this build's identity, compiled into every binary
 //!   (distribution 13 item 5).
+//! - [`RecordingHeader`]: the shared recording and crash-report header
+//!   (FI-11), with [`PolicyDigest`] and [`NO_POLICY`].
 //! - [`HashMap`] and [`HashSet`]: std maps whose hasher reads one key per
 //!   OS process, set once at startup (CS-AS-2).
 //!
@@ -14,11 +16,17 @@
 
 mod build_id;
 mod hash;
+mod recording;
 mod time;
 
 pub use build_id::{BUILD_ID, BUILD_IS_PINNED, UNPINNED_BUILD_ID};
 pub use hash::{HashKeyAlreadySet, HashMap, HashSet, ProcessHasher, ProcessHasherBuilder};
 pub use hash::{process_hash_key_is_set, set_process_hash_key};
+pub use recording::{
+    Common, DataVersion, DecisionLogRef, HEADER_SCHEMA_VERSION, HeaderError, HeaderKind,
+    HeaderPolicy, MAX_DATA_VERSIONS, MAX_NAME, NO_POLICY, PolicyDigest, PolicyFlags, ProcessKind,
+    ProfileIdentity, RecordingHeader, SandboxTier, Text,
+};
 pub use time::{Duration, Instant, SystemTime};
 
 /// Aborts with a literal message. The only panic site tier P code reaches.
