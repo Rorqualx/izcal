@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # VER-1 (Stage 1 4.1; security scope 6.6): runs every Kani harness in the
-# IPC crates. Fails on a failed proof, and on a `kani::cover!` that no
+# IPC crates and the pure core of the OS transport (hg-substrate-os
+# `ipc::unix`). Fails on a failed proof, and on a `kani::cover!` that no
 # input reaches, since that harness would prove nothing.
 # Usage: tools/kani.sh [extra cargo-kani args]. Needs Kani 0.68.0
 # (`cargo install --locked kani-verifier --version 0.68.0 && cargo kani setup`).
@@ -10,7 +11,7 @@ cd "$(dirname "$0")/.."
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 status=0
-for pkg in hg-ipc hg-ipc-gen; do
+for pkg in hg-ipc hg-ipc-gen hg-substrate-os; do
   echo "== cargo kani -p $pkg"
   # pipefail: the pipeline fails if cargo kani does.
   if ! cargo kani -p "$pkg" "$@" 2>&1 | grep -v "aborting path" >>"$log"; then

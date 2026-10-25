@@ -1,14 +1,26 @@
-//! The OS IPC transport. Until M1 phases D3 to D5 add the backends
-//! (Linux sockets with `SCM_RIGHTS`, macOS Mach ports, Windows named
-//! pipes brokered with `DuplicateHandle`; Stage 1 4.2), every call
-//! reports [`IpcError::Unsupported`]: nothing pretends to send.
+//! The OS IPC transports (Stage 1 4.2). Linux has its backend
+//! ([`linux`], M1 phase D3: Unix seqpacket sockets with `SCM_RIGHTS`).
+//! Until D4 and D5 add macOS (Mach ports) and Windows (named pipes with
+//! brokered `DuplicateHandle`), [`OsIpc`] reports
+//! [`IpcError::Unsupported`] there: nothing pretends to send.
+
+/// The libc-free parts of the Unix transport: record codec, control-data
+/// parser, handle acceptance, flow control and the per-message decision.
+/// Pure code, so it compiles and is tested on every OS and is what the
+/// Kani harnesses prove (security scope SEC-4 (b)).
+pub(crate) mod unix;
+
+/// The Linux transport.
+#[cfg(target_os = "linux")]
+pub mod linux;
 
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, Handle, Ipc, IpcError, Listening, Sink, Transfer,
 };
 
-/// The OS transport (no backend yet).
+/// The OS transport where no backend exists yet (macOS and Windows
+/// until D4 and D5).
 #[derive(Debug, Default)]
 pub struct OsIpc;
 

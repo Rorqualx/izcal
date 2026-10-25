@@ -14,6 +14,7 @@ entries = [
   "os::random",                 # the OS CSPRNG calls (getentropy, getrandom, BCryptGenRandom)
   "os::vm",                     # virtual memory calls (mmap/mprotect/madvise/munmap, VirtualAlloc/VirtualFree)
   "memory",                     # ledger-checked calls into os::vm, and the test's page write
+  "ipc::linux::sys",            # the Linux IPC transport's socket, sendmsg/recvmsg (SCM_RIGHTS), epoll and eventfd calls
 ]
 
 [crates.hg-ipc]

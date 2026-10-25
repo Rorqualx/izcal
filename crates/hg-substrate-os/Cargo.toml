@@ -6,8 +6,23 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Izcal's OS substrate (tier O, G3): the one crate allowed ambient OS effects — sandbox backends, process kinds, the sanctioned thread interface, IPC endpoints"
 
-[lints]
-workspace = true
+# The workspace table, written out because Cargo rejects mixing
+# `workspace = true` with a crate-level `check-cfg`. Keep it in step with
+# the root `[workspace.lints]` until `cargo xtask lints` generates the
+# tier O table (coding standard CS-ST-10).
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+# Kani runs `cargo kani`, which sets cfg(kani) (VER-1 harnesses in
+# `ipc::unix`).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
 
 [dependencies]
 hg-substrate = { path = "../hg-substrate" }

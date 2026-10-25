@@ -369,6 +369,57 @@ impl Executor for OsExecutor {
     }
 }
 
+impl OsExecutor {
+    /// Whether `seq` names one of this executor's sequences: the IPC
+    /// transport's check before it listens on one ([`IpcError::Sequence`]).
+    ///
+    /// [`IpcError::Sequence`]: hg_substrate::ipc::IpcError::Sequence
+    #[cfg_attr(
+        not(any(target_os = "linux", test)),
+        expect(
+            dead_code,
+            reason = "used by the Linux IPC transport; D4 and D5 add the others"
+        )
+    )]
+    pub(crate) fn has_sequence(&self, seq: SequenceHandle) -> bool {
+        let st = self.shared.lock();
+        usize::try_from(seq.raw()).is_ok_and(|i| i < st.sequences.len())
+    }
+
+    /// Posts an IPC delivery task, now, past the sequence's capacity if
+    /// need be. The transport keeps at most one delivery task per
+    /// listening channel on a sequence (the drain-task model), so the
+    /// excess is bounded by the number of listeners, and a delivery is
+    /// never lost because the receiver's sequence is busy: a sender in
+    /// another process cannot be told "full" for that (CS-AS-6 (b)).
+    ///
+    /// # Errors
+    /// [`PostError::ShuttingDown`] or [`PostError::UnknownSequence`].
+    #[cfg_attr(
+        not(any(target_os = "linux", test)),
+        expect(
+            dead_code,
+            reason = "used by the Linux IPC transport; D4 and D5 add the others"
+        )
+    )]
+    pub(crate) fn post_reserved(&self, seq: SequenceHandle, task: Task) -> Result<(), PostError> {
+        let mut st = self.shared.lock();
+        if st.stopping {
+            return Err(PostError::ShuttingDown);
+        }
+        let i = seq.raw();
+        let Some(s) = st
+            .sequences
+            .get_mut(usize::try_from(i).unwrap_or(usize::MAX))
+        else {
+            return Err(PostError::UnknownSequence);
+        };
+        s.queue.push_back(task);
+        self.shared.make_ready(&mut st, i);
+        Ok(())
+    }
+}
+
 impl std::fmt::Debug for OsExecutor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let st = self.shared.lock();
@@ -583,7 +634,23 @@ mod tests {
         };
         assert_eq!(refused, PostError::QueueFull);
         assert!(accepted >= DEFAULT_CAPACITY);
+        // An IPC delivery task still goes in past the capacity, and runs.
+        let (done, ran) = sync_channel::<()>(1);
+        assert!(e.has_sequence(seq));
+        assert!(!e.has_sequence(SequenceHandle::from_raw(999)));
+        e.post_reserved(
+            seq,
+            Task::new(move || {
+                let _ = done.send(());
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            e.post_reserved(SequenceHandle::from_raw(999), Task::new(|| {})),
+            Err(PostError::UnknownSequence)
+        );
         release.send(()).unwrap();
+        ran.recv_timeout(Duration::from_secs(10)).unwrap();
         assert_eq!(
             e.post(
                 SequenceHandle::from_raw(999),

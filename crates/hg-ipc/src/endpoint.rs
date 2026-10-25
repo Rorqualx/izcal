@@ -25,8 +25,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
-    ChannelReceiver, ChannelSender, Delivery, Flow, Handle, HandleKind, Ipc, IpcError, Listening,
-    Transfer,
+    ChannelReceiver, ChannelSender, Delivery, Fault, Flow, Handle, HandleKind, Ipc, IpcError,
+    Listening, Transfer,
 };
 
 use crate::identity::{CallerIdentity, PeerBinding};
@@ -232,6 +232,11 @@ pub enum EndReason<E> {
     Handler(E),
     /// The sender is gone.
     PeerClosed,
+    /// The transport refused a record before any message could be built
+    /// (a malformed record, a refused handle, a bound channel used by
+    /// another process). [`Fault::sender`] names the process to
+    /// terminate when the OS attests it (IPC-R5).
+    Violation(Fault),
 }
 
 /// Keeps an endpoint served; dropping it closes the endpoint.
@@ -282,6 +287,7 @@ impl<T: Interface> Endpoint<T> {
                     Err(bad) => end(EndReason::BadMessage(bad)),
                 },
                 Delivery::Closed => end(EndReason::PeerClosed),
+                Delivery::Violation(fault) => end(EndReason::Violation(fault)),
             }),
         )?;
         Ok(Serving {
