@@ -431,6 +431,11 @@ impl Ledger {
         emptied
     }
 
+    /// Whether the ledger still tracks any channel creator `p` made.
+    pub(crate) fn has_creator(&self, p: Proc) -> bool {
+        self.per_creator.get(&p).is_some_and(|n| *n > 0)
+    }
+
     /// Tickets outstanding.
     #[cfg(test)]
     pub(crate) fn tickets_outstanding(&self) -> usize {
@@ -640,12 +645,15 @@ mod tests {
         assert_eq!(l.gone(A), vec![[3; 16]]);
         assert_eq!(l.tickets_outstanding(), 0);
         assert!(l.ticket_free(&[3; 16]));
-        // Channels with both ends gone are forgotten.
+        // Channels with both ends gone are forgotten, and the creator
+        // then has none (item 5's SID map relies on this).
         l.place(pipe(A, 5), End::Sender, A).unwrap();
         l.place(pipe(A, 5), End::Receiver, A).unwrap();
+        assert!(l.has_creator(A));
         let _ = l.gone(A);
-        l.sweep();
+        assert_eq!(l.sweep(), vec![A]);
         assert_eq!(l.view(pipe(A, 5), End::Sender), None);
+        assert!(!l.has_creator(A));
     }
 
     #[test]

@@ -236,6 +236,7 @@ impl Broker {
     /// Whether a live child or a launch in progress already holds `sid`.
     fn sid_in_use(&self, sid: &str) -> bool {
         self.reserved_sids.contains(sid)
+            || self.creator_sids.contains_key(sid)
             || self
                 .children
                 .values()
@@ -820,6 +821,11 @@ impl Inner {
             }
         }
         b.sweep();
+        // A dead child whose channels are all gone (including one that
+        // never made any) keeps no SID entry (item 5).
+        if !b.ledger.has_creator(p) {
+            b.creator_sids.retain(|_, pp| *pp != p);
+        }
         out.push(Box::new(c.process));
         if let Some(e) = Self::remove(st, c.link) {
             out.push(Box::new(e.h));
