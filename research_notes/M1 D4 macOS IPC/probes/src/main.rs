@@ -5,6 +5,7 @@ mod child;
 mod ffi;
 mod mach;
 mod parent;
+mod round2;
 
 use ffi::{k, me};
 use mach::*;
@@ -37,6 +38,19 @@ fn main() {
         Some("oolports") => oolports(),
         Some("sbxmach") => sbxmach(&a[2]),
         Some("dbg") => parent::dbg(),
+        Some("r1") => round2::r1(),
+        Some("r2") => round2::r2(),
+        Some("r3") => round2::r3(
+            a.get(2).and_then(|x| x.parse().ok()).unwrap_or(64),
+            a.get(3).and_then(|x| x.parse().ok()).unwrap_or(4),
+        ),
+        Some("r3child") => round2::r3child(a[2].parse().unwrap(), a[3].parse().unwrap()),
+        Some("r4") => round2::r4(),
+        Some("r4child") => round2::r4child(a.get(2).map(|x| x.as_str()) == Some("hello")),
+        Some("r5") => round2::r5(),
+        Some("r6") => round2::r6(),
+        Some("r6child") => round2::r6child(),
+        Some("r7") => round2::r7(),
         _ => eprintln!(
             "usage: d4-probes discover|inproc|cross [--sandbox]|p3b N|p10guard|p14|p23 SECS|p28|p29|p34|p38|sbxop OP"
         ),

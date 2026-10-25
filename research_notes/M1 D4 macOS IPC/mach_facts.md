@@ -298,3 +298,22 @@ Values determined black-box: rights SEND 0, RECEIVE 1, SEND_ONCE 2, PORT_SET 3, 
 - Exact uniqueness of (pid, pidversion) across a pid wrap (P3b, P35): would need ~10⁵ spawns.
 - 10⁶ ordering trials (P20b: 1 800 run), 10-minute idle and powermetrics (P23: ~1 min, top only), name-space ceiling above 250 000 (P34), uref behaviour beyond saturation in the *receiver* of a hostile peer (P32: same-process only).
 - All timings (P14, P17, P38) were taken beside another session's heavy job; an exclusive window is needed before relying on them.
+
+## Round 2 probes (2026-10-25, same machine, local light booking)
+
+Run with the bindings above (`probes/src/round2.rs`, `cargo run -- r1` … `r7`) while the transport was being built, to settle the questions its design depended on. Same method: behaviour only, no headers.
+
+| Probe | What | Result | Consequence |
+|---|---|---|---|
+| R1 | 1 040-byte message carrying a MOVE_SEND, received through a **port set** into a 64-byte buffer, with and without RCV_LARGE, 3 trials | With RCV_LARGE: kr **0x10004004**, `msgh_size` 1 040, **every other header field 0** (local name 0, so the member port is not reported), message kept at the head of the set; a receive with a buffer of size + 68 then succeeds. Without RCV_LARGE on a direct receive: message destroyed and its carried right released (no-senders fired). | An oversized message cannot be blamed from the header. The transport re-receives it into a buffer of exactly that size and treats it as a normal arrival, so it is refused as Malformed with the sender from the audit token. |
+| R2a | A holder of a send-once right to port P aims P's own no-senders request at P | Accepted. P receives id **70**, 36 B, all-zero token, body: NDR 8 bytes then mscount 1. | No-senders can be aimed at the data port itself: no separate notify port per channel, and the notification is recognised by its zero token. |
+| R2b | Re-arm no-senders on P | Returns the previous request's send-once right (type 0x40000). | The previous right must be deallocated on every re-arm. |
+| R2c | Cancel with NULL; destroy the returned right | Cancel returns the previous right; destroying it gives id **71** (24 B, pid 0) at P. | A cancelled request leaves an id-71 message behind; the IO thread ignores it. Cancel before moving a receive right. |
+| R2d | 3 data messages queued, then the last send right dropped; no-senders aimed at the port | No-senders arrives **after** the 3 data messages, 3/3 trials. | Closed after drain holds with the request aimed at the data port (as P20 for a separate notify port). |
+| R3 | 64 × 4 MiB messages queued to an unread port in another process; footprint of both | Receiver 1 792 → 1 824 KB; sender 1 712 KB → 14 MB (its own send buffer only). | Queued inline data is charged to **neither** process's footprint. The kernel's own memory use is not measurable from user space here: **open**. The credit window bounds it per channel (capacity × 64 KiB). |
+| R4 | Child's bootstrap port destroyed by the parent before the child starts; child sandboxes, then exits; and 50 children concurrently, each with its own bootstrap port | Destroyed early: child sandboxes fine, exit 0 in 5 ms. After the hello: exit 0. 50 concurrent children: 50 hellos, all exit 0. | One bootstrap port per child, destroyed after the hello reply, costs the child nothing. |
+| R5 | A send right we already hold arrives again in a message; a COPY_SEND reply | Merged into the existing name, urefs 5 → **6**, type 0x10000. A COPY_SEND reply arrives with remote disposition **17**. | Acceptance must check urefs for names already held (a "new" send right can be an alias). A data message whose reply is not a send-once right is not ours. |
+| R6 | Hand-off order: a sender end moved in message A, then a message sent on it, 20 trials | 0 / 20 overtakes. | Consistent with the `after` rule (the moved end's queued messages are sent first); the rule stays, since 20 trials prove little. |
+| R7 | Send to a destroyed port carrying MOVE_RECEIVE and MOVE_SEND | kr **0x10000003**; both carried rights stay in our space (receive x, send+receive y, urefs unchanged). | A failed send to a dead channel does not lose carried ends: the transport releases them itself. |
+
+Body padding (found by the transport tests, not a separate probe): the kernel rounds a message body up to 4 bytes, and the received `msgh_size` includes the padding. Each body therefore starts with its own u32 length (`wire::frame`), and anything after the stated length must be under 4 bytes.
