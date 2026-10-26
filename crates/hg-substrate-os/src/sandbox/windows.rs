@@ -65,6 +65,14 @@ impl Drop for OwnedHandle {
     }
 }
 
+// SAFETY: a kernel handle is valid in every thread of the process that
+// owns it, and the Win32 calls made on a token or job handle may come
+// from any thread; ownership (the one close) moves with the value.
+unsafe impl Send for OwnedHandle {}
+// SAFETY: as above; shared use is only passing the value to Win32 calls,
+// which the kernel serialises.
+unsafe impl Sync for OwnedHandle {}
+
 impl OwnedHandle {
     /// The raw handle for the Win32 calls.
     pub const fn as_handle(&self) -> HANDLE {
@@ -183,12 +191,14 @@ pub fn restricted_token() -> Result<OwnedHandle, String> {
     Ok(OwnedHandle(restricted))
 }
 
-/// Creates the child's job object with kill-on-close: if the
-/// supervisor dies, the job (and its process) dies with it.
+/// Creates the child's job object with kill-on-close (if the supervisor
+/// dies, the job and its process die with it) and an active-process
+/// limit of 1 (review M9: the child can start no other process).
 pub fn job_object() -> Result<OwnedHandle, String> {
     use windows_sys::Win32::System::JobObjects::{
-        CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JobObjectExtendedLimitInformation, SetInformationJobObject,
+        CreateJobObjectW, JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
     };
 
     // SAFETY: null attributes and name (default security, unnamed job).
@@ -198,7 +208,9 @@ pub fn job_object() -> Result<OwnedHandle, String> {
     }
     // SAFETY: a zeroed struct is the documented initial state.
     let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    limits.BasicLimitInformation.LimitFlags =
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+    limits.BasicLimitInformation.ActiveProcessLimit = 1;
     // SAFETY: `limits` is the documented struct for this information
     // class, and the size is the struct's.
     let rc = unsafe {

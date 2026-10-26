@@ -274,7 +274,6 @@ pub(crate) fn pipe_pair(
 /// Makes a control link: as [`pipe_pair`], under a name no channel has
 /// (so a link end is never taken for a channel end). The broker makes
 /// it, in the global namespace; (server, client) = (broker's, child's).
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) fn link_pair(id: &[u8; 16]) -> io::Result<(OwnedHandle, OwnedHandle)> {
     named_pair("izcal-link-", None, id)
 }
@@ -638,7 +637,6 @@ pub(crate) fn duplicate(h: &OwnedHandle) -> io::Result<OwnedHandle> {
 }
 
 /// A SID as its string form.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) fn sid_string(sid: &crate::sandbox::windows::AppContainerSid) -> Option<String> {
     let mut s: *mut u16 = null_mut();
     // SAFETY: a valid SID owned by `sid`; valid out-pointer.
@@ -670,7 +668,6 @@ fn wide_to_string(s: *const u16) -> String {
 }
 
 /// An inheritable copy of `h` for a child's handle list.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 #[expect(
     clippy::disallowed_methods,
     reason = "SEC-4 (d): this is the Windows IPC backend"
@@ -943,7 +940,6 @@ pub(crate) fn read_blocking(h: &OwnedHandle, cap: usize, timeout_ms: u32) -> io:
 /// the lockdown token, in a kill-on-close job assigned before it runs,
 /// with exactly one inherited handle: `inherit`. It starts suspended;
 /// the caller duplicates its launch ends in, then [`resume`]s it.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) mod spawn {
     use super::{Process, last_error, raw, wide};
     use core::mem::{size_of, zeroed};
@@ -990,8 +986,18 @@ pub(crate) mod spawn {
         pub(crate) sandbox: Option<(&'a AppContainerSid, &'a SbHandle, &'a SbHandle)>,
     }
 
+    /// The variables of this process a child gets (review M9: a minimal
+    /// environment; the broker's may hold secrets). `SystemRoot` for the
+    /// loader; `LOCALAPPDATA` because process creation in an AppContainer
+    /// fails without it with error 203, ERROR_ENVVAR_NOT_FOUND (measured
+    /// on rig253, 26 Oct: each other variable alone failed the same way;
+    /// launch facts E28).
+    const KEPT_VARS: [&str; 2] = ["SystemRoot", "LOCALAPPDATA"];
+
+    /// A child's environment: [`KEPT_VARS`] and `extra`, nothing else.
     fn env_block(extra: &[(String, String)]) -> Vec<u16> {
         let mut vars: Vec<(String, String)> = std::env::vars()
+            .filter(|(k, _)| KEPT_VARS.iter().any(|v| v.eq_ignore_ascii_case(k)))
             .filter(|(k, _)| !extra.iter().any(|(e, _)| e.eq_ignore_ascii_case(k)))
             .collect();
         vars.extend(extra.iter().cloned());

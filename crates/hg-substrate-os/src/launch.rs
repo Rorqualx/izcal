@@ -6,6 +6,8 @@
 pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
+#[cfg(windows)]
+pub mod windows;
 
 use std::ffi::OsString;
 
@@ -125,7 +127,16 @@ pub fn os_child_substrate(threads: Threads, exe: Exe) -> Result<Child, ChildErro
             sandbox,
         })
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(windows)]
+    {
+        let (substrate, sandbox) = windows::child_start(threads)?;
+        Ok(Child {
+            substrate,
+            kind,
+            sandbox,
+        })
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
     {
         let _ = (threads, kind);
         Err(ChildError::Unsupported)

@@ -82,16 +82,17 @@ fn main() {
     unsafe { libc::write(3, end.as_ptr().cast(), end.len()) };
 }
 
-/// On macOS: the hello exchange with its launcher (its launch channels),
-/// then nothing, ever: it never sends `ready`, so its launcher's deadline
-/// must kill it (the launcher conformance test).
-#[cfg(target_os = "macos")]
+/// On macOS and Windows: a launched child's start (its kind token, its
+/// sandbox, the launch channels), then nothing, ever: it never sends
+/// `ready`, so its launcher must kill it (the launcher conformance test).
+#[cfg(any(target_os = "macos", windows))]
 fn main() {
     let threads = hg_substrate_os::Threads {
         general: 1,
         may_block: 1,
     };
-    let Ok(_s) = hg_substrate_os::os_substrate_launched(threads) else {
+    let exe = hg_substrate_os::launch::Exe::Renderer;
+    let Ok(_child) = hg_substrate_os::launch::os_child_substrate(threads, exe) else {
         return;
     };
     loop {
@@ -99,6 +100,6 @@ fn main() {
     }
 }
 
-/// Linux and macOS only.
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+/// Elsewhere: nothing.
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
 fn main() {}

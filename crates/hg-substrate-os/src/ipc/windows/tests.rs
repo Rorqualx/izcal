@@ -456,7 +456,11 @@ fn launch(r: &Rig, case: &str, sandboxed: bool) -> Kid {
                 exe: &exe,
                 args,
                 env,
-                sandbox: Some((&sid, &token, &job)),
+                sandbox: super::Sandbox::Contained {
+                    container: &sid,
+                    token: &token,
+                    job: &job,
+                },
             })
             .unwrap();
         // Closing the job would end the child at once: it stays open for
@@ -469,7 +473,7 @@ fn launch(r: &Rig, case: &str, sandboxed: bool) -> Kid {
                 exe: &exe,
                 args,
                 env,
-                sandbox: None,
+                sandbox: super::Sandbox::Plain,
             })
             .unwrap()
     };
@@ -503,7 +507,11 @@ fn two_children_cannot_share_one_app_container_sid() {
         exe: &exe,
         args,
         env: vec![("IZCAL_D5_CHILD".to_owned(), "sandboxed-echo".to_owned())],
-        sandbox: Some((&sid, &token, &job)),
+        sandbox: super::Sandbox::Contained {
+            container: &sid,
+            token: &token,
+            job: &job,
+        },
     };
     let first = r.ipc.launch(spec()).expect("first launch");
     // The second launch names the same container: refused.

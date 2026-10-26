@@ -399,7 +399,6 @@ struct Broker {
     /// created, so those channels can still be keyed and redeemed by the
     /// live processes that hold their ends (item 5).
     creator_sids: BTreeMap<String, Proc>,
-    #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher reads it"))]
     next_proc: Proc,
     /// Every section the broker made, by registry id (D6).
     regions: BTreeMap<u64, RegEntry>,
@@ -3653,7 +3652,6 @@ impl Ipc for WindowsIpc {
 /// A child the broker started: its process, its launch channel ends on
 /// the broker's side, and its identity.
 #[derive(Debug)]
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) struct Launched {
     /// The child process (to wait for or end it).
     pub(crate) child: sys::spawn::Child,
@@ -3666,7 +3664,6 @@ pub(crate) struct Launched {
 }
 
 /// What to start a child with (for the launcher, phase E, and tests).
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) struct LaunchSpec<'a> {
     /// The executable.
     pub(crate) exe: &'a std::path::Path,
@@ -3675,24 +3672,56 @@ pub(crate) struct LaunchSpec<'a> {
     /// Environment variables added for it; the link handle's value is
     /// added as `IZCAL_IPC_LINK`.
     pub(crate) env: Vec<(String, String)>,
-    /// Sandboxed: its own AppContainer (with that container's SID), the
-    /// lockdown token and its job. `None` starts it plainly.
-    pub(crate) sandbox: Option<(
-        &'a crate::sandbox::windows::AppContainerSid,
-        &'a crate::sandbox::windows::OwnedHandle,
-        &'a crate::sandbox::windows::OwnedHandle,
-    )>,
+    /// Its sandbox (review M9: there is no unsandboxed launch outside the
+    /// transport's own tests).
+    pub(crate) sandbox: Sandbox<'a>,
+}
+
+/// How a child is confined.
+pub(crate) enum Sandbox<'a> {
+    /// Its own AppContainer (with that container's SID), the lockdown
+    /// token, and its job (assigned while it is suspended).
+    Contained {
+        /// The container.
+        container: &'a crate::sandbox::windows::AppContainerSid,
+        /// The lockdown token.
+        token: &'a crate::sandbox::windows::OwnedHandle,
+        /// The job.
+        job: &'a crate::sandbox::windows::OwnedHandle,
+    },
+    /// Started plainly: the transport's own tests only (review M9).
+    #[cfg(test)]
+    Plain,
+}
+
+/// The parts of a sandbox, as the process start takes them.
+type SandboxParts<'a> = Option<(
+    &'a crate::sandbox::windows::AppContainerSid,
+    &'a crate::sandbox::windows::OwnedHandle,
+    &'a crate::sandbox::windows::OwnedHandle,
+)>;
+
+impl<'a> Sandbox<'a> {
+    const fn parts(&self) -> SandboxParts<'a> {
+        match *self {
+            Self::Contained {
+                container,
+                token,
+                job,
+            } => Some((container, token, job)),
+            #[cfg(test)]
+            Self::Plain => None,
+        }
+    }
 }
 
 /// The environment variable that carries a child's link handle value.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) const LINK_VAR: &str = "IZCAL_IPC_LINK";
 
 impl WindowsIpc {
     /// Starts a child with its control link and launch channels; this
     /// process must be a broker. The child reads its `Hello` when its
     /// transport starts.
-    #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
     pub(crate) fn launch(&self, spec: LaunchSpec<'_>) -> std::io::Result<Launched> {
         let name = || {
             Inner::random16().ok_or_else(|| std::io::Error::other("no randomness for a pipe name"))
@@ -3706,7 +3735,8 @@ impl WindowsIpc {
         // A sandboxed launch must have a SID to key its channels and to
         // enforce one container per child; without one, refuse before
         // spawning (fail closed).
-        let sid = match spec.sandbox {
+        let parts = spec.sandbox.parts();
+        let sid = match parts {
             Some((c, _, _)) => Some(
                 sys::sid_string(c)
                     .ok_or_else(|| std::io::Error::other("no AppContainer SID string"))?,
@@ -3740,7 +3770,7 @@ impl WindowsIpc {
             args: spec.args,
             env: &env,
             inherit: &inherit,
-            sandbox: spec.sandbox,
+            sandbox: parts,
         }) {
             Ok(c) => c,
             Err(e) => {

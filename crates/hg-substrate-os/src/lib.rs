@@ -181,7 +181,12 @@ pub fn os_broker_substrate_in(
         let files = launch::macos::BuildFiles::open(dir).map_err(StartError::Launch)?;
         launch::macos::broker_with(threads, files)
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(windows)]
+    {
+        let files = launch::windows::BuildFiles::open(dir).map_err(StartError::Launch)?;
+        launch::windows::broker_with(threads, files)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
     {
         let _ = dir;
         os_substrate(threads)

@@ -4,12 +4,9 @@
 //! round-trip` from the build directory, where `cargo test` also builds
 //! the mains (each main crate's own test makes Cargo build it).
 
-#![cfg(any(target_os = "linux", target_os = "macos"))]
-
 use std::path::Path;
 use std::process::Command;
 
-// Windows joins when its launcher lands (phase E item 4).
 #[test]
 fn the_round_trip_runs_in_the_os_sandboxes() {
     let tool = Path::new(env!("CARGO_BIN_EXE_hg-launch-tool"));
