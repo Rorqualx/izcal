@@ -174,6 +174,7 @@ impl Channels {
             }
         }
         st.ipc.boot.remove(&pid);
+        Regions::owner_gone(st, pid);
     }
 
     /// Everything, for the world's teardown.

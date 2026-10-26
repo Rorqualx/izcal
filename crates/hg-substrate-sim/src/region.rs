@@ -246,6 +246,25 @@ impl Regions {
         }
     }
 
+    /// Releases `pid`'s charges: it crashed or exited (what the launcher
+    /// reports to an OS broker through `release_owner`).
+    pub(crate) fn owner_gone(st: &mut State, pid: ProcessId) {
+        let mut n = 0u32;
+        for c in st
+            .regions
+            .cells
+            .values_mut()
+            .filter(|c| c.owner == pid && c.charged)
+        {
+            c.charged = false;
+            n = n.saturating_add(1);
+        }
+        if n > 0 {
+            st.trace
+                .record(format_args!("region release owner {} ({n})", pid.0));
+        }
+    }
+
     /// Whether `h` is a writer, for the receiving side's broker check.
     pub(crate) fn is_writer(h: &Handle) -> bool {
         h.kind() == HandleKind::RegionWriter

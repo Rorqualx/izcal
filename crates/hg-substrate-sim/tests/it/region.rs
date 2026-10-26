@@ -562,3 +562,33 @@ fn unpublished_writes_tear_deterministically() {
     assert!(seen.iter().any(|&n| n < 32), "some read is torn: {seen:?}");
     assert!(seen.contains(&32), "some read is whole: {seen:?}");
 }
+
+/// A crashed owner's charges are released, as the launcher reports an OS
+/// owner's exit (review M4).
+#[test]
+fn a_crashed_owners_charges_are_released() {
+    let broker: Slot<Substrate> = Arc::default();
+    let b2 = Arc::clone(&broker);
+    let held: Slot<Vec<Box<dyn std::any::Any + Send>>> = Arc::default();
+    let h2 = Arc::clone(&held);
+    let w = world(
+        SimOs::Linux,
+        9,
+        move |s, _f, _t| {
+            while let Ok(r) = s.ipc.allocate_region(4096, OWNER) {
+                keep(&h2, r);
+            }
+            *b2.lock().unwrap() = Some(s);
+        },
+        |_s| {},
+    );
+    assert_eq!(w.run(LIMITS), RunEnd::Idle);
+    let s = broker.lock().unwrap().take().unwrap();
+    assert_eq!(
+        s.ipc.allocate_region(4096, OWNER).err(),
+        Some(IpcError::Quota)
+    );
+    assert!(w.crash(hg_substrate_sim::ProcessId(1)));
+    assert!(s.ipc.allocate_region(4096, OWNER).is_ok());
+    drop(held);
+}
