@@ -3,6 +3,7 @@
 //! binary is started again as the child (`d3_child`), with its launch
 //! channels at descriptors 3 and 4.
 
+use hg_substrate::ipc::PeerAttest;
 use std::ffi::CString;
 use std::os::fd::{AsFd, OwnedFd};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
@@ -56,13 +57,13 @@ impl Rig {
     fn listen_bound(
         &self,
         rx: ChannelReceiver,
-        peer: OsPeer,
+        peer: impl Into<PeerAttest>,
     ) -> (Receiver<Ev>, hg_substrate::ipc::Listening) {
         let (tx, out) = sync_channel::<Ev>(4096);
         let seq = self.exec.sequence("test", Priority::UserVisible);
         let l = self
             .ipc
-            .listen_bound(rx, peer, seq, sink(tx))
+            .listen_bound(rx, peer.into(), seq, sink(tx))
             .expect("listen_bound");
         (out, l)
     }
@@ -248,11 +249,15 @@ fn bound_receivers_listen_only_with_their_peer_named() {
         Some(IpcError::Refused)
     );
     // Any receiver may name its one sender; a bound one must.
-    assert!(r.ipc.listen_bound(rx, peer, seq(), nothing()).is_ok());
+    assert!(
+        r.ipc
+            .listen_bound(rx, PeerAttest::Os(peer), seq(), nothing())
+            .is_ok()
+    );
     let (_btx, brx) = r.ipc.channel(8, Transfer::Bound).unwrap();
     assert_eq!(
         r.ipc
-            .listen_bound(brx, OsPeer::new(0, 0), seq(), nothing())
+            .listen_bound(brx, PeerAttest::Os(OsPeer::new(0, 0)), seq(), nothing())
             .err(),
         Some(IpcError::Refused)
     );
@@ -356,6 +361,54 @@ fn malformed_records_are_violations_named_by_the_kernel() {
         inject(&r, &tx, &bytes, &[]);
         expect_fault(&out, kind, Some(my));
     }
+}
+
+/// Design review M7: a child in a PID namespace reads every outside
+/// process as pid 0, so it reports violations with no sender, whatever
+/// its credentials say.
+#[test]
+fn a_child_in_a_pid_namespace_names_no_sender() {
+    let r = rig();
+    r.ipc.set_namespaced();
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let (out, _l) = r.listen(rx);
+    inject(&r, &tx, b"not a record", &[]);
+    expect_fault(&out, FaultKind::Malformed, None);
+}
+
+/// Design review M7: `Inherited` binds only the bootstrap receiver.
+#[test]
+fn inherited_binds_only_the_bootstrap_receiver() {
+    let r = rig();
+    let seq = r.exec.sequence("test", Priority::UserVisible);
+    let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    assert_eq!(
+        r.ipc
+            .listen_bound(
+                rx,
+                PeerAttest::Inherited,
+                seq,
+                Box::new(|_d| Flow::Continue)
+            )
+            .err(),
+        Some(IpcError::Refused)
+    );
+    // The process's own bootstrap receiver may.
+    let ((_from_child, to_child), (up, down)) = launch_pair().unwrap();
+    let c = rig_with(launch_ends(up, down).ok());
+    let boot = c.ipc.bootstrap().unwrap();
+    // Made by this process, so the creator is visible: an OS binding.
+    assert_eq!(
+        boot.parent,
+        PeerAttest::Os(OsPeer::new(std::process::id(), 0))
+    );
+    let (out, _l) = c.listen_bound(boot.from_parent, PeerAttest::Inherited);
+    let rec = encode_data(0, &[], b"hi").unwrap();
+    assert_eq!(
+        sys::send_record(to_child.as_fd(), &rec, &[]),
+        SendOutcome::Sent
+    );
+    assert_eq!(expect_msg(&out).0, b"hi");
 }
 
 #[test]

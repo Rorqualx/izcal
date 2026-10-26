@@ -186,9 +186,11 @@ pub(crate) fn fd_facts(fd: BorrowedFd<'_>) -> io::Result<FdFacts> {
 }
 
 /// The creator of the socket pair `fd` belongs to (`SO_PEERCRED`): for a
-/// launch channel end, the broker that launched this process.
-pub(crate) fn creator_pid(fd: BorrowedFd<'_>) -> Option<i32> {
-    peer_pid(fd).ok().filter(|&p| p > 0)
+/// launch channel end, the broker that launched this process. 0 is an
+/// answer: the creator is outside this process's PID namespace (launch
+/// facts E13). `None` only when the query fails or gives a negative pid.
+pub(crate) fn creator_pid_seen(fd: BorrowedFd<'_>) -> Option<i32> {
+    peer_pid(fd).ok().filter(|&p| p >= 0)
 }
 
 // ---- shared memory (D6), from memfd_create(2), fcntl(2) "File
@@ -997,6 +999,41 @@ pub(crate) fn try_exec(fd: BorrowedFd<'_>, len: usize) -> (i32, i32) {
     // SAFETY: as above, unused after.
     unsafe { libc::munmap(q, 4096) };
     (map, protect)
+}
+
+/// Sends one record with `control` as its raw ancillary data (tests
+/// only: control data no honest sender writes, such as more descriptors
+/// than a receiver's buffer holds).
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "SEC-4 (d): this is the IPC backend"
+)]
+pub(crate) fn send_with_control(fd: BorrowedFd<'_>, bytes: &[u8], control: &[u8]) -> SendOutcome {
+    #[repr(C, align(8))]
+    struct Big([u8; 1024]);
+    let mut buf = Big([0; 1024]);
+    let Some(dst) = buf.0.get_mut(..control.len()) else {
+        return SendOutcome::Failed(libc::EINVAL);
+    };
+    dst.copy_from_slice(control);
+    let mut iov = libc::iovec {
+        iov_base: bytes.as_ptr().cast_mut().cast(),
+        iov_len: bytes.len(),
+    };
+    // SAFETY: an all-zero msghdr is valid.
+    let mut msg: libc::msghdr = unsafe { core::mem::zeroed() };
+    msg.msg_iov = &raw mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = buf.0.as_mut_ptr().cast();
+    msg.msg_controllen = control.len();
+    // SAFETY: `msg` points at `iov` and `buf`, live across the call.
+    let rc = unsafe { libc::sendmsg(fd.as_raw_fd(), &raw const msg, libc::MSG_NOSIGNAL) };
+    if rc >= 0 {
+        SendOutcome::Sent
+    } else {
+        SendOutcome::Failed(last_errno())
+    }
 }
 
 #[cfg(test)]

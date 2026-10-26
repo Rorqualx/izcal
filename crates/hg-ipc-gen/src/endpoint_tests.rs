@@ -198,7 +198,7 @@ fn broker_serves(
         let serving = Endpoint::<ProcessHost>::from_receiver(&s.ipc, from_child)
             .serve_bound(
                 seq,
-                PeerBinding::new(CHILD, CHILD_OS),
+                PeerBinding::new(CHILD, CHILD_OS.into()),
                 move |m, from| m.dispatch(&mut side, from),
                 move |why| note(&ends, format!("{why:?}")),
             )
@@ -355,7 +355,7 @@ fn every_handle_form_crosses_and_works_in_the_new_process() {
             strict_ep
                 .serve_bound(
                     seq,
-                    PeerBinding::new(CHILD, CHILD_OS),
+                    PeerBinding::new(CHILD, CHILD_OS.into()),
                     move |m, from| {
                         note(&l2, format!("broker got {m:?} from {}", who(from)));
                         Ok::<(), ()>(())

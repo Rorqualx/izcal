@@ -45,8 +45,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, FaultKind, Flow,
     Handle, HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES,
-    MAX_MESSAGE_HANDLES, Mapping, OsPeer, ProducerRegion, ReadOnlyRegion, RegionRefused,
-    RegionWriter, Sink, Transfer,
+    MAX_MESSAGE_HANDLES, Mapping, OsPeer, PeerAttest, ProducerRegion, ReadOnlyRegion,
+    RegionRefused, RegionWriter, Sink, Transfer,
 };
 use hg_substrate::{RandomStream as _, SequenceHandle, Task};
 
@@ -138,6 +138,9 @@ pub(crate) struct Channels {
     next: u64,
     /// A process's launch channels: (to its parent, from its parent).
     boot: BTreeMap<ProcessId, (u64, u64, OsPeer)>,
+    /// The bootstrap receiver each process took, and its launcher: the one
+    /// receiver [`PeerAttest::Inherited`] may bind (design review M7).
+    boot_rx: BTreeMap<(ProcessId, u32), (u64, OsPeer)>,
     /// Processes whose next send is refused by the receiving transport.
     corrupt: BTreeMap<ProcessId, FaultKind>,
 }
@@ -730,10 +733,26 @@ impl Ipc for SimIpc {
     fn listen_bound(
         &self,
         from: ChannelReceiver,
-        peer: OsPeer,
+        peer: PeerAttest,
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
+        let peer = match peer {
+            PeerAttest::Os(p) => p,
+            // Only the bootstrap receiver, bound to its launcher.
+            PeerAttest::Inherited => {
+                let st = self.shared.lock();
+                let rx = self.held(&st, from.handle());
+                let boot = st.ipc.boot_rx.get(&(self.pid, self.generation)).copied();
+                drop(st);
+                match (rx, boot) {
+                    (Some((id, Side::Receiver)), Some((boot_id, parent))) if id == boot_id => {
+                        parent
+                    }
+                    _ => return Err(IpcError::Refused),
+                }
+            }
+        };
         let Ok(generation) = u32::try_from(peer.generation()) else {
             return Err(IpcError::Refused);
         };
@@ -771,6 +790,11 @@ impl Ipc for SimIpc {
         let ok = st.ipc.chans.get(&up).is_some_and(|c| ours(&c.sender))
             && st.ipc.chans.get(&down).is_some_and(|c| ours(&c.receiver));
         st.ipc.boot.remove(&self.pid);
+        if ok {
+            st.ipc
+                .boot_rx
+                .insert((self.pid, self.generation), (down, parent));
+        }
         drop(st);
         if !ok {
             return None;
@@ -788,7 +812,7 @@ impl Ipc for SimIpc {
         Some(Bootstrap {
             to_parent,
             from_parent,
-            parent,
+            parent: PeerAttest::Os(parent),
         })
     }
 }

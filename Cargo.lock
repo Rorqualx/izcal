@@ -117,6 +117,7 @@ dependencies = [
 name = "hg-substrate-os"
 version = "0.0.0"
 dependencies = [
+ "hg-launch-plan",
  "hg-substrate",
  "hg-types",
  "libc",

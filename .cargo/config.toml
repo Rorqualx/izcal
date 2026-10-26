@@ -1,0 +1,10 @@
+# Every Izcal binary on Linux is static-pie (launch design E-R3, E-Q5;
+# launch facts E7, E10): the spawner's child runs under a Landlock rule
+# that allows exactly its own executable, so a dynamic loader and shared
+# libraries outside that rule cannot load. The stock gnu targets build
+# static-pie with crt-static; no musl target is needed.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]

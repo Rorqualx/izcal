@@ -134,3 +134,13 @@ Each stage is a fresh child. `ns` means clone3 with `CLONE_NEWUSER | NEWPID | NE
 | E33 | **The SDK 27 header.** `sandbox.h` says "This header is deprecated and may be removed in a future release". It marks `sandbox_init` and `sandbox_free_error` `API_DEPRECATED("No longer supported", macos(10.5, 10.8))`, and no longer declares any `kSBXProfile*` constant (only a comment names them). `sandbox_init_with_parameters` and `sandbox_check` are not in the public header, as before; the code declares its own `extern` items, and they link against SDK 27 and resolve at run time. | header lines in the log | High |
 
 **Implications (SEC-8, SEC-D6):** SEC-8's macOS item now has its real SDK 27 result: custom profiles apply and enforce, and named ones are killed. Q-SEC-2's first half is answered for this host and SDK. SEC-D6 stays (b): Apple still does not call SBPL supported, the header is deprecated, and `sandbox_free_error`, which `sandbox::macos` calls, is marked "No longer supported". Its reversal trigger is unchanged.
+
+## 10. Round 4 (2026-10-26): the spawner built (`hg-spawner-main`)
+
+Measured with the real spawner and its probe child (`hg-launch-probe`) on hueyj, same host and settings, light booking b-2c6a07. Tests: `hg_substrate_os::launch::linux::tests`.
+
+| # | Finding | Evidence | Conf. |
+|---|---|---|---|
+| E34 | **Rust's start-up polls stdio.** A static Rust child exec'd under the launch filter (steady list plus `execveat`) died before `main`: `poll([0,1,2], 3, 0)` returned EPERM and std aborts on that error. The steady list gains `poll` with exactly three descriptors and no wait (aarch64: `ppoll` with three). `readlinkat("/proc/self/exe")` also gets EPERM at start, which std tolerates. | `strace -f` of the test, 26 Oct | High |
+| E35 | **A launched child's state** on the restricted tier: pid 1 in its namespace, descriptors exactly 0–4 (none close-on-exec), `NoNewPrivs` 1, seccomp mode 2, its own session with no controlling terminal (seen from outside in `/proc/<pid>/stat`), `open` and an `AF_INET` socket both EPERM. | `a_child_starts_sandboxed_with_exactly_its_two_ends` | High |
+| E36 | **The bootstrap ends are nonblocking** in the child (the transport's socketpairs are `SOCK_NONBLOCK`, a property of the shared open file description), so a child that `read`s them gets EAGAIN; only epoll may wait under the filter. The transport already waits with epoll; the probe child had to as well. | probe's `end rc=-1 errno=11` before the fix | High |

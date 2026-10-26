@@ -178,7 +178,7 @@ mod tests {
         fn listen_bound(
             &self,
             _from: ipc::ChannelReceiver,
-            _peer: ipc::OsPeer,
+            _peer: ipc::PeerAttest,
             _seq: SequenceHandle,
             _sink: ipc::Sink,
         ) -> Result<ipc::Listening, ipc::IpcError> {

@@ -17,6 +17,7 @@ pub mod entropy;
 pub mod executor;
 pub mod install;
 pub mod ipc;
+pub mod launch;
 pub mod memory;
 pub mod os;
 pub mod sandbox;
