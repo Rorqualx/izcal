@@ -36,7 +36,13 @@
 //!   are the reply rights of messages not yet credited, so the decision
 //!   allows at most the carried end's in-flight count
 //!   ([`Slot::Credit`]);
-//! - no name twice in one record.
+//! - no name twice in one record;
+//! - a region (D6) is one send right to a memory entry (kobject 28,
+//!   fact M1) and nothing else on its name. Its name may already hold
+//!   send references from regions this process holds: the kernel merges
+//!   one entry's rights under one name, so each region handle owns one
+//!   reference (review minor 5). What the entry allows is then probed
+//!   with the kernel and decided by [`region_rule`].
 //!
 //! The kernel cannot say which channel two rights belong to, so a
 //! sender end built from the data send right of one channel and the
@@ -46,7 +52,7 @@
 
 use hg_substrate::ipc::{HandleKind, MAX_MESSAGE_HANDLES};
 
-use super::super::common::codec::WireKind;
+use super::super::common::codec::{HandleDesc, REGION_FILLER_TRUSTED, REGION_IMMUTABLE, WireKind};
 use super::wire::{
     DESC_PORT, KOBJECT_NONE, MAX_SLOTS, NAME_DEAD, NAME_NULL, PORT_RECEIVE, PORT_SEND,
     TYPE_RECEIVE, TYPE_SEND,
@@ -111,7 +117,21 @@ pub(crate) enum Refusal {
     SendOnce,
     /// The same name twice in one record.
     Duplicate,
+    /// A writer from a process other than the broker (review M1).
+    WriterNotFromBroker,
+    /// A read-only or consumer region whose entry still gives a
+    /// read-write sub-entry: it is a writer.
+    Writable,
+    /// A writer whose entry gives no read-write sub-entry.
+    NotWritable,
+    /// An entry smaller than the declared length.
+    Size,
+    /// A region flag no macOS sender sets (`REGION_FILLER_TRUSTED`).
+    Flags,
 }
+
+/// The kobject type of a memory entry (fact M1).
+pub(crate) const KOBJECT_NAMED_ENTRY: u32 = 28;
 
 /// What a right must be in its slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -124,6 +144,8 @@ pub(crate) enum Slot {
     /// except that its send-once rights are checked against the carried
     /// end's counters, in the decision.
     Credit,
+    /// A region's memory-entry send right (D6).
+    Region,
 }
 
 /// The slots a claimed kind takes on the wire, and how many.
@@ -131,10 +153,9 @@ pub(crate) const fn slots(kind: WireKind) -> ([Slot; 2], usize) {
     match kind {
         WireKind::Sender | WireKind::BoundSender => ([Slot::Send, Slot::Credit], 2),
         WireKind::Receiver => ([Slot::Receive, Slot::Receive], 1),
-        // One memory-entry send right (refused by `counters` until this
-        // OS's D6 step).
+        // One memory-entry send right.
         WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {
-            ([Slot::Send, Slot::Send], 1)
+            ([Slot::Region, Slot::Region], 1)
         }
     }
 }
@@ -185,6 +206,23 @@ pub(crate) fn accept_slot<H: Held>(slot: Slot, f: &SlotFacts, held: &H) -> Resul
             }
             Ok(())
         }
+        Slot::Region => {
+            if f.disposition != PORT_SEND {
+                return Err(Refusal::Disposition);
+            }
+            if f.kobject != KOBJECT_NAMED_ENTRY {
+                return Err(Refusal::KernelObject);
+            }
+            // Not a channel end's name (those are plain ports, so this
+            // only guards the table's own consistency).
+            if held.send_refs(f.name) != 0 || held.receiver(f.name) {
+                return Err(Refusal::AlreadyHeld);
+            }
+            if f.type_bits != TYPE_SEND || f.send_refs == 0 {
+                return Err(Refusal::Rights);
+            }
+            Ok(())
+        }
         Slot::Receive | Slot::Credit => {
             if f.disposition != PORT_RECEIVE {
                 return Err(Refusal::Disposition);
@@ -208,6 +246,46 @@ pub(crate) fn accept_slot<H: Held>(slot: Slot, f: &SlotFacts, held: &H) -> Resul
             }
             Ok(())
         }
+    }
+}
+
+/// How a received region is mapped (D6 review M2, M8 and Q1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MapMode {
+    /// Shared and writable: a writer.
+    SharedRw,
+    /// Shared and read-only: its filler may still write it (a consumer,
+    /// or a read-only region without the `immutable` attribute, which is
+    /// filler-trusted on macOS).
+    SharedRo,
+    /// A `copy=1` snapshot taken at acceptance and held: a read-only
+    /// region with the `immutable` attribute. It keeps the contents of
+    /// that moment whatever the filler does after (fact M4).
+    Snapshot,
+}
+
+/// Decides a region whose right [`accept_slot`] accepted, from what the
+/// kernel answered: whether a read-write sub-entry of the declared size
+/// could be made (`rw`; fact M2: a read-only entry refuses one, with no
+/// mapping needed), and whether a read-only sub-entry of that size could
+/// (`fits`; fact M3: one larger than the entry fails).
+///
+/// # Errors
+/// The [`Refusal`]; the caller then refuses the whole record.
+pub(crate) const fn region_rule(d: &HandleDesc, rw: bool, fits: bool) -> Result<MapMode, Refusal> {
+    if d.sent & REGION_FILLER_TRUSTED != 0 {
+        return Err(Refusal::Flags);
+    }
+    if !fits {
+        return Err(Refusal::Size);
+    }
+    match d.kind {
+        WireKind::RegionWriter if rw => Ok(MapMode::SharedRw),
+        WireKind::RegionWriter => Err(Refusal::NotWritable),
+        WireKind::ReadOnlyRegion | WireKind::ConsumerRegion if rw => Err(Refusal::Writable),
+        WireKind::ReadOnlyRegion if d.sent & REGION_IMMUTABLE != 0 => Ok(MapMode::Snapshot),
+        WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => Ok(MapMode::SharedRo),
+        WireKind::Sender | WireKind::BoundSender | WireKind::Receiver => Err(Refusal::NotAPort),
     }
 }
 
@@ -266,10 +344,11 @@ pub(crate) mod proofs {
 
     /// Any slot.
     pub(crate) fn any_slot() -> Slot {
-        match kani::any::<u8>() % 3 {
+        match kani::any::<u8>() % 4 {
             0 => Slot::Send,
             1 => Slot::Receive,
-            _ => Slot::Credit,
+            2 => Slot::Credit,
+            _ => Slot::Region,
         }
     }
 
@@ -320,6 +399,14 @@ pub(crate) mod proofs {
                             || (held.receiver(f.name) && f.type_bits == TYPE_SEND | TYPE_RECEIVE))
                         && f.send_refs == 1
                 }
+                Slot::Region => {
+                    f.disposition == PORT_SEND
+                        && f.kobject == KOBJECT_NAMED_ENTRY
+                        && held.send_refs(f.name) == 0
+                        && !held.receiver(f.name)
+                        && f.type_bits == TYPE_SEND
+                        && f.send_refs >= 1
+                }
                 Slot::Receive | Slot::Credit => {
                     f.disposition == PORT_RECEIVE
                         && f.plain_queue
@@ -342,6 +429,47 @@ pub(crate) mod proofs {
             ok && slot == Slot::Send && f.type_bits != TYPE_SEND,
             "a send right to this process's own receiver accepted"
         );
+        kani::cover!(
+            ok && slot == Slot::Region && f.send_refs > 1,
+            "a region whose entry this process already holds"
+        );
+    }
+
+    /// D6 review minor 3: the map mode follows the kind. A writer maps
+    /// read-write only with a read-write entry; nothing else ever maps
+    /// read-write; a region whose entry gives a read-write sub-entry is
+    /// never mapped as read-only or consumer; a snapshot is exactly a
+    /// read-only region with the `immutable` flag; filler-trust and a
+    /// short entry are always refused.
+    #[kani::proof]
+    fn the_map_mode_follows_the_kind() {
+        let kind = match kani::any::<u8>() % 3 {
+            0 => WireKind::RegionWriter,
+            1 => WireKind::ReadOnlyRegion,
+            _ => WireKind::ConsumerRegion,
+        };
+        let d = HandleDesc {
+            kind,
+            capacity: kani::any(),
+            sent: kani::any(),
+            delivered: 0,
+        };
+        let (rw, fits): (bool, bool) = (kani::any(), kani::any());
+        let got = region_rule(&d, rw, fits);
+        if d.sent & REGION_FILLER_TRUSTED != 0 || !fits {
+            assert!(got.is_err());
+        }
+        if let Ok(mode) = got {
+            assert!((mode == MapMode::SharedRw) == (kind == WireKind::RegionWriter));
+            assert!(rw == (kind == WireKind::RegionWriter));
+            assert!(
+                (mode == MapMode::Snapshot)
+                    == (kind == WireKind::ReadOnlyRegion && d.sent & REGION_IMMUTABLE != 0)
+            );
+        }
+        kani::cover!(got == Ok(MapMode::Snapshot), "a snapshot");
+        kani::cover!(got == Ok(MapMode::SharedRw), "a writer");
+        kani::cover!(got == Err(Refusal::Writable), "a writer claimed read-only");
     }
 
     /// `distinct` refuses exactly the records with a repeated name.
@@ -544,6 +672,69 @@ mod tests {
             accept_slot(Slot::Receive, &f, &Nothing),
             Err(Refusal::Rights)
         );
+    }
+
+    fn entry(name: u32) -> SlotFacts {
+        SlotFacts {
+            kobject: KOBJECT_NAMED_ENTRY,
+            ..send(name)
+        }
+    }
+
+    #[test]
+    fn a_region_is_one_memory_entry_send_right() {
+        assert_eq!(accept_slot(Slot::Region, &entry(0x103), &Nothing), Ok(()));
+        // Merged with a region this process already holds.
+        let f = SlotFacts {
+            send_refs: 3,
+            ..entry(0x103)
+        };
+        assert_eq!(accept_slot(Slot::Region, &f, &Nothing), Ok(()));
+        // A plain port, a task port.
+        for k in [KOBJECT_NONE, 2] {
+            let f = SlotFacts {
+                kobject: k,
+                ..entry(0x103)
+            };
+            assert_eq!(
+                accept_slot(Slot::Region, &f, &Nothing),
+                Err(Refusal::KernelObject)
+            );
+        }
+        let f = SlotFacts {
+            type_bits: TYPE_SEND | TYPE_RECEIVE,
+            ..entry(0x103)
+        };
+        assert_eq!(
+            accept_slot(Slot::Region, &f, &Nothing),
+            Err(Refusal::Rights)
+        );
+        assert_eq!(
+            accept_slot(Slot::Region, &entry(0x600), &Some2),
+            Err(Refusal::AlreadyHeld)
+        );
+        let (s, n) = wire_slots(&[WireKind::ReadOnlyRegion, WireKind::Receiver]).unwrap();
+        assert_eq!(&s[..n], &[Slot::Region, Slot::Receive]);
+    }
+
+    #[test]
+    fn the_region_rule_by_kind() {
+        let d = |kind, flags| HandleDesc::region(kind, 4096, flags);
+        let w = d(WireKind::RegionWriter, 0);
+        let ro = d(WireKind::ReadOnlyRegion, 0);
+        let frozen = d(WireKind::ReadOnlyRegion, REGION_IMMUTABLE);
+        let c = d(WireKind::ConsumerRegion, 0);
+        assert_eq!(region_rule(&w, true, true), Ok(MapMode::SharedRw));
+        assert_eq!(region_rule(&w, false, true), Err(Refusal::NotWritable));
+        assert_eq!(region_rule(&ro, false, true), Ok(MapMode::SharedRo));
+        assert_eq!(region_rule(&frozen, false, true), Ok(MapMode::Snapshot));
+        assert_eq!(region_rule(&c, false, true), Ok(MapMode::SharedRo));
+        for x in [ro, frozen, c] {
+            assert_eq!(region_rule(&x, true, true), Err(Refusal::Writable));
+            assert_eq!(region_rule(&x, false, false), Err(Refusal::Size));
+        }
+        let trusted = d(WireKind::ReadOnlyRegion, REGION_FILLER_TRUSTED);
+        assert_eq!(region_rule(&trusted, false, true), Err(Refusal::Flags));
     }
 
     #[test]

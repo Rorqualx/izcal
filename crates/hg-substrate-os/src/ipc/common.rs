@@ -44,7 +44,7 @@
 pub(crate) mod codec;
 pub(crate) mod flow;
 #[cfg_attr(
-    not(any(test, kani, target_os = "linux")),
+    not(any(test, kani, target_os = "linux", target_os = "macos")),
     expect(
         dead_code,
         reason = "D6: the Windows broker charges regions from its step"
