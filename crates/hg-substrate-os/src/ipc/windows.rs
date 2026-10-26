@@ -841,6 +841,7 @@ impl Inner {
                         items.push(CtlItem {
                             value: v,
                             kind: *kind,
+                            drains: false,
                         });
                         noted.push((v, *pipe, *end));
                     }
@@ -1066,7 +1067,15 @@ impl Inner {
             | Ctl::RelayRefused { .. }
             | Ctl::Redeemed { .. }
             | Ctl::RedeemRefused { .. }
-            | Ctl::BindBroken { .. } => {
+            | Ctl::BindBroken { .. }
+            | Ctl::RebindValue { .. }
+            | Ctl::RebindId { .. }
+            | Ctl::Drains { .. }
+            | Ctl::DrainsRefused { .. }
+            // Not yet spoken (W3 in progress).
+            | Ctl::Rebound { .. }
+            | Ctl::Park { .. }
+            | Ctl::TakeDrains { .. } => {
                 return self.child_gone(st, from);
             }
         };
@@ -1221,7 +1230,15 @@ impl Inner {
             | Ctl::Redeem { .. }
             | Ctl::Bind { .. }
             | Ctl::Unbind { .. }
-            | Ctl::Closed { .. } => {}
+            | Ctl::Closed { .. }
+            | Ctl::Rebound { .. }
+            | Ctl::Park { .. }
+            | Ctl::TakeDrains { .. }
+            // Not yet spoken (W3 in progress).
+            | Ctl::RebindValue { .. }
+            | Ctl::RebindId { .. }
+            | Ctl::Drains { .. }
+            | Ctl::DrainsRefused { .. } => {}
         }
         out
     }
@@ -1673,6 +1690,7 @@ impl Inner {
             .map(|(h, k)| CtlItem {
                 value: sys::value(h),
                 kind: *k,
+                drains: false,
             })
             .collect();
         let Some(items) = Items::from_slice(&items) else {
