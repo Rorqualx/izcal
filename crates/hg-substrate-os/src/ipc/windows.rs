@@ -701,9 +701,9 @@ impl Inner {
         req: u64,
         carrier: u64,
         items: Items,
-    ) {
+    ) -> bool {
         let inner = Arc::clone(self);
-        if crate::thread::spawn("hg-ipc-relay", move || {
+        crate::thread::spawn("hg-ipc-relay", move || {
             let (carrier_raw, pulled) = Self::classify_relay(&process, carrier, &items);
             let mut st = inner.lock();
             let alive = st
@@ -738,16 +738,7 @@ impl Inner {
             drop(spare);
             inner.wake();
         })
-        .is_err()
-        {
-            // The relay thread could not start: release the quota slot.
-            let mut st = self.lock();
-            if let Some(b) = st.broker.as_mut()
-                && let Some(c) = b.children.get_mut(&proc)
-            {
-                c.relays = c.relays.saturating_sub(1);
-            }
-        }
+        .is_ok()
     }
 
     /// Handles one control record from child `from`.
@@ -785,8 +776,19 @@ impl Inner {
                         if let Some(c) = b.children.get_mut(&from) {
                             c.relays = c.relays.saturating_add(1);
                         }
-                        self.spawn_relay(from, sys::Process(process), req, carrier, items);
-                        None
+                        if self.spawn_relay(from, sys::Process(process), req, carrier, items) {
+                            None
+                        } else {
+                            // No relay thread: give the slot back and
+                            // refuse, so the child is not left waiting.
+                            if let Some(c) = b.children.get_mut(&from) {
+                                c.relays = c.relays.saturating_sub(1);
+                            }
+                            Some(Ctl::RelayRefused {
+                                req,
+                                reason: Refusal::Quota.code(),
+                            })
+                        }
                     }
                     _ => Some(Ctl::RelayRefused {
                         req,
