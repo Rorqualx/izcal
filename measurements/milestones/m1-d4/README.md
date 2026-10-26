@@ -35,3 +35,11 @@ For scale, probe P14 (round 1, a noisy machine) measured a bare Mach round trip,
 - **Each fix's test fails without its fix:** with the fix undone in a scratch copy, the tests for review findings 1 (scenario C), 5, 7 and 8 failed. The finding-3 test passed without its fix: the defect released rights after the waiting message had taken them, which this test cannot observe. Finding 2's test failed before its fix on Linux. The data-port no-senders design shows in the commit history: six cross-process tests fail at `d33ef36` and pass from `484a0ff` on.
 - **Determinism:** 60 seeds of `dst-smoke --ipc` (seeds 0–59, outputs concatenated) hash to `f06e8ea9488ab8cae1eb4054119ae52ddbebb41da8940781a9c0f57fe449911b`, as expected.
 - **Linux:** the workspace tests passed on hueyj; clippy `-D warnings` passed for macOS, Linux and Windows.
+
+## Formal verification, same code
+
+The 11 D4 Kani harnesses (`ipc::mach`) on hueyj, one at a time under `prlimit --as=10G`, heavy booking `b-064729`: all verified, and every cover property was satisfied. Each took 1–97 s.
+- `accept`: `acceptance_is_exactly_the_stated_set` (now with the send-once, port-destroyed and credit-slot rules) and `distinct_refuses_repeats`.
+- `notify`: `classify_trusts_only_the_kernel_s_exact_notifications`, new.
+- `wire`: `layout_reads_any_bytes`, `encode_then_layout` and `unframe_reads_any_bytes_and_inverts_frame`.
+- `decide`: `decisions_are_sound` for 0/0, 1/1, 2/1, 2/2 and 3/2. It now asserts that a bound receiver's message from any other process is a WrongPeer violation naming the bound peer, whatever its layout, and that an accepted credit port has no more send-once rights than its messages in flight.
