@@ -1723,3 +1723,281 @@ fn verify_handles_unknown_ordinal() {
     };
     assert!(Handles::validate_bytes(input) == Err(BadMessage::UnknownOrdinal));
 }
+
+/// An interface only the broker sends, with every region form (D6).
+///
+/// Interface `sample.Regions`: free, capacity 4, overflow `terminate`.
+#[derive(Debug)]
+pub enum Regions {
+    /// A fresh region to fill, a sealed one, an immutable sealed one and
+    /// a producer's view, with data beside them.
+    Lend {
+        /// Up to 64 KiB to fill.
+        fresh: hg_ipc::RegionWriter,
+        /// Up to 4 KiB, sealed.
+        sealed: hg_ipc::ReadOnlyRegion,
+        /// Up to 4 KiB, sealed, attested immutable on arrival.
+        frozen: hg_ipc::ReadOnlyRegion,
+        /// A producer's view, up to 1 MiB.
+        view: hg_ipc::ConsumerRegion,
+        /// Data beside the regions.
+        tag: u32,
+    },
+}
+
+impl Regions {
+    /// What the `.hgidl` declared about this interface.
+    pub const INFO: hg_ipc::InterfaceInfo = hg_ipc::InterfaceInfo {
+        name: "sample.Regions",
+        binding: hg_ipc::Binding::Free,
+        capacity: 4,
+        overflow: hg_ipc::Overflow::Terminate,
+        max_message_len: hg_ipc::wire::len_add(2, hg_ipc::wire::len_add(0, <u32 as Wire>::MAX_LEN)),
+    };
+}
+
+impl Regions {
+    /// Reads [`Self::Lend`]'s fields, after its ordinal.
+    fn decode_lend(r: &mut Reader<'_>) -> Result<(u32,), BadMessage> {
+        Ok((Wire::decode(r)?,))
+    }
+    /// Checks [`Self::Lend`]'s fields, after its ordinal.
+    fn validate_lend(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        <u32 as Wire>::validate(r)?;
+        Ok(())
+    }
+    /// Writes [`Self::Lend`]'s fields, after its ordinal.
+    fn encode_lend(w: &mut Writer, tag: &u32) {
+        tag.encode(w);
+    }
+}
+
+impl Regions {
+    /// Checks that `bytes` are one valid message, allocating nothing.
+    ///
+    /// # Errors
+    /// [`BadMessage`] if they are not.
+    pub fn validate_bytes(bytes: &[u8]) -> Result<(), BadMessage> {
+        let mut r = Reader::new(bytes);
+        match u16::decode(&mut r)? {
+            0 => Self::validate_lend(&mut r)?,
+            _ => return Err(BadMessage::UnknownOrdinal),
+        }
+        r.finish()
+    }
+}
+
+impl hg_ipc::Interface for Regions {
+    const INFO: hg_ipc::InterfaceInfo = Self::INFO;
+    fn into_wire(self) -> (Vec<u8>, Vec<hg_ipc::Handle>) {
+        let mut w = Writer::new();
+        let mut handles = Vec::new();
+        match self {
+            Self::Lend {
+                fresh,
+                sealed,
+                frozen,
+                view,
+                tag,
+            } => {
+                0u16.encode(&mut w);
+                Self::encode_lend(&mut w, &tag);
+                handles.push(fresh.into_handle());
+                handles.push(sealed.into_handle());
+                frozen.want_immutable();
+                handles.push(frozen.into_handle());
+                handles.push(view.into_handle());
+            }
+        }
+        (w.into_bytes(), handles)
+    }
+    fn from_wire(
+        bytes: &[u8],
+        handles: Vec<hg_ipc::Handle>,
+        ipc: &std::sync::Arc<dyn hg_ipc::Ipc>,
+    ) -> Result<Self, BadMessage> {
+        let _ = ipc;
+        // Every check before any decoding: the bytes by the validator,
+        // which allocates nothing, then the handles' kinds (IPC-R1).
+        Self::validate_bytes(bytes)?;
+        let mut r = Reader::new(bytes);
+        let msg = match u16::decode(&mut r)? {
+            0 => {
+                hg_ipc::endpoint::expect_kinds(
+                    handles.iter().map(hg_ipc::Handle::kind),
+                    &[
+                        hg_ipc::HandleKind::RegionWriter,
+                        hg_ipc::HandleKind::ReadOnlyRegion,
+                        hg_ipc::HandleKind::ReadOnlyRegion,
+                        hg_ipc::HandleKind::ConsumerRegion,
+                    ],
+                )?;
+                let (tag,) = Self::decode_lend(&mut r)?;
+                let mut h = handles.into_iter();
+                let fresh = hg_ipc::endpoint::take_region_writer(h.next(), 65536)?;
+                let sealed = hg_ipc::endpoint::take_read_only_region(h.next(), 4096, false)?;
+                let frozen = hg_ipc::endpoint::take_read_only_region(h.next(), 4096, true)?;
+                let view = hg_ipc::endpoint::take_consumer_region(h.next(), 1048576)?;
+                Self::Lend {
+                    fresh,
+                    sealed,
+                    frozen,
+                    view,
+                    tag,
+                }
+            }
+            _ => return Err(BadMessage::UnknownOrdinal),
+        };
+        r.finish()?;
+        Ok(msg)
+    }
+}
+
+impl hg_ipc::FreeInterface for Regions {}
+
+/// Receives `sample.Regions`'s messages, each already checked. An `Err`
+/// closes the endpoint and reports the sender (IPC-R5).
+pub trait RegionsHandler {
+    /// A fresh region to fill, a sealed one, an immutable sealed one and
+    /// a producer's view, with data beside them.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn lend(
+        &mut self,
+        fresh: hg_ipc::RegionWriter,
+        sealed: hg_ipc::ReadOnlyRegion,
+        frozen: hg_ipc::ReadOnlyRegion,
+        view: hg_ipc::ConsumerRegion,
+        tag: u32,
+    ) -> Result<(), SampleError>;
+}
+
+impl Regions {
+    /// Passes this message to its handler method.
+    ///
+    /// # Errors
+    /// The handler's.
+    pub fn dispatch<H: RegionsHandler + ?Sized>(self, h: &mut H) -> Result<(), SampleError> {
+        match self {
+            Self::Lend {
+                fresh,
+                sealed,
+                frozen,
+                view,
+                tag,
+            } => h.lend(fresh, sealed, frozen, view, tag),
+        }
+    }
+}
+
+/// Sends `sample.Regions`'s messages; implemented for `hg_ipc::Remote<Regions>`.
+pub trait RegionsRemote {
+    /// A fresh region to fill, a sealed one, an immutable sealed one and
+    /// a producer's view, with data beside them.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn lend(
+        &self,
+        fresh: hg_ipc::RegionWriter,
+        sealed: hg_ipc::ReadOnlyRegion,
+        frozen: hg_ipc::ReadOnlyRegion,
+        view: hg_ipc::ConsumerRegion,
+        tag: u32,
+    ) -> Result<(), hg_ipc::SendError>;
+}
+
+impl RegionsRemote for hg_ipc::Remote<Regions> {
+    fn lend(
+        &self,
+        fresh: hg_ipc::RegionWriter,
+        sealed: hg_ipc::ReadOnlyRegion,
+        frozen: hg_ipc::ReadOnlyRegion,
+        view: hg_ipc::ConsumerRegion,
+        tag: u32,
+    ) -> Result<(), hg_ipc::SendError> {
+        self.send(Regions::Lend {
+            fresh,
+            sealed,
+            frozen,
+            view,
+            tag,
+        })
+    }
+}
+
+/// VER-1 for `sample.Regions.lend` (IPC-R5): validating never
+/// panics, overflows or reads out of bounds. Bounds: messages of 2 to
+/// 6 bytes (its encodings are 6 to 6); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_regions_lend_validates() {
+    let bytes: [u8; 4] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 4);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let checked = Regions::validate_lend(&mut r).and_then(|()| r.finish());
+    kani::cover!(checked.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Regions.lend` (IPC-R5, IPC-R6): decoding
+/// never panics, and every accepted input re-encodes to the same
+/// bytes. Bounds: messages of 2 to 6 bytes (its encodings are 6
+/// to 6); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_regions_lend_round_trip() {
+    let bytes: [u8; 4] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 4);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let decoded = Regions::decode_lend(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "some input is accepted");
+    if let Ok((tag,)) = decoded {
+        let mut w = Writer::new();
+        0u16.encode(&mut w);
+        Regions::encode_lend(&mut w, &tag);
+        let out = w.into_bytes();
+        assert!(out.len() == len + 2);
+        assert!(out.first() == Some(&0));
+        assert!(out.get(1) == Some(&0));
+        if len > 0 {
+            assert!(out.get(2) == bytes.get(0));
+        }
+        if len > 1 {
+            assert!(out.get(3) == bytes.get(1));
+        }
+        if len > 2 {
+            assert!(out.get(4) == bytes.get(2));
+        }
+        if len > 3 {
+            assert!(out.get(5) == bytes.get(3));
+        }
+    }
+}
+
+/// VER-1 for `sample.Regions`: an ordinal no message has is
+/// refused by the validator, which `decode_exact` runs first,
+/// whatever follows it (bounds: 2 to 4 bytes).
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(6)]
+fn verify_regions_unknown_ordinal() {
+    let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 1);
+    let tail: [u8; 2] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| (2..=4).contains(&n));
+    let [o0, o1] = ordinal.to_le_bytes();
+    let [t0, t1] = tail;
+    let bytes = [o0, o1, t0, t1];
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    assert!(Regions::validate_bytes(input) == Err(BadMessage::UnknownOrdinal));
+}

@@ -8,14 +8,16 @@ use hg_ipc::{CallerIdentity, Endpoint, PeerBinding, PeerId, Remote, bound_channe
 use hg_substrate::ipc::{ChannelReceiver, ChannelSender, OsPeer};
 use hg_substrate::{Memory, Priority, Substrate};
 use hg_substrate_os::memory::OsMemory;
-use hg_substrate_sim::{Limits, RunEnd, SimConfig, World};
+use hg_substrate_sim::{Limits, RunEnd, SimConfig, SimOs, World};
 use hg_types::Instant;
 
 use crate::generated::process::{
     BuildId, ProcessControl, ProcessControlHandler, ProcessError, ProcessHost, ProcessHostHandler,
     ProcessHostRemote, ProcessKind,
 };
-use crate::generated::sample::{Handles, HandlesHandler, Loose, LooseRemote, Strict, StrictRemote};
+use crate::generated::sample::{
+    Handles, HandlesHandler, Loose, LooseRemote, Regions, RegionsRemote, Strict, StrictRemote,
+};
 
 const LIMITS: Limits = Limits {
     max_steps: 100_000,
@@ -47,7 +49,15 @@ fn world(
     broker: impl Fn(Substrate, ChannelReceiver, ChannelSender) + Send + Sync + 'static,
     child: impl Fn(Substrate) + Send + Sync + 'static,
 ) -> World {
-    let w = World::new(SimConfig::new(seed));
+    world_on(SimConfig::new(seed), broker, child)
+}
+
+fn world_on(
+    config: SimConfig,
+    broker: impl Fn(Substrate, ChannelReceiver, ChannelSender) + Send + Sync + 'static,
+    child: impl Fn(Substrate) + Send + Sync + 'static,
+) -> World {
+    let w = World::new(config);
     let ends: Arc<Mutex<Option<(ChannelReceiver, ChannelSender)>>> = Arc::default();
     let e = Arc::clone(&ends);
     let backing = || -> Arc<dyn Memory> { Arc::new(OsMemory::new()) };
@@ -400,4 +410,91 @@ fn a_bound_sender_in_a_free_slot_is_a_bad_message() {
     let w = world(6, broker, child);
     assert_eq!(w.run(LIMITS), RunEnd::Idle);
     assert_eq!(*ends.lock().unwrap(), ["BadMessage(BadHandles)"]);
+}
+
+/// The broker lends every region form; the child sees each kind, length
+/// and attestation. `sealed_len` over the field's 4 KiB bound makes the
+/// message a bad one (D6).
+fn lend_regions(sealed_len: usize) -> Vec<String> {
+    let (log, keep): (Log, Keep) = Default::default();
+    let held: Arc<Mutex<Vec<hg_substrate::ipc::ProducerRegion>>> = Arc::default();
+    let (log_b, held_b) = (Arc::clone(&log), Arc::clone(&held));
+    let broker = move |s: Substrate, _from_child: ChannelReceiver, to_child: ChannelSender| {
+        let to_child = Remote::<Regions>::from_sender(&s.ipc, to_child);
+        let seal = |len: usize, text: &[u8]| {
+            let w = s.ipc.allocate_region(len).unwrap();
+            {
+                let m = s.ipc.map_region(w.handle()).unwrap();
+                m.write_from(0, text).unwrap();
+            }
+            s.ipc.seal_region(w).unwrap()
+        };
+        let fresh = s.ipc.allocate_region(65536).unwrap();
+        let sealed = seal(sealed_len, b"sealed");
+        let frozen = seal(4096, b"frozen");
+        let producer = s
+            .ipc
+            .share_region(s.ipc.allocate_region(1 << 20).unwrap())
+            .unwrap();
+        let view = s.ipc.consumer_of(&producer).unwrap();
+        held_b.lock().unwrap().push(producer);
+        let r = to_child.lend(fresh, sealed, frozen, view, 3);
+        note(&log_b, format!("lend {:?}", r.err()));
+    };
+    let (log_c, keep_c) = (Arc::clone(&log), Arc::clone(&keep));
+    let child = move |s: Substrate| {
+        let boot = s.ipc.bootstrap().unwrap();
+        let seq = s.exec.sequence("regions", Priority::UserVisible);
+        let (l1, l2) = (Arc::clone(&log_c), Arc::clone(&log_c));
+        let serving = Endpoint::<Regions>::from_receiver(&s.ipc, boot.from_parent)
+            .serve(
+                seq,
+                move |m| {
+                    let Regions::Lend { fresh, sealed, frozen, view, tag } = m;
+                    note(
+                        &l1,
+                        format!(
+                            "lend tag={tag} fresh={} sealed={} immutable={} frozen={} immutable={} view={}",
+                            fresh.len(),
+                            sealed.len(),
+                            sealed.immutable(),
+                            frozen.len(),
+                            frozen.immutable(),
+                            view.len()
+                        ),
+                    );
+                    Ok::<(), ()>(())
+                },
+                move |why| note(&l2, format!("ended {why:?}")),
+            )
+            .unwrap();
+        keep_c.lock().unwrap().push(serving);
+    };
+    let mut config = SimConfig::new(5);
+    config.region_os = SimOs::MacOs;
+    let w = world_on(config, broker, child);
+    assert_eq!(w.run(LIMITS), RunEnd::Idle);
+    let got = log.lock().unwrap().clone();
+    drop(held);
+    got
+}
+
+#[test]
+fn every_region_form_crosses_with_its_attestation() {
+    // macOS: only the `immutable` field is attested immutable (a snapshot).
+    assert_eq!(
+        lend_regions(4096),
+        [
+            "lend None",
+            "lend tag=3 fresh=65536 sealed=4096 immutable=false frozen=4096 immutable=true view=1048576",
+            "ended PeerClosed",
+        ]
+    );
+}
+
+#[test]
+fn a_region_over_its_bound_is_a_bad_message() {
+    let got = lend_regions(8192);
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert!(got[1].starts_with("ended BadMessage"), "{got:?}");
 }

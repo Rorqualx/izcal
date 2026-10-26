@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::syntax::{Binding, Case, Error, Field, File, Item, Named, Pos, Type, err};
+use crate::syntax::{Binding, Case, Error, Field, File, Item, Named, Pos, RegionKind, Type, err};
 
 /// Size bounds of a type's encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -251,10 +251,10 @@ impl Ctx<'_> {
                 )
             }
             Type::Named(name, npos) => self.named(name, *npos)?,
-            Type::Remote(_, p) | Type::Receiver(_, p) => {
+            Type::Remote(_, p) | Type::Receiver(_, p) | Type::Region(_, _, _, p) => {
                 return err(
                     *p,
-                    "`remote<…>` and `receiver<…>` are handles: only a message's own parameters may be one",
+                    "`remote<…>`, `receiver<…>` and `region<…>` are handles: only a message's own parameters may be one",
                 );
             }
         })
@@ -425,6 +425,7 @@ pub fn check(file: File) -> Result<Checked, Error> {
                 id,
                 capacity,
                 messages,
+                from_broker,
                 ..
             } => {
                 if *capacity == 0 || *capacity > u64::from(u32::MAX) {
@@ -469,6 +470,11 @@ pub fn check(file: File) -> Result<Checked, Error> {
                                 f.id.pos,
                                 format!("field `{}` is a name the generated code uses", f.id.name),
                             );
+                        }
+                        if let Type::Region(kind, n, immutable, rpos) = &f.ty {
+                            region_field(*kind, *n, *immutable, *rpos, *from_broker)?;
+                            handles = handles.saturating_add(1);
+                            continue;
                         }
                         let (Type::Remote(target, tpos) | Type::Receiver(target, tpos)) = &f.ty
                         else {
@@ -545,4 +551,36 @@ pub fn check(file: File) -> Result<Checked, Error> {
         file,
         message_sizes,
     })
+}
+
+/// The D6 rules for a `region<…>` parameter.
+fn region_field(
+    kind: RegionKind,
+    n: u64,
+    immutable: bool,
+    pos: Pos,
+    from_broker: bool,
+) -> Result<(), Error> {
+    match kind {
+        RegionKind::Producer => {
+            return err(
+                pos,
+                "a producer region never crosses a process boundary: send `region<consumer, N>` (D6 review B3)",
+            );
+        }
+        RegionKind::Writer if !from_broker => {
+            return err(
+                pos,
+                "`region<writer, N>` is only for interfaces the broker sends: add `from broker` (D6 review M1)",
+            );
+        }
+        RegionKind::Writer | RegionKind::Consumer | RegionKind::ReadOnly => {}
+    }
+    if immutable && kind != RegionKind::ReadOnly {
+        return err(pos, "only `region<ro, N>` can be `immutable`");
+    }
+    if n == 0 || n > u64::from(u32::MAX) {
+        return err(pos, "a region's bound must be 1 to 4294967295 bytes");
+    }
+    Ok(())
 }

@@ -7,6 +7,7 @@
 //!                  | "union" NAME "{" case* "}"
 //!                  | "struct" NAME "{" field* "}"
 //!                  | "interface" NAME binding "capacity" NUMBER "overflow" policy
+//!                    ["from" "broker"]
 //!                    "{" message* "}" )
 //! variant   = doc* NAME ","
 //! case      = doc* NAME [ "{" field* "}" ] ","
@@ -195,12 +196,32 @@ pub enum Type {
     /// `receiver<Iface>`: the right to receive them (a handle; message
     /// parameters only).
     Receiver(String, Pos),
+    /// `region<kind, N>` or `region<ro, N, immutable>`: a shared-memory
+    /// region of at most N bytes (a handle; message parameters only;
+    /// M1 phase D6).
+    Region(RegionKind, u64, bool, Pos),
+}
+
+/// A region field's kind, as written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegionKind {
+    /// `writer`: fresh from the broker.
+    Writer,
+    /// `ro`: sealed.
+    ReadOnly,
+    /// `consumer`: a view of a producer's region.
+    Consumer,
+    /// `producer`: never crosses; the checker refuses it (D6 review B3).
+    Producer,
 }
 
 impl Type {
     /// Whether it is a handle, carried beside the bytes, not in them.
     pub const fn is_handle(&self) -> bool {
-        matches!(self, Self::Remote(..) | Self::Receiver(..))
+        matches!(
+            self,
+            Self::Remote(..) | Self::Receiver(..) | Self::Region(..)
+        )
     }
 }
 
@@ -342,6 +363,9 @@ pub enum Item {
         capacity: u64,
         /// Overflow policy.
         overflow: Overflow,
+        /// `from broker`: only the broker sends it, so its messages may
+        /// carry `region<writer, N>` (D6 review M1).
+        from_broker: bool,
         /// Its messages.
         messages: Vec<Case>,
     },
@@ -456,6 +480,29 @@ impl Parser {
                 let inner = self.ty()?;
                 self.punct('>')?;
                 Type::Option(Box::new(inner))
+            }
+            "region" => {
+                self.punct('<')?;
+                let (k, kpos) = self.name()?;
+                let kind = match k.as_str() {
+                    "writer" => RegionKind::Writer,
+                    "ro" => RegionKind::ReadOnly,
+                    "consumer" => RegionKind::Consumer,
+                    "producer" => RegionKind::Producer,
+                    _ => {
+                        return err(kpos, "a region is `writer`, `ro` or `consumer` (D6)");
+                    }
+                };
+                self.punct(',')?;
+                let (n, _) = self.number()?;
+                let mut immutable = false;
+                if self.is_punct(',') {
+                    self.punct(',')?;
+                    self.keyword("immutable")?;
+                    immutable = true;
+                }
+                self.punct('>')?;
+                Type::Region(kind, n, immutable, pos)
             }
             "remote" | "receiver" => {
                 self.punct('<')?;
@@ -594,11 +641,17 @@ impl Parser {
                         "terminate" => Overflow::Terminate,
                         _ => return err(opos, "overflow is `drop` or `terminate` (CS-AS-6 (b))"),
                     };
+                    let from_broker = matches!(&self.peek().tok, Tok::Name(n) if n == "from");
+                    if from_broker {
+                        self.keyword("from")?;
+                        self.keyword("broker")?;
+                    }
                     Item::Interface {
                         id,
                         binding,
                         capacity,
                         overflow,
+                        from_broker,
                         messages: self.messages()?,
                     }
                 }

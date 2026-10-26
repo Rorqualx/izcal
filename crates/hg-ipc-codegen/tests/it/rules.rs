@@ -83,6 +83,40 @@ fn every_rule_has_a_refusal() {
             with("/// S.\nstruct lower {\n/// F.\nf: u8,\n}\n"),
         ),
         (
+            "never crosses a process boundary",
+            with(
+                "/// I.\ninterface I free capacity 1 overflow drop from broker {\n/// M.\nm(\n/// R.\nregion_f: region<producer, 64>,\n);\n}\n",
+            ),
+        ),
+        (
+            "add `from broker`",
+            with(
+                "/// I.\ninterface I free capacity 1 overflow drop {\n/// M.\nm(\n/// R.\nregion_f: region<writer, 64>,\n);\n}\n",
+            ),
+        ),
+        (
+            "can be `immutable`",
+            with(
+                "/// I.\ninterface I free capacity 1 overflow drop {\n/// M.\nm(\n/// R.\nregion_f: region<consumer, 64, immutable>,\n);\n}\n",
+            ),
+        ),
+        (
+            "bound must be 1 to",
+            with(
+                "/// I.\ninterface I free capacity 1 overflow drop {\n/// M.\nm(\n/// R.\nregion_f: region<ro, 0>,\n);\n}\n",
+            ),
+        ),
+        (
+            "`writer`, `ro` or `consumer`",
+            with(
+                "/// I.\ninterface I free capacity 1 overflow drop {\n/// M.\nm(\n/// R.\nregion_f: region<rw, 64>,\n);\n}\n",
+            ),
+        ),
+        (
+            "only a message's own parameters",
+            with("/// S.\nstruct S {\n/// F.\nf: region<ro, 64>,\n}\n"),
+        ),
+        (
             "at least one byte",
             with(
                 "/// S.\nstruct S {\n/// F.\nf: vec<option<u8>, 2>,\n}\n/// T.\nstruct T {\n/// F.\nf: vec<Z, 2>,\n}\n/// Z.\nstruct Z {\n/// F.\nf: u8,\n}\n",

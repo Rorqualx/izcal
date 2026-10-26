@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use crate::check::{Checked, TypeFacts, pascal_of};
-use crate::syntax::{Binding, Case, Field, Item, Named, Overflow, Type};
+use crate::syntax::{Binding, Case, Field, Item, Named, Overflow, RegionKind, Type};
 
 /// The largest input, in bytes, each round-trip harness explores. Kani's
 /// bound is stated with the result (security scope 6.6, "What VER-1
@@ -48,6 +48,12 @@ fn rust_type(t: &Type) -> String {
         Type::Named(name, _) => name.clone(),
         Type::Remote(name, _) => format!("hg_ipc::Remote<{name}>"),
         Type::Receiver(name, _) => format!("hg_ipc::Endpoint<{name}>"),
+        Type::Region(RegionKind::Writer, ..) => "hg_ipc::RegionWriter".to_owned(),
+        Type::Region(RegionKind::ReadOnly, ..) => "hg_ipc::ReadOnlyRegion".to_owned(),
+        // The checker refuses producers; consumers are what crosses.
+        Type::Region(RegionKind::Consumer | RegionKind::Producer, ..) => {
+            "hg_ipc::ConsumerRegion".to_owned()
+        }
     }
 }
 
@@ -65,6 +71,11 @@ fn param_type(t: &Type, bound: &BTreeSet<String>) -> String {
 fn handle_kind(t: &Type, bound: &BTreeSet<String>) -> &'static str {
     match t {
         Type::Receiver(..) => "hg_ipc::HandleKind::ChannelReceiver",
+        Type::Region(RegionKind::Writer, ..) => "hg_ipc::HandleKind::RegionWriter",
+        Type::Region(RegionKind::ReadOnly, ..) => "hg_ipc::HandleKind::ReadOnlyRegion",
+        Type::Region(RegionKind::Consumer | RegionKind::Producer, ..) => {
+            "hg_ipc::HandleKind::ConsumerRegion"
+        }
         Type::Remote(name, _) if bound.contains(name) => "hg_ipc::HandleKind::BoundChannelSender",
         _ => "hg_ipc::HandleKind::ChannelSender",
     }
@@ -79,6 +90,15 @@ fn handle_take(t: &Type, bound: &BTreeSet<String>) -> String {
         Type::Remote(name, _) => format!("hg_ipc::endpoint::take_remote::<{name}>(h.next(), ipc)?"),
         Type::Receiver(name, _) => {
             format!("hg_ipc::endpoint::take_endpoint::<{name}>(h.next(), ipc)?")
+        }
+        Type::Region(RegionKind::Writer, n, ..) => {
+            format!("hg_ipc::endpoint::take_region_writer(h.next(), {n})?")
+        }
+        Type::Region(RegionKind::ReadOnly, n, immutable, _) => {
+            format!("hg_ipc::endpoint::take_read_only_region(h.next(), {n}, {immutable})?")
+        }
+        Type::Region(RegionKind::Consumer | RegionKind::Producer, n, ..) => {
+            format!("hg_ipc::endpoint::take_consumer_region(h.next(), {n})?")
         }
         _ => String::new(),
     }
@@ -497,6 +517,8 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
                 capacity,
                 overflow,
                 messages,
+                // `from broker` only changes what the checker allows.
+                from_broker: _,
             } => {
                 let ctx = Iface {
                     protocol: &file.protocol.name,
@@ -697,6 +719,10 @@ fn interface_impl(o: &mut Out, x: &Iface<'_>, messages: &[Case]) {
         o.line(&format!("{i}u16.encode(&mut w);"));
         o.line(&format!("Self::encode_{f}(&mut w{args});"));
         for p in m.fields.iter().filter(|p| p.ty.is_handle()) {
+            if matches!(p.ty, Type::Region(RegionKind::ReadOnly, _, true, _)) {
+                // The field is `immutable`: the transport makes it so.
+                o.line(&format!("{}.want_immutable();", p.id.name));
+            }
             o.line(&format!("handles.push({}.into_handle());", p.id.name));
         }
         o.line("}");
@@ -713,7 +739,17 @@ fn interface_impl(o: &mut Out, x: &Iface<'_>, messages: &[Case]) {
     o.line("handles: Vec<hg_ipc::Handle>,");
     o.line("ipc: &std::sync::Arc<dyn hg_ipc::Ipc>,");
     o.line(") -> Result<Self, BadMessage> {");
-    if !any_handles {
+    // Only a free sender or a receiver is made with `ipc`; regions and
+    // grants are taken as they are.
+    let needs_ipc = messages
+        .iter()
+        .flat_map(|m| &m.fields)
+        .any(|p| match &p.ty {
+            Type::Remote(name, _) => !x.bound.contains(name),
+            Type::Receiver(..) => true,
+            _ => false,
+        });
+    if !needs_ipc {
         o.line("let _ = ipc;");
     }
     o.line("// Every check before any decoding: the bytes by the validator,");
@@ -897,7 +933,7 @@ fn field_has_float(t: &Type, checked: &Checked) -> bool {
         Type::Bytes(_) | Type::Str(_) => false,
         Type::Vec(inner, _) | Type::Option(inner) => field_has_float(inner, checked),
         Type::Named(n, _) => checked.facts.get(n).is_some_and(|f| f.has_float),
-        Type::Remote(..) | Type::Receiver(..) => false,
+        Type::Remote(..) | Type::Receiver(..) | Type::Region(..) => false,
     }
 }
 

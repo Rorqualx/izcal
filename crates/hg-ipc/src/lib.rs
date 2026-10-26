@@ -21,7 +21,9 @@ pub use endpoint::{
     BoundInterface, EndReason, Endpoint, FreeInterface, Grant, Interface, Remote, SendError,
     Serving, bound_channel, channel,
 };
-pub use hg_substrate::ipc::{Handle, HandleKind, Ipc, MAX_MESSAGE_HANDLES};
+pub use hg_substrate::ipc::{
+    ConsumerRegion, Handle, HandleKind, Ipc, MAX_MESSAGE_HANDLES, ReadOnlyRegion, RegionWriter,
+};
 pub use identity::{CallerIdentity, PeerBinding, PeerId};
 pub use wire::{BadMessage, Reader, Wire, Writer, decode_exact, encode_to_vec, validate_exact};
 
