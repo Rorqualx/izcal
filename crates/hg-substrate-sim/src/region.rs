@@ -36,8 +36,8 @@ use std::sync::Arc;
 use hg_substrate::ipc::{
     AccessError, ConsumerRegion, Handle, HandleKind, HandleObject, IpcError,
     MAX_REGION_BYTES_PER_OWNER, MAX_REGION_BYTES_TOTAL, MAX_REGIONS_PER_OWNER, Mapping,
-    MappingObject, ProducerRegion, ReadOnlyRegion, RegionObject, RegionRefused, RegionWriter,
-    check_range, check_word,
+    MappingObject, OsPeer, ProducerRegion, ReadOnlyRegion, RegionObject, RegionRefused,
+    RegionWriter, check_range, check_word,
 };
 use hg_substrate::prng::Xoshiro256StarStar;
 
@@ -67,6 +67,9 @@ struct Cell {
     bytes: Vec<u8>,
     state: CellState,
     owner: ProcessId,
+    /// Charged to `owner` until it is released ([`Ipc::release_owner`]);
+    /// the bytes live on while anyone holds them.
+    charged: bool,
     /// Live handles and mappings; at 0 the region is freed.
     refs: u32,
     /// Live mappings, and how many of them are writable.
@@ -113,7 +116,7 @@ impl Regions {
     fn charged(&self, owner: ProcessId) -> (usize, u64) {
         self.cells
             .values()
-            .filter(|c| c.owner == owner)
+            .filter(|c| c.charged && c.owner == owner)
             .fold((0, 0), |(n, b), c| {
                 (n.saturating_add(1), b.saturating_add(len64(c.bytes.len())))
             })
@@ -122,6 +125,7 @@ impl Regions {
     fn total(&self) -> u64 {
         self.cells
             .values()
+            .filter(|c| c.charged)
             .fold(0u64, |b, c| b.saturating_add(len64(c.bytes.len())))
     }
 
@@ -222,6 +226,7 @@ impl Regions {
                 bytes: c.bytes.clone(),
                 state: CellState::Sealed { by_broker: true },
                 owner: c.owner,
+                charged: c.charged,
                 refs: 1,
                 maps: 0,
                 maps_rw: 0,
@@ -536,7 +541,11 @@ impl SimIpc {
         (hs.owner == self.me()).then_some((r.id, hs.cell, hs.kind))
     }
 
-    pub(crate) fn region_allocate(&self, len: usize) -> Result<RegionWriter, IpcError> {
+    pub(crate) fn region_allocate(
+        &self,
+        len: usize,
+        owner: OsPeer,
+    ) -> Result<RegionWriter, IpcError> {
         let mut st = self.shared.lock();
         if !self.is_broker(&st) {
             return Err(IpcError::Unsupported);
@@ -544,7 +553,8 @@ impl SimIpc {
         if len == 0 || u32::try_from(len).is_err() {
             return Err(IpcError::Refused);
         }
-        let (n, bytes) = st.regions.charged(self.pid);
+        let owner = ProcessId(owner.pid());
+        let (n, bytes) = st.regions.charged(owner);
         let total = st.regions.total();
         let l = len64(len);
         if n >= MAX_REGIONS_PER_OWNER
@@ -561,14 +571,16 @@ impl SimIpc {
             Cell {
                 bytes: vec![0; len],
                 state: CellState::Writer,
-                owner: self.pid,
+                owner,
+                charged: true,
                 refs: 0,
                 maps: 0,
                 maps_rw: 0,
                 pending: None,
             },
         );
-        st.trace.record(format_args!("region alloc #{cell} {len}"));
+        st.trace
+            .record(format_args!("region alloc #{cell} {len} for {}", owner.0));
         let h = self.new_handle(&mut st, cell, HandleKind::RegionWriter, len);
         drop(st);
         RegionWriter::from_handle(Handle::new(Box::new(h))).map_err(|_| IpcError::Refused)
@@ -715,6 +727,26 @@ impl SimIpc {
         let h = self.new_handle(&mut st, cell, HandleKind::ConsumerRegion, p.len());
         drop(st);
         ConsumerRegion::from_handle(Handle::new(Box::new(h))).map_err(|_| IpcError::Refused)
+    }
+
+    pub(crate) fn region_release_owner(&self, owner: OsPeer) {
+        let mut st = self.shared.lock();
+        if !self.is_broker(&st) {
+            return;
+        }
+        let pid = ProcessId(owner.pid());
+        let mut n = 0u32;
+        for c in st
+            .regions
+            .cells
+            .values_mut()
+            .filter(|c| c.owner == pid && c.charged)
+        {
+            c.charged = false;
+            n = n.saturating_add(1);
+        }
+        st.trace
+            .record(format_args!("region release owner {} ({n})", pid.0));
     }
 
     /// Whether this process is the broker: a process nobody launched.

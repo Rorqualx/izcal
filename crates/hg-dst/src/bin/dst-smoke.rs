@@ -383,8 +383,8 @@ mod regions {
     use std::sync::{Arc, Mutex};
 
     use hg_substrate::ipc::{
-        ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Flow, Handle, ProducerRegion,
-        ReadOnlyRegion, RegionWriter,
+        ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Flow, Handle, OsPeer,
+        ProducerRegion, ReadOnlyRegion, RegionWriter,
     };
     use hg_substrate::{EntropyPurpose, Memory, Priority, Substrate, Task};
     use hg_substrate_os::memory::OsMemory;
@@ -393,6 +393,8 @@ mod regions {
 
     const ROUNDS: u64 = 60;
     const LEN: usize = 16 * 1024;
+    /// The renderer, spawned second, owns what it is lent.
+    const OWNER: OsPeer = OsPeer::new(1, 0);
 
     /// Everything kept alive until the run ends.
     pub type Keep = Arc<Mutex<Vec<Box<dyn Any + Send>>>>;
@@ -436,7 +438,7 @@ mod regions {
             };
             let to = Arc::new(to_renderer);
             // The counter the renderer reads through its consumer view.
-            let Ok(w) = s.ipc.allocate_region(4096) else {
+            let Ok(w) = s.ipc.allocate_region(4096, OWNER) else {
                 return;
             };
             let Ok(producer) = s.ipc.share_region(w) else {
@@ -464,7 +466,7 @@ mod regions {
                     Task::new(move || {
                         let c = d2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         let _ = p2.mapping().store_u64_release(0, c.saturating_add(1));
-                        if let Ok(w) = s2.ipc.allocate_region(LEN) {
+                        if let Ok(w) = s2.ipc.allocate_region(LEN, OWNER) {
                             // The renderer may have crashed: its channel
                             // is closed and the writer is freed.
                             let _ =

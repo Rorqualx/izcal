@@ -624,8 +624,12 @@ impl Ipc for SimIpc {
         let owner = Owner::Proc(ProcessId(peer.pid()), generation);
         self.start_listening(from, Some(owner), seq, sink)
     }
-    fn allocate_region(&self, len: usize) -> Result<RegionWriter, IpcError> {
-        self.region_allocate(len)
+    fn allocate_region(&self, len: usize, owner: OsPeer) -> Result<RegionWriter, IpcError> {
+        self.region_allocate(len, owner)
+    }
+
+    fn release_owner(&self, owner: OsPeer) {
+        self.region_release_owner(owner);
     }
 
     fn map_region(&self, region: &Handle) -> Result<Mapping, IpcError> {

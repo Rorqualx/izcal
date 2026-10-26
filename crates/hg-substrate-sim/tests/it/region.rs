@@ -5,12 +5,15 @@ use std::sync::{Arc, Mutex};
 
 use hg_substrate::ipc::{
     AccessError, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Flow, Handle, IpcError,
-    Listening, ReadOnlyRegion, RegionWriter,
+    Listening, OsPeer, ReadOnlyRegion, RegionWriter,
 };
 use hg_substrate::{Memory, Priority, Substrate};
 use hg_substrate_os::memory::OsMemory;
 use hg_substrate_sim::{Limits, RunEnd, SimConfig, SimOs, World};
 use hg_types::Instant;
+
+/// The child as the simulator identifies it: spawned second.
+const OWNER: OsPeer = OsPeer::new(1, 0);
 
 const LIMITS: Limits = Limits {
     max_steps: 100_000,
@@ -104,7 +107,7 @@ fn a_sealed_region_crosses_and_reads_back() {
         SimOs::Linux,
         1,
         |s, _from, to| {
-            let wr = s.ipc.allocate_region(8192).unwrap();
+            let wr = s.ipc.allocate_region(8192, OWNER).unwrap();
             {
                 let m = s.ipc.map_region(wr.handle()).unwrap();
                 m.write_from(100, b"hello region").unwrap();
@@ -136,7 +139,10 @@ fn a_sealed_region_crosses_and_reads_back() {
                 // A child cannot allocate, and cannot send a writer.
                 say(
                     &l3,
-                    format!("child allocate {:?}", s.ipc.allocate_region(4096).err()),
+                    format!(
+                        "child allocate {:?}",
+                        s.ipc.allocate_region(4096, OWNER).err()
+                    ),
                 );
                 keep(&h3, ro);
             });
@@ -165,7 +171,7 @@ fn linux_refuses_a_seal_while_a_mapping_is_live() {
         SimOs::Linux,
         2,
         move |s, _f, _t| {
-            let wr = s.ipc.allocate_region(4096).unwrap();
+            let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
             let m = s.ipc.map_region(wr.handle()).unwrap();
             let refused = s.ipc.seal_region(wr).unwrap_err();
             say(&l2, format!("{:?}", refused.error));
@@ -193,7 +199,7 @@ fn a_child_fills_a_writer_and_cannot_forward_it() {
         SimOs::Linux,
         3,
         move |s, from, to| {
-            let wr = s.ipc.allocate_region(4096).unwrap();
+            let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
             s.ipc
                 .send(&to, b"w".to_vec(), vec![wr.into_handle()])
                 .unwrap();
@@ -219,7 +225,7 @@ fn a_child_fills_a_writer_and_cannot_forward_it() {
                 let wr = RegionWriter::from_handle(hs.remove(0)).unwrap();
                 // Forwarding a writer is refused: only the broker sends one.
                 let (ch_tx, _ch_rx) = s.ipc.channel(4, hg_substrate::ipc::Transfer::Free).unwrap();
-                let wr2 = s.ipc.allocate_region(1).err();
+                let wr2 = s.ipc.allocate_region(1, OWNER).err();
                 say(&l5, format!("child allocate {wr2:?}"));
                 {
                     let m = s.ipc.map_region(wr.handle()).unwrap();
@@ -252,7 +258,7 @@ fn only_the_broker_sends_a_writer() {
         SimOs::Linux,
         4,
         |s, _from, to| {
-            let wr = s.ipc.allocate_region(4096).unwrap();
+            let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
             s.ipc
                 .send(&to, b"w".to_vec(), vec![wr.into_handle()])
                 .unwrap();
@@ -287,7 +293,7 @@ fn a_producer_publishes_to_a_consumer() {
         SimOs::Linux,
         5,
         move |s, _from, to| {
-            let wr = s.ipc.allocate_region(4096).unwrap();
+            let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
             let p = s.ipc.share_region(wr).unwrap();
             p.mapping().store_u64_release(8, 41).unwrap();
             say(
@@ -359,7 +365,7 @@ fn filler_keeps_writing(os: SimOs, want_immutable: bool) -> (bool, String) {
         os,
         6,
         move |s, from, to| {
-            let wr = s.ipc.allocate_region(4096).unwrap();
+            let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
             s.ipc
                 .send(&to, b"w".to_vec(), vec![wr.into_handle()])
                 .unwrap();
@@ -480,12 +486,17 @@ fn the_region_quota_holds() {
         move |s, _f, _t| {
             let mut v = Vec::new();
             let err = loop {
-                match s.ipc.allocate_region(4096) {
+                match s.ipc.allocate_region(4096, OWNER) {
                     Ok(r) => v.push(r),
                     Err(e) => break Some(e),
                 }
             };
-            *o2.lock().unwrap() = Some((v.len(), err, s.ipc.allocate_region(0).err()));
+            let zero = s.ipc.allocate_region(0, OWNER).err();
+            // Once the owner's charges are released, it may allocate again.
+            s.ipc.release_owner(OWNER);
+            let again = s.ipc.allocate_region(4096, OWNER);
+            assert!(again.is_ok(), "{:?}", again.err());
+            *o2.lock().unwrap() = Some((v.len(), err, zero));
         },
         |_s| {},
     );
@@ -514,7 +525,7 @@ fn unpublished_writes_tear_deterministically() {
             SimOs::Linux,
             seed,
             move |s, _from, to| {
-                let wr = s.ipc.allocate_region(4096).unwrap();
+                let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
                 let p = s.ipc.share_region(wr).unwrap();
                 let c = s.ipc.consumer_of(&p).unwrap();
                 p.mapping().write_from(0, &[0xab; 32]).unwrap();

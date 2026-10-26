@@ -413,16 +413,29 @@ pub trait Ipc: Send + Sync {
     /// calls, and processes launched without them, get `None`.
     fn bootstrap(&self) -> Option<Bootstrap>;
 
-    /// A new shared-memory region of `len` bytes, zeroed, charged to this
-    /// process's ledger entry. Only the broker allocates regions.
+    /// A new shared-memory region of `len` bytes, zeroed, charged in full
+    /// to `owner` until [`Ipc::release_owner`] (D6 review M4): the process
+    /// the OS attests asked for it, or one broker policy names. Only the
+    /// broker allocates, so a sandboxed process never names an owner.
+    ///
+    /// No OS tells the broker when the last holder of a region lets go
+    /// (facts L12, M9, S10), so a region stays charged to its owner until
+    /// the owner exits.
     ///
     /// # Errors
     /// [`IpcError::Unsupported`] in any other process or on a substrate
-    /// without regions, [`IpcError::Quota`], or a backend's resource
-    /// failure ([`IpcError::Refused`]).
-    fn allocate_region(&self, len: usize) -> Result<RegionWriter, IpcError> {
-        let _ = len;
+    /// without regions, [`IpcError::Quota`] past the owner's or the
+    /// browser's quota, [`IpcError::Refused`] for a length of 0 or over
+    /// `u32::MAX`, or a backend's resource failure.
+    fn allocate_region(&self, len: usize, owner: OsPeer) -> Result<RegionWriter, IpcError> {
+        let _ = (len, owner);
         Err(IpcError::Unsupported)
+    }
+
+    /// Releases every region charge of `owner`: its process has exited
+    /// (the launcher reports it). Broker only; elsewhere it does nothing.
+    fn release_owner(&self, owner: OsPeer) {
+        let _ = owner;
     }
 
     /// Maps `region` into this process: a [`RegionWriter`] read-write, a

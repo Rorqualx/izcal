@@ -37,6 +37,8 @@ const BROKER: PeerId = PeerId::new(0, 0);
 /// The child's process as the simulator identifies it: spawned second,
 /// first incarnation.
 const CHILD_OS: OsPeer = OsPeer::new(1, 0);
+/// Regions lent to the child are charged to it.
+const OWNER: OsPeer = CHILD_OS;
 
 fn who(from: &CallerIdentity) -> String {
     format!("{}.{}", from.peer().index(), from.peer().generation())
@@ -422,19 +424,19 @@ fn lend_regions(sealed_len: usize) -> Vec<String> {
     let broker = move |s: Substrate, _from_child: ChannelReceiver, to_child: ChannelSender| {
         let to_child = Remote::<Regions>::from_sender(&s.ipc, to_child);
         let seal = |len: usize, text: &[u8]| {
-            let w = s.ipc.allocate_region(len).unwrap();
+            let w = s.ipc.allocate_region(len, OWNER).unwrap();
             {
                 let m = s.ipc.map_region(w.handle()).unwrap();
                 m.write_from(0, text).unwrap();
             }
             s.ipc.seal_region(w).unwrap()
         };
-        let fresh = s.ipc.allocate_region(65536).unwrap();
+        let fresh = s.ipc.allocate_region(65536, OWNER).unwrap();
         let sealed = seal(sealed_len, b"sealed");
         let frozen = seal(4096, b"frozen");
         let producer = s
             .ipc
-            .share_region(s.ipc.allocate_region(1 << 20).unwrap())
+            .share_region(s.ipc.allocate_region(1 << 20, OWNER).unwrap())
             .unwrap();
         let view = s.ipc.consumer_of(&producer).unwrap();
         held_b.lock().unwrap().push(producer);
