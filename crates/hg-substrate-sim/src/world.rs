@@ -74,6 +74,8 @@ pub struct SimConfig {
     pub page_size: u64,
     /// Keep the trace's text, not only its hash.
     pub keep_trace_text: bool,
+    /// Whose shared-memory behaviour the regions model (D6 review M7).
+    pub region_os: crate::region::SimOs,
 }
 
 impl SimConfig {
@@ -87,6 +89,7 @@ impl SimConfig {
             memory_budget: None,
             page_size: 4096,
             keep_trace_text: false,
+            region_os: crate::region::SimOs::Linux,
         }
     }
 }
@@ -184,6 +187,8 @@ pub(crate) struct Proc {
     pub(crate) regions: BTreeMap<usize, Reservation>,
     pub(crate) reserved: u64,
     pub(crate) committed: u64,
+    /// Launched by another process ([`World::link`]): never the broker.
+    pub(crate) launched: bool,
 }
 
 /// Where a delayed task goes when it fires.
@@ -220,6 +225,8 @@ pub(crate) struct State {
     pub(crate) trace: Trace,
     /// Every IPC channel.
     pub(crate) ipc: crate::ipc::Channels,
+    /// Every shared-memory region.
+    pub(crate) regions: crate::region::Regions,
     /// The world itself, for tasks the state makes (IPC deliveries).
     pub(crate) ipc_self: Weak<Shared>,
 }
@@ -257,6 +264,7 @@ pub(crate) mod tag {
     pub(crate) const FAULT: u64 = 2;
     pub(crate) const HASH_KEY: u64 = 3;
     pub(crate) const PROCESS: u64 = 4;
+    pub(crate) const REGION: u64 = 5;
 }
 
 impl State {
@@ -382,6 +390,10 @@ impl World {
             next_timer: 0,
             trace: Trace::new(config.keep_trace_text),
             ipc: crate::ipc::Channels::default(),
+            regions: crate::region::Regions::new(Xoshiro256StarStar::from_seed(derive(&[
+                seed,
+                tag::REGION,
+            ]))),
             ipc_self: Weak::new(),
         };
         Self {
@@ -418,6 +430,7 @@ impl World {
             backing,
             seqs: Vec::new(),
             regions: BTreeMap::new(),
+            launched: false,
             reserved: 0,
             committed: 0,
         });

@@ -27,6 +27,20 @@ use core::sync::atomic::Ordering;
 
 use super::{Handle, HandleKind, IpcError};
 
+/// The most live regions one owner may hold: 256† (D6 quota; the
+/// broker's ledger enforces it).
+pub const MAX_REGIONS_PER_OWNER: usize = 256;
+
+/// The most region bytes one owner may be charged: 1 GiB† until the
+/// footprint spec's per-process charged-memory limits reach the ledger.
+pub const MAX_REGION_BYTES_PER_OWNER: u64 = 1 << 30;
+
+/// The most region bytes the whole browser may hold: 4 GiB† (the
+/// browser-wide commit cap, D6 review M4). Section commit on Windows is
+/// charged to the system, not to any process (fact S10), so this ledger
+/// cap is what bounds it.
+pub const MAX_REGION_BYTES_TOTAL: u64 = 4 << 30;
+
 /// Why an access to a mapping failed. Every case is the caller's to
 /// handle; none is a panic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -374,11 +388,26 @@ impl ProducerRegion {
 /// A seal or share the backend refused, with the writer given back.
 #[derive(Debug)]
 pub struct RegionRefused {
-    /// The writer, unchanged.
-    pub writer: RegionWriter,
+    handle: Handle,
     /// Why: [`IpcError::Busy`] while a mapping of it is live, or a
     /// backend's failure.
     pub error: IpcError,
+}
+
+impl RegionRefused {
+    /// The refusal of `handle`, the writer it was given. For backends only.
+    pub const fn new(handle: Handle, error: IpcError) -> Self {
+        Self { handle, error }
+    }
+
+    /// The writer, unchanged.
+    ///
+    /// # Errors
+    /// The untyped handle, if the backend gave back something that is not
+    /// a writer (a backend bug; dropping it releases it).
+    pub fn into_writer(self) -> Result<RegionWriter, Handle> {
+        RegionWriter::from_handle(self.handle)
+    }
 }
 
 #[cfg(test)]

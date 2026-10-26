@@ -23,8 +23,9 @@ use crate::executor::SequenceHandle;
 mod region;
 
 pub use region::{
-    AccessError, ConsumerRegion, Mapping, MappingObject, ProducerRegion, ReadOnlyRegion,
-    RegionObject, RegionRefused, RegionWriter, check_range, check_word,
+    AccessError, ConsumerRegion, MAX_REGION_BYTES_PER_OWNER, MAX_REGION_BYTES_TOTAL,
+    MAX_REGIONS_PER_OWNER, Mapping, MappingObject, ProducerRegion, ReadOnlyRegion, RegionObject,
+    RegionRefused, RegionWriter, check_range, check_word,
 };
 
 /// The most bytes one message may carry: 64 KiB†. Bulk data crosses as
@@ -442,10 +443,10 @@ pub trait Ipc: Send + Sync {
     /// # Errors
     /// The writer back, with [`IpcError::Busy`] while a mapping is live.
     fn seal_region(&self, writer: RegionWriter) -> Result<ReadOnlyRegion, RegionRefused> {
-        Err(RegionRefused {
-            writer,
-            error: IpcError::Unsupported,
-        })
+        Err(RegionRefused::new(
+            writer.into_handle(),
+            IpcError::Unsupported,
+        ))
     }
 
     /// Turns a writer into a producer this process keeps writing, with its
@@ -454,10 +455,10 @@ pub trait Ipc: Send + Sync {
     /// # Errors
     /// The writer back, with the backend's error.
     fn share_region(&self, writer: RegionWriter) -> Result<ProducerRegion, RegionRefused> {
-        Err(RegionRefused {
-            writer,
-            error: IpcError::Unsupported,
-        })
+        Err(RegionRefused::new(
+            writer.into_handle(),
+            IpcError::Unsupported,
+        ))
     }
 
     /// A read-only view of `producer` to hand to a consumer.

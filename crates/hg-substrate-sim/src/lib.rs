@@ -22,6 +22,7 @@ mod entropy;
 mod exec;
 mod ipc;
 mod memory;
+mod region;
 mod trace;
 mod world;
 
@@ -31,6 +32,7 @@ use std::sync::Arc;
 use hg_substrate::Memory;
 use hg_substrate::Substrate;
 
+pub use region::SimOs;
 pub use world::{
     Entry, FaultPlan, Limits, ProcessId, RunEnd, SEQUENCE_CAPACITY, SimConfig, Step, Summary, World,
 };
