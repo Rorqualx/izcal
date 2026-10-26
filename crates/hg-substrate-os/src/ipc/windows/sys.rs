@@ -30,18 +30,22 @@ use std::cell::RefCell;
 use std::io;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use crate::ipc::shm::{OsMapping, Raw};
 
 use windows_sys::Wdk::Foundation::NtQueryObject;
 use windows_sys::Win32::Foundation::{
-    DUPLICATE_CLOSE_SOURCE, DUPLICATE_SAME_ACCESS, DuplicateHandle, ERROR_IO_PENDING,
-    ERROR_PIPE_CONNECTED, GetLastError, HANDLE, INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0,
+    CompareObjectHandles, DUPLICATE_CLOSE_SOURCE, DUPLICATE_SAME_ACCESS, DuplicateHandle,
+    ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, GetLastError, HANDLE, INVALID_HANDLE_VALUE, LocalFree,
+    WAIT_OBJECT_0,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
 };
 use windows_sys::Win32::Security::{
     GetTokenInformation, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_APPCONTAINER_INFORMATION,
-    TOKEN_QUERY, TokenAppContainerSid,
+    TOKEN_QUERY, TOKEN_USER, TokenAppContainerSid, TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, FILE_NAME_INFO,
@@ -50,6 +54,10 @@ use windows_sys::Win32::Storage::FileSystem::{
     ReadFile, ReadFileEx, SYNCHRONIZE, WriteFileEx,
 };
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
+use windows_sys::Win32::System::Memory::{
+    CreateFileMappingW, FILE_MAP_READ, FILE_MAP_WRITE, MEMORY_MAPPED_VIEW_ADDRESS, MapViewOfFile,
+    PAGE_READWRITE, SEC_COMMIT, UnmapViewOfFile,
+};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeHandleStateW, GetNamedPipeInfo, PIPE_NOWAIT,
     PIPE_READMODE_MESSAGE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_SERVER_END, PIPE_TYPE_MESSAGE,
@@ -1176,4 +1184,281 @@ pub(crate) mod spawn {
         // SAFETY: valid process handle and out-pointer.
         (unsafe { GetExitCodeProcess(raw(&c.process.0), &raw mut code) } != 0).then_some(code)
     }
+}
+
+// ---- sections (D6), from the Learn pages for CreateFileMappingW,
+// MapViewOfFile, UnmapViewOfFile, DuplicateHandle, CompareObjectHandles,
+// NtQueryObject and GetTokenInformation, and the D6 probes (S1 to S11) --
+
+/// `FILE_MAP_READ | FILE_MAP_WRITE`: a writer's access (facts S1, S9).
+pub(crate) const SECTION_RW: u32 = FILE_MAP_READ | FILE_MAP_WRITE;
+/// `FILE_MAP_READ`: a read-only or consumer region's access.
+pub(crate) const SECTION_READ: u32 = FILE_MAP_READ;
+
+/// `ObjectTypeInformation`, `NtQueryObject`'s class 2 (probe P16).
+const OBJECT_TYPE_INFORMATION: i32 = 2;
+
+/// This process's user SID as a string.
+fn user_sid() -> Option<String> {
+    let mut token: HANDLE = null_mut();
+    // SAFETY: the current-process pseudo-handle; valid out-pointer.
+    if unsafe { OpenProcessToken(current_process(), TOKEN_QUERY, &raw mut token) } == 0 {
+        return None;
+    }
+    // SAFETY: `token` was just opened and is owned here.
+    let token = unsafe { OwnedHandle::from_raw_handle(token.cast()) };
+    let mut buf = [0u64; 64];
+    let mut len = 0u32;
+    // SAFETY: the buffer is 512 bytes, as passed; valid out-pointer.
+    let ok = unsafe {
+        GetTokenInformation(
+            raw(&token),
+            TokenUser,
+            buf.as_mut_ptr().cast::<c_void>(),
+            512,
+            &raw mut len,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    // SAFETY: on success the buffer starts with a TOKEN_USER; `buf` is
+    // 8-byte aligned for its pointer field.
+    let info = unsafe { &*buf.as_ptr().cast::<TOKEN_USER>() };
+    let mut s: *mut u16 = null_mut();
+    // SAFETY: the SID is valid while `buf` lives; valid out-pointer.
+    if unsafe { ConvertSidToStringSidW(info.User.Sid, &raw mut s) } == 0 {
+        return None;
+    }
+    let out = wide_to_string(s);
+    // SAFETY: allocated by the call, freed with LocalFree as documented.
+    unsafe { LocalFree(s.cast()) };
+    Some(out)
+}
+
+/// A new committed section of `len` bytes, zeroed, whose DACL grants
+/// GENERIC_ALL to this process's user only (fact S9: a handle the broker
+/// duplicates carries its own access, so no child SID is needed, and none
+/// can widen what it was given). Returns the broker's full-access handle.
+pub(crate) fn create_section(len: u32) -> io::Result<OwnedHandle> {
+    let sid = user_sid().ok_or_else(|| io::Error::other("no user SID"))?;
+    let sd = descriptor(&format!("D:P(A;;GA;;;{sid})"))?;
+    let sa = SECURITY_ATTRIBUTES {
+        nLength: u32::try_from(size_of::<SECURITY_ATTRIBUTES>()).unwrap_or(0),
+        lpSecurityDescriptor: sd.0,
+        bInheritHandle: 0,
+    };
+    // SAFETY: an anonymous (pagefile) section; `sa` and its descriptor
+    // live across the call; no name.
+    let h = unsafe {
+        CreateFileMappingW(
+            INVALID_HANDLE_VALUE,
+            &raw const sa,
+            PAGE_READWRITE | SEC_COMMIT,
+            0,
+            len,
+            null(),
+        )
+    };
+    if h.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: a new handle owned here.
+    Ok(unsafe { OwnedHandle::from_raw_handle(h.cast()) })
+}
+
+/// A second handle to `h`'s object in this process with exactly
+/// `access` (never more than `h` has: the kernel refuses a widening).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "SEC-4 (d): this is the Windows IPC backend"
+)]
+pub(crate) fn narrow(h: &OwnedHandle, access: u32) -> io::Result<OwnedHandle> {
+    let mut out: HANDLE = null_mut();
+    // SAFETY: valid handles; an explicit access mask, not inheritable;
+    // valid out-pointer.
+    let ok = unsafe {
+        DuplicateHandle(
+            current_process(),
+            raw(h),
+            current_process(),
+            &raw mut out,
+            access,
+            0,
+            0,
+        )
+    };
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: a new handle owned here.
+    Ok(unsafe { OwnedHandle::from_raw_handle(out.cast()) })
+}
+
+/// Puts a handle to `h`'s object into `p` with exactly `access`; returns
+/// its value there.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "SEC-4 (d): this is the Windows IPC backend"
+)]
+pub(crate) fn give_with(p: &Process, h: &OwnedHandle, access: u32) -> Result<u64, u32> {
+    let mut out: HANDLE = null_mut();
+    // SAFETY: valid handles; an explicit access mask, not inheritable;
+    // valid out-pointer.
+    let ok = unsafe {
+        DuplicateHandle(
+            current_process(),
+            raw(h),
+            raw(&p.0),
+            &raw mut out,
+            access,
+            0,
+            0,
+        )
+    };
+    if ok == 0 {
+        return Err(last_error());
+    }
+    Ok(u64::try_from(out.addr()).unwrap_or(0))
+}
+
+/// What the kernel says about a handle claimed as a section.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct SectionFacts {
+    /// Its object type is "Section" (fact S2).
+    pub(crate) is_section: bool,
+    /// The handle's exact granted access (fact S2).
+    pub(crate) access: u32,
+    /// Handles to the object in every process.
+    pub(crate) handle_count: u32,
+}
+
+/// Asks the kernel about `h` as a section.
+pub(crate) fn section_facts(h: &OwnedHandle) -> SectionFacts {
+    let mut info = ObjectBasicInformation::default();
+    let mut ret = 0u32;
+    // SAFETY: valid handle; the 56-byte struct the class fills.
+    let st = unsafe {
+        NtQueryObject(
+            raw(h),
+            OBJECT_BASIC_INFORMATION,
+            (&raw mut info).cast(),
+            56,
+            &raw mut ret,
+        )
+    };
+    if st != STATUS_SUCCESS {
+        return SectionFacts::default();
+    }
+    SectionFacts {
+        is_section: type_name(h).as_deref() == Some("Section"),
+        access: info.granted_access,
+        handle_count: info.handle_count,
+    }
+}
+
+/// `NtQueryObject` type information: the object type's name.
+fn type_name(h: &OwnedHandle) -> Option<String> {
+    let mut buf = [0u64; 128];
+    let mut ret = 0u32;
+    // SAFETY: valid handle; a 1 KiB, 8-byte-aligned buffer, as passed.
+    let st = unsafe {
+        NtQueryObject(
+            raw(h),
+            OBJECT_TYPE_INFORMATION,
+            buf.as_mut_ptr().cast(),
+            1024,
+            &raw mut ret,
+        )
+    };
+    if st != STATUS_SUCCESS {
+        return None;
+    }
+    // The buffer starts with a UNICODE_STRING: a u16 byte length, a u16
+    // capacity, padding, then a pointer into the same buffer.
+    let [first, ptr_word, ..] = buf;
+    let bytes = usize::try_from(first & 0xffff).ok()?;
+    let p = usize::try_from(ptr_word).ok()?;
+    let start = buf.as_ptr().addr();
+    let end = start.checked_add(size_of::<[u64; 128]>())?;
+    let n = bytes / 2;
+    if p < start || p.checked_add(bytes)? > end || p % 2 != 0 {
+        return None;
+    }
+    let off = p - start;
+    // SAFETY: the string lies inside `buf` (checked above), aligned for
+    // u16, and `buf` lives across this read.
+    let at = buf.as_ptr().cast::<u8>().wrapping_add(off).cast::<u16>();
+    // SAFETY: as above.
+    let s = unsafe { core::slice::from_raw_parts(at, n) };
+    Some(String::from_utf16_lossy(s))
+}
+
+/// Whether `a` and `b` name the same kernel object (fact S3).
+pub(crate) fn same_object(a: &OwnedHandle, b: &OwnedHandle) -> bool {
+    // SAFETY: two valid handles.
+    unsafe { CompareObjectHandles(raw(a), raw(b)) != 0 }
+}
+
+/// Adopts a section handle the broker reports having put in this
+/// process (a `Redeemed` record): `None`, leaving the value alone, unless
+/// it is a well-formed value naming a section with exactly `access`.
+pub(crate) fn adopt_section(v: u64, access: u32) -> Option<OwnedHandle> {
+    crate::ipc::win::accept::check_value(v).ok()?;
+    let h = adopt(v)?;
+    let f = section_facts(&h);
+    if f.is_section && f.access == access {
+        Some(h)
+    } else {
+        forget(h);
+        None
+    }
+}
+
+/// A live view, unmapped when dropped; it counts itself in `live`.
+#[derive(Debug)]
+pub(crate) struct View {
+    base: usize,
+    live: Option<Arc<AtomicUsize>>,
+}
+
+impl Drop for View {
+    fn drop(&mut self) {
+        let addr = MEMORY_MAPPED_VIEW_ADDRESS {
+            Value: core::ptr::with_exposed_provenance_mut(self.base),
+        };
+        // SAFETY: the one view `map_section` made; its `OsMapping` has
+        // dropped its `Raw` first, so nothing uses it.
+        unsafe { UnmapViewOfFile(addr) };
+        if let Some(l) = &self.live {
+            l.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
+}
+
+/// Maps the first `len` bytes of section `h`, read-write or read-only.
+pub(crate) fn map_section(
+    h: &OwnedHandle,
+    len: usize,
+    writable: bool,
+    live: Option<Arc<AtomicUsize>>,
+) -> io::Result<OsMapping<View>> {
+    let access = if writable { SECTION_RW } else { SECTION_READ };
+    // SAFETY: a valid handle; a new view the kernel places.
+    let v = unsafe { MapViewOfFile(raw(h), access, 0, 0, len) };
+    let Some(base) = core::ptr::NonNull::new(v.Value.cast::<u8>()) else {
+        return Err(io::Error::last_os_error());
+    };
+    if let Some(l) = &live {
+        l.fetch_add(1, Ordering::AcqRel);
+    }
+    let guard = View {
+        base: base.as_ptr().expose_provenance(),
+        live,
+    };
+    // SAFETY: `base` is a fresh view of `len` bytes, aligned to the
+    // allocation granularity, readable, and writable if asked; `guard`
+    // unmaps it only after the `OsMapping` (and its `Raw`) is dropped.
+    let raw = unsafe { Raw::new(base, len, writable) };
+    Ok(OsMapping::new(raw, guard))
 }

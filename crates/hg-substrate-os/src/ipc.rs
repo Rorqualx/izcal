@@ -16,13 +16,6 @@ pub(crate) mod common;
 
 /// Atomic access to a mapped shared-memory region (D6), for every OS
 /// backend's mappings.
-#[cfg_attr(
-    not(any(test, target_os = "linux", target_os = "macos")),
-    expect(
-        dead_code,
-        reason = "D6: the Windows transport maps regions from its step"
-    )
-)]
 pub(crate) mod shm;
 
 /// The libc-free parts of the macOS transport: message layout and

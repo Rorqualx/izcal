@@ -12,6 +12,7 @@
 //! - [`ledger`]: the broker's record of who holds each channel end, the
 //!   tickets in flight and the bindings.
 //! - [`decide`]: a receiver's decision on one pipe message.
+//! - [`regions`]: the broker's region registry and its relay rule (D6).
 //!
 //! Sources: Microsoft Learn's reference pages for named pipes,
 //! `DuplicateHandle`, `GetNamedPipeInfo`, `GetFileInformationByHandleEx`
@@ -54,3 +55,4 @@ pub(crate) mod accept;
 pub(crate) mod decide;
 pub(crate) mod frame;
 pub(crate) mod ledger;
+pub(crate) mod regions;

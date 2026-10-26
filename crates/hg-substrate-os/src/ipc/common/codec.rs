@@ -142,13 +142,6 @@ pub(crate) struct HandleDesc {
 impl HandleDesc {
     /// A region's descriptor: `kind` must be a region kind, `len` its
     /// declared length, `flags` its region flags.
-    #[cfg_attr(
-        all(windows, not(any(test, kani))),
-        expect(
-            dead_code,
-            reason = "D6: the Windows transport sends regions from its step"
-        )
-    )]
     pub(crate) const fn region(kind: WireKind, len: u32, flags: u64) -> Self {
         Self {
             kind,

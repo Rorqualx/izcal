@@ -149,6 +149,8 @@ pub(crate) enum Refusal {
     Quota,
     /// The broker had no randomness to make a ticket.
     NoTicket,
+    /// A region the registry refuses (D6, `super::regions::relay_rule`).
+    Region,
 }
 
 impl Refusal {
@@ -173,6 +175,7 @@ impl Refusal {
             Self::Quota => 16,
             Self::NoTicket => 17,
             Self::NoWait => 18,
+            Self::Region => 19,
         }
     }
 }
@@ -196,7 +199,8 @@ pub(crate) const fn check_value(raw: u64) -> Result<(), Refusal> {
 pub(crate) const fn end_for(claimed: WireKind) -> End {
     match claimed {
         WireKind::Sender | WireKind::BoundSender => End::Sender,
-        // Regions are refused by `accept` until this OS's D6 step.
+        // A region is no pipe end: `accept` refuses it, the broker's
+        // region registry decides it (`super::regions`).
         WireKind::Receiver
         | WireKind::RegionWriter
         | WireKind::ReadOnlyRegion
@@ -212,7 +216,7 @@ pub(crate) const fn end_for(claimed: WireKind) -> End {
 pub(crate) fn accept(claimed: WireKind, f: &Facts, ctx: &Ctx) -> Result<(PipeKey, End), Refusal> {
     check_value(f.raw)?;
     if claimed.is_region() {
-        // A region is not a pipe; sections join in this OS's D6 step.
+        // Not a pipe end: the broker's region registry decides regions.
         return Err(Refusal::NotPipe);
     }
     if !f.pulled {
@@ -702,6 +706,7 @@ mod tests {
             Refusal::Quota,
             Refusal::NoTicket,
             Refusal::NoWait,
+            Refusal::Region,
         ];
         for (i, a) in all.iter().enumerate() {
             assert_ne!(a.code(), 0);
