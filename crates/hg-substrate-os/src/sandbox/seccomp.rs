@@ -800,6 +800,46 @@ mod tests {
         }
     }
 
+    /// The Kani harnesses decide over the static table plus the rules the
+    /// builders append: the built lists are exactly that.
+    #[test]
+    fn the_lists_are_the_table_plus_their_rules() {
+        for (arch, table, tg, ex) in [
+            (ARCH_X86_64, RULES_X86_64, TGKILL_X86_64, EXECVEAT_X86_64),
+            (
+                ARCH_AARCH64,
+                RULES_AARCH64,
+                TGKILL_AARCH64,
+                EXECVEAT_AARCH64,
+            ),
+        ] {
+            let steady = steady_rules(arch, 77);
+            let launch = launch_rules(arch, &steady);
+            assert_eq!(steady.len(), table.len() + 1);
+            assert_eq!(launch.len(), table.len() + 2);
+            for (a, b) in table.iter().zip(&steady) {
+                assert!(a.nr == b.nr && a.action == b.action && a.args == b.args);
+            }
+            for (a, b) in steady.iter().zip(&launch) {
+                assert!(a.nr == b.nr && a.action == b.action && a.args == b.args);
+            }
+            let t = steady[table.len()];
+            assert_eq!(
+                (t.nr, t.action, t.args),
+                (tg, RET_ALLOW, &[(0, Cond::Eq(77))][..])
+            );
+            let e = launch[table.len() + 1];
+            assert_eq!((e.nr, e.action, e.args.len()), (ex, RET_ALLOW, 0));
+            // The tables' only action other than allow is clone3's ENOSYS,
+            // which the harnesses' `decide` relies on.
+            assert!(
+                table
+                    .iter()
+                    .all(|r| r.action == RET_ALLOW || (r.nr == 435 && r.action == RET_NOSYS))
+            );
+        }
+    }
+
     /// Design review B1: for every call, the launch filter allows what the
     /// steady filter allows, and the only thing it adds is `execveat`.
     #[test]
@@ -1110,83 +1150,77 @@ mod tests {
 
 #[cfg(kani)]
 mod proofs {
+    //! The harnesses decide calls over the arch's static table and the two
+    //! rules [`steady_rules`] and [`launch_rules`] append, never over the
+    //! built `Vec`: with the `Vec` the solver passed 10 GB in 13 s (26 Oct,
+    //! the Mac). The unit test `the_lists_are_the_table_plus_their_rules`
+    //! ties the two forms together.
+
     use super::{
-        ARCH_AARCH64, ARCH_X86_64, CLONE_NEW_BITS, Call, EXECVEAT_AARCH64, EXECVEAT_X86_64,
-        RET_ALLOW, RET_DENY, expected, launch_rules, steady_rules,
+        ARCH_AARCH64, ARCH_X86_64, CLONE_NEW_BITS, Call, Cond, EXECVEAT_AARCH64, EXECVEAT_X86_64,
+        RET_ALLOW, RET_DENY, RULES_AARCH64, RULES_X86_64, Rule, TGKILL_AARCH64, TGKILL_X86_64,
+        expected,
     };
 
-    /// Harness 2 (E-R11, review M1): every kind runs one plan, the steady
-    /// list, and neither it nor its launch filter lets a child make a
-    /// socket, connect, bind, trace, load BPF, make or join a namespace,
-    /// fork, or send to an address, for any arguments.
-    #[kani::proof]
-    #[kani::unwind(70)]
-    fn no_plan_reaches_sockets_namespaces_or_addresses() {
-        let aarch64: bool = kani::any();
-        let arch = if aarch64 { ARCH_AARCH64 } else { ARCH_X86_64 };
-        // socket, connect, bind, ptrace, bpf, unshare, setns.
-        let denied: [u32; 7] = if aarch64 {
-            [198, 203, 200, 117, 280, 97, 268]
-        } else {
-            [41, 42, 49, 101, 321, 272, 308]
-        };
-        let (clone, sendto) = if aarch64 { (220, 206) } else { (56, 44) };
-        let steady = steady_rules(arch, kani::any());
-        let launch = launch_rules(arch, &steady);
-        let launching: bool = kani::any();
-        let rules = if launching { &launch } else { &steady };
-        let call = Call {
-            arch,
-            nr: kani::any(),
-            args: kani::any(),
-        };
-        let got = expected(arch, rules, &call);
-        if denied.contains(&call.nr) {
-            assert!(got == RET_DENY);
+    /// What a list of `table` then `extra` decides for `call` (the first
+    /// matching rule, else deny).
+    fn decide(arch: u32, table: &[Rule], extra: &[Rule], call: &Call) -> u32 {
+        let t = expected(arch, table, call);
+        // `expected` denies when no rule matches; a table rule may also
+        // deny on purpose, which the extras cannot override only if it
+        // matched. The tables' only non-allow action is clone3's ENOSYS.
+        if t != RET_DENY {
+            return t;
         }
-        // clone3 passes its flags in memory: never allowed (ENOSYS).
-        if call.nr == 435 {
-            assert!(got != RET_ALLOW);
-        }
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "the low word, as the kernel"
-        )]
-        let flags = call.args[0] as u32;
-        if call.nr == clone && got == RET_ALLOW {
-            assert!(flags & CLONE_NEW_BITS == 0);
-            assert!(flags & 0x1_0000 != 0, "a thread, never a process");
-        }
-        if call.nr == sendto && call.args[4] != 0 {
-            assert!(got == RET_DENY);
-        }
-        kani::cover!(
-            call.nr == sendto && got == RET_ALLOW,
-            "sendto without an address"
-        );
+        expected(arch, extra, call)
     }
 
-    /// Design review B1, for any call on either arch: launch ⊇ steady,
-    /// and launch ∖ steady = {execveat}.
+    /// The arch's table and its two appended rules: `tgkill` limited to
+    /// `own`, and `execveat` (the launch list only).
+    fn parts(aarch64: bool) -> (u32, &'static [Rule], Rule, Rule) {
+        let own: u32 = kani::any();
+        let args: &'static [(u32, Cond)] = Box::leak(Box::new([(0, Cond::Eq(own))]));
+        let (arch, table, tg, ex) = if aarch64 {
+            (
+                ARCH_AARCH64,
+                RULES_AARCH64,
+                TGKILL_AARCH64,
+                EXECVEAT_AARCH64,
+            )
+        } else {
+            (ARCH_X86_64, RULES_X86_64, TGKILL_X86_64, EXECVEAT_X86_64)
+        };
+        let tgkill = Rule {
+            nr: tg,
+            args,
+            action: RET_ALLOW,
+            reason: "",
+        };
+        let execveat = Rule {
+            nr: ex,
+            args: &[],
+            action: RET_ALLOW,
+            reason: "",
+        };
+        (arch, table, tgkill, execveat)
+    }
+
+    /// Design review B1, for either arch and any call: the launch list
+    /// decides every call as the steady list does, except `execveat`,
+    /// which the steady list denies and the launch list allows.
     #[kani::proof]
-    #[kani::unwind(70)]
+    #[kani::unwind(60)]
     fn launch_adds_exactly_execveat() {
         let aarch64: bool = kani::any();
-        let (arch, exec) = if aarch64 {
-            (ARCH_AARCH64, EXECVEAT_AARCH64)
-        } else {
-            (ARCH_X86_64, EXECVEAT_X86_64)
-        };
-        let steady = steady_rules(arch, kani::any());
-        let launch = launch_rules(arch, &steady);
+        let (arch, table, tgkill, execveat) = parts(aarch64);
         let call = Call {
             arch: kani::any(),
             nr: kani::any(),
             args: kani::any(),
         };
-        let st = expected(arch, &steady, &call);
-        let la = expected(arch, &launch, &call);
-        if call.nr == exec {
+        let st = decide(arch, table, &[tgkill], &call);
+        let la = decide(arch, table, &[tgkill, execveat], &call);
+        if call.nr == execveat.nr {
             assert!(st == RET_DENY);
         } else {
             assert!(st == la);
@@ -1195,5 +1229,48 @@ mod proofs {
             la == RET_ALLOW && st == RET_DENY,
             "execveat is the launch-only call"
         );
+    }
+
+    /// Harness 2 (E-R11, review M1): every kind runs one plan, the steady
+    /// list, and neither it nor its launch filter lets a child make a
+    /// socket, connect, bind, trace, load BPF, make or join a namespace,
+    /// fork, or send to an address, for any arguments.
+    #[kani::proof]
+    #[kani::unwind(60)]
+    fn no_plan_reaches_sockets_namespaces_or_addresses() {
+        let aarch64: bool = kani::any();
+        let (arch, table, tgkill, execveat) = parts(aarch64);
+        // socket, connect, bind, ptrace, bpf, unshare, setns.
+        let denied: [u32; 7] = if aarch64 {
+            [198, 203, 200, 117, 280, 97, 268]
+        } else {
+            [41, 42, 49, 101, 321, 272, 308]
+        };
+        let (clone, sendto) = if aarch64 { (220, 206) } else { (56, 44) };
+        let launching: bool = kani::any();
+        let steady = [tgkill];
+        let launch = [tgkill, execveat];
+        let extra: &[Rule] = if launching { &launch } else { &steady };
+        let args: [u64; 6] = kani::any();
+        let call = |nr: u32| Call { arch, nr, args };
+        for nr in denied {
+            assert!(decide(arch, table, extra, &call(nr)) == RET_DENY);
+        }
+        // clone3 passes its flags in memory: never allowed (ENOSYS).
+        assert!(decide(arch, table, extra, &call(435)) != RET_ALLOW);
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the low word, as the kernel"
+        )]
+        let flags = args[0] as u32;
+        if decide(arch, table, extra, &call(clone)) == RET_ALLOW {
+            assert!(flags & CLONE_NEW_BITS == 0);
+            assert!(flags & 0x1_0000 != 0, "a thread, never a process");
+        }
+        let send = decide(arch, table, extra, &call(sendto));
+        if args[4] != 0 {
+            assert!(send == RET_DENY);
+        }
+        kani::cover!(send == RET_ALLOW, "sendto without an address");
     }
 }
