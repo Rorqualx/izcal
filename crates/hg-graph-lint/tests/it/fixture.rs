@@ -225,7 +225,15 @@ impl Fixture {
             let mut text = text.clone();
             for name in self.external.keys() {
                 let p = ext.join(name);
-                text = text.replace(&format!("\"ext:{name}\""), &format!("'{}'", p.display()));
+                // A TOML basic string, escaped: a literal ('...') string
+                // breaks on a path with an apostrophe (rig253's profile is
+                // `C:\Users\joe's pc`).
+                let quoted = p
+                    .display()
+                    .to_string()
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"");
+                text = text.replace(&format!("\"ext:{name}\""), &format!("\"{quoted}\""));
             }
             write(&ws.join(rel), &text);
         }
