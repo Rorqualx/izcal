@@ -82,15 +82,40 @@ impl Launcher for SimLauncher {
         let Some(child) = self.table.entries.get(&kind) else {
             return Err(LaunchError::Unsupported);
         };
+        // The launch faults (E-R8), each from its own stream, drawn in
+        // this fixed order and only when its rate is not zero.
+        let stall = {
+            let mut st = self.shared.lock();
+            let plan = st.config.faults;
+            if crate::world::fires(&mut st.faults.spawner_death, plan.spawner_death_per_million) {
+                // E-R2: the spawner died with this spawn in flight. The
+                // broker restarts it; this launch is `Failed{spawner}`.
+                st.trace.record(format_args!(
+                    "launch {kind:?} by {} failed: spawner died, restarted",
+                    self.parent.0
+                ));
+                return Err(LaunchError::Failed);
+            }
+            if crate::world::fires(&mut st.faults.launch_fail, plan.launch_fail_per_million) {
+                st.trace.record(format_args!(
+                    "launch {kind:?} by {} failed: refused",
+                    self.parent.0
+                ));
+                return Err(LaunchError::Failed);
+            }
+            crate::world::fires(&mut st.faults.ready_stall, plan.ready_stall_per_million)
+                .then_some(plan.ready_stall)
+        };
         let entry: crate::world::Entry = Arc::clone(&child.entry);
         let pid = crate::world::spawn_in(
             &self.shared,
             child.name,
             (child.backing)(),
-            false,
             entry,
-            None,
-            None,
+            crate::world::SpawnOptions {
+                stall,
+                ..crate::world::SpawnOptions::default()
+            },
         );
         {
             let mut st = self.shared.lock();

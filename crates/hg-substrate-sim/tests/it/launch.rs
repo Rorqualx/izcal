@@ -8,8 +8,10 @@ use hg_substrate::ipc::{Delivery, Flow, Listening, OsPeer};
 use hg_substrate::launch::{ChildKind, Launched};
 use hg_substrate::{Priority, Substrate};
 use hg_substrate_os::memory::OsMemory;
-use hg_substrate_sim::{ChildEntry, ChildTable, Limits, ProcessId, RunEnd, SimConfig, World};
-use hg_types::Instant;
+use hg_substrate_sim::{
+    ChildEntry, ChildTable, FaultPlan, Limits, ProcessId, RunEnd, SimConfig, World,
+};
+use hg_types::{Duration, Instant};
 
 const LIMITS: Limits = Limits {
     max_steps: 100_000,
@@ -97,9 +99,76 @@ fn browser(
 }
 
 fn world(seed: u64) -> World {
+    faulty(seed, FaultPlan::NONE)
+}
+
+fn faulty(seed: u64, faults: FaultPlan) -> World {
     let mut c = SimConfig::new(seed);
     c.keep_trace_text = true;
+    c.faults = faults;
     World::new(c)
+}
+
+fn drop_ends(seen: &Arc<Mutex<Seen>>) {
+    let mut st = seen.lock().unwrap();
+    st.keep.clear();
+    st.to_child.clear();
+}
+
+/// A spawner death and a refused launch each fail the launch with
+/// `Failed`, leave no process behind, and say which in the trace (E-R2,
+/// E-R8).
+#[test]
+fn launch_faults_fail_the_launch_and_leave_nothing() {
+    for (plan, said) in [
+        (
+            FaultPlan {
+                spawner_death_per_million: 1_000_000,
+                ..FaultPlan::NONE
+            },
+            "failed: spawner died, restarted",
+        ),
+        (
+            FaultPlan {
+                launch_fail_per_million: 1_000_000,
+                ..FaultPlan::NONE
+            },
+            "failed: refused",
+        ),
+    ] {
+        let w = faulty(5, plan);
+        let seen: Arc<Mutex<Seen>> = Arc::default();
+        browser(&w, &seen, |_s, _peer| {});
+        assert_eq!(w.run(LIMITS), RunEnd::Idle);
+        assert_eq!(seen.lock().unwrap().events, ["launch failed"]);
+        assert!(!w.is_alive(ProcessId(1)), "no child was made");
+        assert!(w.trace_text().unwrap().contains(said));
+    }
+}
+
+/// A stalled child starts only after the stall, in virtual time: long
+/// enough to miss the broker's `ready` deadline (E-R3).
+#[test]
+fn a_stalled_child_starts_late() {
+    let w = faulty(
+        6,
+        FaultPlan {
+            ready_stall_per_million: 1_000_000,
+            ready_stall: Duration::from_secs(10),
+            ..FaultPlan::NONE
+        },
+    );
+    let seen: Arc<Mutex<Seen>> = Arc::default();
+    browser(&w, &seen, |_s, _peer| {});
+    assert_eq!(w.run(LIMITS), RunEnd::Idle);
+    let trace = w.trace_text().unwrap();
+    assert!(
+        trace.contains("start child.0 stalled until 10000000000"),
+        "{trace}"
+    );
+    assert_eq!(w.now().as_nanos(), 10_000_000_000);
+    assert!(w.is_alive(ProcessId(1)));
+    drop_ends(&seen);
 }
 
 /// `kill` ends the child it names: its channels close, so the browser
@@ -136,7 +205,5 @@ fn kill_reaches_only_its_own_child() {
     assert!(seen.lock().unwrap().events.is_empty());
     assert!(!w.trace_text().unwrap().contains("kill "));
     // Drop the browser's ends before the world.
-    let mut st = seen.lock().unwrap();
-    st.keep.clear();
-    st.to_child.clear();
+    drop_ends(&seen);
 }
