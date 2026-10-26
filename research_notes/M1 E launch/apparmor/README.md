@@ -13,6 +13,10 @@ With the profile installed:
 - Its children keep their capabilities **inside their own new user namespace**, so they can mount, `pivot_root` and write their id maps there. They gain nothing outside it.
 - No other binary on the host changes. The profile attaches by exact path to two files, the debug and release builds of `hg-spawner-main` in the scratch build `/home/joe/izcal-m1e2`, and to nothing else.
 
+## Test host only, and removed after the measurement
+
+The profile attaches by path to files in a directory that `joe` can write to. Any process running as `joe` could replace either binary and so gain `userns`. That makes it acceptable **only as a probe on this test host**, and it **must be removed** (below) as soon as the full-tier measurement is done.
+
 ## Why this form and not a confined profile
 
 `apparmor.d(5)` gives two ways to grant `userns` to one binary:
