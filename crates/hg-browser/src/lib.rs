@@ -293,7 +293,17 @@ impl Inner {
             move |why: EndReason<ProcessError>| inner.ended(kind, serial, &why)
         };
         let peer_id = PeerId::new(if kind == ChildKind::Renderer { 1 } else { 2 }, 0);
-        *Self::slot(&mut self.lock(), kind) = Some(Child {
+        let mut st = self.lock();
+        if st.closed {
+            // The last `Running` went while this launch was in flight:
+            // installing the child now would rebuild the cycle `Owner`
+            // broke. End it instead.
+            drop(st);
+            drop(control);
+            self.launcher.kill(launched.peer);
+            return Err(LaunchError::Unsupported);
+        }
+        *Self::slot(&mut st, kind) = Some(Child {
             control,
             sandbox: launched.sandbox,
             ready: false,
@@ -302,6 +312,7 @@ impl Inner {
             requested_at,
             serving: None,
         });
+        drop(st);
         let served = Endpoint::<ProcessHost>::from_receiver(&self.s.ipc, launched.from_child)
             .serve_bound(
                 self.seq,
