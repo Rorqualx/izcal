@@ -82,3 +82,39 @@ out of memory; they hold a decoded `Vec` of two-enum structs (no
 strings), and were not measured piece by piece. `power` layout 0 (no call id, the `State` case: four
 enums, no heap values) runs out of memory too, at 426 k steps; its cause
 is not measured yet.
+
+## The output buffer, and the Kani writer
+
+`power` layout 0 has no decoded heap value, yet ran out of memory. Measured
+piece by piece (fixed 21-byte layout):
+
+| Harness | Steps | Result |
+|---|---|---|
+| Decode only | 19,798 | 0.8 s |
+| Decode and encode, length check only | 416,754 | 32 s |
+| Decode, encode and compare | 426,258 | out of memory |
+| The same, with `Writer::with_capacity(21)` | 406,118 | out of memory |
+| `PowerEvent::State` alone, round trip | 132,662 | 15 s |
+| `Tri` alone / `Thermal` alone | 18,591 / 29,203 | 1–2 s |
+| `vec<TypeDefault, 7>`, one element: decode / encode, length / full | 15,261 / 250,156 / 255,574 | 1 / 17 / 23 s |
+
+The heap value is the encoder's output: every `put` goes through
+`Vec::extend_from_slice` and its growth code, about 60–70 k steps a put,
+whatever the capacity. With a fixed-buffer writer in its place (an
+experiment, 96 bytes), the full layout-0 round trip took 89,512 steps
+and passed (237 s, 8.4 GiB).
+
+So under `cfg(kani)` `hg_ipc::wire::Writer` now appends to a fixed
+buffer of `KANI_WRITER_CAPACITY` bytes, with the same `new`, `put` and
+`into_bytes`. The trust boundary: the Kani proofs prove this crate's and
+the generated encoders and decoders against that buffer; std is trusted
+for `Vec::extend_from_slice` appending a slice, which is all the
+production writer does. A put past the capacity fails an assertion, and
+every generated round-trip harness checks at compile time that its
+longest message fits. The `the_kani_buffer_appends_as_a_vec` test runs
+20,000 random put sequences (empty puts, puts to exactly the capacity)
+through both and compares the bytes, in every build.
+
+The buffer's size matters to CBMC: at 128 bytes `power` layout 0 ran
+out of memory again (92,788 steps); the capacity is 64, the largest
+harness input plus its ordinal.
