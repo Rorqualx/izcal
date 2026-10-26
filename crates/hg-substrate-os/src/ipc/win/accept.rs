@@ -352,10 +352,13 @@ mod proofs {
     use super::*;
 
     fn any_kind() -> WireKind {
-        match kani::any::<u8>() % 3 {
+        match kani::any::<u8>() % 6 {
             0 => WireKind::Sender,
             1 => WireKind::BoundSender,
-            _ => WireKind::Receiver,
+            2 => WireKind::Receiver,
+            3 => WireKind::RegionWriter,
+            4 => WireKind::ReadOnlyRegion,
+            _ => WireKind::ConsumerRegion,
         }
     }
 
@@ -426,10 +429,14 @@ mod proofs {
             assert!(holder == Some(ctx.relayer));
             let bound = ctx.view.is_some_and(|v| v.bound);
             let bound_rx = ctx.view.is_some_and(|v| v.bound_receiver);
+            // A region is never a pipe end: the broker's registry decides
+            // regions (D6), so `accept` refuses every region claim.
+            assert!(!claimed.is_region());
             match claimed {
                 WireKind::BoundSender => assert!(!bound && pipe.creator == ctx.relayer),
                 WireKind::Sender => assert!(!bound),
                 WireKind::Receiver => assert!(!bound && !bound_rx),
+                WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {}
             }
         }
         kani::cover!(r.is_ok(), "a handle is accepted");
