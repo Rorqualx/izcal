@@ -12,8 +12,8 @@ use hg_substrate_sim::{Limits, RunEnd, SimConfig, SimOs, World};
 use hg_types::Instant;
 
 use crate::generated::process::{
-    BuildId, ProcessControl, ProcessControlHandler, ProcessError, ProcessHost, ProcessHostHandler,
-    ProcessHostRemote, ProcessKind,
+    BuildId, ChildConfig, ProcessControl, ProcessControlHandler, ProcessError, ProcessHost,
+    ProcessHostHandler, ProcessHostRemote, ProcessKind, SandboxReport, SandboxTier,
 };
 use crate::generated::sample::{
     Handles, HandlesHandler, Loose, LooseRemote, Regions, RegionsRemote, Strict, StrictRemote,
@@ -73,6 +73,14 @@ fn world_on(
     w
 }
 
+/// The report a simulated child sends: no OS sandbox exists.
+fn simulated() -> SandboxReport {
+    SandboxReport {
+        tier: SandboxTier::Simulated,
+        missing: hg_ipc::BoundedVec::default(),
+    }
+}
+
 /// The broker's side of the process protocol.
 struct BrokerSide {
     control: Remote<ProcessControl>,
@@ -86,6 +94,7 @@ impl ProcessHostHandler for BrokerSide {
         from: &CallerIdentity,
         kind: ProcessKind,
         build: BuildId,
+        _sandbox: SandboxReport,
     ) -> Result<(), ProcessError> {
         note(
             &self.log,
@@ -118,6 +127,10 @@ impl ProcessControlHandler for ChildSide {
         self.host
             .pong(nonce)
             .map_err(|_e| ProcessError::ShuttingDown)
+    }
+
+    fn start(&mut self, _from: &CallerIdentity, _config: ChildConfig) -> Result<(), ProcessError> {
+        Ok(())
     }
 
     fn exit(
@@ -164,7 +177,7 @@ fn child_runs(keep: &Keep) -> impl Fn(Substrate) + Send + Sync + 'static {
     move |s| {
         let boot = s.ipc.bootstrap().unwrap();
         let host = Remote::<ProcessHost>::from_sender(&s.ipc, boot.to_parent);
-        host.ready(ProcessKind::Renderer, BuildId { id: 7 })
+        host.ready(ProcessKind::Renderer, BuildId { id: 7 }, simulated())
             .unwrap();
         let mut side = ChildSide { host };
         let seq = s.exec.sequence("control", Priority::UserVisible);
@@ -205,7 +218,11 @@ fn a_bad_message_ends_the_endpoint_before_any_handler() {
         s.ipc.send(&boot.to_parent, vec![9, 0], Vec::new()).unwrap();
         let host = Remote::<ProcessHost>::from_sender(&s.ipc, boot.to_parent);
         // Sent before the broker read the bad one; never handled.
-        let _ = host.ready(ProcessKind::Network, BuildId { id: 1 });
+        let _ = host.ready(
+            ProcessKind::NetworkPartition,
+            BuildId { id: 1 },
+            simulated(),
+        );
     };
     let w = world(2, broker_serves(&log, &ends, &keep, false), child);
     assert_eq!(w.run(LIMITS), RunEnd::Idle);

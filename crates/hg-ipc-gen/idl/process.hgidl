@@ -12,12 +12,86 @@ error ProcessError {
     ShuttingDown,
 }
 
-/// The process kinds M1 starts (Stage 1 design M1 exit).
+/// The process kinds the broker launches at M1 (Stage 1 design M1 exit;
+/// networking NW-D3). The browser and the Linux spawner are not children
+/// of this protocol. The same list as `hg_launch_plan::Kind`.
 enum ProcessKind {
     /// A renderer: one site's web content.
     Renderer,
-    /// The network service.
-    Network,
+    /// The network system service.
+    NetworkSystem,
+    /// A container's network service.
+    NetworkContainer,
+    /// A (top-level site, container)'s network service.
+    NetworkPartition,
+}
+
+/// The sandbox a child reached, by OS (security scope 6.7; SEC-8).
+enum SandboxTier {
+    /// Linux: seccomp and Landlock, no namespaces.
+    LinuxNoUserns,
+    /// Linux: seccomp, Landlock, user, PID and network namespaces, no
+    /// mount namespace (a non-reference configuration).
+    LinuxRestrictedUserns,
+    /// Linux: the security scope 6.7 row.
+    LinuxFull,
+    /// macOS: the deny-default SBPL profile.
+    MacosSbpl,
+    /// Windows: AppContainer, lockdown token and job (the M1 subset).
+    WindowsAppContainer,
+    /// Under the simulator: no OS sandbox exists.
+    Simulated,
+}
+
+/// A part of the 6.7 row the child did not reach.
+enum SandboxFeature {
+    /// No empty root (Linux).
+    EmptyRoot,
+    /// No user-namespace id map (Linux).
+    IdMap,
+    /// No mount namespace (Linux).
+    MountNamespace,
+    /// No Landlock UDP rules (Linux, ABI below 10).
+    LandlockUdp,
+    /// No alternate desktop (Windows, M5).
+    AlternateDesktop,
+    /// No win32k lockdown (Windows, M5).
+    Win32kLockdown,
+    /// No code integrity guard (Windows, M5).
+    CodeIntegrityGuard,
+}
+
+/// What the child's own probes found after lockdown. A cross-check of
+/// what the launcher applied: a mismatch ends the child (design review M3).
+struct SandboxReport {
+    /// The tier reached.
+    tier: SandboxTier,
+    /// What the 6.7 row has that this tier lacks; empty for the full row.
+    missing: vec<SandboxFeature, 8>,
+}
+
+/// What a child is for, sent once after `ready`. Ids are the broker's own
+/// opaque numbers; the child does nothing kind-specific before this.
+union ChildConfig {
+    /// A renderer for one site.
+    Renderer {
+        /// The broker's id of the site.
+        site: u64,
+    },
+    /// The network system service.
+    NetworkSystem,
+    /// One container's service.
+    NetworkContainer {
+        /// The broker's id of the container.
+        container: u64,
+    },
+    /// One (top-level site, container)'s service.
+    NetworkPartition {
+        /// The broker's id of the top-level site.
+        top_site: u64,
+        /// The broker's id of the container.
+        container: u64,
+    },
 }
 
 /// Identifies a build; a child from another build is refused.
@@ -51,6 +125,8 @@ interface ProcessHost bound capacity 64 overflow terminate {
         kind: ProcessKind,
         /// The child's build.
         build: BuildId,
+        /// The sandbox it reached.
+        sandbox: SandboxReport,
     );
     /// The answer to `ProcessControl.ping`.
     pong(
@@ -70,5 +146,10 @@ interface ProcessControl bound capacity 64 overflow terminate {
     exit(
         /// Why.
         reason: ExitReason,
+    );
+    /// What the child is for; sent once, after `ready` is accepted.
+    start(
+        /// The child's configuration.
+        config: ChildConfig,
     );
 }
