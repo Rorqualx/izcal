@@ -189,6 +189,10 @@ struct State {
     listening: BTreeMap<u32, u64>,
     /// Receivers by closer port name.
     closers: BTreeMap<u32, u64>,
+    /// Receivers that just started listening, for the IO thread to check
+    /// for `Closed` (only it reads data ports, so only it can tell that a
+    /// queue is empty and nothing dequeued is still unhandled).
+    check_drained: Vec<u64>,
     /// Send references this process's sender ends hold, by name.
     send_refs: BTreeMap<u32, u32>,
     /// Data port names of this process's receiver ends.
@@ -1015,8 +1019,15 @@ impl Inner {
             .unwrap_or(NAME_NULL);
         if local == self.wake {
             sys::release_received(buf);
-            if self.lock().stopping {
-                return true;
+            let checks = {
+                let mut st = self.lock();
+                if st.stopping {
+                    return true;
+                }
+                core::mem::take(&mut st.check_drained)
+            };
+            for id in checks {
+                self.close_if_drained(id);
             }
             *flush = true;
         } else if local == self.notify {
@@ -1078,6 +1089,8 @@ impl Inner {
     /// and its data port's queue is empty: no message can arrive after
     /// that (a send right in flight in another message keeps the
     /// notification back, P20), so `Closed` comes after every message.
+    /// The IO thread only: it alone dequeues from data ports, so an empty
+    /// queue means every message was handled.
     fn close_if_drained(self: &Arc<Self>, id: u64) {
         let mut st = self.lock();
         let data = match st.ends.get(&id) {
@@ -1407,8 +1420,10 @@ impl MacIpc {
         st.listening.insert(d, id);
         drop(st);
         disarm(from.into_handle());
-        // Its sender may already be gone with nothing queued.
-        self.inner.close_if_drained(id);
+        // Its sender may already be gone with nothing queued: the IO
+        // thread checks.
+        self.inner.lock().check_drained.push(id);
+        self.inner.wake_io();
         Ok(Listening::new(Handle::new(Box::new(MacListening {
             inner: Arc::clone(&self.inner),
             id,
@@ -1643,6 +1658,14 @@ impl Ipc for MacIpc {
     ) -> Result<(ChannelSender, ChannelReceiver), IpcError> {
         let (data, credit) = Self::new_ports(capacity, true).map_err(|_e| IpcError::Closed)?;
         let bound = transfer == Transfer::Bound;
+        // Without a closer the receiver could never report Closed.
+        let Some(closer) = arm_closer(data, 1, self.inner.set) else {
+            sys::destroy_receive(data);
+            // The send right beside it is a dead name now.
+            sys::deallocate(data);
+            sys::destroy_receive(credit);
+            return Err(IpcError::Closed);
+        };
         let mut st = self.inner.lock();
         let tx = st.insert(Role::Sender {
             data,
@@ -1662,7 +1685,7 @@ impl Ipc for MacIpc {
             flow: ReceiverFlow::new(capacity),
             bound,
             listener: None,
-            closer: arm_closer(data, 1, self.inner.set),
+            closer: Some(closer),
             peer_gone: false,
         });
         drop(st);
