@@ -33,8 +33,9 @@ use std::sync::Arc;
 
 use windows_sys::Wdk::Foundation::NtQueryObject;
 use windows_sys::Win32::Foundation::{
-    DUPLICATE_CLOSE_SOURCE, DUPLICATE_SAME_ACCESS, DuplicateHandle, ERROR_IO_PENDING,
-    ERROR_PIPE_CONNECTED, GetLastError, HANDLE, INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0,
+    CompareObjectHandles, DUPLICATE_CLOSE_SOURCE, DUPLICATE_SAME_ACCESS, DuplicateHandle,
+    ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, GetLastError, HANDLE, INVALID_HANDLE_VALUE, LocalFree,
+    WAIT_OBJECT_0,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
@@ -168,6 +169,35 @@ pub(crate) fn adopt_pipe(v: u64, server_end: bool) -> Option<OwnedHandle> {
         forget(h);
         None
     }
+}
+
+/// Adopts a pipe end of either kind the broker reports having put into
+/// this process (a `RebindId`, whose end the child finds by kind): as
+/// [`adopt_pipe`], and says which end it is (true: a server end).
+pub(crate) fn adopt_pipe_end(v: u64) -> Option<(OwnedHandle, bool)> {
+    crate::ipc::win::accept::check_value(v).ok()?;
+    let h = adopt(v)?;
+    let f = facts(&h);
+    if f.is_pipe && f.message {
+        Some((h, f.server_end))
+    } else {
+        forget(h);
+        None
+    }
+}
+
+/// Whether two handles name the same kernel object
+/// (`CompareObjectHandles`): the broker checks that the end it pulls is
+/// the one it peeked before it moved the peer (W3).
+pub(crate) fn same_object(a: &OwnedHandle, b: &OwnedHandle) -> bool {
+    // SAFETY: two valid handles; the call only compares them.
+    unsafe { CompareObjectHandles(raw(a), raw(b)) != 0 }
+}
+
+/// Handles to the object in every process (probe W1); 0 if the query
+/// fails. Returns at once even with a read pending (probe W8).
+pub(crate) fn count_handles(h: &OwnedHandle) -> u32 {
+    handle_count(h)
 }
 
 /// Whether this process runs in an AppContainer, and its container SID
@@ -711,6 +741,9 @@ pub(crate) struct Completion {
     pub(crate) error: u32,
     /// The buffer: for a read, truncated to the bytes read.
     pub(crate) buf: Vec<u8>,
+    /// The handle it ran on: after a switch to a new pipe (W3) an end's
+    /// operations may still be running on its old one.
+    pub(crate) handle: Arc<OwnedHandle>,
 }
 
 /// A started operation. The OVERLAPPED comes first, so the pointer the
@@ -747,16 +780,17 @@ unsafe extern "system" fn on_done(error: u32, bytes: u32, ov: *mut OVERLAPPED) {
     if !write {
         buf.truncate(usize::try_from(bytes).unwrap_or(0));
     }
+    // The handle reference goes with the completion: the IO thread drops
+    // it outside its lock.
     DONE.with(|d| {
         d.borrow_mut().push(Completion {
             token,
             write,
             error,
             buf,
+            handle,
         });
     });
-    // The handle reference drops here: the operation no longer uses it.
-    drop(handle);
 }
 
 /// Starts a read of up to `cap` bytes, or a write of `buf`, on `h`.
@@ -927,6 +961,66 @@ pub(crate) fn read_blocking(h: &OwnedHandle, cap: usize, timeout_ms: u32) -> io:
     }
     buf.truncate(usize::try_from(n).unwrap_or(0));
     Ok(buf)
+}
+
+/// What a read left pending by a former holder got (W3 tests): the
+/// `OVERLAPPED` status (0 for success, `STATUS_PENDING` = 0x103 if it
+/// never completed) and the bytes read.
+#[cfg(test)]
+pub(crate) type StaleRead = (usize, Vec<u8>);
+
+/// For the W3 conformance tests: leaves an overlapped read of `cap` bytes
+/// pending on handle value `v`, as a compromised holder could before it
+/// gives the end away, without the transport knowing. The handle is not
+/// duplicated (the broker's pull must find one handle). A thread waits up
+/// to `wait_ms` for it, then reports the result from the `OVERLAPPED`
+/// status block (the handle itself may be gone by then; probe W13 reads
+/// the same fields), or `STATUS_PENDING` after cancelling nothing (the
+/// read may outlive the report; its buffer and block are leaked so the
+/// kernel never writes freed memory).
+#[cfg(test)]
+pub(crate) fn stale_read(v: u64, cap: usize, wait_ms: u32) -> std::sync::mpsc::Receiver<StaleRead> {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    // SAFETY: manual-reset, unsignalled, unnamed event.
+    let event = unsafe { CreateEventW(null(), 1, 0, null()) };
+    // SAFETY: a zeroed OVERLAPPED is its documented initial state.
+    let mut ov: Box<OVERLAPPED> = Box::new(unsafe { zeroed() });
+    ov.hEvent = event;
+    let ov: &'static mut OVERLAPPED = Box::leak(ov);
+    let buf: &'static mut [u8] = Box::leak(vec![0u8; cap.max(1)].into_boxed_slice());
+    let len = u32::try_from(cap).unwrap_or(0);
+    let h: HANDLE = core::ptr::without_provenance_mut(usize::try_from(v).unwrap_or(0));
+    // SAFETY: `h` is a value of this process's own table, named by the
+    // test; the buffer and OVERLAPPED are leaked, so they outlive the
+    // read whatever happens to the handle.
+    let ok = unsafe { ReadFile(h, buf.as_mut_ptr(), len, null_mut(), &raw mut *ov) };
+    let started = ok != 0 || last_error() == ERROR_IO_PENDING;
+    let (ov_addr, buf_addr, ev_addr) = (
+        (&raw const *ov).expose_provenance(),
+        buf.as_ptr().expose_provenance(),
+        event.expose_provenance(),
+    );
+    let _ = crate::thread::spawn("w3-stale-read", move || {
+        let event: HANDLE = core::ptr::with_exposed_provenance_mut(ev_addr);
+        if !started {
+            let _ = tx.send((usize::MAX, Vec::new()));
+            return;
+        }
+        // SAFETY: the event lives as long as the leaked OVERLAPPED.
+        let _ = unsafe { WaitForSingleObject(event, wait_ms) };
+        let ov: *const OVERLAPPED = core::ptr::with_exposed_provenance(ov_addr);
+        // SAFETY: leaked above, never freed; the kernel has finished
+        // writing it once the event is set, and a still-pending read only
+        // ever writes these fields as a whole when it completes.
+        let ov = unsafe { &*ov };
+        let (status, n) = (ov.Internal, ov.InternalHigh);
+        let n = if status == 0x103 { 0 } else { n.min(cap) };
+        let data: *const u8 = core::ptr::with_exposed_provenance(buf_addr);
+        // SAFETY: the leaked buffer holds `cap` bytes, `n` of them read.
+        let got = unsafe { core::slice::from_raw_parts(data, n) }.to_vec();
+        let _ = tx.send((status, got));
+    });
+    rx
 }
 
 /// Starting sandboxed children: for the launcher (phase E) and the

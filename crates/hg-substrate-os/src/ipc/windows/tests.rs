@@ -393,8 +393,157 @@ fn child(case: &str) -> i32 {
             drop((tx, kept, senders));
             0
         }
+        "stale-reader" | "stale-split" | "stale-whole" => {
+            // A compromised holder (W3, probes W10, W13): it receives a
+            // receiver end, leaves a read pending on it behind its
+            // transport's back, and gives the end away. "stale-reader"
+            // gives it away at once; the others first say "armed" and
+            // wait until the read has taken something (the head of a
+            // record, or a whole one). Then it reports what the read got.
+            let Ok(Ev::Msg(_, mut hs)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            let rx = hs.remove(0);
+            let cap = match case.trim_start_matches("sandboxed-") {
+                // The ticket and the record header of the next message.
+                "stale-split" => 32,
+                _ => 128 * 1024,
+            };
+            let stale = super::sys::stale_read(raw_value(&r.ipc, &rx), cap, 8_000);
+            let early = if case.ends_with("stale-reader") {
+                None
+            } else {
+                r.ipc.send(&up, b"armed".to_vec(), Vec::new()).unwrap();
+                Some(stale.recv_timeout(WAIT))
+            };
+            r.ipc.send(&up, b"back".to_vec(), vec![rx]).unwrap();
+            let (status, got) = match early {
+                Some(e) => e.unwrap_or((usize::MAX, Vec::new())),
+                None => stale.recv_timeout(WAIT).unwrap_or((usize::MAX, Vec::new())),
+            };
+            let mut report = format!("{status:#x}:").into_bytes();
+            report.extend(got);
+            r.ipc.send(&up, report, Vec::new()).unwrap();
+            let _ = from_parent.recv_timeout(WAIT);
+            0
+        }
+        "bounce" => loop {
+            // Every handle goes straight back up, unused, with its
+            // message's bytes.
+            match from_parent.recv_timeout(WAIT) {
+                Ok(Ev::Msg(b, hs)) => r.ipc.send(&up, b, hs).unwrap(),
+                _ => return 0,
+            }
+        },
+        "bounce-on-go" => {
+            // Holds the handles it is given until "go", then sends them
+            // all back up: two such children moving the two ends of one
+            // channel at once (W3).
+            let mut held = Vec::new();
+            loop {
+                match from_parent.recv_timeout(WAIT) {
+                    Ok(Ev::Msg(b, _)) if b == b"go" => {
+                        r.ipc
+                            .send(&up, b"back".to_vec(), core::mem::take(&mut held))
+                            .unwrap();
+                    }
+                    Ok(Ev::Msg(_, hs)) => held.extend(hs),
+                    _ => return 0,
+                }
+            }
+        }
+        "send-when-free" => {
+            // Receives a full sender and sends once a credit frees a slot.
+            let Ok(Ev::Msg(_, mut hs)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            let tx = ChannelSender::from_handle(hs.remove(0)).unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let report = loop {
+                match r.ipc.send(&tx, b"b".to_vec(), Vec::new()) {
+                    Ok(()) => break "sent",
+                    Err(IpcError::Full) if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break "stuck",
+                }
+            };
+            r.ipc
+                .send(&up, report.as_bytes().to_vec(), Vec::new())
+                .unwrap();
+            let _ = from_parent.recv_timeout(WAIT);
+            0
+        }
+        "take-and-hold" => {
+            // Keeps what it is given, unlistened, until it is killed.
+            let Ok(Ev::Msg(_, hs)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            r.ipc.send(&up, b"held".to_vec(), Vec::new()).unwrap();
+            let _ = from_parent.recv_timeout(Duration::from_secs(60));
+            drop(hs);
+            0
+        }
+        "deaf" => {
+            // Takes a sender end and then ignores every rebind.
+            let Ok(Ev::Msg(_, hs)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            r.ipc.inner.lock().deaf = true;
+            r.ipc.send(&up, b"deaf".to_vec(), Vec::new()).unwrap();
+            let _ = from_parent.recv_timeout(Duration::from_secs(60));
+            drop(hs);
+            0
+        }
+        "time-take" => {
+            // For the measurement: receives receivers whose channel has an
+            // old pipe queued, and times each listen's TakeDrains round
+            // trip (until the old pipes are in), in microseconds.
+            let mut times = Vec::new();
+            while let Ok(Ev::Msg(b, mut hs)) = from_parent.recv_timeout(WAIT) {
+                if b == b"done" {
+                    break;
+                }
+                let rx = ChannelReceiver::from_handle(hs.remove(0)).unwrap();
+                let id = rx
+                    .handle()
+                    .object()
+                    .downcast_ref::<super::WinEnd>()
+                    .unwrap()
+                    .id;
+                let t = std::time::Instant::now();
+                let (_o, l) = r.listen(rx);
+                loop {
+                    let st = r.ipc.inner.lock();
+                    let taking = matches!(
+                        st.ends.get(&id).map(|e| &e.role),
+                        Some(super::Role::Receiver { listener: Some(l), .. }) if l.taking.is_some()
+                    );
+                    drop(st);
+                    if !taking {
+                        break;
+                    }
+                    std::thread::yield_now();
+                }
+                times.push(u64::try_from(t.elapsed().as_micros()).unwrap_or(u64::MAX));
+                drop(l);
+                r.ipc.send(&up, b"next".to_vec(), Vec::new()).unwrap();
+            }
+            let bytes: Vec<u8> = times.iter().flat_map(|t| t.to_le_bytes()).collect();
+            r.ipc.send(&up, bytes, Vec::new()).unwrap();
+            let _ = from_parent.recv_timeout(WAIT);
+            0
+        }
         _ => 14,
     }
+}
+
+/// The handle value of a channel end held by `ipc` (W3 tests: what a
+/// compromised holder would name to leave a read pending).
+fn raw_value(ipc: &WindowsIpc, h: &Handle) -> u64 {
+    let id = h.object().downcast_ref::<super::WinEnd>().unwrap().id;
+    let st = ipc.inner.lock();
+    super::sys::value(&st.ends.get(&id).unwrap().h)
 }
 
 /// A child started by this process; its container is removed on drop.
@@ -768,7 +917,6 @@ fn measure_round_trip_and_throughput() {
 fn a_dead_creators_channel_is_still_keyed() {
     use super::{BROKER, Broker, Inner};
     use crate::ipc::win::ledger::Ledger;
-    use std::collections::{BTreeMap, BTreeSet};
 
     let sid = "S-1-15-2-1-2-3-4-5-6-7";
     let name = format!(
@@ -780,16 +928,7 @@ fn a_dead_creators_channel_is_still_keyed() {
         name: Some(name),
         ..Default::default()
     };
-    let mut b = Broker {
-        ledger: Ledger::default(),
-        held: BTreeMap::new(),
-        children: BTreeMap::new(),
-        reserved_sids: BTreeSet::new(),
-        creator_sids: BTreeMap::new(),
-        given: BTreeMap::new(),
-        own: BTreeMap::new(),
-        next_proc: 9,
-    };
+    let mut b = Broker::new(Ledger::default(), 9);
     // Child 7 made the channel, then died: it is gone from `children`,
     // but its SID is still mapped because the ledger holds its channel.
     b.creator_sids.insert(sid.to_owned(), 7);
@@ -808,18 +947,8 @@ fn a_dead_creators_channel_is_still_keyed() {
 fn a_reused_handle_value_releases_grants_oldest_first() {
     use super::{Broker, PipeEnd, PipeKey};
     use crate::ipc::win::ledger::Ledger;
-    use std::collections::{BTreeMap, BTreeSet};
 
-    let mut b = Broker {
-        ledger: Ledger::default(),
-        held: BTreeMap::new(),
-        children: BTreeMap::new(),
-        reserved_sids: BTreeSet::new(),
-        creator_sids: BTreeMap::new(),
-        given: BTreeMap::new(),
-        own: BTreeMap::new(),
-        next_proc: 9,
-    };
+    let mut b = Broker::new(Ledger::default(), 9);
     let who = 7;
     let value = 0x40;
     let first = (
@@ -985,5 +1114,396 @@ fn a_closed_channel_is_forgotten_by_the_broker() {
     assert!(
         forgotten,
         "the broker kept a closed channel: base={base} entries={ec} given={gl}"
+    );
+}
+
+// ---- W3: a fresh pipe per move -------------------------------------------
+
+/// The child's report of its stale read: the `OVERLAPPED` status and the
+/// bytes it got.
+fn stale_report(c: &Kid) -> (String, Vec<u8>) {
+    let (b, _) = expect_msg(&c.from_child);
+    let colon = b.iter().position(|x| *x == b':').unwrap();
+    (
+        String::from_utf8(b[..colon].to_vec()).unwrap(),
+        b[colon + 1..].to_vec(),
+    )
+}
+
+/// W3 (probes W10, W11): a compromised holder leaves a read pending on a
+/// receiver end and gives the end away. Everything sent after the move
+/// goes to the new holder; the stale read gets nothing (the old pipe's
+/// writer leaves it, so it fails with the broken pipe status). Before
+/// the fresh pipe per move, the stale read took the first message sent
+/// after the move and the new holder never saw it.
+#[test]
+fn an_old_holders_pending_read_gets_nothing_after_a_move() {
+    let r = rig();
+    let c = launch(&r, "stale-reader", true);
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&c.to_child, b"take".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    let (b, mut hs) = expect_msg(&c.from_child);
+    assert_eq!(b, b"back");
+    let rx = ChannelReceiver::from_handle(hs.remove(0)).unwrap();
+    let (out, _l) = r.listen(rx);
+    r.ipc.send(&tx, b"after".to_vec(), Vec::new()).unwrap();
+    assert_eq!(expect_msg(&out).0, b"after", "the new holder hears it");
+    let (status, got) = stale_report(&c);
+    assert!(
+        !got.windows(5).any(|w| w == b"after"),
+        "the old holder's read took a record sent after the move ({status})"
+    );
+    // STATUS_PIPE_BROKEN: the read ended when the old pipe's writer left.
+    assert_eq!(status, "0xc000014b");
+}
+
+/// W3 (probe W13c): a stale read with a buffer shorter than a message
+/// takes its head; the rest reaches the new holder as a message of its
+/// own. The payload here is shaped as an attacker would: a whole message
+/// with the expected `seq`, cut just after the outer ticket and header.
+/// Without the trailer the new holder accepted that suffix as a record;
+/// now it is refused as Malformed.
+#[test]
+fn a_record_split_by_a_stale_read_is_refused() {
+    use crate::ipc::common::codec::encode_data;
+    use crate::ipc::win::frame::{NO_TICKET, join_data};
+    let r = rig();
+    let c = launch(&r, "stale-split", true);
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&c.to_child, b"take".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    assert_eq!(expect_msg(&c.from_child).0, b"armed");
+    let forged = join_data(&NO_TICKET, &encode_data(0, &[], b"forged").unwrap());
+    r.ipc.send(&tx, forged, Vec::new()).unwrap();
+    let (b, mut hs) = expect_msg(&c.from_child);
+    assert_eq!(b, b"back");
+    let rx = ChannelReceiver::from_handle(hs.remove(0)).unwrap();
+    let (out, _l) = r.listen(rx);
+    match next(&out) {
+        Ev::Fault(f) => {
+            assert_eq!(f.kind, FaultKind::Malformed);
+            assert_eq!(f.sender, None);
+        }
+        other => panic!("expected a Malformed fault, got {other:?}"),
+    }
+    let (status, got) = stale_report(&c);
+    assert_eq!(status, "0x80000005", "STATUS_BUFFER_OVERFLOW");
+    assert_eq!(got.len(), 32, "the head of the message");
+}
+
+/// W3 (probe W13a): a stale read that takes a whole record sent before
+/// the move leaves a gap in the sequence, which the new holder reports.
+#[test]
+fn a_record_taken_by_a_stale_read_shows_as_a_gap() {
+    let r = rig();
+    let c = launch(&r, "stale-whole", true);
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&c.to_child, b"take".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    assert_eq!(expect_msg(&c.from_child).0, b"armed");
+    r.ipc.send(&tx, b"one".to_vec(), Vec::new()).unwrap();
+    r.ipc.send(&tx, b"two".to_vec(), Vec::new()).unwrap();
+    let (b, mut hs) = expect_msg(&c.from_child);
+    assert_eq!(b, b"back");
+    let rx = ChannelReceiver::from_handle(hs.remove(0)).unwrap();
+    let (out, _l) = r.listen(rx);
+    match next(&out) {
+        Ev::Fault(f) => {
+            assert_eq!(f.kind, FaultKind::Sequence);
+            assert_eq!(f.sender, None);
+        }
+        other => panic!("expected a Sequence fault, got {other:?}"),
+    }
+    let (status, got) = stale_report(&c);
+    assert_eq!(status, "0x0");
+    assert!(got.windows(3).any(|w| w == b"one"));
+}
+
+/// W3: records queued on a channel stay in order across a chain of moves
+/// of both its ends while nobody listens: each move leaves an old pipe,
+/// read in turn when the receiver is finally listened to.
+#[test]
+fn order_holds_across_moves_with_records_queued() {
+    let r = rig();
+    let c = launch(&r, "bounce", true);
+    let (mut tx, mut rx) = r.ipc.channel(64, Transfer::Free).unwrap();
+    let mut n = 0u8;
+    let mut send_two = |tx: &ChannelSender| {
+        for _ in 0..2 {
+            r.ipc.send(tx, vec![n], Vec::new()).unwrap();
+            n += 1;
+        }
+    };
+    for _ in 0..3 {
+        send_two(&tx);
+        // The sender goes away and back: the unlistened receiver here is
+        // moved to a new pipe twice, its old ones queued.
+        r.ipc
+            .send(&c.to_child, b"tx".to_vec(), vec![tx.into_handle()])
+            .unwrap();
+        let (_, mut hs) = expect_msg(&c.from_child);
+        tx = ChannelSender::from_handle(hs.remove(0)).unwrap();
+        send_two(&tx);
+        // Then the receiver itself, unread.
+        r.ipc
+            .send(&c.to_child, b"rx".to_vec(), vec![rx.into_handle()])
+            .unwrap();
+        let (_, mut hs) = expect_msg(&c.from_child);
+        rx = ChannelReceiver::from_handle(hs.remove(0)).unwrap();
+    }
+    send_two(&tx);
+    let (out, _l) = r.listen(rx);
+    for i in 0..n {
+        assert_eq!(expect_msg(&out).0, vec![i]);
+    }
+    drop(tx);
+    assert!(matches!(next(&out), Ev::Closed));
+}
+
+/// W3: both ends of one channel, held by two children, moved back at
+/// once. The broker settles one move, then the other; the channel works
+/// afterwards and nothing queued before is lost.
+#[test]
+fn both_ends_moving_at_once_settle() {
+    let r = rig();
+    let a = launch(&r, "bounce-on-go", true);
+    let b = launch(&r, "bounce-on-go", true);
+    for round in 0u8..5 {
+        let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+        r.ipc.send(&tx, vec![round, 0], Vec::new()).unwrap();
+        r.ipc
+            .send(&a.to_child, b"tx".to_vec(), vec![tx.into_handle()])
+            .unwrap();
+        r.ipc
+            .send(&b.to_child, b"rx".to_vec(), vec![rx.into_handle()])
+            .unwrap();
+        r.ipc.send(&a.to_child, b"go".to_vec(), Vec::new()).unwrap();
+        r.ipc.send(&b.to_child, b"go".to_vec(), Vec::new()).unwrap();
+        let (_, mut ht) = expect_msg(&a.from_child);
+        let (_, mut hr) = expect_msg(&b.from_child);
+        let tx = ChannelSender::from_handle(ht.remove(0)).unwrap();
+        let rx = ChannelReceiver::from_handle(hr.remove(0)).unwrap();
+        let (out, _l) = r.listen(rx);
+        r.ipc.send(&tx, vec![round, 1], Vec::new()).unwrap();
+        assert_eq!(expect_msg(&out).0, vec![round, 0]);
+        assert_eq!(expect_msg(&out).0, vec![round, 1]);
+    }
+}
+
+/// W3: a sender moved while full is not stuck: its new holder gets the
+/// receiver's credit on the new pipe (a credit left in the old one is
+/// superseded by the receiver's current count).
+#[test]
+fn a_moved_full_sender_gets_its_credit_on_the_new_pipe() {
+    let r = rig();
+    let c = launch(&r, "send-when-free", true);
+    let (tx, rx) = r.ipc.channel(1, Transfer::Free).unwrap();
+    r.ipc.send(&tx, b"a".to_vec(), Vec::new()).unwrap();
+    assert_eq!(
+        r.ipc.send(&tx, b"x".to_vec(), Vec::new()),
+        Err(IpcError::Full)
+    );
+    r.ipc
+        .send(&c.to_child, b"tx".to_vec(), vec![tx.into_handle()])
+        .unwrap();
+    let (out, _l) = r.listen(rx);
+    assert_eq!(expect_msg(&out).0, b"a");
+    assert_eq!(expect_msg(&out).0, b"b");
+    assert_eq!(expect_msg(&c.from_child).0, b"sent");
+}
+
+/// W3: a channel keeps at most 16 old pipes for its receiver. A receiver
+/// moved 16 times without anyone listening has 16 queued; the 17th move
+/// is refused, with its reason recorded, and the channel ends in Closed.
+#[test]
+fn the_seventeenth_queued_old_pipe_closes_the_channel() {
+    use crate::ipc::win::accept::Refusal;
+    use crate::ipc::win::ledger::MAX_OLD_PIPES;
+    let r = rig();
+    let (tx, mut rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let (ctx, crx) = r.ipc.channel(64, Transfer::Free).unwrap();
+    let (carried, _cl) = r.listen(crx);
+    for i in 0..MAX_OLD_PIPES {
+        r.ipc
+            .send(&ctx, vec![u8::try_from(i).unwrap()], vec![rx.into_handle()])
+            .unwrap();
+        let (_, mut hs) = expect_msg(&carried);
+        rx = ChannelReceiver::from_handle(hs.remove(0)).unwrap();
+    }
+    r.ipc
+        .send(&ctx, b"17".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    assert!(
+        carried.recv_timeout(Duration::from_secs(2)).is_err(),
+        "the 17th move went through"
+    );
+    let refused = |code: u8| {
+        r.ipc
+            .inner
+            .lock()
+            .broker
+            .as_ref()
+            .and_then(|b| b.refused.get(&code).copied())
+            .unwrap_or(0)
+    };
+    assert_eq!(refused(Refusal::OldPipes.code()), 1);
+    // The carrier is closed for its sender, and the moved channel too.
+    assert_eq!(
+        r.ipc.send(&ctx, b"x".to_vec(), Vec::new()),
+        Err(IpcError::Closed)
+    );
+    let deadline = std::time::Instant::now() + WAIT;
+    loop {
+        match r.ipc.send(&tx, b"x".to_vec(), Vec::new()) {
+            Err(IpcError::Closed) => break,
+            Ok(()) | Err(IpcError::Full) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+}
+
+/// W3: the old pipes a broker keeps for a receiver are released, with
+/// their charge, when the channel closes.
+#[test]
+fn old_pipes_are_released_when_the_channel_closes() {
+    let r = rig();
+    let (tx, mut rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let (ctx, crx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let (carried, _cl) = r.listen(crx);
+    for _ in 0..3 {
+        r.ipc
+            .send(&ctx, Vec::new(), vec![rx.into_handle()])
+            .unwrap();
+        let (_, mut hs) = expect_msg(&carried);
+        rx = ChannelReceiver::from_handle(hs.remove(0)).unwrap();
+    }
+    let old = || {
+        r.ipc
+            .inner
+            .lock()
+            .broker
+            .as_ref()
+            .map(|b| b.old.len())
+            .unwrap()
+    };
+    assert_eq!(old(), 3);
+    drop(rx);
+    drop(tx);
+    let released = (0..200).any(|_| {
+        std::thread::sleep(Duration::from_millis(25));
+        old() == 0
+    });
+    assert!(released, "the broker kept old pipes of a closed channel");
+}
+
+/// W3: the old pipes kept for a receiver are released when the process
+/// holding that receiver dies.
+#[test]
+fn old_pipes_are_released_when_their_holder_dies() {
+    let r = rig();
+    let c = launch(&r, "take-and-hold", true);
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&c.to_child, b"rx".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    assert_eq!(expect_msg(&c.from_child).0, b"held");
+    let old = || {
+        r.ipc
+            .inner
+            .lock()
+            .broker
+            .as_ref()
+            .map(|b| b.old.len())
+            .unwrap()
+    };
+    assert_eq!(old(), 1, "the receiver's first pipe, queued at its move");
+    drop(c);
+    let released = (0..200).any(|_| {
+        std::thread::sleep(Duration::from_millis(25));
+        old() == 0
+    });
+    assert!(released, "the broker kept a dead holder's old pipes");
+    drop(tx);
+}
+
+/// W3: a holder that never answers a rebind cannot hold a move up past
+/// the deadline: the move is refused, with its reason recorded, and the
+/// carrying channel ends in Closed.
+#[test]
+fn a_peer_that_never_rebinds_fails_the_move_at_the_deadline() {
+    use crate::ipc::win::accept::Refusal;
+    let r = rig();
+    let deaf = launch(&r, "deaf", true);
+    let other = launch(&r, "bounce", true);
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&deaf.to_child, b"tx".to_vec(), vec![tx.into_handle()])
+        .unwrap();
+    assert_eq!(expect_msg(&deaf.from_child).0, b"deaf");
+    let t = std::time::Instant::now();
+    r.ipc
+        .send(&other.to_child, b"rx".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    let deadline = std::time::Instant::now() + WAIT;
+    loop {
+        match r.ipc.send(&other.to_child, b"x".to_vec(), Vec::new()) {
+            Err(IpcError::Closed) => break,
+            Ok(()) | Err(IpcError::Full) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+    let waited = t.elapsed();
+    assert!(waited >= super::REBIND_DEADLINE, "refused after {waited:?}");
+    let refused = r
+        .ipc
+        .inner
+        .lock()
+        .broker
+        .as_ref()
+        .and_then(|b| b.refused.get(&Refusal::Rebind.code()).copied());
+    assert_eq!(refused, Some(1));
+}
+
+/// The W3 measurement: the time a child's listen waits for its
+/// `TakeDrains` answer (a receiver with one old pipe queued), p50 and
+/// p99 over 500 listens. Run with the D5 measurement, under an exclusive
+/// booking.
+#[test]
+#[ignore = "a measurement, run by hand on the lab machine"]
+fn measure_take_drains() {
+    let r = rig();
+    let c = launch(&r, "time-take", false);
+    for _ in 0..500 {
+        // A receiver moved once here and back... once to the child: its
+        // first pipe is queued, so the child's listen asks for it.
+        let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+        r.ipc
+            .send(&c.to_child, b"rx".to_vec(), vec![rx.into_handle()])
+            .unwrap();
+        assert_eq!(expect_msg(&c.from_child).0, b"next");
+    }
+    r.ipc
+        .send(&c.to_child, b"done".to_vec(), Vec::new())
+        .unwrap();
+    let (b, _) = expect_msg(&c.from_child);
+    let mut us: Vec<u64> = b
+        .chunks(8)
+        .map(|x| u64::from_le_bytes(x.try_into().unwrap()))
+        .collect();
+    us.sort_unstable();
+    println!(
+        "W3-TAKE listen with one old pipe: p50={}us p99={}us max={}us over {}",
+        us[us.len() / 2],
+        us[us.len() * 99 / 100],
+        us[us.len() - 1],
+        us.len()
     );
 }

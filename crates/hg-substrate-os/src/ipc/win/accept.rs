@@ -147,8 +147,19 @@ pub(crate) enum Refusal {
     Duplicate,
     /// The relayer is over its ledger quota (tickets or channels).
     Quota,
-    /// The broker had no randomness to make a ticket.
+    /// The broker had no randomness to make a ticket, or no pipe for a
+    /// move (W3).
     NoTicket,
+    /// The moving end's channel already has its limit of old pipes queued
+    /// or owed (W3, `MAX_OLD_PIPES`): the channel ends in `Closed`.
+    OldPipes,
+    /// The moving end's peer could not be moved to the new pipe: its
+    /// holder did not answer the rebind in time, or could not be named
+    /// (W3).
+    Rebind,
+    /// The end pulled is not the one the broker peeked before it moved
+    /// the peer (W3).
+    Changed,
 }
 
 impl Refusal {
@@ -173,6 +184,9 @@ impl Refusal {
             Self::Quota => 16,
             Self::NoTicket => 17,
             Self::NoWait => 18,
+            Self::OldPipes => 19,
+            Self::Rebind => 20,
+            Self::Changed => 21,
         }
     }
 }
@@ -740,6 +754,9 @@ mod tests {
             Refusal::Quota,
             Refusal::NoTicket,
             Refusal::NoWait,
+            Refusal::OldPipes,
+            Refusal::Rebind,
+            Refusal::Changed,
         ];
         for (i, a) in all.iter().enumerate() {
             assert_ne!(a.code(), 0);

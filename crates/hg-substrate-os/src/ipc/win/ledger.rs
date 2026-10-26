@@ -95,6 +95,17 @@ enum Holder {
     Gone,
 }
 
+/// Where a channel end is, for a move of its peer (W3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Where {
+    /// With a process (the broker is process 0).
+    Proc(Proc),
+    /// In the broker, under a ticket.
+    Ticket(Ticket),
+    /// Its holder closed it or ended.
+    Gone,
+}
+
 /// A receiver bound to one peer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Binding {
@@ -599,7 +610,54 @@ impl Ledger {
         self.put(chan, e)
     }
 
+    /// Where `end` of `chan` is: with the channel's creator if the ledger
+    /// has never seen it move.
+    pub(crate) fn where_is(&self, chan: PipeKey, end: End) -> Where {
+        let e = self.entry(chan);
+        match if end == End::Sender {
+            e.sender
+        } else {
+            e.receiver
+        } {
+            Holder::Proc(p) => Where::Proc(p),
+            Holder::Ticket(t) => Where::Ticket(t),
+            Holder::Gone => Where::Gone,
+        }
+    }
+
+    /// The position of `end` of `chan` among the ends held under
+    /// `ticket`, which is also its handle's position in the broker's
+    /// store.
+    pub(crate) fn ticket_index(&self, ticket: &Ticket, chan: PipeKey, end: End) -> Option<usize> {
+        self.tickets
+            .get(ticket)?
+            .ends
+            .iter()
+            .position(|&(k, e, _)| k == chan && e == end)
+    }
+
+    /// Withdraws a park [`Ledger::expect_park`] reserved, when the holder
+    /// answered that it will not park (it was listening, or did not
+    /// switch).
+    pub(crate) fn cancel_park(&mut self, chan: PipeKey, holder: Proc, key: PipeKey) {
+        let Some(p) = self.pipes.get_mut(&chan) else {
+            return;
+        };
+        let Some(i) = p.parks.iter().position(|&(h, k)| h == holder && k == key) else {
+            return;
+        };
+        p.parks.remove(i);
+        self.unhold(key);
+        self.uncharge(chan.creator);
+    }
+
+    /// Whether the ledger tracks `chan`.
+    pub(crate) fn knows(&self, chan: PipeKey) -> bool {
+        self.entries.contains_key(&chan)
+    }
+
     /// The pipe channel `chan` is on now.
+    #[cfg(test)]
     pub(crate) fn current_pipe(&self, chan: PipeKey) -> PipeKey {
         self.pipes
             .get(&chan)
@@ -1334,6 +1392,42 @@ mod tests {
         assert_eq!(l.take_old(ch), Some(vec![old, owed]));
         assert_eq!(l.charged(A), 1);
         assert_eq!(l.alias_count(), 0);
+    }
+
+    #[test]
+    fn a_withdrawn_park_frees_its_slot() {
+        let mut l = ledger();
+        let ch = pipe(A, 1);
+        l.touch(ch).unwrap();
+        l.expect_park(ch, B, pipe(BROKER, 70)).unwrap();
+        l.cancel_park(ch, B, pipe(BROKER, 70));
+        assert_eq!(l.old_pipes(ch), 0);
+        assert_eq!(l.charged(A), 1);
+        assert_eq!(l.alias_count(), 0);
+        assert_eq!(l.park(B, pipe(BROKER, 70)), Err(LedgerError::NoPark));
+    }
+
+    #[test]
+    fn where_an_end_is() {
+        let mut l = ledger();
+        let ch = pipe(A, 1);
+        assert_eq!(l.where_is(ch, End::Sender), Where::Proc(A), "unseen");
+        assert!(!l.knows(ch));
+        l.relay(
+            [9; 16],
+            Held {
+                carrier: pipe(BROKER, 9),
+                from: A,
+                ends: vec![(ch, End::Receiver, WireKind::Receiver)],
+            },
+        )
+        .unwrap();
+        assert_eq!(l.where_is(ch, End::Receiver), Where::Ticket([9; 16]));
+        assert_eq!(l.ticket_index(&[9; 16], ch, End::Receiver), Some(0));
+        assert_eq!(l.ticket_index(&[9; 16], ch, End::Sender), None);
+        assert!(l.knows(ch));
+        l.close_end(ch, End::Sender, A);
+        assert_eq!(l.where_is(ch, End::Sender), Where::Gone);
     }
 
     #[test]
