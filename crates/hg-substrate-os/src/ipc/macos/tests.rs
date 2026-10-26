@@ -820,7 +820,14 @@ fn spawn(r: &Rig, case: &str) -> Child {
     .collect();
     let arg_refs: Vec<&std::ffi::CStr> = args.iter().map(CString::as_c_str).collect();
     let env = CString::new(format!("IZCAL_D4_CHILD={case}")).unwrap();
-    let child = sys::spawn(&exe, &arg_refs, &[env.as_c_str()], boot).unwrap();
+    let child = sys::spawn(
+        &exe,
+        &arg_refs,
+        &[env.as_c_str()],
+        boot,
+        &sys::SpawnOpts::default(),
+    )
+    .unwrap();
     // The child has its own send right now; ours is not needed.
     sys::deallocate(boot);
     let (rx, tx) = r.ipc.adopt_child(boot, child.token).expect("hello");
@@ -868,7 +875,13 @@ fn a_child_without_a_token_never_runs() {
     let arg_refs: Vec<&std::ffi::CStr> = args.iter().map(CString::as_c_str).collect();
     let env = CString::new("IZCAL_D4_CHILD=burst-exit").unwrap();
     test_support::FAIL_CHILD_TOKEN.set(true);
-    let got = sys::spawn(&exe, &arg_refs, &[env.as_c_str()], boot);
+    let got = sys::spawn(
+        &exe,
+        &arg_refs,
+        &[env.as_c_str()],
+        boot,
+        &sys::SpawnOpts::default(),
+    );
     test_support::FAIL_CHILD_TOKEN.set(false);
     sys::destroy_receive(boot);
     assert!(got.is_err());
@@ -958,7 +971,14 @@ fn a_wrong_launch_identity_gets_no_channels() {
         .collect();
     let arg_refs: Vec<&std::ffi::CStr> = args.iter().map(CString::as_c_str).collect();
     let env = CString::new("IZCAL_D4_CHILD=burst-exit").unwrap();
-    let child = sys::spawn(&exe, &arg_refs, &[env.as_c_str()], boot).unwrap();
+    let child = sys::spawn(
+        &exe,
+        &arg_refs,
+        &[env.as_c_str()],
+        boot,
+        &sys::SpawnOpts::default(),
+    )
+    .unwrap();
     sys::deallocate(boot);
     let wrong = wire::Token {
         pid: child.token.pid,

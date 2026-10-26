@@ -82,6 +82,23 @@ fn main() {
     unsafe { libc::write(3, end.as_ptr().cast(), end.len()) };
 }
 
-/// Linux only.
-#[cfg(not(target_os = "linux"))]
+/// On macOS: the hello exchange with its launcher (its launch channels),
+/// then nothing, ever: it never sends `ready`, so its launcher's deadline
+/// must kill it (the launcher conformance test).
+#[cfg(target_os = "macos")]
+fn main() {
+    let threads = hg_substrate_os::Threads {
+        general: 1,
+        may_block: 1,
+    };
+    let Ok(_s) = hg_substrate_os::os_substrate_launched(threads) else {
+        return;
+    };
+    loop {
+        std::thread::park();
+    }
+}
+
+/// Linux and macOS only.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn main() {}

@@ -176,7 +176,12 @@ pub fn os_broker_substrate_in(
         let files = launch::linux::BuildFiles::open(dir).map_err(StartError::Launch)?;
         broker_with(threads, files)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        let files = launch::macos::BuildFiles::open(dir).map_err(StartError::Launch)?;
+        launch::macos::broker_with(threads, files)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = dir;
         os_substrate(threads)
@@ -213,7 +218,9 @@ pub(crate) fn broker_with(
 }
 
 /// The process hash key and the executor.
-fn base(threads: Threads) -> Result<(entropy::OsEntropy, Arc<executor::OsExecutor>), StartError> {
+pub(crate) fn base(
+    threads: Threads,
+) -> Result<(entropy::OsEntropy, Arc<executor::OsExecutor>), StartError> {
     let entropy = entropy::OsEntropy::new();
     if !hg_types::process_hash_key_is_set() {
         let mut key = [0u8; 16];

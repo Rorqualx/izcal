@@ -18,6 +18,7 @@ entries = [
   "ipc::macos::sys",            # the macOS IPC transport's Mach port and mach_msg calls, posix_spawn with a bootstrap port
   "ipc::windows::sys",          # the Windows IPC transport's named pipes, ReadFileEx/WriteFileEx, DuplicateHandle and child start
   "launch::linux::sys",         # the launch path: clone3 with namespaces and pidfd, Landlock, the launch filter, execveat, pidfd signals, the reaper
+  "launch::macos::sys",         # the launch path on macOS: code-directory hashes (Security framework), F_GETPATH
   "src/bin/hg-launch-probe.rs", # the spawner's test child: raw fd, prctl and syscall probes
   "ipc::shm",                   # atomic byte and word access to a mapped shared-memory region (D6)
 ]

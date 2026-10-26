@@ -124,9 +124,7 @@ unsafe extern "C" {
         inheritance: c_int,
     ) -> KernReturn;
     fn task_get_special_port(task: PortName, which: c_int, port: *mut PortName) -> KernReturn;
-    #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
     fn task_name_for_pid(target: PortName, pid: c_int, name: *mut PortName) -> KernReturn;
-    #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
     fn posix_spawnattr_setspecialport_np(
         attr: *mut libc::posix_spawnattr_t,
         port: PortName,
@@ -798,9 +796,20 @@ pub(crate) fn bootstrap_port() -> Option<PortName> {
     (rc == 0 && p != NAME_NULL).then_some(p)
 }
 
+/// How [`spawn`] starts a child beyond its program and arguments.
+#[derive(Default)]
+pub(crate) struct SpawnOpts<'a> {
+    /// Placed at 0, 1 and 2 (`/dev/null`, review minor); `None` keeps
+    /// this process's stdio (tests).
+    pub(crate) stdio: Option<std::os::fd::BorrowedFd<'a>>,
+    /// Asked about the child while it is still suspended (its
+    /// code-directory hash, review minor); `false` kills and reaps it
+    /// before it runs.
+    pub(crate) verify: Option<&'a dyn Fn(libc::pid_t) -> bool>,
+}
+
 /// A child started by [`spawn`].
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) struct Spawned {
     /// Its process ID.
     pub(crate) pid: libc::pid_t,
@@ -808,7 +817,6 @@ pub(crate) struct Spawned {
     pub(crate) token: Token,
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 /// Starts `program` with `bootstrap` as its bootstrap port (P27), no
 /// descriptor beyond stdio inherited and exactly the environment `env`
 /// (nothing of the launcher's: it may hold secrets, and a sandboxed
@@ -821,6 +829,7 @@ pub(crate) fn spawn(
     args: &[&std::ffi::CStr],
     env: &[&std::ffi::CStr],
     bootstrap: PortName,
+    opts: &SpawnOpts<'_>,
 ) -> std::io::Result<Spawned> {
     let mut argv: Vec<*mut c_char> = Vec::with_capacity(args.len().saturating_add(2));
     argv.push(program.as_ptr().cast_mut());
@@ -858,8 +867,12 @@ pub(crate) fn spawn(
     }
     for fd in 0..3 {
         if rc == 0 {
-            // SAFETY: an initialised file-actions object; stdio onto itself.
-            rc = unsafe { libc::posix_spawn_file_actions_adddup2(&raw mut actions, fd, fd) };
+            let src = opts
+                .stdio
+                .map_or(fd, |n| std::os::fd::AsRawFd::as_raw_fd(&n));
+            // SAFETY: an initialised file-actions object and two
+            // descriptors (stdio onto itself, or /dev/null onto it).
+            rc = unsafe { libc::posix_spawn_file_actions_adddup2(&raw mut actions, src, fd) };
         }
     }
     let mut pid: libc::pid_t = 0;
@@ -891,15 +904,19 @@ pub(crate) fn spawn(
     }
     #[cfg(test)]
     test_support::LAST_PID.set(pid);
-    let Some(token) = child_token(pid) else {
+    let verified = opts.verify.is_none_or(|v| v(pid));
+    let token = child_token(pid).filter(|_t| verified);
+    let Some(token) = token else {
         // A child whose identity cannot be checked never runs: it is
         // killed while still suspended, and reaped.
         // SAFETY: signals the child just spawned, which has not run.
         let _ = unsafe { libc::kill(pid, libc::SIGKILL) };
         let _ = wait_child(pid);
-        return Err(std::io::Error::other(
-            "the child's audit token could not be read",
-        ));
+        return Err(std::io::Error::other(if verified {
+            "the child's audit token could not be read"
+        } else {
+            "the child is not the executable recorded at start"
+        }));
     };
     // SAFETY: resumes the suspended child (P3: SIGCONT ends the suspended
     // start).
@@ -907,7 +924,6 @@ pub(crate) fn spawn(
     Ok(Spawned { pid, token })
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 fn child_token(pid: libc::pid_t) -> Option<Token> {
     #[cfg(test)]
     if test_support::FAIL_CHILD_TOKEN.get() {
@@ -923,7 +939,27 @@ fn child_token(pid: libc::pid_t) -> Option<Token> {
     t
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
+/// Ends child `pid` (`SIGKILL`) and reaps it. The caller holds `pid`
+/// unreaped, so it names no other process.
+pub(crate) fn kill_and_reap(pid: libc::pid_t) {
+    // SAFETY: signals a child of this process not yet reaped.
+    let _ = unsafe { libc::kill(pid, libc::SIGKILL) };
+    let _ = wait_child(pid);
+}
+
+/// Reaps child `pid` if it has ended: `Ok(true)` reaped, `Ok(false)`
+/// still running, an error if it is not this process's child.
+pub(crate) fn reap_if_ended(pid: libc::pid_t) -> std::io::Result<bool> {
+    let mut status: c_int = 0;
+    // SAFETY: a valid out-pointer for the status; WNOHANG never blocks.
+    let rc = unsafe { libc::waitpid(pid, &raw mut status, libc::WNOHANG) };
+    match rc {
+        0 => Ok(false),
+        r if r == pid => Ok(true),
+        _ => Err(std::io::Error::last_os_error()),
+    }
+}
+
 /// Waits for child `pid` and returns its exit code (or 128 + signal).
 pub(crate) fn wait_child(pid: libc::pid_t) -> std::io::Result<i32> {
     let mut status: c_int = 0;

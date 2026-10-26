@@ -1525,7 +1525,6 @@ impl MacIpc {
         }))))
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
     /// The launcher's side of the hello exchange (phase E's launcher and
     /// the tests): waits on `boot`, the bootstrap port given to a child
     /// started with [`sys::spawn`], for the hello of `expected`
@@ -1612,7 +1611,6 @@ impl MacIpc {
         None
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
     /// The ports of a child's two launch channels and this process's
     /// ends of them: (up data, up credit, down data, ours).
     fn launch_ends(&self) -> Option<(u32, u32, u32, (ChannelReceiver, ChannelSender))> {
