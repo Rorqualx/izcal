@@ -23,6 +23,22 @@
 //! for a count, the decoder checks that the remaining input could hold
 //! that many elements at their minimum size, so an allocation is never
 //! larger than the input that asked for it (bounded allocation).
+//!
+//! # Under Kani: the writer's buffer
+//!
+//! Under `cfg(kani)`, [`Writer`] appends to a fixed buffer of
+//! [`KANI_WRITER_CAPACITY`] bytes instead of a `Vec`, with the same API
+//! and the same append semantics; `into_bytes` makes one `Vec` at the
+//! end. The Kani proofs (VER-1) are about this crate's and the generated
+//! encoders and decoders; they are proved against that buffer. What they
+//! trust std for is `Vec::extend_from_slice` appending a slice to a
+//! vector, which the production writer uses for every `put`. CBMC's cost
+//! for that call's growth code was the measured bottleneck: on a fixed
+//! 21-byte message with no strings, 426 k steps and out of memory at
+//! 10 GiB with the `Vec`, 90 k steps and a pass with the buffer
+//! (measurements/milestones/m1-kani). A put past the capacity fails an
+//! assertion; it never truncates. The `the_kani_buffer_appends_as_a_vec`
+//! test runs both on the same random puts in every build.
 
 /// Why bytes were not a valid message. The receiver closes the endpoint
 /// and asks the broker to terminate the sender (IPC-R5, CS-ER-6); none of
@@ -68,12 +84,65 @@ impl core::fmt::Display for BadMessage {
 
 impl std::error::Error for BadMessage {}
 
-/// Builds a message's bytes.
-#[derive(Debug, Default)]
-pub struct Writer {
-    buf: Vec<u8>,
+/// The bytes a [`Writer`] holds under Kani. Every generated harness
+/// checks at compile time that its largest message fits.
+pub const KANI_WRITER_CAPACITY: usize = 64;
+
+/// The Kani writer's buffer: a fixed array and a length (see the module
+/// docs). Compiled for tests too, which compare it with a `Vec`.
+#[cfg(any(kani, test))]
+#[derive(Debug)]
+struct FixedBuf {
+    bytes: [u8; KANI_WRITER_CAPACITY],
+    len: usize,
 }
 
+#[cfg(any(kani, test))]
+impl FixedBuf {
+    const fn new() -> Self {
+        Self {
+            bytes: [0; KANI_WRITER_CAPACITY],
+            len: 0,
+        }
+    }
+
+    /// Appends `src`. Past the capacity this fails an assertion: the
+    /// harness's message did not fit, which its compile-time check rules
+    /// out.
+    fn put(&mut self, src: &[u8]) {
+        let end = self.len.checked_add(src.len());
+        let dst = end.and_then(|e| self.bytes.get_mut(self.len..e));
+        assert!(dst.is_some(), "the Kani writer's buffer is full");
+        if let (Some(dst), Some(e)) = (dst, end) {
+            dst.copy_from_slice(src);
+            self.len = e;
+        }
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+            .get(..self.len)
+            .map(<[u8]>::to_vec)
+            .unwrap_or_default()
+    }
+}
+
+/// Builds a message's bytes.
+#[derive(Debug)]
+pub struct Writer {
+    #[cfg(not(kani))]
+    buf: Vec<u8>,
+    #[cfg(kani)]
+    buf: FixedBuf,
+}
+
+impl Default for Writer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(not(kani))]
 impl Writer {
     /// An empty writer.
     pub const fn new() -> Self {
@@ -88,6 +157,27 @@ impl Writer {
     /// The bytes written.
     pub fn into_bytes(self) -> Vec<u8> {
         self.buf
+    }
+}
+
+/// Under Kani: the same API, on the fixed buffer (see the module docs).
+#[cfg(kani)]
+impl Writer {
+    /// An empty writer.
+    pub const fn new() -> Self {
+        Self {
+            buf: FixedBuf::new(),
+        }
+    }
+
+    /// Appends raw bytes.
+    pub fn put(&mut self, bytes: &[u8]) {
+        self.buf.put(bytes);
+    }
+
+    /// The bytes written.
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.buf.into_bytes()
     }
 }
 
@@ -350,6 +440,51 @@ pub fn put_count(w: &mut Writer, n: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Kani writer's buffer appends exactly as a `Vec` does: random
+    /// puts, empty ones included, up to the capacity, give the same bytes.
+    #[test]
+    fn the_kani_buffer_appends_as_a_vec() {
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let mut next = |n: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state.checked_rem(n).unwrap_or(0)
+        };
+        for _ in 0..20_000 {
+            let mut model = FixedBuf::new();
+            let mut real = Vec::new();
+            loop {
+                let room = KANI_WRITER_CAPACITY.saturating_sub(real.len());
+                let room = u64::try_from(room).unwrap_or(0);
+                // Empty puts about one time in eight; sometimes all the room.
+                let n = match next(8) {
+                    0 => 0,
+                    1 => room,
+                    _ => next(room.min(9).saturating_add(1)),
+                };
+                let n = usize::try_from(n).unwrap_or(0);
+                let src: Vec<u8> = (0..n)
+                    .map(|_| u8::try_from(next(256)).unwrap_or(0))
+                    .collect();
+                model.put(&src);
+                real.extend_from_slice(&src);
+                if real.len() == KANI_WRITER_CAPACITY || next(16) == 0 {
+                    break;
+                }
+            }
+            assert_eq!(model.into_bytes(), real);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "the Kani writer's buffer is full")]
+    fn the_kani_buffer_refuses_a_put_past_its_capacity() {
+        let mut model = FixedBuf::new();
+        model.put(&[0; KANI_WRITER_CAPACITY]);
+        model.put(&[1]);
+    }
 
     #[test]
     fn primitives_round_trip_and_reject_bad_bytes() {

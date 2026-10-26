@@ -92,10 +92,12 @@ jobs:
   # IPC crates, through tools/kani.sh, which also fails on a cover no
   # input reaches. Kani 0.68.0 is pinned and its bundle checked against
   # a SHA-256 (tools/ci-install-kani.sh). Measured on hueyj: 28 harnesses
-  # in 8.7 min, peak 4.1 GB on one harness (the runner has 16 GB).
+  # in 8.7 min, peak 4.1 GB on one harness (the runner has 16 GB). With
+  # hg-os-types (130 of its harnesses took 50 min on hueyj, peak 6.9 GiB)
+  # and hg-launch-wire (7, about 5 min) the job needs longer.
   kani:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
         with:
