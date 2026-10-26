@@ -121,9 +121,56 @@ Each miss was taken apart by measurement on the machine that showed it, under ex
 - **The fresh-directory runs (E-R12's cold fallback) are still over: 74.7 ms.** With a fresh copy, `CreateProcessAsUserW` alone takes **70.3 ms** (1.7 ms warm); every other step is as warm. A Defender on-demand scan of the three copies first (52–94 ms per run) changes nothing (69.0 ms). One plain execution of each new file first, unsandboxed (it exits at argument parsing), brings the sandboxed launch to **6.74 ms** (`CreateProcess` 3.18 ms). So the 69 ms is Windows' first execution of a newly written executable, paid once per file, whatever launches it. FP-27's cold case is "after reboot"; the fallback measures a new file's first execution, which an installed browser pays at its first run after install or update. Whether a reboot brings any of it back needs a reboot on rig253, which this session did not do. **Stopped here: a method question for the owner, not a target change.**
 
 **Also found.**
-- **Windows profiles leak when a broker exits.** On rig253, every `measure-spawn`, `hold` and `round-trip` run left its children's profiles registered: about 166 `izcal.izk1.*`/`izcal.izk4.*` from G's and today's base runs are still there. The launcher's `Drop`, which unregisters them (shown by `each_launch_takes_a_fresh_profile_made_ahead`), evidently does not run when the tool ends; the cause is not measured. With the profiles registered ahead, each broker also leaves its two spares. This session's 514 leftovers (`izcal.<pid>.<n>`, `izcal.pre.*`, `izcal.measure.*`) were unregistered; others' were left.
+- **Windows profiles leak when a broker exits** (since found and fixed; see "Follow-up: Windows AppContainer profiles" below). On rig253, every `measure-spawn`, `hold` and `round-trip` run left its children's profiles registered: about 166 `izcal.izk1.*`/`izcal.izk4.*` from G's and today's base runs are still there. The launcher's `Drop`, which unregisters them (shown by `each_launch_takes_a_fresh_profile_made_ahead`), evidently does not run when the tool ends; the cause is not measured. With the profiles registered ahead, each broker also leaves its two spares. This session's 514 leftovers (`izcal.<pid>.<n>`, `izcal.pre.*`, `izcal.measure.*`) were unregistered; others' were left.
 - **A Windows test fails at `709ff37` too:** `ipc::windows::tests::a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy` (`kept` 16, expected 8), unchanged by these commits.
 - **Evidence notes.** `rig check` on rig253 intermittently reported "No route to host" while ssh worked; every run kept here followed an OK line (retried 12 s apart). The first phase pass (`phases-console-unchecked.tsv`) followed a failed check and is kept for its shape only. About 6 s of compiling on rig253 overlapped the Windows memory run; an idle child's commit and context switches do not depend on it, but it is recorded.
+
+## Follow-up: Windows AppContainer profiles leaked when a broker ended
+
+**Cause, measured.** Not drop order, not process exit, and no static launcher: a **reference cycle**. The browser's `Inner` holds each child's serving; the serving's handlers (`HostSide`, `on_end`) hold `Arc<Inner>`; `Running` had no `Drop`. In an instrumented build (macOS and rig253), `Inner` had 7 strong references when `Running` was dropped (`Running`, two handlers per child, two pending ready deadlines) and none was ever released, so neither `Inner` nor the launcher was dropped, even within one process: a single `measure-spawn 21` left `izcal.<pid>.1` to `.83`. Taking the children out of the browser at that point brought `Inner` to 3, then to 0 once the deadlines fired, and the launcher dropped with the substrate. `hg-browser-main` itself never ends normally: it parks until it is ended, and a crash runs no `Drop`.
+
+**Fixes.**
+- `9bbddc8`, `acc86c2` (browser): an `Owner` token shared by `Running`'s clones ends the browser when the last one goes. It marks the state closed (nothing more is launched, including a launch already in flight, whose child is killed) and takes both children, which closes their channels and releases the handlers. The deadline and relaunch tasks hold `Weak<Inner>`. DST: behaviour during a run is unchanged (steps, virtual time and crashes equal HEAD's; with the token disabled every trace equals HEAD's). Traces now include the children's channels closing at shutdown, so their hashes change; they stay identical across runs and across the three OS models, and every scenario's exit status is unchanged.
+- `731d5db`, `553dc69` (Windows launcher): profiles are named `izcal.l.<broker pid>.<broker creation time>.<n>`. At start, before registering its spares, a launcher unregisters a profile of this scheme only if no running process has that pid **and** creation time (gone, reused or exited). A dead broker's children ended with it through their kill-on-close jobs. Live brokers' profiles and every other name are never touched. Closing the spares joins the refill thread, whose handle is stored under the lock `close` takes.
+
+**Tests** (rig253): `the_sweep_removes_only_profiles_of_brokers_that_are_gone` (a reused pid and a gone pid removed; this process's, another scheme's and a malformed name kept); `a_broker_that_ends_leaves_no_profile`, which fails on HEAD's `hg-browser` with all four of the run's profiles left and passes now. 20 of 20 round trips leave no profile; the launch and tool tests pass 5 of 5. One batch of five runs, right after the negative control, left four profiles each time; three later batches (15 runs) and the instrumented runs (every unregister `S_OK`) did not reproduce it. Its cause is not known.
+
+**G's leftovers removed.** Listed first (`windows/old-scheme-profiles-deleted.txt`, `harness/g-old-profiles-windows.ps1`): 160 profiles of the launcher's first scheme, `izcal.izk<k>.<pid>.<n>`, each deleted only because no process holds its pid now (the script would also accept a pid whose holder started after the profile's folder was created). All 160 unregistered. Kept, as another session's or another scheme's: 23 to 25 `izcal.d5test.*` (the D6 owner's tests were creating and removing them during the cleanup), 3 `izcal.d6probe.*`, `izcal.fp-m0.empty`. This session's own 514 experiment leftovers were removed earlier.
+
+## Follow-up: six threads where the spec says two
+
+**Every thread in an idle renderer child** (macOS by `sample` and per-region `vmmap`; Windows by `GetThreadDescription`; Linux from the code only, as hueyj was not used):
+
+| Thread | Created by | Why it exists | Stack, reserved / touched (macOS) | Does the idle renderer need it? |
+|---|---|---|---|---|
+| main | the OS; `main` runs `os_child_substrate` and the renderer, then parks in `Running::wait` | process entry | 8 MiB / 32 KiB | exists anyway; idle after start-up, so it could run the IO loop or a worker instead of parking |
+| `hg-worker-0`, `hg-worker-1` | `OsExecutor::new`, `Threads.general` (2 in `hg-renderer-main` and `hg-net-main`) | run sequences: the renderer's `control` sequence, where IPC deliveries are handled | 2 MiB / 16 KiB each | one, to run the sequence; the second only adds parallelism, which no M1 child uses |
+| `hg-may-block-0` | `OsExecutor::new`, `max(may_block, 1)` | `MayBlock` sequences | 2 MiB / 16 KiB | no: nothing in a child posts `MayBlock` work (ast-grep finds `MayBlock` only in the executor and its test) |
+| `hg-timers` | `OsExecutor::new` | delayed posts | 2 MiB / 16 KiB | not at M1: no delayed post in the child path (the ready deadline is the broker's); the broker relies on it for that deadline |
+| `hg-ipc-io` | each OS transport's start (`ipc/{linux,macos,windows}.rs`) | the D3/D4/D5 IO thread: receives on the epoll set, port set or completion port with no timeout (0 idle wakeups); acceptance and identity checks run on receipt | 2 MiB / 16 KiB | yes: it carries the D3/D4/D5 security rules |
+
+Every one comes through the substrate (CS-AS-3) with Rust's default stack size; none sets one. On Windows each child also starts with 3 unnamed OS threads (the loader's pool, FP-M0's "three the process did not create itself"); they exit on their own within 45 s (9 threads at 6 s, 6 at 45 s; `windows/threads-at-{6s,45s}.txt`). Broker-only threads, never in a child: `hg-ipc-own` and one `hg-ipc-child` per child (D5 M8, "relay work on its own broker thread"), `hg-ipc-copy` (D6), `hg-profile-spares` (94fe3f7).
+
+**Against the spec and the plan.** FP 6.3 and FP-32: "An idle empty site process has two threads", the script thread (256 KiB reserved) and the control thread (128 KiB); the worker pool is "created on the first parallel phase … each worker exits after 10 s† idle"; on Windows, stacks are a reservation with a small initial commit. CS-AS-3: the substrate owns every thread, and "thread count after startup equals the substrate's" (`OsExecutor::thread_count` exists for that check). The plan gives each transport one IO thread (D3, D4, D5) and gives the broker its relay threads (D5 M8); it sets no executor pool for children, and the executor's fixed pool (2 general, at least 1 may-block, 1 timer) comes from the mains' `Threads`, not from a rule. Measured Windows commit (1,036 KiB for 6 threads) shows the stacks are reserved, not committed.
+
+**What the idle renderer skeleton needs: two threads.** `hg-ipc-io` (FP's control thread, carrying D3/D4/D5's rules) and one thread to run its sequences (FP's script thread, which can be `main`). No thread is removed in this change.
+
+**What removing each would save, measured** (one general worker fewer, `Threads.general` 2 → 1, 3 runs each with G's harness; `{mac,windows}/threads-{6,5}-memory.tsv`):
+
+| Per thread | macOS | Windows |
+|---|---|---|
+| Charged memory | 16 KiB of stack, measured exactly; renderer median 4,192 → 4,144 KiB, within run-to-run noise (4,080–4,160) | about 40 KiB of commit: renderer median 1,036 → 1,000 KiB, network 1,036 → 984 |
+| Mappings | **4 map entries** (stack, its guard, Rust's alternate signal stack, its guard): 83 → 79 in every run | 1 allocation (45 → 44 in two of three runs) |
+
+| Thread | What removing it takes | Saves (macOS / Windows) |
+|---|---|---|
+| `hg-worker-1` | `Threads.general: 1` in the two child mains (configuration) | 16 KiB, 4 entries / ~40 KiB, 1 allocation |
+| `hg-may-block-0` | the executor creating may-block workers on the first `MayBlock` sequence | same |
+| `hg-timers` | the executor serving delayed posts from a timed wait in a worker, or creating the timer thread on the first delayed post (the broker keeps its use) | same |
+| `main` parked | `main` running the worker loop (or the IO loop) instead of parking; the thread itself stays | the work of one thread, so one of the others goes: same |
+| `hg-ipc-io` | keep: D3/D4/D5's receive-side rules and zero idle wakeups live there | — |
+
+Going from 6 threads to FP-32's two would save about 64 KiB and 16 map entries on macOS (to about 4,112 KiB and 67 entries, still over 4,096 KiB and 64; see misses 1 and 2), and about 160 KiB of commit and 4 allocations on Windows.
 
 ## Evidence: bookings and checks
 

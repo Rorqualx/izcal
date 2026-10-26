@@ -1,0 +1,7 @@
+run	kind	pid	settled_kb	peak_kb	wakeups_per_s	pkg_idle_per_s	regions
+1	renderer	31063	4080	4080	0.000	0.000	79
+1	net	31060	4080	4080	0.000	0.000	79
+2	renderer	31681	4144	4144	0.000	0.000	79
+2	net	31680	4192	4192	0.000	0.000	82
+3	renderer	32397	4160	4160	0.000	0.000	79
+3	net	32396	4128	4128	0.000	0.000	79

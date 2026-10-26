@@ -1,0 +1,7 @@
+run	kind	pid	settled_kb	peak_kb	switches_per_s	threads	allocations	regions
+1	renderer	28408	1036	1036	0.000	5	45	147
+1	net	21084	1028	1028	0.000	5	45	147
+2	renderer	33660	1000	1000	0.000	5	44	142
+2	net	19436	984	984	0.000	5	44	140
+3	renderer	24104	992	992	0.000	5	44	140
+3	net	31520	984	984	0.000	5	44	140

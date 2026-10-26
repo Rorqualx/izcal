@@ -1,0 +1,29 @@
+Untagged                    100688000-10068c000    [   16K     0K     0K     0K] ---/rwx SM=NUL  
+Untagged                    1006ac000-1006b0000    [   16K     0K     0K     0K] ---/rwx SM=NUL  
+Untagged                    1006d0000-1006d4000    [   16K     0K     0K     0K] ---/rwx SM=NUL  
+Untagged                    1006f4000-1006f8000    [   16K     0K     0K     0K] ---/rwx SM=NUL  
+Untagged                    100718000-10071c000    [   16K     0K     0K     0K] ---/rwx SM=NUL  
+Untagged                    10073c000-100740000    [   16K     0K     0K     0K] ---/rwx SM=NUL  
+Stack Guard                 16b830000-16f034000    [ 56.0M     0K     0K     0K] ---/rwx SM=NUL  
+Untagged                    16f034000-16f038000    [   16K     0K     0K     0K] ---/rwx SM=NUL  
+Stack Guard                 16f830000-16f834000    [   16K     0K     0K     0K] ---/rwx SM=NUL          stack guard for thread 1
+Stack Guard                 16fa3c000-16fa40000    [   16K     0K     0K     0K] ---/rwx SM=NUL          stack guard for thread 2
+Stack Guard                 16fc48000-16fc4c000    [   16K     0K     0K     0K] ---/rwx SM=NUL          stack guard for thread 3
+Stack Guard                 16fe54000-16fe58000    [   16K     0K     0K     0K] ---/rwx SM=NUL          stack guard for thread 4
+Stack Guard                 170060000-170064000    [   16K     0K     0K     0K] ---/rwx SM=NUL          stack guard for thread 5
+Untagged (reserved)         10068c000-1006ac000    [  128K     0K     0K     0K] rw-/rwx SM=NUL          reserved VM address space (unallocated)
+Untagged (reserved)         1006b0000-1006d0000    [  128K     0K     0K     0K] rw-/rwx SM=NUL          reserved VM address space (unallocated)
+Untagged (reserved)         1006d4000-1006f4000    [  128K     0K     0K     0K] rw-/rwx SM=NUL          reserved VM address space (unallocated)
+Untagged (reserved)         1006f8000-100718000    [  128K     0K     0K     0K] rw-/rwx SM=NUL          reserved VM address space (unallocated)
+Untagged (reserved)         10071c000-10073c000    [  128K     0K     0K     0K] rw-/rwx SM=NUL          reserved VM address space (unallocated)
+Untagged (reserved)         100740000-100760000    [  128K     0K     0K     0K] rw-/rwx SM=NUL          reserved VM address space (unallocated)
+Stack                       16f038000-16f830000    [ 8160K    32K    32K     0K] rw-/rwx SM=COW          thread 0
+Stack                       16f834000-16fa3c000    [ 2080K    16K    16K     0K] rw-/rwx SM=COW          thread 1
+Stack                       16fa40000-16fc48000    [ 2080K    16K    16K     0K] rw-/rwx SM=COW          thread 2
+Stack                       16fc4c000-16fe54000    [ 2080K    16K    16K     0K] rw-/rwx SM=COW          thread 3
+Stack                       16fe58000-170060000    [ 2080K    16K    16K     0K] rw-/rwx SM=COW          thread 4
+Stack                       170064000-17026c000    [ 2080K    16K    16K     0K] rw-/rwx SM=COW          thread 5
+Stack                             18.1M     112K     112K       0K       0K       0K       0K        6 
+Stack Guard                       56.1M       0K       0K       0K       0K       0K       0K        6 
+Untagged                           112K       0K       0K       0K       0K       0K       0K        7 
+Untagged (reserved)                768K       0K       0K       0K       0K       0K       0K        6         reserved VM address space (unallocated)

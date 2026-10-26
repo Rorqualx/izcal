@@ -1,0 +1,7 @@
+# sample 36634 1 (hg-renderer-main under hg-launch-tool hold), macOS 27.0.1; thread lines only
+890 Thread_107567672   DispatchQueue_1: com.apple.main-thread  (serial)
+890 Thread_107567673: hg-worker-0
+890 Thread_107567674: hg-worker-1
+890 Thread_107567675: hg-may-block-0
+890 Thread_107567676: hg-timers
+890 Thread_107567677: hg-ipc-io
