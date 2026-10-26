@@ -16,8 +16,25 @@
 //!   first renderer starts and ends; the relaunch reports another
 //!   `BuildId`. Checked: the browser enters restart-required on that one
 //!   mismatch and launches nothing after it (DU-3: 0 retries).
+//! - `faults`: the round trip under every phase E fault (E-R8, E-R9 1):
+//!   IPC delay, reorder across channels and drop-as-Closed; spawner
+//!   death, refused launches and children that miss the `ready`
+//!   deadline; and crashes. Checked: the run ends; no answer is ever
+//!   misrouted, duplicated or out of order; and unless the browser itself
+//!   crashed or spent a kind's budget, a renderer completes every round.
+//! - `relaunch`: the renderer is crashed at a seeded point mid-
+//!   conversation (E-R9 1, relaunch after a crash). Checked: the browser
+//!   relaunches it and the new renderer completes every round; answers
+//!   for the dead renderer's asks never reach the new one.
 //!
-//! Usage: `dst-sim --seed N [--crash-ppm N] [--scenario roundtrip|du3]`.
+//! Each fault class can also be set alone: `--delay-ppm`, `--reorder-ppm`,
+//! `--drop-ppm`, `--spawner-death-ppm`, `--launch-fail-ppm` and
+//! `--stall-ppm`. `--os linux|macos|windows` picks the OS whose behaviour
+//! the simulator models; no scenario here depends on it, so every OS
+//! model gives the same trace (OI-M0: hashes compared across OSes).
+//!
+//! Usage: `dst-sim --seed N [--crash-ppm N] [--scenario
+//! roundtrip|du3|flood|netcrash|faults|relaunch] [--os OS] [fault rates]`.
 //! The last line is `hg_substrate_sim::Summary::report_line`, as
 //! `hg-dst` expects; a broken invariant panics, which `hg-dst` records.
 
@@ -36,7 +53,7 @@ use hg_renderer::RendererConfig;
 use hg_substrate::launch::ChildKind;
 use hg_substrate::{Memory, Substrate};
 use hg_substrate_os::memory::OsMemory;
-use hg_substrate_sim::{ChildEntry, ChildTable, FaultPlan, Limits, SimConfig, World};
+use hg_substrate_sim::{ChildEntry, ChildTable, FaultPlan, Limits, SimConfig, SimOs, World};
 use hg_types::Instant;
 
 /// Round trips the renderer makes.
@@ -59,34 +76,87 @@ fn backing() -> Arc<dyn Fn() -> Arc<dyn Memory> + Send + Sync> {
 
 struct Args {
     seed: u64,
-    crash_ppm: u32,
     du3: bool,
     flood: bool,
     netcrash: bool,
+    faults: bool,
+    relaunch: bool,
+    os: SimOs,
+    plan: FaultPlan,
 }
+
+/// The `faults` scenario's rates: every phase E class at once.
+const FAULTS: FaultPlan = FaultPlan {
+    crash_per_million_steps: 1_000,
+    ipc_delay_per_million: 200_000,
+    ipc_reorder_per_million: 200_000,
+    ipc_drop_per_million: 2_000,
+    spawner_death_per_million: 100_000,
+    launch_fail_per_million: 100_000,
+    ready_stall_per_million: 50_000,
+    ..FaultPlan::NONE
+};
 
 fn parse() -> Option<Args> {
     let mut a = std::env::args().skip(1);
     let mut args = Args {
         seed: 0,
-        crash_ppm: 0,
         du3: false,
         flood: false,
         netcrash: false,
+        faults: false,
+        relaunch: false,
+        os: SimOs::Linux,
+        plan: FaultPlan::NONE,
     };
     let mut seed = None;
+    // Rates given on the command line, applied after the scenario's.
+    let mut rates: Vec<(String, u32)> = Vec::new();
     while let Some(k) = a.next() {
         match k.as_str() {
             "--seed" => seed = Some(a.next()?.parse().ok()?),
-            "--crash-ppm" => args.crash_ppm = a.next()?.parse().ok()?,
             "--scenario" => match a.next()?.as_str() {
                 "roundtrip" => args.du3 = false,
                 "du3" => args.du3 = true,
                 "flood" => args.flood = true,
                 "netcrash" => args.netcrash = true,
+                "faults" => args.faults = true,
+                "relaunch" => args.relaunch = true,
                 _ => return None,
             },
+            "--os" => {
+                args.os = match a.next()?.as_str() {
+                    "linux" => SimOs::Linux,
+                    "macos" => SimOs::MacOs,
+                    "windows" => SimOs::Windows,
+                    _ => return None,
+                }
+            }
+            "--crash-ppm"
+            | "--delay-ppm"
+            | "--reorder-ppm"
+            | "--drop-ppm"
+            | "--spawner-death-ppm"
+            | "--launch-fail-ppm"
+            | "--stall-ppm" => {
+                rates.push((k, a.next()?.parse().ok()?));
+            }
             _ => return None,
+        }
+    }
+    if args.faults {
+        args.plan = FAULTS;
+    }
+    for (k, v) in rates {
+        let p = &mut args.plan;
+        match k.as_str() {
+            "--crash-ppm" => p.crash_per_million_steps = v,
+            "--delay-ppm" => p.ipc_delay_per_million = v,
+            "--reorder-ppm" => p.ipc_reorder_per_million = v,
+            "--drop-ppm" => p.ipc_drop_per_million = v,
+            "--spawner-death-ppm" => p.spawner_death_per_million = v,
+            "--launch-fail-ppm" => p.launch_fail_per_million = v,
+            _ => p.ready_stall_per_million = v,
         }
     }
     args.seed = seed?;
@@ -220,15 +290,13 @@ fn flood_asks(s: &Substrate, host: Arc<Remote<ProcessHost>>, n: u64) {
 fn main() -> ExitCode {
     let Some(args) = parse() else {
         eprintln!(
-            "usage: dst-sim --seed N [--crash-ppm N] [--scenario roundtrip|du3|flood|netcrash]"
+            "usage: dst-sim --seed N [--scenario roundtrip|du3|flood|netcrash|faults|relaunch] [--os linux|macos|windows] [--crash-ppm N] [--delay-ppm N] [--reorder-ppm N] [--drop-ppm N] [--spawner-death-ppm N] [--launch-fail-ppm N] [--stall-ppm N]"
         );
         return ExitCode::from(2);
     };
     let mut config = SimConfig::new(args.seed);
-    config.faults = FaultPlan {
-        crash_per_million_steps: args.crash_ppm,
-        ..FaultPlan::NONE
-    };
+    config.faults = args.plan;
+    config.region_os = args.os;
     let world = World::new(config);
     let keep: Keep = Arc::default();
     let renderer = Arc::new(hg_renderer::Progress::default());
@@ -279,7 +347,28 @@ fn main() -> ExitCode {
         });
         net_crashed = world.crash(hg_substrate_sim::ProcessId(1));
     }
-    world.run(limits);
+    let mut renderer_crashed = false;
+    let mut completed_before = 0;
+    if args.relaunch {
+        // Run until the renderer has some answers, then end it (the first
+        // renderer is process 2); the browser must relaunch it.
+        let want = 1 + args.seed % (ROUNDS - 1);
+        while renderer.answered.load(Ordering::SeqCst) < want {
+            if world.step() == hg_substrate_sim::Step::Idle {
+                break;
+            }
+        }
+        // A seeded few steps more, so the crash lands at varied points of
+        // a round (an ask or a work in flight, or none).
+        world.run(Limits {
+            max_steps: world.summary().steps + args.seed % 7,
+            ..limits
+        });
+        completed_before = renderer.completed.load(Ordering::SeqCst);
+        renderer_crashed = world.crash(hg_substrate_sim::ProcessId(2));
+    }
+    let end = world.run(limits);
+    let browser_alive = world.is_alive(hg_substrate_sim::ProcessId(0));
     let halted = running
         .lock()
         .unwrap()
@@ -291,6 +380,10 @@ fn main() -> ExitCode {
     let returned = browser.returned.load(Ordering::SeqCst);
     let mismatches = browser.mismatches.load(Ordering::SeqCst);
     let answered = renderer.answered.load(Ordering::SeqCst);
+    let completed = renderer.completed.load(Ordering::SeqCst);
+    let wrong = renderer.refused.load(Ordering::SeqCst);
+    let gave_up = browser.gave_up.load(Ordering::SeqCst);
+    let missed = browser.missed_deadlines.load(Ordering::SeqCst);
     let refused = browser.refused_asks.load(Ordering::SeqCst);
     let max_pending = browser.max_pending.load(Ordering::SeqCst);
     // The browser and its children hold channels into the world: end them
@@ -298,16 +391,27 @@ fn main() -> ExitCode {
     running.lock().unwrap().take();
     keep.lock().unwrap().clear();
     eprintln!(
-        "dst-sim: launches={launches} relaunches={relaunches} routed={routed} returned={returned} answered={answered} mismatches={mismatches} halted={halted}"
+        "dst-sim: launches={launches} relaunches={relaunches} routed={routed} returned={returned} answered={answered} completed={completed} refused={wrong} missed={missed} gave_up={gave_up} mismatches={mismatches} halted={halted} end={end:?}"
     );
+    assert_eq!(end, hg_substrate_sim::RunEnd::Idle, "the run ends");
     assert!(relaunches <= 2 * u64::from(BUDGET), "relaunch budget");
     assert!(returned <= routed, "an answer without an ask");
+    assert_eq!(wrong, 0, "an answer misrouted, duplicated or out of order");
     if args.flood {
         // The 65th ask ends the renderer's channel; the queue never grew
         // past the cap, and a violating renderer is not relaunched.
         assert_eq!(refused, 1, "flood: one refusal ends the channel");
         assert_eq!(max_pending, hg_browser::MAX_PENDING as u64, "flood: capped");
-        assert_eq!(relaunches, 0, "flood: no relaunch after a handler error");
+        // The silent network never reports ready: each launch of it
+        // misses the deadline, is killed and launched again until its
+        // budget is spent (E-R3). The violating renderer is never
+        // relaunched, so every relaunch is the network's.
+        assert_eq!(
+            relaunches + gave_up,
+            missed,
+            "flood: no relaunch after a handler error"
+        );
+        assert_eq!(gave_up, 1, "flood: the network's budget is spent");
     } else if args.netcrash {
         assert_eq!(
             answered, ROUNDS,
@@ -316,14 +420,29 @@ fn main() -> ExitCode {
         if net_crashed {
             assert!(relaunches >= 1, "netcrash: the network was relaunched");
         }
+    } else if args.faults {
+        if browser_alive && gave_up == 0 {
+            assert!(completed >= 1, "faults: a renderer completes every round");
+        }
+    } else if args.relaunch {
+        assert!(renderer_crashed, "relaunch: the renderer was running");
+        assert!(relaunches >= 1, "relaunch: the renderer was relaunched");
+        assert_eq!(
+            completed,
+            completed_before + 1,
+            "relaunch: the new renderer completes"
+        );
     } else if args.du3 {
         assert_eq!(mismatches, 1, "DU-3: one mismatch");
         assert!(halted, "DU-3: restart-required");
         // network + first renderer + the replaced renderer; nothing after.
         assert_eq!(launches, 3, "DU-3: no launch after the mismatch");
+        // The mismatched child was told to exit, not missed: its deadline
+        // ends it without counting a missed deadline.
+        assert_eq!(missed, 0, "DU-3: no missed deadline");
     } else {
         assert!(!halted && mismatches == 0);
-        if args.crash_ppm == 0 {
+        if args.plan == FaultPlan::NONE {
             assert_eq!(answered, ROUNDS, "every round completes without faults");
         }
     }
