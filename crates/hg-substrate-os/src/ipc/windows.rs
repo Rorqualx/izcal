@@ -932,6 +932,12 @@ impl Inner {
             for c in &mut cands {
                 c.pipe = Self::pipe_key_of(b, &c.facts);
                 c.chan = c.pipe.map(|k| b.ledger.canonical(k));
+                // The moving end's pipe stays an alias of its channel
+                // until the relay is decided: the switch below makes it a
+                // former pipe, and the pulled end is still on it.
+                if let (Some(chan), Some(pipe)) = (c.chan, c.pipe) {
+                    b.ledger.keep(chan, pipe);
+                }
             }
             let chans: BTreeSet<PipeKey> = cands.iter().filter_map(|c| c.chan).collect();
             (carrier, chans)
@@ -1004,6 +1010,9 @@ impl Inner {
         }
         drop(st);
         drop(fresh);
+        // The rebinds are queued on the holders' links: the IO thread
+        // writes them, and must be woken to.
+        self.wake();
         // 3. Wait for the Rebounds, then pull.
         let due = StdInstant::now()
             .checked_add(REBIND_DEADLINE)
@@ -1102,6 +1111,9 @@ impl Inner {
         for c in &mut cands {
             if let Some(k) = c.let_go.take() {
                 b.ledger.let_go(k);
+            }
+            if let (Some(_), Some(pipe)) = (c.chan, c.pipe) {
+                b.ledger.let_go(pipe);
             }
         }
         b.sweep();
@@ -2550,6 +2562,7 @@ impl Inner {
         let ids: Vec<u64> = st.ends.keys().copied().collect();
         let is_broker = st.broker.is_some();
         let mut lost_links: Vec<Proc> = Vec::new();
+        let mut ended: Vec<u64> = Vec::new();
         for id in ids {
             let Some(end) = st.ends.get_mut(&id) else {
                 continue;
@@ -2566,9 +2579,6 @@ impl Inner {
                 continue;
             }
             let mut credit = None;
-            // A receiver reads its oldest drain, if it has one, before its
-            // current pipe (W3).
-            let mut read_on: Option<Arc<OwnedHandle>> = None;
             let (read, write): (Option<usize>, Option<Vec<u8>>) = match &mut end.role {
                 Role::Sender {
                     outbox,
@@ -2593,10 +2603,8 @@ impl Inner {
                     flow,
                     listener: Some(l),
                     in_transit: false,
-                    drains,
                     ..
                 } => {
-                    read_on = drains.front().cloned();
                     let read =
                         (!l.ended && !flow.paused() && l.taking.is_none()).then_some(MAX_PIPE_DATA);
                     let write = if end.writing || !l.credit.is_pending() {
@@ -2616,8 +2624,33 @@ impl Inner {
             if let Some(cap) = read
                 && !end.reading
             {
-                let on = read_on.as_ref().unwrap_or(&end.h);
-                end.reading = sys::start_read(on, cap, id).is_ok();
+                // A receiver reads its oldest drain, if it has one, before
+                // its current pipe (W3). A read on a pipe whose writer has
+                // closed with nothing left in it fails at once (Win32 error
+                // 109, `ERROR_BROKEN_PIPE`) instead of completing with it:
+                // on a drain that is its end, and the next pipe is read;
+                // on the current pipe it is the channel's end, as the same
+                // error from a completion is.
+                loop {
+                    let drain = match &end.role {
+                        Role::Receiver { drains, .. } => drains.front().cloned(),
+                        _ => None,
+                    };
+                    let on = drain.as_ref().unwrap_or(&end.h);
+                    match (sys::start_read(on, cap, id), &mut end.role) {
+                        (Ok(()), _) => end.reading = true,
+                        (Err(sys::ERROR_BROKEN_PIPE), Role::Receiver { drains, .. })
+                            if drain.is_some() =>
+                        {
+                            later.push(Box::new(drains.pop_front()));
+                            continue;
+                        }
+                        (Err(sys::ERROR_BROKEN_PIPE), Role::Receiver { .. }) => ended.push(id),
+                        // Anything else is tried again on the next pass.
+                        (Err(_), _) => {}
+                    }
+                    break;
+                }
             }
             if let Some(msg) = write {
                 match sys::start_write(&end.h, msg, id) {
@@ -2641,6 +2674,9 @@ impl Inner {
                     },
                 }
             }
+        }
+        for id in ended {
+            self.end_listener(st, id, Item::Closed);
         }
         if st.broker.is_some() {
             for p in lost_links {

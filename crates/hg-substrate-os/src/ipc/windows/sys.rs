@@ -78,6 +78,10 @@ const PIPE_BUFFER: u32 = 128 * 1024;
 /// `ERROR_MORE_DATA`: a message longer than the read buffer.
 pub(crate) const ERROR_MORE_DATA: u32 = 234;
 
+/// `ERROR_BROKEN_PIPE`: the pipe's other end is closed, and nothing is
+/// left to read.
+pub(crate) const ERROR_BROKEN_PIPE: u32 = 109;
+
 /// `ERROR_OPERATION_ABORTED`: the operation was cancelled.
 pub(crate) const ERROR_OPERATION_ABORTED: u32 = 995;
 

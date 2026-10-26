@@ -112,6 +112,30 @@ fn messages_arrive_in_order_with_their_handles() {
 }
 
 #[test]
+fn a_sender_moved_twice_still_delivers() {
+    // The second move starts on a pipe the broker made at the first: that
+    // pipe must still name the channel when the move is decided (W3).
+    let r = rig();
+    let (tx, rx) = r.ipc.channel(16, Transfer::Free).unwrap();
+    let (out, _l) = r.listen(rx);
+    let (ctx, crx) = r.ipc.channel(16, Transfer::Free).unwrap();
+    let (cout, _cl) = r.listen(crx);
+    let mut tx = tx;
+    for hop in 0u8..2 {
+        r.ipc.send(&tx, vec![hop], Vec::new()).unwrap();
+        r.ipc
+            .send(&ctx, b"hop".to_vec(), vec![tx.into_handle()])
+            .unwrap();
+        let (_, mut hs) = expect_msg(&cout);
+        tx = ChannelSender::from_handle(hs.remove(0)).unwrap();
+    }
+    r.ipc.send(&tx, vec![2], Vec::new()).unwrap();
+    for i in 0u8..3 {
+        assert_eq!(expect_msg(&out).0, vec![i]);
+    }
+}
+
+#[test]
 fn full_is_exact_and_credits_free_slots() {
     let r = rig();
     let (tx, rx) = r.ipc.channel(4, Transfer::Free).unwrap();
@@ -145,6 +169,18 @@ fn a_dropped_sender_closes_after_its_messages() {
     r.ipc.send(&tx, b"last".to_vec(), Vec::new()).unwrap();
     drop(tx);
     assert_eq!(expect_msg(&out).0, b"last");
+    assert!(matches!(next(&out), Ev::Closed));
+}
+
+#[test]
+fn a_receiver_listened_to_after_its_sender_closed_ends_in_closed() {
+    // The read on a pipe whose writer is gone fails as it starts (109),
+    // not through a completion; the listener must still end.
+    let r = rig();
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    drop(tx);
+    std::thread::sleep(Duration::from_millis(100));
+    let (out, _l) = r.listen(rx);
     assert!(matches!(next(&out), Ev::Closed));
 }
 
@@ -1081,13 +1117,14 @@ fn a_child_that_will_not_read_its_link_is_dropped() {
 fn a_closed_channel_is_forgotten_by_the_broker() {
     let r = rig();
     let c = launch(&r, "take-and-drop", false);
-    let base = r
+    // The child's launch ends are given too (W3), and stay while it runs.
+    let (base, base_given) = r
         .ipc
         .inner
         .lock()
         .broker
         .as_ref()
-        .map(|b| b.ledger.entry_count())
+        .map(|b| (b.ledger.entry_count(), b.given.len()))
         .unwrap();
     let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
     r.ipc
@@ -1104,7 +1141,7 @@ fn a_closed_channel_is_forgotten_by_the_broker() {
             .lock()
             .broker
             .as_ref()
-            .is_some_and(|b| b.ledger.entry_count() <= base && b.given.is_empty())
+            .is_some_and(|b| b.ledger.entry_count() <= base && b.given.len() <= base_given)
     });
     let (ec, gl) = {
         let st = r.ipc.inner.lock();
@@ -1113,7 +1150,7 @@ fn a_closed_channel_is_forgotten_by_the_broker() {
     };
     assert!(
         forgotten,
-        "the broker kept a closed channel: base={base} entries={ec} given={gl}"
+        "the broker kept a closed channel: base={base}/{base_given} entries={ec} given={gl}"
     );
 }
 
