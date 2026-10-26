@@ -144,6 +144,13 @@ const BROKER: Proc = 0;
 /// child cannot make the broker buffer without bound.
 const MAX_LINK_BACKLOG: usize = 4096;
 
+/// The most relays one child may have in flight on relay threads at once
+/// (M8): the per-child relay quota. A child over it is refused until its
+/// earlier relays finish, so it cannot spawn unbounded threads or pin
+/// the broker's memory, and a child whose classification blocks (a
+/// crafted synchronous pipe, probe W8) stalls only its own relays.
+const MAX_RELAYS_INFLIGHT: usize = 256;
+
 /// One item for a listener.
 enum Item {
     Message(Vec<u8>, Vec<Handle>),
@@ -234,6 +241,9 @@ struct ChildEntry {
     /// created in.
     sid: Option<String>,
     link: u64,
+    /// Relays this child has in flight on relay threads (M8): bounded so
+    /// a child cannot queue unbounded relay work.
+    relays: usize,
 }
 
 /// The broker's state: the ledger, the handles held under tickets, and
@@ -274,6 +284,18 @@ impl Broker {
             }
         }
     }
+}
+
+/// One pulled handle for a relay: the value the child named, the kind it
+/// claims, the handle itself (pulled with close-source, kept on success
+/// and dropped on refusal), and what the kernel says about it. The pull
+/// and the kernel queries run off the IO thread (M8), so this is the
+/// only blocking relay work and it never holds the lock.
+struct Pulled {
+    value: u64,
+    kind: WireKind,
+    handle: Option<OwnedHandle>,
+    raw: sys::RawFacts,
 }
 
 #[derive(Default)]
@@ -522,117 +544,141 @@ impl Inner {
         Some(PipeKey { creator, id })
     }
 
-    fn facts_for(raw: u64, pulled: Option<&OwnedHandle>, b: &Broker) -> Facts {
-        let Some(h) = pulled else {
-            return Facts {
-                raw,
-                pulled: false,
-                is_pipe: false,
-                server_end: false,
-                message: false,
-                max_instances: 0,
-                read_message: false,
-                wait: false,
-                pipe: None,
-                handle_count: 0,
-            };
-        };
-        let f = sys::facts(h);
-        Facts {
-            raw,
-            pulled: true,
-            is_pipe: f.is_pipe,
-            server_end: f.server_end,
-            message: f.message,
-            max_instances: f.max_instances,
-            read_message: f.read_message,
-            wait: f.wait,
-            pipe: Self::key_of(b, &f),
-            handle_count: f.handle_count,
-        }
-    }
-
     // ---- the broker's side of the control protocol --------------------
 
     /// A relay: takes `items` (values in process `from`, or this
     /// process's own handles when `from` is the broker) into a ticket
     /// for a record on `carrier`.
-    fn broker_relay(
+    /// Pulls a relay's carrier and items out of `process` and asks the
+    /// kernel about them, off the lock (M8). The carrier is peeked (no
+    /// close-source) and its copy dropped; the items are taken with
+    /// close-source. A crafted synchronous handle can make the kernel
+    /// queries block here (probe W8); this runs on a relay thread, so
+    /// only that child's relays wait.
+    fn classify_relay(
+        process: &sys::Process,
+        carrier: u64,
+        items: &Items,
+    ) -> (sys::RawFacts, Vec<Pulled>) {
+        let carrier_raw = check_value(carrier)
+            .ok()
+            .and_then(|()| sys::pull(process, carrier, false).ok())
+            .map(|h| sys::facts(&h))
+            .unwrap_or_default();
+        let pulled = items
+            .as_slice()
+            .iter()
+            .map(|i| {
+                let handle = check_value(i.value)
+                    .ok()
+                    .and_then(|()| sys::pull(process, i.value, true).ok());
+                let raw = handle.as_ref().map(sys::facts).unwrap_or_default();
+                Pulled {
+                    value: i.value,
+                    kind: i.kind,
+                    handle,
+                    raw,
+                }
+            })
+            .collect();
+        (carrier_raw, pulled)
+    }
+
+    /// Decides a relay from already-pulled, already-classified handles,
+    /// under the lock (M8): resolves the channel keys, runs
+    /// [`accept`] on each, and on success moves the handles into a
+    /// ticket. Returns the ticket or the refusal, plus any handles to
+    /// drop outside the lock (the pulled copies, kept only on success).
+    fn relay_decide(
         b: &mut Broker,
         from: Proc,
-        carrier: PipeKey,
-        items: Vec<(u64, WireKind, Option<OwnedHandle>)>,
-    ) -> Result<Ticket, Refusal> {
-        let mut pulled = Vec::with_capacity(items.len());
-        let mut first_err = None;
-        // Every value is pulled, even after one fails, so a refused relay
-        // leaves nothing behind in the child (design review, minor).
-        for (raw, kind, own) in items {
-            let h = match own {
-                Some(h) => Some(h),
-                None => match check_value(raw) {
-                    Err(r) => {
-                        first_err.get_or_insert(r);
-                        None
-                    }
-                    Ok(()) => b
-                        .children
-                        .get(&from)
-                        .and_then(|c| sys::pull(&c.process, raw, true).ok()),
-                },
-            };
-            pulled.push((raw, kind, h));
-        }
+        carrier_raw: &sys::RawFacts,
+        pulled: Vec<Pulled>,
+    ) -> (Result<Ticket, Refusal>, Vec<OwnedHandle>) {
+        let mut spare: Vec<OwnedHandle> = Vec::new();
+        let carrier = match Self::key_of(b, carrier_raw) {
+            Some(k) => k,
+            None => {
+                // The carrier is not this relayer's channel: refuse, and
+                // drop every pulled item (it is gone from the child).
+                spare.extend(pulled.into_iter().filter_map(|p| p.handle));
+                return (Err(Refusal::Carrier), spare);
+            }
+        };
         let mut ends = Vec::with_capacity(pulled.len());
         let mut handles = Vec::with_capacity(pulled.len());
-        for (raw, kind, h) in pulled {
-            let facts = Self::facts_for(raw, h.as_ref(), b);
+        let mut first_err = None;
+        for p in pulled {
+            let facts = Facts {
+                raw: p.value,
+                pulled: p.handle.is_some(),
+                is_pipe: p.raw.is_pipe,
+                server_end: p.raw.server_end,
+                message: p.raw.message,
+                max_instances: p.raw.max_instances,
+                read_message: p.raw.read_message,
+                wait: p.raw.wait,
+                pipe: Self::key_of(b, &p.raw),
+                handle_count: p.raw.handle_count,
+            };
             let view = facts
                 .pipe
-                .and_then(|p| b.ledger.view(p, crate::ipc::win::accept::end_for(kind)));
+                .and_then(|k| b.ledger.view(k, crate::ipc::win::accept::end_for(p.kind)));
             let ctx = crate::ipc::win::accept::Ctx {
                 relayer: from,
                 carrier,
                 view,
             };
-            match accept(kind, &facts, &ctx) {
-                Ok((pipe, end)) => ends.push((pipe, end, kind)),
+            match accept(p.kind, &facts, &ctx) {
+                Ok((pipe, end)) => ends.push((pipe, end, p.kind)),
                 Err(r) => {
                     first_err.get_or_insert(r);
                 }
             }
-            if let Some(h) = h {
+            if let Some(h) = p.handle {
                 handles.push(h);
             }
         }
-        if let Some(r) = first_err {
-            return Err(r);
-        }
         let keys: Vec<(PipeKey, PipeEnd)> = ends.iter().map(|(p, e, _)| (*p, *e)).collect();
-        distinct(&keys)?;
-        // A free ticket: 128 random bits all but never collide, so this
-        // loops at most a few times; without randomness, no relay.
-        let ticket = loop {
-            let t = Self::random16().ok_or(Refusal::NoTicket)?;
-            if t != NO_TICKET && b.ledger.ticket_free(&t) {
-                break t;
-            }
+        let result = match first_err {
+            Some(r) => Err(r),
+            None => distinct(&keys).and_then(|()| {
+                let ticket = loop {
+                    let t = Self::random16().ok_or(Refusal::NoTicket)?;
+                    if t != NO_TICKET && b.ledger.ticket_free(&t) {
+                        break t;
+                    }
+                };
+                b.ledger
+                    .relay(
+                        ticket,
+                        Held {
+                            carrier,
+                            from,
+                            ends,
+                        },
+                    )
+                    .map_err(|_e| Refusal::Quota)?;
+                Ok(ticket)
+            }),
         };
-        b.ledger
-            .relay(
-                ticket,
-                Held {
-                    carrier,
-                    from,
-                    ends,
-                },
-            )
-            .map_err(|_e| Refusal::Quota)?;
-        b.held.insert(ticket, handles);
-        Ok(ticket)
+        match result {
+            Ok(ticket) => {
+                b.held.insert(ticket, handles);
+                (Ok(ticket), spare)
+            }
+            Err(r) => {
+                spare.extend(handles);
+                (Err(r), spare)
+            }
+        }
     }
 
     /// The key of a pipe end a child names by value, without taking it.
+    /// Pulls and queries the handle, so it can block on a crafted
+    /// synchronous handle (probe W8); the Redeem and Bind paths still
+    /// call it on the IO thread. (M8 moves the Relay path off-thread;
+    /// Redeem and Bind share this blocking shape and are the follow-up.)
     fn peek_key(b: &Broker, from: Proc, raw: u64, server_end: bool) -> Option<PipeKey> {
         check_value(raw).ok()?;
         let c = b.children.get(&from)?;
@@ -641,6 +687,67 @@ impl Inner {
         (f.is_pipe && f.server_end == server_end)
             .then(|| Self::key_of(b, &f))
             .flatten()
+    }
+
+    /// Spawns a relay off the IO thread (M8): the pull and the kernel
+    /// queries, which can block on a crafted synchronous handle (W8),
+    /// run on this thread, so one child's blocked relay never stalls the
+    /// broker's IO thread or another child. The per-child relay quota
+    /// bounds how many such threads a child can have at once.
+    fn spawn_relay(
+        self: &Arc<Self>,
+        proc: Proc,
+        process: sys::Process,
+        req: u64,
+        carrier: u64,
+        items: Items,
+    ) {
+        let inner = Arc::clone(self);
+        if crate::thread::spawn("hg-ipc-relay", move || {
+            let (carrier_raw, pulled) = Self::classify_relay(&process, carrier, &items);
+            let mut st = inner.lock();
+            let alive = st
+                .broker
+                .as_ref()
+                .is_some_and(|b| b.children.contains_key(&proc));
+            let (reply, spare): (Option<Ctl>, Vec<OwnedHandle>) = match st.broker.as_mut() {
+                Some(b) if alive => {
+                    let (res, drop_now) = Self::relay_decide(b, proc, &carrier_raw, pulled);
+                    let r = match res {
+                        Ok(ticket) => Ctl::RelayOk { req, ticket },
+                        Err(r) => Ctl::RelayRefused {
+                            req,
+                            reason: r.code(),
+                        },
+                    };
+                    (Some(r), drop_now)
+                }
+                // No broker, or the child died while this relay was in
+                // flight: drop the pulled handles, send nothing.
+                _ => (None, pulled.into_iter().filter_map(|p| p.handle).collect()),
+            };
+            if let Some(b) = st.broker.as_mut()
+                && let Some(c) = b.children.get_mut(&proc)
+            {
+                c.relays = c.relays.saturating_sub(1);
+            }
+            if let Some(r) = reply {
+                inner.send_ctl(&mut st, Some(proc), &r);
+            }
+            drop(st);
+            drop(spare);
+            inner.wake();
+        })
+        .is_err()
+        {
+            // The relay thread could not start: release the quota slot.
+            let mut st = self.lock();
+            if let Some(b) = st.broker.as_mut()
+                && let Some(c) = b.children.get_mut(&proc)
+            {
+                c.relays = c.relays.saturating_sub(1);
+            }
+        }
     }
 
     /// Handles one control record from child `from`.
@@ -661,36 +768,31 @@ impl Inner {
                 carrier,
                 items,
             } => {
-                let carrier_key = Self::peek_key(b, from, carrier, false);
-                let items: Vec<(u64, WireKind, Option<OwnedHandle>)> = items
-                    .as_slice()
-                    .iter()
-                    .map(|i| (i.value, i.kind, None))
-                    .collect();
-                let r = match carrier_key {
-                    Some(k) => Self::broker_relay(b, from, k, items),
-                    None => {
-                        // Pull and close the items anyway: a refused relay
-                        // leaves nothing in the child.
-                        let _ = Self::broker_relay(
-                            b,
-                            from,
-                            PipeKey {
-                                creator: u32::MAX,
-                                id: [0xff; 16],
-                            },
-                            items,
-                        );
-                        Err(Refusal::Carrier)
+                // The relay's pull and kernel queries run off the IO
+                // thread (M8): dup the child's process for the relay
+                // thread, charge the per-child quota, and hand it over.
+                // Over quota, refuse at once.
+                let over = b
+                    .children
+                    .get(&from)
+                    .is_none_or(|c| c.relays >= MAX_RELAYS_INFLIGHT);
+                let dup = b
+                    .children
+                    .get(&from)
+                    .and_then(|c| sys::duplicate(&c.process.0).ok());
+                match (over, dup) {
+                    (false, Some(process)) => {
+                        if let Some(c) = b.children.get_mut(&from) {
+                            c.relays = c.relays.saturating_add(1);
+                        }
+                        self.spawn_relay(from, sys::Process(process), req, carrier, items);
+                        None
                     }
-                };
-                Some(match r {
-                    Ok(ticket) => Ctl::RelayOk { req, ticket },
-                    Err(r) => Ctl::RelayRefused {
+                    _ => Some(Ctl::RelayRefused {
                         req,
-                        reason: r.code(),
-                    },
-                })
+                        reason: Refusal::Quota.code(),
+                    }),
+                }
             }
             Ctl::Redeem { req, ticket, rx } => {
                 let r = Self::peek_key(b, from, rx, true)
@@ -1321,16 +1423,27 @@ impl Inner {
             later.push(Box::new(taken));
             return;
         };
-        if let Some(b) = st.broker.as_mut() {
-            // The broker relays its own handles locally.
-            let items: Vec<(u64, WireKind, Option<OwnedHandle>)> = taken
+        if st.broker.is_some() {
+            // The broker relays its own handles locally. Its ends are its
+            // own overlapped pipes, so the kernel queries do not block
+            // (unlike a child's possibly-crafted handle, M8), and this
+            // stays inline. Classify each owned handle, then decide.
+            let pulled: Vec<Pulled> = taken
                 .into_iter()
-                .map(|(h, k)| (sys::value(&h), k, Some(h)))
+                .map(|(h, kind)| Pulled {
+                    value: sys::value(&h),
+                    kind,
+                    raw: sys::facts(&h),
+                    handle: Some(h),
+                })
                 .collect();
-            let r = Self::key_of(b, &carrier_facts).map_or(Err(Refusal::Carrier), |k| {
-                Self::broker_relay(b, BROKER, k, items)
-            });
-            match r {
+            let b = match st.broker.as_mut() {
+                Some(b) => b,
+                None => return,
+            };
+            let (res, spare) = Self::relay_decide(b, BROKER, &carrier_facts, pulled);
+            later.push(Box::new(spare));
+            match res {
                 Ok(t) => {
                     if let Some(End {
                         role: Role::Sender { outbox, .. },
@@ -2293,7 +2406,15 @@ impl WindowsIpc {
             if let Some(s) = &sid {
                 b.creator_sids.insert(s.clone(), p);
             }
-            b.children.insert(p, ChildEntry { process, sid, link });
+            b.children.insert(
+                p,
+                ChildEntry {
+                    process,
+                    sid,
+                    link,
+                    relays: 0,
+                },
+            );
         }
         let hello = Ctl::Hello {
             to_parent: v_up,

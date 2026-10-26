@@ -545,7 +545,6 @@ pub(crate) fn give(p: &Process, h: &OwnedHandle) -> Result<u64, u32> {
 ///
 /// # Errors
 /// The OS error.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 #[expect(
     clippy::disallowed_methods,
     reason = "SEC-4 (d): this is the Windows IPC backend"
