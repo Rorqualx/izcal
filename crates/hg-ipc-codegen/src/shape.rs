@@ -52,8 +52,12 @@
 //!
 //! A union's tag is the first `u32` of `bi`; a case's fields join the
 //! same way after it, so a split union's parts are its cases' field
-//! types. A vec or an option is never split: its loop is in `hg-ipc` and
-//! is proved as part of the part that holds it.
+//! types. An option is never split. A vector's loop is in `hg-ipc`, which
+//! proves it for any element (one that consumes any allowed number of
+//! bytes, or fails) at the bounds in [`VEC_LOOP_PROOFS`]; there, and for
+//! validators only, a split vector's part is its element, proved by its
+//! own part harness. Elsewhere a vector is proved whole, element
+//! included.
 
 use crate::check::Checked;
 use crate::syntax::{Item, Type};
@@ -110,6 +114,13 @@ pub const SPLIT: &[Split] = &[
         failing_layouts: &[],
     },
     Split {
+        message: "os.OsCommand.post",
+        validate: false,
+        round_trip: true,
+        keep_whole_round_trip: true,
+        failing_layouts: &[18, 25],
+    },
+    Split {
         message: "os.OsInput.power",
         validate: false,
         round_trip: true,
@@ -146,12 +157,33 @@ pub fn split_of(qualified: &str) -> Option<Split> {
     SPLIT.iter().copied().find(|s| s.message == qualified)
 }
 
+/// The vector loops `hg-ipc` proves against any element (`OpaqueMin`):
+/// (`N`, the element's smallest encoding), each by the proof
+/// `vec_of_any_element_validates_{N}_of_{min}_bytes` in `bounded.rs`. A
+/// split validator takes a vector apart into its element only at one of
+/// these bounds.
+pub const VEC_LOOP_PROOFS: &[(u64, u128)] = &[(16, 4), (64, 8), (6, 8)];
+
 /// The parts of `types` for a split: each type, or, for a struct or union
 /// in [`SPLIT_TYPES`], the parts of its fields (a union's: of every
-/// case's fields). In order, without repeats.
-pub fn parts<'a>(checked: &'a Checked, types: &[&'a Type], out: &mut Vec<&'a Type>) {
+/// case's fields), and, for validators (`validate`), a vector of
+/// variable-size elements at a bound in [`VEC_LOOP_PROOFS`] the parts of
+/// its element. In order, without repeats.
+pub fn parts<'a>(
+    checked: &'a Checked,
+    types: &[&'a Type],
+    validate: bool,
+    out: &mut Vec<&'a Type>,
+) {
     for &t in types {
         let inner: Option<Vec<&Type>> = match t {
+            Type::Vec(elem, n)
+                if validate
+                    && VEC_LOOP_PROOFS.contains(&(*n, min_len(checked, elem)))
+                    && size_of(checked, elem).0 != size_of(checked, elem).1 =>
+            {
+                Some(vec![elem.as_ref()])
+            }
             Type::Named(name, _) if SPLIT_TYPES.contains(&name.as_str()) => {
                 match find(checked, name) {
                     Some(Item::Struct(_, fields)) => Some(fields.iter().map(|f| &f.ty).collect()),
@@ -167,7 +199,7 @@ pub fn parts<'a>(checked: &'a Checked, types: &[&'a Type], out: &mut Vec<&'a Typ
             _ => None,
         };
         match inner {
-            Some(fields) => parts(checked, &fields, out),
+            Some(fields) => parts(checked, &fields, validate, out),
             None => {
                 if !out.contains(&t) {
                     out.push(t);
@@ -609,6 +641,21 @@ mod tests {
         assert_eq!(grow(&c, &u), 1);
         let o = Type::Option(Box::new(big));
         assert_eq!(grow(&c, &o), 24);
+    }
+
+    /// Each vector loop the generator relies on has its proof in hg-ipc.
+    #[test]
+    fn every_vec_loop_proof_exists() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../hg-ipc/src/bounded.rs"),
+        )
+        .unwrap();
+        for (n, min) in VEC_LOOP_PROOFS {
+            let name = format!("fn vec_of_any_element_validates_{n}_of_{min}_bytes()");
+            assert!(src.contains(&name), "{name}");
+            let instance = format!("validates::<BoundedVec<OpaqueMin<{min}, 62>, {n}>, 62>()");
+            assert!(src.contains(&instance), "{instance}");
+        }
     }
 
     #[test]
