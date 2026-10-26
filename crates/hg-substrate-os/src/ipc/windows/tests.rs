@@ -1088,7 +1088,8 @@ fn region_child(case: &str, r: &Rig, up: &ChannelSender, from_parent: &Receiver<
             for (i, h) in hs.enumerate() {
                 let w = RegionWriter::from_handle(h).unwrap();
                 let m = r.ipc.map_region(w.handle()).unwrap();
-                let chunk: Vec<u8> = (0..1u32 << 20)
+                let step = u32::try_from(w.len().min(1 << 20)).unwrap();
+                let chunk: Vec<u8> = (0..step)
                     .map(|j| u8::try_from((j + u32::try_from(i).unwrap()) % 251).unwrap())
                     .collect();
                 for off in (0..w.len()).step_by(chunk.len()) {
@@ -1690,9 +1691,13 @@ fn copies_are_charged_when_planned_and_refunded_when_unused() {
     drop(st);
 }
 
-/// A child that dies while the broker copies its regions (review Q1 off
-/// the lock): no other child waits on it, and the copies are not kept
-/// (their charges are refunded with the relay that asked for them).
+/// The child that sent eight large regions for copying dies before its
+/// copies are made: they are refunded and dropped, and the copying
+/// stalls no other child. The copy is held until the broker has
+/// forgotten the child, so the order is fixed: before, the test relied
+/// on 8×64 MiB taking longer to copy than the child's 10 s fuse
+/// (measured about 20 s on rig253), and a faster copy registered all
+/// eight before the death ("kept 16").
 #[test]
 fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
     const MIB64: usize = 64 << 20;
@@ -1702,10 +1707,12 @@ fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
     let ws: Vec<Handle> = (0..8)
         .map(|_| r.ipc.allocate_region(MIB64, a.peer).unwrap().into_handle())
         .collect();
+    r.ipc.inner.hold_copies.store(true, Ordering::Release);
     r.ipc.send(&a.to_child, b"fill".to_vec(), ws).unwrap();
     let started = std::time::Instant::now();
     let mut max = Duration::ZERO;
     let mut n = 0u32;
+    let mut released = false;
     while started.elapsed() < Duration::from_secs(45) {
         let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
         let t = std::time::Instant::now();
@@ -1715,24 +1722,61 @@ fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
         let _ = expect_msg(&b.from_child);
         max = max.max(t.elapsed());
         n += 1;
+        // Let the copy go once the broker has forgotten the dead child
+        // (only `b` is left).
+        if !released && children(&r) == 1 {
+            r.ipc.inner.hold_copies.store(false, Ordering::Release);
+            released = true;
+        }
     }
+    r.ipc.inner.hold_copies.store(false, Ordering::Release);
     println!(
         "D6-STALL-EXIT round trips={n} max={:.1}ms",
         max.as_secs_f64() * 1e3
     );
+    assert!(released, "the child was never forgotten");
     assert_eq!(a.exit_code(), Some(0));
     assert!(max < STALL_BOUND, "a round trip took {max:?}");
     // Only the eight sections the broker allocated: no copy was kept.
+    assert_eq!(owned_by(&r, a.peer), 8);
+}
+
+/// The other order, which the test above used to meet by chance: copies
+/// made while their child lives are registered as the sources' copies
+/// (charged to the owner until it is released), so they outlive it.
+#[test]
+fn copies_made_before_their_child_dies_are_kept() {
+    let r = rig();
+    let a = launch(&r, "region-big-exit", true);
+    let ws: Vec<Handle> = (0..8)
+        .map(|_| {
+            r.ipc
+                .allocate_region(64 << 10, a.peer)
+                .unwrap()
+                .into_handle()
+        })
+        .collect();
+    r.ipc.send(&a.to_child, b"fill".to_vec(), ws).unwrap();
+    let _ = expect_msg(&a.from_child);
+    assert_eq!(a.exit_code(), Some(0));
+    assert_eq!(owned_by(&r, a.peer), 16);
+}
+
+/// How many children the broker knows.
+fn children(r: &Rig) -> usize {
+    r.ipc.inner.lock().broker.as_ref().unwrap().children.len()
+}
+
+/// The registry entries charged to `peer`.
+fn owned_by(r: &Rig, peer: OsPeer) -> usize {
     let st = r.ipc.inner.lock();
-    let kept = st
-        .broker
+    st.broker
         .as_ref()
         .unwrap()
         .regions
         .values()
-        .filter(|e| e.owner == a.peer)
-        .count();
-    assert_eq!(kept, 8);
+        .filter(|e| e.owner == peer)
+        .count()
 }
 
 /// Review finding 3: the broker's live mappings are the section's, so a
