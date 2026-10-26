@@ -334,6 +334,50 @@ fn only_the_broker_sends_a_writer() {
     assert_eq!(*log.lock().unwrap(), ["forward Some(Refused)", "closed"]);
 }
 
+/// Any holder passes a consumer on, on every OS, as the backends do (D6
+/// review finding 4): the child sends back the broker's consumer, and the
+/// broker reads through what came back.
+#[test]
+fn any_holder_forwards_a_consumer() {
+    for os in [SimOs::Linux, SimOs::MacOs, SimOs::Windows] {
+        let log: Log = Arc::default();
+        let held: Slot<Vec<Box<dyn std::any::Any + Send>>> = Arc::default();
+        let (l2, h2) = (Arc::clone(&log), Arc::clone(&held));
+        let w = world(
+            os,
+            5,
+            move |s, from, to| {
+                let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
+                let p = s.ipc.share_region(wr).unwrap();
+                p.mapping().store_u64_release(8, 42).unwrap();
+                let c = s.ipc.consumer_of(&p).unwrap();
+                s.ipc
+                    .send(&to, b"c".to_vec(), vec![c.into_handle()])
+                    .unwrap();
+                let l3 = Arc::clone(&l2);
+                let lis = on_message(&s, from, &l2, move |s, _b, mut hs| {
+                    let c = ConsumerRegion::from_handle(hs.remove(0)).unwrap();
+                    let m = s.ipc.map_region(c.handle()).unwrap();
+                    say(&l3, format!("back {:?}", m.load_u64_acquire(8)));
+                });
+                keep(&h2, (p, lis, to));
+            },
+            |s| {
+                let boot = s.ipc.bootstrap().unwrap();
+                let to = boot.to_parent;
+                let lis = on_message(&s, boot.from_parent, &Arc::default(), move |s, _b, hs| {
+                    let r = s.ipc.send(&to, b"c".to_vec(), hs);
+                    assert!(r.is_ok(), "{r:?}");
+                });
+                std::mem::forget(lis);
+            },
+        );
+        assert_eq!(w.run(LIMITS), RunEnd::Idle);
+        assert_eq!(*log.lock().unwrap(), ["back Ok(42)"], "{os:?}");
+        drop(held);
+    }
+}
+
 /// A producer keeps writing; a consumer in another process sees the words
 /// it publishes with release stores. On Linux the producer cannot be
 /// mapped again.

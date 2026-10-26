@@ -1202,6 +1202,38 @@ fn regions_cross_to_a_sandboxed_child_and_back() {
     r.ipc.release_owner(c.peer);
 }
 
+/// Any holder passes a consumer on, as on Linux and macOS (D6 review
+/// finding 4): a sandboxed child's consumer reaches the broker, which
+/// forwards it to a second sandboxed child, which sends it back. Neither
+/// relayer is the producer.
+#[test]
+fn any_holder_forwards_a_consumer() {
+    let r = rig();
+    let c = launch(&r, "region-roundtrip", true);
+    let ws: Vec<Handle> = (0..4)
+        .map(|_| r.ipc.allocate_region(4096, c.peer).unwrap().into_handle())
+        .collect();
+    r.ipc.send(&c.to_child, b"take".to_vec(), ws).unwrap();
+    let (_report, mut hs) = expect_msg(&c.from_child);
+    let cons = ConsumerRegion::from_handle(hs.pop().unwrap()).unwrap();
+    let b = launch(&r, "echo", true);
+    r.ipc
+        .send(&b.to_child, b"cons".to_vec(), vec![cons.into_handle()])
+        .unwrap();
+    let (m, mut hs) = expect_msg(&b.from_child);
+    assert_eq!(m, b"cons");
+    let back = ConsumerRegion::from_handle(hs.remove(0)).unwrap();
+    assert!(!back.immutable());
+    let bm = r.ipc.map_region(back.handle()).unwrap();
+    assert_eq!(bm.load_u32_acquire(0), Ok(42));
+    assert!(bm.write_from(0, b"x").is_err());
+    r.ipc
+        .send(&c.to_child, b"bye".to_vec(), Vec::new())
+        .unwrap();
+    assert_eq!(c.exit_code(), Some(0));
+    r.ipc.release_owner(c.peer);
+}
+
 /// What a forged region relay from a sandboxed child gets: the child's
 /// report, and what this process's receiver saw.
 fn forge(mode: &str) -> (String, Ev) {

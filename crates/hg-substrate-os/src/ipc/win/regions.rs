@@ -18,10 +18,14 @@
 //! | `WriterOut(p)`, `p` relays | refused (not the broker) | no other handle: `SealedByChild` | `Producer(p)` |
 //! | `SealedByBroker` | refused | yes, immutable | refused |
 //! | `SealedByChild` | refused | yes, filler-trusted, or copied | refused |
-//! | `Producer(p)`, `p` relays | refused | refused | yes |
+//! | `Producer(p)`, anyone relays | refused | refused | yes |
 //!
 //! A consumer region sent as read-only is so refused: its section is a
-//! producer's (review B1's test). A child that seals a writer it filled
+//! producer's (review B1's test). The producer sends its first consumer
+//! (the section is then `WriterOut(p)` with `p` the relayer); after that
+//! any holder may pass a consumer on, as on Linux and macOS, where a
+//! consumer is a sealed object anyone holding it can send: the design
+//! gives `ConsumerRegion` any number of holders (D6 review finding 4). A child that seals a writer it filled
 //! may still have a view that writes (S8), so its region is
 //! filler-trusted; when the record wants it `immutable` the broker copies
 //! it once into a section of its own, `SealedByBroker` (review Q1).
@@ -162,11 +166,10 @@ pub(crate) fn relay_rule(
             }
             ok(State::SealedByChild, !want, want)
         }
-        (WireKind::ConsumerRegion, State::WriterOut(Some(p)) | State::Producer(p))
-            if p == relayer =>
-        {
+        (WireKind::ConsumerRegion, State::WriterOut(Some(p))) if p == relayer => {
             ok(State::Producer(p), true, false)
         }
+        (WireKind::ConsumerRegion, State::Producer(p)) => ok(State::Producer(p), true, false),
         _ => Err(RegionRefusal::State),
     }
 }
@@ -222,6 +225,30 @@ mod tests {
             State::Producer(3),
         );
         assert_eq!(r.map(|o| o.next), Ok(State::Producer(3)));
+    }
+
+    /// Any holder passes a consumer on; the producer stays the producer.
+    /// Only the producer sends the first one, while the section is still
+    /// its writer.
+    #[test]
+    fn any_holder_forwards_a_consumer() {
+        let c = WireKind::ConsumerRegion;
+        for relayer in [BROKER, 3, 5] {
+            let r = relay_rule(c, 4096, false, relayer, &SECTION, 4096, State::Producer(3));
+            assert_eq!(
+                r.map(|o| (o.next, o.filler_trusted)),
+                Ok((State::Producer(3), true))
+            );
+        }
+        let first = State::WriterOut(Some(3));
+        assert_eq!(
+            relay_rule(c, 4096, false, 3, &SECTION, 4096, first).map(|o| o.next),
+            Ok(State::Producer(3))
+        );
+        assert_eq!(
+            relay_rule(c, 4096, false, 5, &SECTION, 4096, first),
+            Err(RegionRefusal::State)
+        );
     }
 
     #[test]
@@ -374,14 +401,27 @@ mod proofs {
                     }
                 }
                 _ => {
+                    // The section was its producer's writer, sent by that
+                    // producer, or is a producer's already and stays so.
                     assert!(f.access == ACCESS_READ);
-                    assert!(o.next == State::Producer(relayer));
+                    assert!(
+                        (state == State::WriterOut(Some(relayer))
+                            && o.next == State::Producer(relayer))
+                            || (matches!(state, State::Producer(_)) && o.next == state)
+                    );
                     assert!(o.filler_trusted);
                 }
             }
         }
         kani::cover!(got.is_ok() && kind == WireKind::RegionWriter, "a writer");
         kani::cover!(got.is_ok_and(|o| o.copy), "a copy");
+        kani::cover!(
+            got.is_ok()
+                && kind == WireKind::ConsumerRegion
+                && state != State::Producer(relayer)
+                && matches!(state, State::Producer(_)),
+            "a consumer forwarded by another holder"
+        );
         kani::cover!(
             got == Err(RegionRefusal::State) && matches!(state, State::Producer(_)),
             "a consumer as read-only"
