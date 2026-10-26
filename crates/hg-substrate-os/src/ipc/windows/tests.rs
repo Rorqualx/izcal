@@ -1588,6 +1588,62 @@ fn the_broker_copies_off_the_lock_for_its_own_sends() {
     assert_eq!(br.regions.values().filter(|e| e.owner == owner).count(), 2);
 }
 
+/// If the broker's copy thread cannot start, the plan is taken back
+/// whole: the charge refunded and the source no longer marked as being
+/// copied, so the next relay that needs the copy plans it at once rather
+/// than wait COPY_WAIT_MAX and be refused (merge-hook finding on D6).
+#[test]
+fn a_copy_thread_that_cannot_start_leaves_no_mark() {
+    let r = rig();
+    let owner = OsPeer::new(84, 0);
+    let ro = r
+        .ipc
+        .seal_region(r.ipc.allocate_region(4096, owner).unwrap())
+        .unwrap();
+    mark_child_sealed(&r, ro.handle());
+    ro.want_immutable();
+    let h = section(&r, ro.handle());
+    let facts = super::sys::section_facts(&h);
+    let src = {
+        let st = r.ipc.inner.lock();
+        super::Inner::region_id(st.broker.as_ref().unwrap(), &h).unwrap()
+    };
+    r.ipc.inner.fail_copy_spawn.store(true, Ordering::Release);
+    let (tx, _rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&tx, b"c".to_vec(), vec![ro.into_handle()])
+        .unwrap();
+    // The record is given up: its channel breaks.
+    let t0 = std::time::Instant::now();
+    while r.ipc.send(&tx, b"x".to_vec(), Vec::new()).is_ok() {
+        assert!(
+            t0.elapsed() < Duration::from_secs(5),
+            "the send was not given up"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    assert!(!b.regions.get(&src).unwrap().copying, "still marked");
+    // No copy made or charged: only the original is the owner's.
+    assert_eq!(b.regions.values().filter(|e| e.owner == owner).count(), 1);
+    // The next relay that needs the copy plans it now.
+    let item = core::iter::once((
+        &*h,
+        crate::ipc::common::codec::WireKind::ReadOnlyRegion,
+        4096u32,
+        1u8,
+        facts,
+    ));
+    let jobs = super::Inner::plan_copies(b, super::BROKER, item);
+    // Plan::Wait here is the leaked mark.
+    assert!(
+        matches!(&jobs, Ok(j) if j.len() == 1),
+        "the copy was not planned"
+    );
+    super::Inner::release_jobs(b, jobs.unwrap_or_default());
+}
+
 /// Planning charges each copy to the owner (its quota and the browser's
 /// cap); a plan that does not fit charges nothing; copies a relay does
 /// not use (refused, child dead, record given up) are refunded.
