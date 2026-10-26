@@ -496,7 +496,21 @@ fn spawn(exe_fd: RawFd, o: &Opts, verbose: bool) -> (Vec<String>, u128) {
                 if probe < 0 { format!("errno={}", errno()) } else { "VISIBLE".into() }
             ));
         }
-        let child_fd = if o.exec_mode == 2 {
+        let child_fd = if o.exec_mode == 3 {
+            // Reopen the pre-opened fd through procfs inside the new
+            // mount namespace (no path to the build is named).
+            let p = CString::new(format!("/proc/self/fd/{exe_fd}")).unwrap();
+            let fd = unsafe { libc::open(p.as_ptr(), libc::O_PATH | libc::O_CLOEXEC) };
+            r.push(format!(
+                "reopen via /proc/self/fd: {}",
+                if fd < 0 {
+                    format!("errno={}", errno())
+                } else {
+                    "ok".into()
+                }
+            ));
+            unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 200) }
+        } else if o.exec_mode == 2 {
             let p = CString::new(
                 std::fs::read_link(format!("/proc/self/fd/{exe_fd}"))
                     .map(|p| p.display().to_string())
@@ -549,7 +563,7 @@ fn spawn(exe_fd: RawFd, o: &Opts, verbose: bool) -> (Vec<String>, u128) {
                 .unwrap();
                 unsafe { libc::execve(p.as_ptr(), argv.as_ptr(), envp.as_ptr()) as i64 }
             }
-            2 => unsafe {
+            2 | 3 => unsafe {
                 libc::syscall(
                     libc::SYS_execveat,
                     child_fd,
@@ -793,7 +807,7 @@ fn main() {
         (libc::CLONE_NEWUSER | libc::CLONE_NEWPID | libc::CLONE_NEWNET | libc::CLONE_NEWNS) as u64;
     let u = libc::CLONE_NEWUSER as u64;
     let only: Option<&str> = a.get(4).map(String::as_str);
-    let cases: [(&str, Opts); 13] = [
+    let cases: [(&str, Opts); 14] = [
         (
             "plain (no namespaces)",
             Opts {
@@ -872,6 +886,16 @@ fn main() {
                 pivot: false,
                 landlock: true,
                 seccomp: 200,
+            },
+        ),
+        (
+            "user+mnt exec-procfs-reopen",
+            Opts {
+                exec_mode: 3,
+                flags: u | libc::CLONE_NEWNS as u64,
+                pivot: false,
+                landlock: false,
+                seccomp: 0,
             },
         ),
         (

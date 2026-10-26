@@ -256,3 +256,8 @@ dyn:    ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically lin
 static: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, for GNU/Linux 3.2.0, BuildID[sha1]=473bad6ceb87f2f3fe38be1f8d3b36a916f9e31f, not stripped
 -rwxrwxr-x 1 joe joe  529520 Oct 26 03:34 dyn
 -rwxrwxr-x 1 joe joe 1481632 Oct 26 03:32 static
+########## added run: reopen the pre-opened fd through /proc/self/fd inside the new mount namespace
+== user+mnt exec-procfs-reopen
+  reopen via /proc/self/fd: ok
+  execveat failed rc=-1 errno=13
+  kernel: apparmor="DENIED" operation="exec" class="file" info="Failed name lookup - disconnected path" error=-13 profile="unprivileged_userns" name="/dev/fd/200" requested_mask="x" denied_mask="x"
