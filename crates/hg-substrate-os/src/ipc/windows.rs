@@ -291,6 +291,15 @@ impl Broker {
 /// and dropped on refusal), and what the kernel says about it. The pull
 /// and the kernel queries run off the IO thread (M8), so this is the
 /// only blocking relay work and it never holds the lock.
+/// A child request that names one of its receiver ends by value, decided
+/// after that end is classified off the IO thread (M8).
+enum PeekJob {
+    /// `Ctl::Redeem`.
+    Redeem { req: u64, ticket: Ticket },
+    /// `Ctl::Bind`.
+    Bind { rx_id: u64, peer: u32 },
+}
+
 struct Pulled {
     value: u64,
     kind: WireKind,
@@ -674,19 +683,142 @@ impl Inner {
         }
     }
 
-    /// The key of a pipe end a child names by value, without taking it.
-    /// Pulls and queries the handle, so it can block on a crafted
-    /// synchronous handle (probe W8); the Redeem and Bind paths still
-    /// call it on the IO thread. (M8 moves the Relay path off-thread;
-    /// Redeem and Bind share this blocking shape and are the follow-up.)
-    fn peek_key(b: &Broker, from: Proc, raw: u64, server_end: bool) -> Option<PipeKey> {
-        check_value(raw).ok()?;
-        let c = b.children.get(&from)?;
-        let h = sys::pull(&c.process, raw, false).ok()?;
-        let f = sys::facts(&h);
-        (f.is_pipe && f.server_end == server_end)
-            .then(|| Self::key_of(b, &f))
+    /// What the kernel says about a receiver end a child names by value,
+    /// without taking it: a peek (no close-source) whose copy is dropped.
+    /// Can wait on a synchronous end with a read pending (W8), so it runs
+    /// on a request thread, never on the IO thread (M8).
+    fn peek_raw(process: &sys::Process, raw: u64) -> sys::RawFacts {
+        check_value(raw)
+            .ok()
+            .and_then(|()| sys::pull(process, raw, false).ok())
+            .map(|h| sys::facts(&h))
+            .unwrap_or_default()
+    }
+
+    /// The channel of a peeked receiver end, if it is one.
+    fn receiver_key(b: &Broker, f: &sys::RawFacts) -> Option<PipeKey> {
+        (f.is_pipe && f.server_end)
+            .then(|| Self::key_of(b, f))
             .flatten()
+    }
+
+    /// Decides redemption `req` of `ticket` by child `from`, whose
+    /// receiver end resolved to `key`, under the lock. Gives the held
+    /// handles into the child and answers; on a partial hand-over takes
+    /// back what was given and closes the ends.
+    fn redeem_with_key(
+        b: &mut Broker,
+        from: Proc,
+        req: u64,
+        ticket: Ticket,
+        key: Option<PipeKey>,
+        later: &mut Vec<Box<dyn Any + Send>>,
+        events: &mut Vec<BindEvent>,
+    ) -> Ctl {
+        let r = key
+            .ok_or(crate::ipc::win::ledger::LedgerError::NotHolder)
+            .and_then(|k| b.ledger.redeem(from, &ticket, k));
+        let (held, ev) = match r {
+            Ok(v) => v,
+            Err(e) => {
+                return Ctl::RedeemRefused {
+                    req,
+                    reason: e.code(),
+                };
+            }
+        };
+        events.extend(ev);
+        let handles = b.held.remove(&ticket).unwrap_or_default();
+        let mut items = Vec::with_capacity(handles.len());
+        let mut ok = handles.len() == held.ends.len();
+        if let Some(c) = b.children.get(&from) {
+            for (h, (_, _, kind)) in handles.iter().zip(&held.ends) {
+                match sys::give(&c.process, h) {
+                    Ok(v) => items.push(CtlItem {
+                        value: v,
+                        kind: *kind,
+                    }),
+                    Err(_) => ok = false,
+                }
+            }
+        } else {
+            ok = false;
+        }
+        later.push(Box::new(handles));
+        match Items::from_slice(&items) {
+            Some(items) if ok => Ctl::Redeemed { req, items },
+            _ => {
+                // Take back what was given, closing the child's copies,
+                // so no end stays open there unreported; the ends are
+                // gone.
+                if let Some(c) = b.children.get(&from) {
+                    for i in &items {
+                        if let Ok(h) = sys::pull(&c.process, i.value, true) {
+                            later.push(Box::new(h));
+                        }
+                    }
+                }
+                b.ledger.lost(&held.ends);
+                b.sweep();
+                Ctl::RedeemRefused { req, reason: 0 }
+            }
+        }
+    }
+
+    /// Spawns a Redeem or Bind off the IO thread (M8), as
+    /// [`Self::spawn_relay`] does for relays, under the same per-child
+    /// quota. Returns whether the thread started.
+    fn spawn_peek(
+        self: &Arc<Self>,
+        proc: Proc,
+        process: sys::Process,
+        rx: u64,
+        job: PeekJob,
+    ) -> bool {
+        let inner = Arc::clone(self);
+        crate::thread::spawn("hg-ipc-peek", move || {
+            let raw = Self::peek_raw(&process, rx);
+            let mut st = inner.lock();
+            let mut later: Vec<Box<dyn Any + Send>> = Vec::new();
+            let mut events = Vec::new();
+            let mut reply = None;
+            if let Some(b) = st.broker.as_mut()
+                && b.children.contains_key(&proc)
+            {
+                let key = Self::receiver_key(b, &raw);
+                match job {
+                    PeekJob::Redeem { req, ticket } => {
+                        reply = Some(Self::redeem_with_key(
+                            b,
+                            proc,
+                            req,
+                            ticket,
+                            key,
+                            &mut later,
+                            &mut events,
+                        ));
+                    }
+                    PeekJob::Bind { rx_id, peer } => {
+                        if let Some(k) = key
+                            && let Ok(Some(ev)) = b.ledger.bind(proc, k, rx_id, peer)
+                        {
+                            events.push(ev);
+                        }
+                    }
+                }
+                if let Some(c) = b.children.get_mut(&proc) {
+                    c.relays = c.relays.saturating_sub(1);
+                }
+            }
+            if let Some(r) = reply {
+                inner.send_ctl(&mut st, Some(proc), &r);
+            }
+            inner.dispatch(&mut st, events);
+            drop(st);
+            drop(later);
+            inner.wake();
+        })
+        .is_ok()
     }
 
     /// Spawns a relay off the IO thread (M8): the pull and the kernel
@@ -741,6 +873,29 @@ impl Inner {
         .is_ok()
     }
 
+    /// Charges child `from`'s request quota and starts a peek job;
+    /// false if over quota or the thread could not start (the slot is
+    /// given back).
+    fn start_peek(self: &Arc<Self>, b: &mut Broker, from: Proc, rx: u64, job: PeekJob) -> bool {
+        let Some(c) = b.children.get_mut(&from) else {
+            return false;
+        };
+        if c.relays >= MAX_RELAYS_INFLIGHT {
+            return false;
+        }
+        let Ok(process) = sys::duplicate(&c.process.0) else {
+            return false;
+        };
+        c.relays = c.relays.saturating_add(1);
+        if self.spawn_peek(from, sys::Process(process), rx, job) {
+            return true;
+        }
+        if let Some(c) = b.children.get_mut(&from) {
+            c.relays = c.relays.saturating_sub(1);
+        }
+        false
+    }
+
     /// Handles one control record from child `from`.
     fn broker_ctl(
         self: &Arc<Self>,
@@ -751,8 +906,8 @@ impl Inner {
         let Some(b) = st.broker.as_mut() else {
             return Vec::new();
         };
-        let mut events = Vec::new();
-        let mut later: Vec<Box<dyn Any + Send>> = Vec::new();
+        let events: Vec<BindEvent> = Vec::new();
+        let later: Vec<Box<dyn Any + Send>> = Vec::new();
         let reply = match c {
             Ctl::Relay {
                 req,
@@ -797,60 +952,19 @@ impl Inner {
                 }
             }
             Ctl::Redeem { req, ticket, rx } => {
-                let r = Self::peek_key(b, from, rx, true)
-                    .ok_or(crate::ipc::win::ledger::LedgerError::NotHolder)
-                    .and_then(|k| b.ledger.redeem(from, &ticket, k));
-                Some(match r {
-                    Ok((held, ev)) => {
-                        events = ev;
-                        let handles = b.held.remove(&ticket).unwrap_or_default();
-                        let mut items = Vec::with_capacity(handles.len());
-                        let mut ok = handles.len() == held.ends.len();
-                        if let Some(c) = b.children.get(&from) {
-                            for (h, (_, _, kind)) in handles.iter().zip(&held.ends) {
-                                match sys::give(&c.process, h) {
-                                    Ok(v) => items.push(CtlItem {
-                                        value: v,
-                                        kind: *kind,
-                                    }),
-                                    Err(_) => ok = false,
-                                }
-                            }
-                        } else {
-                            ok = false;
-                        }
-                        later.push(Box::new(handles));
-                        match Items::from_slice(&items) {
-                            Some(items) if ok => Ctl::Redeemed { req, items },
-                            _ => {
-                                // Take back what was given, closing the
-                                // child's copies, so no end stays open
-                                // there unreported; the ends are gone.
-                                if let Some(c) = b.children.get(&from) {
-                                    for i in &items {
-                                        if let Ok(h) = sys::pull(&c.process, i.value, true) {
-                                            later.push(Box::new(h));
-                                        }
-                                    }
-                                }
-                                b.ledger.lost(&held.ends);
-                                b.sweep();
-                                Ctl::RedeemRefused { req, reason: 0 }
-                            }
-                        }
-                    }
-                    Err(e) => Ctl::RedeemRefused {
+                match self.start_peek(b, from, rx, PeekJob::Redeem { req, ticket }) {
+                    true => None,
+                    false => Some(Ctl::RedeemRefused {
                         req,
-                        reason: e.code(),
-                    },
-                })
+                        reason: crate::ipc::win::ledger::LedgerError::Quota.code(),
+                    }),
+                }
             }
             Ctl::Bind { rx, rx_id, peer } => {
-                if let Some(k) = Self::peek_key(b, from, rx, true)
-                    && let Ok(Some(ev)) = b.ledger.bind(from, k, rx_id, peer)
-                {
-                    events.push(ev);
-                }
+                // A Bind that cannot be queued is dropped: the receiver
+                // then stays unbound, and its listener reports no peer
+                // fault it should have (the child is over its quota).
+                let _ = self.start_peek(b, from, rx, PeekJob::Bind { rx_id, peer });
                 None
             }
             Ctl::Unbind { rx_id } => {
