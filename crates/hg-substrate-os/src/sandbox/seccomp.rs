@@ -503,6 +503,11 @@ pub enum BuildError {
     TooLong,
 }
 
+/// The most argument conditions one rule has (the evaluator's bound).
+pub const MAX_RULE_ARGS: usize = 4;
+/// The most values one [`Cond::OneOf`] lists (the evaluator's bound).
+pub const MAX_ONE_OF: usize = 8;
+
 /// The kernel's per-program instruction limit.
 const MAX_INSNS: usize = 4096;
 
@@ -751,8 +756,14 @@ pub fn expected(arch: u32, rules: &[Rule], call: &Call) -> u32 {
     if call.arch != arch {
         return RET_DENY;
     }
+    // Loops over fixed bounds (a rule has at most [`MAX_RULE_ARGS`]
+    // conditions, a list at most [`MAX_ONE_OF`] values; the tables' test
+    // checks both), so a proof unwinds them that far and no further.
     let holds = |rule: &Rule| {
-        rule.args.iter().all(|&(i, cond)| {
+        (0..MAX_RULE_ARGS).all(|n| {
+            let Some(&(i, cond)) = rule.args.get(n) else {
+                return true;
+            };
             let Some(&raw) = call.args.get(usize::try_from(i).unwrap_or(usize::MAX)) else {
                 return false;
             };
@@ -764,7 +775,7 @@ pub fn expected(arch: u32, rules: &[Rule], call: &Call) -> u32 {
             match cond {
                 Cond::Eq(v) => a == v,
                 Cond::Masked { mask, value } => a & mask == value,
-                Cond::OneOf(vs) => vs.contains(&a),
+                Cond::OneOf(vs) => (0..MAX_ONE_OF).any(|k| vs.get(k) == Some(&a)),
                 Cond::Zero64 => raw == 0,
             }
         })
@@ -795,6 +806,52 @@ mod tests {
                 if let Some(action) = seen.insert(r.nr, r.action) {
                     assert_eq!(r.nr, fcntl, "duplicate rule for {}", r.nr);
                     assert_eq!(action, r.action);
+                }
+            }
+        }
+    }
+
+    /// The concrete half of the Kani harnesses, for both tables: the
+    /// denied calls have no rule; `clone`, `clone3` and `sendto` have
+    /// exactly the rules the harness proves; neither `execveat` nor
+    /// `tgkill` is in a table (the builders append them).
+    #[test]
+    fn the_tables_hold_the_harness_facts() {
+        for (arch, table) in tables() {
+            let aarch64 = arch == ARCH_AARCH64;
+            let denied: [u32; 7] = if aarch64 {
+                [198, 203, 200, 117, 280, 97, 268]
+            } else {
+                [41, 42, 49, 101, 321, 272, 308]
+            };
+            let (clone, sendto, exec, tg) = if aarch64 {
+                (220, 206, EXECVEAT_AARCH64, TGKILL_AARCH64)
+            } else {
+                (56, 44, EXECVEAT_X86_64, TGKILL_X86_64)
+            };
+            let with = |nr: u32| table.iter().filter(|r| r.nr == nr).collect::<Vec<_>>();
+            for nr in denied.into_iter().chain([exec, tg]) {
+                assert!(with(nr).is_empty(), "nr {nr}");
+            }
+            let c = with(clone);
+            assert!(c.len() == 1 && c[0].args == CLONE_ARGS && c[0].action == RET_ALLOW);
+            let c3 = with(435);
+            assert!(c3.len() == 1 && c3[0].args.is_empty() && c3[0].action == RET_NOSYS);
+            let st = with(sendto);
+            assert!(st.len() == 1 && st[0].args == SENDTO_ARGS && st[0].action == RET_ALLOW);
+        }
+    }
+
+    /// The evaluator's loop bounds hold for every rule.
+    #[test]
+    fn rules_fit_the_evaluator_s_bounds() {
+        for (_arch, rules) in tables() {
+            for r in rules {
+                assert!(r.args.len() <= MAX_RULE_ARGS, "{}", r.reason);
+                for (_i, c) in r.args {
+                    if let Cond::OneOf(vs) = c {
+                        assert!(vs.len() <= MAX_ONE_OF, "{}", r.reason);
+                    }
                 }
             }
         }
@@ -1150,76 +1207,56 @@ mod tests {
 
 #[cfg(kani)]
 mod proofs {
-    //! The harnesses decide calls over the arch's static table and the two
-    //! rules [`steady_rules`] and [`launch_rules`] append, never over the
-    //! built `Vec`: with the `Vec` the solver passed 10 GB in 13 s (26 Oct,
-    //! the Mac). The unit test `the_lists_are_the_table_plus_their_rules`
-    //! ties the two forms together.
+    //! The two harnesses prove what depends on arguments, over the rules
+    //! that decide the calls in question; the unit test
+    //! `the_tables_hold_the_harness_facts` checks, over the concrete
+    //! tables, which rules those are (and that the denied calls have
+    //! none). Evaluating the whole table for a symbolic call did not
+    //! finish in 15 minutes (26 Oct, the Mac, 8 GB): the table part is
+    //! concrete data, so a test covers it exactly.
 
     use super::{
-        ARCH_AARCH64, ARCH_X86_64, CLONE_NEW_BITS, Call, Cond, EXECVEAT_AARCH64, EXECVEAT_X86_64,
-        RET_ALLOW, RET_DENY, RULES_AARCH64, RULES_X86_64, Rule, TGKILL_AARCH64, TGKILL_X86_64,
-        expected,
+        ARCH_AARCH64, ARCH_X86_64, CLONE_ARGS, CLONE_NEW_BITS, Call, Cond, EXECVEAT_AARCH64,
+        EXECVEAT_X86_64, RET_ALLOW, RET_DENY, RET_NOSYS, Rule, SENDTO_ARGS, TGKILL_AARCH64,
+        TGKILL_X86_64, expected,
     };
 
-    /// What a list of `table` then `extra` decides for `call` (the first
-    /// matching rule, else deny).
-    fn decide(arch: u32, table: &[Rule], extra: &[Rule], call: &Call) -> u32 {
-        let t = expected(arch, table, call);
-        // `expected` denies when no rule matches; a table rule may also
-        // deny on purpose, which the extras cannot override only if it
-        // matched. The tables' only non-allow action is clone3's ENOSYS.
-        if t != RET_DENY {
-            return t;
-        }
-        expected(arch, extra, call)
-    }
-
-    /// The arch's table and its two appended rules: `tgkill` limited to
-    /// `own`, and `execveat` (the launch list only).
-    fn parts(aarch64: bool) -> (u32, &'static [Rule], Rule, Rule) {
+    /// The two rules the builders append to the table: `tgkill` limited
+    /// to `own`, and (launch only) `execveat`.
+    fn extras(aarch64: bool) -> (u32, Rule, Rule) {
         let own: u32 = kani::any();
         let args: &'static [(u32, Cond)] = Box::leak(Box::new([(0, Cond::Eq(own))]));
-        let (arch, table, tg, ex) = if aarch64 {
-            (
-                ARCH_AARCH64,
-                RULES_AARCH64,
-                TGKILL_AARCH64,
-                EXECVEAT_AARCH64,
-            )
+        let (arch, tg, ex) = if aarch64 {
+            (ARCH_AARCH64, TGKILL_AARCH64, EXECVEAT_AARCH64)
         } else {
-            (ARCH_X86_64, RULES_X86_64, TGKILL_X86_64, EXECVEAT_X86_64)
+            (ARCH_X86_64, TGKILL_X86_64, EXECVEAT_X86_64)
         };
-        let tgkill = Rule {
-            nr: tg,
+        let rule = |nr, args| Rule {
+            nr,
             args,
             action: RET_ALLOW,
             reason: "",
         };
-        let execveat = Rule {
-            nr: ex,
-            args: &[],
-            action: RET_ALLOW,
-            reason: "",
-        };
-        (arch, table, tgkill, execveat)
+        (arch, rule(tg, args), rule(ex, &[]))
     }
 
-    /// Design review B1, for either arch and any call: the launch list
-    /// decides every call as the steady list does, except `execveat`,
-    /// which the steady list denies and the launch list allows.
+    /// Design review B1, for either arch and any call: steady = table ++
+    /// [tgkill] and launch = table ++ [tgkill, execveat] (unit test), and
+    /// the table has no `execveat` rule (unit test), so both lists decide
+    /// a call by the same table result and differ only in the extras.
+    /// Here: the extras decide every call the same way except `execveat`,
+    /// which the steady extras deny.
     #[kani::proof]
-    #[kani::unwind(60)]
     fn launch_adds_exactly_execveat() {
         let aarch64: bool = kani::any();
-        let (arch, table, tgkill, execveat) = parts(aarch64);
+        let (arch, tgkill, execveat) = extras(aarch64);
         let call = Call {
             arch: kani::any(),
             nr: kani::any(),
             args: kani::any(),
         };
-        let st = decide(arch, table, &[tgkill], &call);
-        let la = decide(arch, table, &[tgkill, execveat], &call);
+        let st = expected(arch, &[tgkill], &call);
+        let la = expected(arch, &[tgkill, execveat], &call);
         if call.nr == execveat.nr {
             assert!(st == RET_DENY);
         } else {
@@ -1231,46 +1268,43 @@ mod proofs {
         );
     }
 
-    /// Harness 2 (E-R11, review M1): every kind runs one plan, the steady
-    /// list, and neither it nor its launch filter lets a child make a
-    /// socket, connect, bind, trace, load BPF, make or join a namespace,
-    /// fork, or send to an address, for any arguments.
+    /// Harness 2 (E-R11, review M1), the argument part: for any arguments,
+    /// `clone` is allowed only as a thread with no `CLONE_NEW*` bit,
+    /// `clone3` never (ENOSYS), and `sendto` never to an address. The unit
+    /// test checks that these are the only rules for those calls and that
+    /// `socket`, `connect`, `bind`, `ptrace`, `bpf`, `unshare` and `setns`
+    /// have none (so are denied for any arguments), in both tables.
     #[kani::proof]
-    #[kani::unwind(60)]
     fn no_plan_reaches_sockets_namespaces_or_addresses() {
-        let aarch64: bool = kani::any();
-        let (arch, table, tgkill, execveat) = parts(aarch64);
-        // socket, connect, bind, ptrace, bpf, unshare, setns.
-        let denied: [u32; 7] = if aarch64 {
-            [198, 203, 200, 117, 280, 97, 268]
-        } else {
-            [41, 42, 49, 101, 321, 272, 308]
+        let arch = ARCH_X86_64;
+        let rule = |nr, args, action| Rule {
+            nr,
+            args,
+            action,
+            reason: "",
         };
-        let (clone, sendto) = if aarch64 { (220, 206) } else { (56, 44) };
-        let launching: bool = kani::any();
-        let steady = [tgkill];
-        let launch = [tgkill, execveat];
-        let extra: &[Rule] = if launching { &launch } else { &steady };
+        let rules = [
+            rule(56, CLONE_ARGS, RET_ALLOW),
+            rule(435, &[], RET_NOSYS),
+            rule(44, SENDTO_ARGS, RET_ALLOW),
+        ];
         let args: [u64; 6] = kani::any();
         let call = |nr: u32| Call { arch, nr, args };
-        for nr in denied {
-            assert!(decide(arch, table, extra, &call(nr)) == RET_DENY);
-        }
-        // clone3 passes its flags in memory: never allowed (ENOSYS).
-        assert!(decide(arch, table, extra, &call(435)) != RET_ALLOW);
+        assert!(expected(arch, &rules, &call(435)) != RET_ALLOW);
         #[expect(
             clippy::cast_possible_truncation,
             reason = "the low word, as the kernel"
         )]
         let flags = args[0] as u32;
-        if decide(arch, table, extra, &call(clone)) == RET_ALLOW {
+        if expected(arch, &rules, &call(56)) == RET_ALLOW {
             assert!(flags & CLONE_NEW_BITS == 0);
             assert!(flags & 0x1_0000 != 0, "a thread, never a process");
         }
-        let send = decide(arch, table, extra, &call(sendto));
+        let send = expected(arch, &rules, &call(44));
         if args[4] != 0 {
             assert!(send == RET_DENY);
         }
         kani::cover!(send == RET_ALLOW, "sendto without an address");
+        kani::cover!(expected(arch, &rules, &call(56)) == RET_ALLOW, "a thread");
     }
 }
