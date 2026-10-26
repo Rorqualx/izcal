@@ -244,6 +244,14 @@ struct ChildEntry {
     /// Relays this child has in flight on relay threads (M8): bounded so
     /// a child cannot queue unbounded relay work.
     relays: usize,
+    /// Redeems and Binds in flight on request threads: a separate quota,
+    /// so a child's relays cannot starve its redemptions.
+    peeks: usize,
+    /// Listener ids with a Bind still in flight, and those of them the
+    /// child has since unbound: a Bind completing after its Unbind is
+    /// dropped (requests on threads can finish out of order).
+    binding: BTreeSet<u64>,
+    unbound: BTreeSet<u64>,
 }
 
 /// The broker's state: the ledger, the handles held under tickets, and
@@ -286,13 +294,9 @@ impl Broker {
     }
 }
 
-/// One pulled handle for a relay: the value the child named, the kind it
-/// claims, the handle itself (pulled with close-source, kept on success
-/// and dropped on refusal), and what the kernel says about it. The pull
-/// and the kernel queries run off the IO thread (M8), so this is the
-/// only blocking relay work and it never holds the lock.
 /// A child request that names one of its receiver ends by value, decided
 /// after that end is classified off the IO thread (M8).
+#[derive(Clone, Copy)]
 enum PeekJob {
     /// `Ctl::Redeem`.
     Redeem { req: u64, ticket: Ticket },
@@ -300,6 +304,11 @@ enum PeekJob {
     Bind { rx_id: u64, peer: u32 },
 }
 
+/// One pulled handle for a relay: the value the child named, the kind it
+/// claims, the handle itself (pulled with close-source, kept on success
+/// and dropped on refusal), and what the kernel says about it. The pull
+/// and the kernel queries run off the IO thread (M8), so this is the
+/// only blocking relay work and it never holds the lock.
 struct Pulled {
     value: u64,
     kind: WireKind,
@@ -799,15 +808,26 @@ impl Inner {
                         ));
                     }
                     PeekJob::Bind { rx_id, peer } => {
-                        if let Some(k) = key
-                            && let Ok(Some(ev)) = b.ledger.bind(proc, k, rx_id, peer)
-                        {
-                            events.push(ev);
+                        let cancelled = b.children.get_mut(&proc).is_some_and(|c| {
+                            c.binding.remove(&rx_id);
+                            c.unbound.remove(&rx_id)
+                        });
+                        if cancelled {
+                            // Unbound before this Bind finished: nothing to
+                            // record.
+                        } else if let Some(k) = key {
+                            if let Ok(Some(ev)) = b.ledger.bind(proc, k, rx_id, peer) {
+                                events.push(ev);
+                            }
+                        } else {
+                            // The end could not be classified: fail closed,
+                            // the listener ends with an Identity fault.
+                            reply = Some(Ctl::BindBroken { rx_id, peer });
                         }
                     }
                 }
                 if let Some(c) = b.children.get_mut(&proc) {
-                    c.relays = c.relays.saturating_sub(1);
+                    c.peeks = c.peeks.saturating_sub(1);
                 }
             }
             if let Some(r) = reply {
@@ -880,18 +900,24 @@ impl Inner {
         let Some(c) = b.children.get_mut(&from) else {
             return false;
         };
-        if c.relays >= MAX_RELAYS_INFLIGHT {
+        if c.peeks >= MAX_RELAYS_INFLIGHT {
             return false;
         }
         let Ok(process) = sys::duplicate(&c.process.0) else {
             return false;
         };
-        c.relays = c.relays.saturating_add(1);
+        c.peeks = c.peeks.saturating_add(1);
+        if let PeekJob::Bind { rx_id, .. } = job {
+            c.binding.insert(rx_id);
+        }
         if self.spawn_peek(from, sys::Process(process), rx, job) {
             return true;
         }
         if let Some(c) = b.children.get_mut(&from) {
-            c.relays = c.relays.saturating_sub(1);
+            c.peeks = c.peeks.saturating_sub(1);
+            if let PeekJob::Bind { rx_id, .. } = job {
+                c.binding.remove(&rx_id);
+            }
         }
         false
     }
@@ -961,14 +987,22 @@ impl Inner {
                 }
             }
             Ctl::Bind { rx, rx_id, peer } => {
-                // A Bind that cannot be queued is dropped: the receiver
-                // then stays unbound, and its listener reports no peer
-                // fault it should have (the child is over its quota).
-                let _ = self.start_peek(b, from, rx, PeekJob::Bind { rx_id, peer });
-                None
+                // A Bind that cannot be queued fails closed: the child's
+                // listener ends with an Identity fault rather than run
+                // unbound.
+                if self.start_peek(b, from, rx, PeekJob::Bind { rx_id, peer }) {
+                    None
+                } else {
+                    Some(Ctl::BindBroken { rx_id, peer })
+                }
             }
             Ctl::Unbind { rx_id } => {
                 b.ledger.unbind(from, rx_id);
+                if let Some(c) = b.children.get_mut(&from)
+                    && c.binding.contains(&rx_id)
+                {
+                    c.unbound.insert(rx_id);
+                }
                 None
             }
             // Records only a broker sends: a child that sends one has
@@ -2529,6 +2563,9 @@ impl WindowsIpc {
                     sid,
                     link,
                     relays: 0,
+                    peeks: 0,
+                    binding: BTreeSet::new(),
+                    unbound: BTreeSet::new(),
                 },
             );
         }
