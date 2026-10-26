@@ -22,6 +22,63 @@ pub(crate) const fn fits(count: usize, bytes: u64, total: u64, len: u64) -> bool
     }
 }
 
+/// One owner's charges: (regions, bytes); `None` when it has none.
+type Entry = Option<(usize, u64)>;
+
+/// A change to one owner's charges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Op {
+    /// One more region of this many bytes.
+    Charge(u64),
+    /// One charge of this many bytes taken back.
+    Refund(u64),
+    /// Every charge taken back.
+    Release,
+}
+
+/// What `op` does to one owner's entry `e` and the browser's `total`:
+/// the new entry and total, or `None` for a refused charge (nothing
+/// changes). Only this owner's bytes move the total, so the total stays
+/// the sum of the owners' bytes (proved below).
+const fn step(op: Op, e: Entry, total: u64) -> Option<(Entry, u64)> {
+    let (count, bytes) = match e {
+        Some(cb) => cb,
+        None => (0, 0),
+    };
+    match op {
+        Op::Charge(len) => {
+            if !fits(count, bytes, total, len) {
+                return None;
+            }
+            // `fits` checked both sums.
+            match (
+                count.checked_add(1),
+                bytes.checked_add(len),
+                total.checked_add(len),
+            ) {
+                (Some(c), Some(b), Some(t)) => Some((Some((c, b)), t)),
+                _ => None,
+            }
+        }
+        Op::Refund(len) => {
+            if e.is_none() {
+                return Some((None, total));
+            }
+            if count <= 1 {
+                Some((None, total.saturating_sub(bytes)))
+            } else {
+                let len = if len < bytes { len } else { bytes };
+                // count > 1 and len <= bytes: neither saturates.
+                Some((
+                    Some((count.saturating_sub(1), bytes.saturating_sub(len))),
+                    total.saturating_sub(len),
+                ))
+            }
+        }
+        Op::Release => Some((None, total.saturating_sub(bytes))),
+    }
+}
+
 /// The charges, by owner.
 #[derive(Debug, Default)]
 pub(crate) struct Ledger {
@@ -30,46 +87,32 @@ pub(crate) struct Ledger {
 }
 
 impl Ledger {
-    /// Charges `owner` for `len` bytes, or refuses.
-    pub(crate) fn charge(&mut self, owner: OsPeer, len: u64) -> bool {
-        let (count, bytes) = self.owners.get(&owner).copied().unwrap_or((0, 0));
-        if !fits(count, bytes, self.total, len) {
-            return false;
-        }
-        // `fits` checked both sums.
-        let (Some(c), Some(b), Some(t)) = (
-            count.checked_add(1),
-            bytes.checked_add(len),
-            self.total.checked_add(len),
-        ) else {
+    fn apply(&mut self, owner: OsPeer, op: Op) -> bool {
+        let Some((e, total)) = step(op, self.owners.get(&owner).copied(), self.total) else {
             return false;
         };
-        self.owners.insert(owner, (c, b));
-        self.total = t;
+        match e {
+            Some(cb) => self.owners.insert(owner, cb),
+            None => self.owners.remove(&owner),
+        };
+        self.total = total;
         true
+    }
+
+    /// Charges `owner` for `len` bytes, or refuses.
+    pub(crate) fn charge(&mut self, owner: OsPeer, len: u64) -> bool {
+        self.apply(owner, Op::Charge(len))
     }
 
     /// Takes back one charge of `len` bytes that was not used (the
     /// region could not be made after it was charged).
     pub(crate) fn refund(&mut self, owner: OsPeer, len: u64) {
-        let Some(&(count, bytes)) = self.owners.get(&owner) else {
-            return;
-        };
-        if count <= 1 {
-            self.owners.remove(&owner);
-            self.total = self.total.saturating_sub(bytes);
-        } else {
-            self.owners
-                .insert(owner, (count.saturating_sub(1), bytes.saturating_sub(len)));
-            self.total = self.total.saturating_sub(len.min(bytes));
-        }
+        self.apply(owner, Op::Refund(len));
     }
 
     /// Releases every charge of `owner`.
     pub(crate) fn release(&mut self, owner: OsPeer) {
-        if let Some((_, bytes)) = self.owners.remove(&owner) {
-            self.total = self.total.saturating_sub(bytes);
-        }
+        self.apply(owner, Op::Release);
     }
 }
 
@@ -109,17 +152,73 @@ mod tests {
 mod proofs {
     use super::*;
 
-    /// One more charge never takes an owner past its count or bytes, nor
-    /// the browser past its cap (D6 review M4).
+    /// `fits` is exactly the design's quota (D6 review M4), stated in
+    /// 128-bit arithmetic with the design's numbers (256 regions and
+    /// 1 GiB per owner, 4 GiB in all), not the code's constants or its
+    /// checked sums.
     #[kani::proof]
-    fn fits_keeps_every_quota() {
+    fn fits_is_exactly_the_quota() {
         let (count, bytes, total, len): (usize, u64, u64, u64) =
             (kani::any(), kani::any(), kani::any(), kani::any());
-        if fits(count, bytes, total, len) {
-            assert!(count < MAX_REGIONS_PER_OWNER);
-            assert!(bytes + len <= MAX_REGION_BYTES_PER_OWNER);
-            assert!(total + len <= MAX_REGION_BYTES_TOTAL);
+        let spec = count < 256
+            && u128::from(bytes) + u128::from(len) <= 1u128 << 30
+            && u128::from(total) + u128::from(len) <= 4u128 << 30;
+        assert!(fits(count, bytes, total, len) == spec);
+        kani::cover!(spec && len > 0);
+        kani::cover!(!spec && count < 256);
+    }
+
+    /// The ledger's own accounting (review finding 8), by induction over
+    /// its steps. Each step changes one owner's entry and the total; if
+    /// before it that owner is within the quota and the total covers its
+    /// bytes and is within the cap, then after it the same holds, nothing
+    /// underflows, and the total moved by exactly that owner's bytes. So
+    /// from an empty ledger (total 0, no owners) the total is always the
+    /// sum of every owner's bytes, for any number of owners and steps.
+    #[kani::proof]
+    fn the_ledger_total_is_the_sum_of_its_owners() {
+        const COUNT: usize = 256;
+        const BYTES: u64 = 1 << 30;
+        const TOTAL: u64 = 4 << 30;
+        let e: Entry = if kani::any() {
+            let (c, b): (usize, u64) = (kani::any(), kani::any());
+            kani::assume(c >= 1 && c <= COUNT && b <= BYTES);
+            Some((c, b))
+        } else {
+            None
+        };
+        let total: u64 = kani::any();
+        let bytes = e.map_or(0, |(_, b)| b);
+        kani::assume(bytes <= total && total <= TOTAL);
+        let op = match kani::any::<u8>() % 3 {
+            0 => Op::Charge(kani::any()),
+            1 => Op::Refund(kani::any()),
+            _ => Op::Release,
+        };
+        let Some((e2, total2)) = step(op, e, total) else {
+            assert!(matches!(op, Op::Charge(_)));
+            return;
+        };
+        let bytes2 = e2.map_or(0, |(_, b)| b);
+        if let Some((c, b)) = e2 {
+            assert!(c >= 1 && c <= COUNT && b <= BYTES);
         }
-        kani::cover!(fits(count, bytes, total, len) && len > 0);
+        assert!(bytes2 <= total2 && total2 <= TOTAL);
+        // The rest of the owners' sum is unchanged.
+        assert!(i128::from(total2) - i128::from(bytes2) == i128::from(total) - i128::from(bytes));
+        // A charge adds one region of exactly its bytes; a refund or a
+        // release never adds.
+        match op {
+            Op::Charge(len) => {
+                let c0 = e.map_or(0, |(c, _)| c);
+                assert!(
+                    e2.is_some_and(|(c, b)| c == c0 + 1
+                        && u128::from(b) == u128::from(bytes) + u128::from(len))
+                );
+            }
+            _ => assert!(bytes2 <= bytes),
+        }
+        kani::cover!(matches!(op, Op::Charge(_)) && e.is_some());
+        kani::cover!(matches!(op, Op::Refund(_)) && e2.is_some());
     }
 }
