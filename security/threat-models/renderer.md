@@ -25,7 +25,7 @@ Filled at M1 (security scope 6.5, SEC-26). At M1 the renderer is a skeleton, [`h
 
 | Mitigation | Where | Test or evidence |
 |---|---|---|
-| The renderer **never attests a peer by pid** (review M8). It trusts its bootstrap channel because the channel came at birth and only the broker holds the other end | `hg-renderer` `run`; contract doc in [`launch.rs`](../../crates/hg-substrate/src/launch.rs) | Launch facts E12, E13, E23 (in a PID namespace every outside process reads as pid 0). `PeerAttest::Inherited` (M7) is on `substrate/m1e-launch` |
+| The renderer **never attests a peer by pid** (review M8). It trusts its bootstrap channel because the channel came at birth and only the broker holds the other end | `hg-renderer` `run`; contract doc in [`launch.rs`](../../crates/hg-substrate/src/launch.rs) | Launch facts E12, E13, E23 (in a PID namespace every outside process reads as pid 0). `PeerAttest::Inherited` (M7, 4fd9db7); the simulator models it (`a_namespaced_child_*` tests in `hg-substrate-sim`) |
 | `ready` reports the build and a `SandboxReport` (tier plus missing 6.7 features); the broker kills a child with another build (DU-3) | `hg-renderer`; `hg-browser` | dst-sim `du3` |
 | Answers are checked: out of order, duplicated or misrouted answers are refused | `hg-renderer` `answered` | dst-sim `faults` and `relaunch`: 0 refused over 60 seeds each |
 | **Linux:** the D3 seccomp allowlist with an arch check. It denies `socket`, `connect`, `bind`, process and namespace creation (`clone` threads only; `clone3` gives ENOSYS), `PROT_EXEC` maps, `memfd_create` and `ioctl` TIOCSTI. It is installed with TSYNC; the launch filter is the same list plus `execveat` (review B1) | [`sandbox/seccomp.rs`](../../crates/hg-substrate-os/src/sandbox/seccomp.rs), [`sandbox/linux.rs`](../../crates/hg-substrate-os/src/sandbox/linux.rs) | Table tests and the seccomp Kani proof; FP-M0 tier probe; launch facts E26 |
@@ -46,7 +46,7 @@ Filled at M1 (security scope 6.5, SEC-26). At M1 the renderer is a skeleton, [`h
 
 ## 6. Open items
 
-- E-Q1 (full Linux tier), M3 (the broker's cross-check of the `SandboxReport`), M7 (`PeerAttest::Inherited`), and the launch paths on all three OSes: all on `substrate/m1e-launch`.
+- E-Q1 (full Linux tier), M3 (the broker's cross-check of the `SandboxReport`), and the launch paths on macOS and Windows: on `substrate/m1e-launch`.
 - Re-run the macOS SBPL probe (`research_notes/M1 E launch/probes/macos`) at each new SDK.
 - Sandbox extensions on macOS 27 (SEC-D6) and the Windows token combination (M5) remain from the first pass.
 - The generated surface inventory (SEC-6).

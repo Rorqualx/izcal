@@ -169,6 +169,17 @@ pub struct SimConfig {
     pub keep_trace_text: bool,
     /// Whose shared-memory behaviour the regions model (D6 review M7).
     pub region_os: crate::region::SimOs,
+    /// Children the simulated launcher starts run in a modelled PID
+    /// namespace (design review M7, M8): their bootstrap's parent is
+    /// [`hg_substrate::ipc::PeerAttest::Inherited`], they attest no
+    /// sender by pid (a receiver bound to a pid refuses every record, as
+    /// the Linux restricted tier's pid 0 would), a region writer reaches
+    /// them only on the inherited bootstrap channel, and every fault they
+    /// report names no sender. On by default: the contract (M8) is that a
+    /// child's identity check is always the broker-issued channel binding,
+    /// so code written to it passes on every OS. Processes linked with
+    /// [`World::link`] are not affected.
+    pub pid_namespaces: bool,
 }
 
 impl SimConfig {
@@ -183,6 +194,7 @@ impl SimConfig {
             page_size: 4096,
             keep_trace_text: false,
             region_os: crate::region::SimOs::Linux,
+            pid_namespaces: true,
         }
     }
 }
@@ -282,6 +294,9 @@ pub(crate) struct Proc {
     pub(crate) committed: u64,
     /// Launched by another process ([`World::link`]): never the broker.
     pub(crate) launched: bool,
+    /// Started by the simulated launcher in a modelled PID namespace
+    /// ([`SimConfig::pid_namespaces`]).
+    pub(crate) pid_ns: bool,
     /// The kinds this process may launch: the broker's only.
     pub(crate) children: Option<Arc<crate::launch::ChildTable>>,
 }
@@ -713,6 +728,7 @@ pub(crate) fn spawn_in(
         seqs: Vec::new(),
         regions: BTreeMap::new(),
         launched: false,
+        pid_ns: false,
         reserved: 0,
         committed: 0,
         children,

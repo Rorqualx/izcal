@@ -91,9 +91,21 @@ struct Listen {
     generation: u32,
     seq: usize,
     sink: Arc<Mutex<Sink>>,
-    /// For a bound receiver, the one process whose messages it accepts
-    /// ([`Ipc::listen_bound`]).
-    peer: Option<Owner>,
+    /// How the receiver attests its sender.
+    bind: Bind,
+}
+
+/// How a listening receiver attests the records it takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bind {
+    /// [`Ipc::listen`]: anyone holding the sender.
+    Free,
+    /// [`PeerAttest::Os`]: only this process, as the OS attests the sender.
+    Os(Owner),
+    /// [`PeerAttest::Inherited`] in a modelled PID namespace: the channel
+    /// itself attests (it is the bootstrap receiver), and no pid is
+    /// compared, because every outside sender reads as pid 0 there.
+    Inherited,
 }
 
 struct Chan {
@@ -343,7 +355,7 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
     };
     c.draining = false;
     let Some(l) = &c.listen else { return };
-    let (pid, generation, sink, peer) = (l.pid, l.generation, Arc::clone(&l.sink), l.peer);
+    let (pid, generation, sink, bind) = (l.pid, l.generation, Arc::clone(&l.sink), l.bind);
     let seq = l.seq;
     // E-R8 reorder: the head steps back once behind what the sequence
     // already holds; the channel's own order is kept.
@@ -366,6 +378,11 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
         }
         return;
     }
+    // A receiver in a modelled PID namespace sees every outside process
+    // as pid 0 (launch facts E12, E13): it attests no sender, so every
+    // fault it reports names none (design review M7).
+    let ns = st.proc(pid, generation).is_some_and(|p| p.pid_ns);
+    let attested = |sender: Option<u32>| if ns { None } else { sender };
     let Some(c) = st.ipc.chans.get_mut(&id) else {
         return;
     };
@@ -378,10 +395,11 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
         ..
     }) = c.queue.pop_front()
     {
-        match peer {
+        match bind {
             // A bound receiver's message from another process: the bound
-            // peer passed its sender on, so it is the one named.
-            Some(bound @ Owner::Proc(p, _)) if from != bound => {
+            // peer passed its sender on, so it is the one named. In a PID
+            // namespace no record can match a pid, so every one is refused.
+            Bind::Os(bound @ Owner::Proc(p, _)) if ns || from != bound => {
                 // Nothing follows a violation. The handles of this message
                 // and of every one queued after it close once the lock is
                 // released (dropping one locks the world).
@@ -392,13 +410,18 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
                 c.closed_delivered = true;
                 Delivery::Violation(Fault {
                     kind: FaultKind::Identity,
-                    sender: Some(p.0),
+                    sender: attested(Some(p.0)),
                 })
             }
-            // A writer from anyone but the broker (D6 review M1).
-            Some(_) | None
-                if handles.iter().any(Regions::is_writer)
-                    && !matches!(from, Owner::Proc(p, g) if st.proc(p, g).is_some_and(|x| !x.launched)) =>
+            // A writer from anyone but the broker (D6 review M1): by the
+            // OS's attestation, or in a PID namespace only on the
+            // inherited bootstrap channel, which only the broker sends on.
+            _ if handles.iter().any(Regions::is_writer)
+                && !(if ns {
+                    bind == Bind::Inherited
+                } else {
+                    matches!(from, Owner::Proc(p, g) if st.proc(p, g).is_some_and(|x| !x.launched))
+                }) =>
             {
                 stray = handles;
                 for m in c_queue_drain(&mut st, id) {
@@ -409,17 +432,20 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
                 }
                 Delivery::Violation(Fault {
                     kind: FaultKind::BadHandle,
-                    sender: match from {
+                    sender: attested(match from {
                         Owner::Proc(p, _) => Some(p.0),
                         Owner::Transit => None,
-                    },
+                    }),
                 })
             }
             _ => Delivery::Message { bytes, handles },
         }
     } else if let Some(fault) = c.fault.take() {
         c.closed_delivered = true;
-        Delivery::Violation(fault)
+        Delivery::Violation(Fault {
+            sender: attested(fault.sender),
+            ..fault
+        })
     } else if (!c.sender.open || c.severed) && !c.closed_delivered {
         c.closed_delivered = true;
         Delivery::Closed
@@ -727,7 +753,7 @@ impl Ipc for SimIpc {
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
-        self.start_listening(from, None, seq, sink)
+        self.start_listening(from, Bind::Free, seq, sink)
     }
 
     fn listen_bound(
@@ -744,8 +770,13 @@ impl Ipc for SimIpc {
                 let st = self.shared.lock();
                 let rx = self.held(&st, from.handle());
                 let boot = st.ipc.boot_rx.get(&(self.pid, self.generation)).copied();
+                let ns = self.in_pid_namespace(&st);
                 drop(st);
                 match (rx, boot) {
+                    // In a PID namespace the channel is the attestation.
+                    (Some((id, Side::Receiver)), Some((boot_id, _))) if id == boot_id && ns => {
+                        return self.start_listening(from, Bind::Inherited, seq, sink);
+                    }
                     (Some((id, Side::Receiver)), Some((boot_id, parent))) if id == boot_id => {
                         parent
                     }
@@ -757,7 +788,7 @@ impl Ipc for SimIpc {
             return Err(IpcError::Refused);
         };
         let owner = Owner::Proc(ProcessId(peer.pid()), generation);
-        self.start_listening(from, Some(owner), seq, sink)
+        self.start_listening(from, Bind::Os(owner), seq, sink)
     }
     fn allocate_region(&self, len: usize, owner: OsPeer) -> Result<RegionWriter, IpcError> {
         self.region_allocate(len, owner)
@@ -790,6 +821,7 @@ impl Ipc for SimIpc {
         let ok = st.ipc.chans.get(&up).is_some_and(|c| ours(&c.sender))
             && st.ipc.chans.get(&down).is_some_and(|c| ours(&c.receiver));
         st.ipc.boot.remove(&self.pid);
+        let ns = self.in_pid_namespace(&st);
         if ok {
             st.ipc
                 .boot_rx
@@ -812,18 +844,29 @@ impl Ipc for SimIpc {
         Some(Bootstrap {
             to_parent,
             from_parent,
-            parent: PeerAttest::Os(parent),
+            // A child in a modelled PID namespace cannot name its launcher
+            // by pid: its bootstrap channel is the attestation (M7).
+            parent: if ns {
+                PeerAttest::Inherited
+            } else {
+                PeerAttest::Os(parent)
+            },
         })
     }
 }
 
 impl SimIpc {
-    /// [`Ipc::listen`] and [`Ipc::listen_bound`]: `peer` is the bound
-    /// peer, `None` for a free receiver.
+    /// Whether this process runs in a modelled PID namespace.
+    fn in_pid_namespace(&self, st: &State) -> bool {
+        st.proc(self.pid, self.generation).is_some_and(|p| p.pid_ns)
+    }
+
+    /// [`Ipc::listen`] and [`Ipc::listen_bound`]: `bind` is how the
+    /// receiver attests its sender.
     fn start_listening(
         &self,
         from: ChannelReceiver,
-        peer: Option<Owner>,
+        bind: Bind,
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
@@ -846,7 +889,7 @@ impl SimIpc {
             return Err(IpcError::Closed);
         };
         // A bound receiver listens only with its peer named.
-        if (c.transfer == Transfer::Bound && peer.is_none()) || c.listen.is_some() {
+        if (c.transfer == Transfer::Bound && bind == Bind::Free) || c.listen.is_some() {
             drop(st);
             return Err(IpcError::Refused);
         }
@@ -855,7 +898,7 @@ impl SimIpc {
             generation: self.generation,
             seq: si,
             sink: Arc::new(Mutex::new(sink)),
-            peer,
+            bind,
         });
         let pending = c.queue.len();
         st.trace

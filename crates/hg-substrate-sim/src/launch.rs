@@ -123,6 +123,13 @@ impl Launcher for SimLauncher {
                 "launch {kind:?} by {} as {}",
                 self.parent.0, pid.0
             ));
+            let ns = st.config.pid_namespaces;
+            if let Some(p) = st
+                .procs
+                .get_mut(usize::try_from(pid.0).unwrap_or(usize::MAX))
+            {
+                p.pid_ns = ns;
+            }
         }
         // A child that cannot be linked is ended at once: a failed launch
         // leaves no process behind.

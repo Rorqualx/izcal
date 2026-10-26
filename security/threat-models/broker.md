@@ -59,7 +59,7 @@ Filled at M1 (security scope 6.5, SEC-26) from the security scope's first pass a
 - **The full Linux tier is unclaimed** until the owner answers E-Q1 (an AppArmor `userns` profile on the measurement host, as root). M1 builds and measures the restricted tier only (`linux-restricted-userns`: user, PID and net namespaces, no mount namespace, no empty root, no id map; launch facts E1–E5, E22).
 - The OS launchers (Linux spawner, macOS `posix_spawn` with the code-directory check, Windows AppContainer with the job assigned while suspended) are on `substrate/m1e-launch`. When they land, this file gains their tests.
 - M3: the broker checks each child's `SandboxReport` against the tier the launcher applied; a mismatch kills the child. Today the report is received and ignored.
-- M7: `PeerAttest::Inherited` (a child attests its bootstrap channel, never a pid) is on `substrate/m1e-launch`.
+- M7: `PeerAttest::Inherited` (a child attests its bootstrap channel, never a pid) is merged (4fd9db7). The simulator models a child in a PID namespace: its parent is `Inherited`, a receiver bound to a pid refuses every record, writers reach it only on its bootstrap channel, and its faults name no sender (`hg-substrate-sim` `SimConfig::pid_namespaces`, tests in `tests/it/launch.rs`).
 - The generated surface inventory (SEC-6) does not exist yet. Section 2 lists the endpoints by hand.
 - Proposed seccomp hardening for children: allow `sendto` only with a null destination address (launch facts E27). Forwarded to the seccomp table's owner.
 - The security scope's first-pass open item stays: which Windows mitigations (CIG, extension-point blocking) the broker can carry while it owns every prompt window, measured at M5.
