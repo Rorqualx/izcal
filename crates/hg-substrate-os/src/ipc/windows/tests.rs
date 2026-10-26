@@ -628,12 +628,19 @@ fn a_bound_receiver_bound_to_another_process_reports_identity() {
 /// child process and back (p50, p99); the same with a receiver end
 /// carried each way, which costs two broker relays and two redemptions
 /// per trip; and throughput of 64 KiB messages echoed. Run under an
-/// exclusive booking with `--ignored --nocapture`; prints one line.
+/// exclusive booking with `--ignored --nocapture`; prints the trips
+/// over 1 ms, then one line of results.
 #[test]
 #[ignore = "a measurement, run by hand on the lab machine"]
 fn measure_round_trip_and_throughput() {
     let r = rig();
     let c = launch(&r, "echo", false);
+    // One untimed round trip first: `launch` returns before the child has
+    // reached its echo loop, so the first message also waited out the
+    // child's start-up (about 11-13 ms on rig253) and was the measured
+    // max. Measured steady state starts once the child has answered.
+    r.ipc.send(&c.to_child, vec![0; 64], Vec::new()).unwrap();
+    let _ = expect_msg(&c.from_child);
     let pct = |lat: &mut Vec<u128>, q: usize| {
         lat.sort_unstable();
         lat[lat.len() * q / 100] as f64 / 1000.0
@@ -647,6 +654,15 @@ fn measure_round_trip_and_throughput() {
         let _ = expect_msg(&c.from_child);
         lat.push(t.elapsed().as_nanos());
     }
+    // Which trips are slow, and when: the index and microseconds of every
+    // trip over 1 ms, before sorting.
+    let slow: Vec<String> = lat
+        .iter()
+        .enumerate()
+        .filter(|(_, ns)| **ns > 1_000_000)
+        .map(|(i, ns)| format!("#{i}={}us", ns / 1000))
+        .collect();
+    println!("D5-SLOW {} over 1ms: {}", slow.len(), slow.join(" "));
     let (p50, p99) = (pct(&mut lat, 50), pct(&mut lat, 99));
     let max = *lat.last().unwrap() as f64 / 1000.0;
 

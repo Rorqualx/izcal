@@ -28,9 +28,26 @@ The test launches a second process (the test binary started again with `IZCAL_D5
 
 The percentiles agree within 2% across the runs. Throughput varies more (4.4 to 5.3 GiB/s).
 
-Every run has a maximum near 13 ms. It is one outlier in 10,000, and it recurs at about the same size each time, which an unrelated background spike would not explain. It was not investigated. It is recorded here as an open question for the measurement that sets a target, not as a property of the transport.
+Every run has a maximum near 13 ms. It is one outlier in 10,000, and it recurs at about the same size each time, which an unrelated background spike would not explain. The section below finds its cause: it is the first trip, which waits out the child's start-up.
 
 Moving a handle costs about 45 µs more per round trip at the median: two broker relays and two redemptions, about 11 µs each.
+
+## After the review fixes (25 Oct 2026)
+
+Measured again on rig253 under an exclusive booking (b-c98449), with `rig check` passing before each run. Each build was cleaned before it was measured, because extracting an older tree leaves file times that make cargo reuse the previous binary.
+
+**The ~13 ms maximum is the child's start-up.** The test now prints every trip over 1 ms. In every run the only such trip was the first one (#0, 10.9 to 12.9 ms); the other 9,999 stayed under 1 ms. Waiting 500 ms after the launch removed it (0 trips over 1 ms, max 330 to 342 µs), so the first message had been waiting for the child to reach its echo loop: `launch` returns before then. The measurement now makes one untimed round trip before it starts timing.
+
+| Build | Round trip p50 | p99 | max | With a receiver end, p50 | p99 | 64 KiB echo |
+|---|---|---|---|---|---|---|
+| `cbda210` (before M8 moved work off the IO thread) | 33.4 to 35.2 µs | 89.8 to 98.4 µs | 10.6 to 11.2 ms (first trip) | 81.4 to 83.3 µs | 130.5 to 133.5 µs | 4,688 to 5,416 MiB/s |
+| `088de21` (relays classified off the IO thread) | 35.2 to 36.1 µs | 95.2 to 100.6 µs | 11.4 to 14.4 ms (first trip) | 129.5 to 149.8 µs | 202.0 to 280.7 µs | 3,980 to 5,223 MiB/s |
+| `310bc85` (relays, redeems and binds off the IO thread) | 34.2 to 38.6 µs | 94.6 to 101.3 µs | 13.7 to 14.7 ms (first trip) | 172.8 to 211.1 µs | 278.2 to 302.5 µs | 4,250 to 5,025 MiB/s |
+| Current, with the warm-up trip | 33.2 to 36.2 µs | 82.7 to 84.4 µs | 130.9 to 151.5 µs | 180.2 to 183.7 µs | 270.1 to 291.8 µs | 4,081 to 5,181 MiB/s |
+
+Three runs each. The plain round trip and throughput did not change beyond run-to-run variation.
+
+**A trip that carries a handle got about 100 µs slower, and M8 is the cause.** Item 1 (M8) moved each relay's, redemption's and bind's kernel queries to a new thread per request, so that a child whose pipe blocks those queries cannot stall the broker. A trip that carries an end makes two relays and two redemptions. Moving the relays added about 50 µs at the median (`cbda210` to `088de21`), and moving redemptions and binds about 50 µs more (`088de21` to `310bc85`): about 25 µs per request for starting a thread and handing its result back. The end-closed record added after `310bc85` changed nothing measurable. This is open: a long-lived worker per child would keep the isolation without starting a thread per request.
 
 ## Also checked under the same build
 
