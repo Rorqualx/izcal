@@ -153,6 +153,17 @@ impl WinLauncher {
     }
 }
 
+impl Drop for WinLauncher {
+    fn drop(&mut self) {
+        // The jobs would end the children on close anyway; ending them
+        // here also unregisters their containers, which persist per user.
+        let all = std::mem::take(&mut *self.lock());
+        for e in all.into_values() {
+            e.end();
+        }
+    }
+}
+
 impl Launcher for WinLauncher {
     fn launch(&self, kind: ChildKind, capacity: u32) -> Result<Launched, LaunchError> {
         if self.halted.load(Ordering::SeqCst) {
