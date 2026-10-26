@@ -21,7 +21,18 @@
 //! panics. DST should find it, group every failing seed under one
 //! signature, and hand back a replay command.
 //!
-//! Usage: `dst-smoke --seed N [--crash-ppm N] [--ipc] [--bug]`
+//! `--regions` runs shared memory over simulated IPC instead (M1 phase
+//! D6): each round the browser (the broker) sends the renderer a fresh
+//! region writer; the renderer fills it with a pattern drawn from the
+//! round, seals it and sends the read-only region back; the browser maps
+//! it and checks every byte. Beside it, the browser publishes a counter in
+//! a producer region the renderer reads through its consumer view with
+//! acquire loads. `--region-os linux|macos|windows` picks the OS whose
+//! region behaviour the simulator models. A wrong byte or a counter that
+//! goes backwards panics.
+//!
+//! Usage: `dst-smoke --seed N [--crash-ppm N] [--ipc | --regions
+//! [--region-os OS]] [--bug]`
 
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
@@ -30,13 +41,15 @@ use hg_substrate::{
     EntropyPurpose, Memory, MemoryKind, PostError, Priority, SequenceHandle, Substrate, Task,
 };
 use hg_substrate_os::memory::OsMemory;
-use hg_substrate_sim::{FaultPlan, Limits, SimConfig, World};
+use hg_substrate_sim::{FaultPlan, Limits, SimConfig, SimOs, World};
 use hg_types::{Duration, Instant};
 
 struct Args {
     seed: u64,
     crash_ppm: u32,
     ipc: bool,
+    regions: bool,
+    region_os: SimOs,
     bug: bool,
 }
 
@@ -45,6 +58,8 @@ fn parse() -> Option<Args> {
         seed: 0,
         crash_ppm: 5_000,
         ipc: false,
+        regions: false,
+        region_os: SimOs::Linux,
         bug: false,
     };
     let mut it = std::env::args().skip(1);
@@ -53,6 +68,15 @@ fn parse() -> Option<Args> {
             "--seed" => a.seed = it.next()?.parse().ok()?,
             "--crash-ppm" => a.crash_ppm = it.next()?.parse().ok()?,
             "--ipc" => a.ipc = true,
+            "--regions" => a.regions = true,
+            "--region-os" => {
+                a.region_os = match it.next()?.as_str() {
+                    "linux" => SimOs::Linux,
+                    "macos" => SimOs::MacOs,
+                    "windows" => SimOs::Windows,
+                    _ => return None,
+                }
+            }
             "--bug" => a.bug = true,
             _ => return None,
         }
@@ -64,7 +88,9 @@ type Endpoint = Arc<Mutex<Option<(Substrate, SequenceHandle)>>>;
 
 fn main() -> ExitCode {
     let Some(args) = parse() else {
-        eprintln!("usage: dst-smoke --seed N [--crash-ppm N] [--ipc] [--bug]");
+        eprintln!(
+            "usage: dst-smoke --seed N [--crash-ppm N] [--ipc | --regions [--region-os linux|macos|windows]] [--bug]"
+        );
         return ExitCode::from(2);
     };
     let mut config = SimConfig::new(args.seed);
@@ -74,7 +100,18 @@ fn main() -> ExitCode {
         ..FaultPlan::NONE
     };
     config.memory_budget = Some(1 << 20);
+    config.region_os = args.region_os;
     let world = World::new(config);
+    if args.regions {
+        let keep = regions::start(&world);
+        world.run(Limits {
+            max_steps: 1_000_000,
+            max_time: Instant::from_nanos(60_000_000_000),
+        });
+        keep.lock().unwrap().clear();
+        println!("{}", world.summary().report_line());
+        return ExitCode::SUCCESS;
+    }
     if args.ipc {
         let keep = ipc::start(&world, args.bug);
         world.run(Limits {
@@ -331,6 +368,179 @@ mod ipc {
             k.lock().unwrap().push(serving);
         });
         *renderer_os.lock().unwrap() = world.os_peer(renderer);
+        *ends.lock().unwrap() = world.link(browser, renderer, 64);
+        keep
+    }
+}
+
+/// The `--regions` workload: shared memory over simulated IPC (D6).
+mod regions {
+    use std::any::Any;
+    use std::sync::{Arc, Mutex};
+
+    use hg_substrate::ipc::{
+        ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Flow, Handle, ProducerRegion,
+        ReadOnlyRegion, RegionWriter,
+    };
+    use hg_substrate::{EntropyPurpose, Memory, Priority, Substrate, Task};
+    use hg_substrate_os::memory::OsMemory;
+    use hg_substrate_sim::World;
+    use hg_types::Duration;
+
+    const ROUNDS: u64 = 60;
+    const LEN: usize = 16 * 1024;
+
+    /// Everything kept alive until the run ends.
+    pub type Keep = Arc<Mutex<Vec<Box<dyn Any + Send>>>>;
+
+    /// The byte at `i` of round `n`'s region.
+    fn pattern(n: u64, i: usize) -> u8 {
+        let x = n.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ u64::try_from(i).unwrap_or(0);
+        x.to_le_bytes()[(i % 8).min(7)]
+    }
+
+    fn listen(
+        s: &Substrate,
+        rx: ChannelReceiver,
+        name: &'static str,
+        mut f: impl FnMut(Vec<u8>, Vec<Handle>) + Send + 'static,
+    ) -> Option<hg_substrate::ipc::Listening> {
+        let seq = s.exec.sequence(name, Priority::UserVisible);
+        s.ipc
+            .listen(
+                rx,
+                seq,
+                Box::new(move |d| {
+                    if let Delivery::Message { bytes, handles } = d {
+                        f(bytes, handles);
+                    }
+                    Flow::Continue
+                }),
+            )
+            .ok()
+    }
+
+    /// Spawns the browser and the renderer and links them.
+    pub fn start(world: &World) -> Keep {
+        let backing = || -> Arc<dyn Memory> { Arc::new(OsMemory::new()) };
+        let keep: Keep = Arc::default();
+        let ends: Arc<Mutex<Option<(ChannelReceiver, ChannelSender)>>> = Arc::default();
+        let (e, k) = (Arc::clone(&ends), Arc::clone(&keep));
+        let browser = world.spawn("browser", backing(), false, move |s| {
+            let Some((from_renderer, to_renderer)) = e.lock().unwrap().take() else {
+                return;
+            };
+            let to = Arc::new(to_renderer);
+            // The counter the renderer reads through its consumer view.
+            let Ok(w) = s.ipc.allocate_region(4096) else {
+                return;
+            };
+            let Ok(producer) = s.ipc.share_region(w) else {
+                return;
+            };
+            let producer: Arc<ProducerRegion> = Arc::new(producer);
+            if let Ok(c) = s.ipc.consumer_of(&producer) {
+                let _ = s.ipc.send(&to, b"counter".to_vec(), vec![c.into_handle()]);
+            }
+            let seq = s.exec.sequence("rounds", Priority::UserVisible);
+            let mut rng = s.entropy.stream(EntropyPurpose::Random);
+            // Rounds run in a seeded order; the counter counts the rounds
+            // done, so it only goes up.
+            let done = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            for n in 0..ROUNDS {
+                let delay = Duration::from_micros(rng.next_u64() % 50_000);
+                let (s2, to2, p2, d2) = (
+                    s.clone(),
+                    Arc::clone(&to),
+                    Arc::clone(&producer),
+                    Arc::clone(&done),
+                );
+                let _ = s.exec.post(
+                    seq,
+                    Task::new(move || {
+                        let c = d2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let _ = p2.mapping().store_u64_release(0, c.saturating_add(1));
+                        if let Ok(w) = s2.ipc.allocate_region(LEN) {
+                            // The renderer may have crashed: its channel
+                            // is closed and the writer is freed.
+                            let _ =
+                                s2.ipc
+                                    .send(&to2, n.to_le_bytes().to_vec(), vec![w.into_handle()]);
+                        }
+                    }),
+                    Some(delay),
+                    Duration::from_micros(200),
+                );
+            }
+            let s3 = s.clone();
+            let lis = listen(&s, from_renderer, "checks", move |bytes, mut handles| {
+                let (Ok(n), Some(h)) = (<[u8; 8]>::try_from(bytes.as_slice()), handles.pop())
+                else {
+                    return;
+                };
+                let n = u64::from_le_bytes(n);
+                let Ok(ro) = ReadOnlyRegion::from_handle(h) else {
+                    panic!("round {n}: not a read-only region");
+                };
+                let Ok(m) = s3.ipc.map_region(ro.handle()) else {
+                    panic!("round {n}: the region does not map");
+                };
+                let mut got = vec![0u8; LEN];
+                m.read_into(0, &mut got).unwrap();
+                for (i, b) in got.iter().enumerate() {
+                    assert_eq!(*b, pattern(n, i), "round {n} byte {i}");
+                }
+            });
+            let mut kk = k.lock().unwrap();
+            kk.push(Box::new(lis));
+            kk.push(Box::new(producer));
+            kk.push(Box::new(to));
+        });
+        let k = Arc::clone(&keep);
+        let renderer = world.spawn("renderer", backing(), true, move |s| {
+            // A restart has no launch channels: relaunching is phase E's.
+            let Some(boot) = s.ipc.bootstrap() else {
+                return;
+            };
+            let to = boot.to_parent;
+            let s2 = s.clone();
+            let mut counter: Option<(ConsumerRegion, hg_substrate::ipc::Mapping)> = None;
+            let mut last = 0u64;
+            let lis = listen(&s, boot.from_parent, "fill", move |bytes, mut handles| {
+                let Some(h) = handles.pop() else { return };
+                if bytes == b"counter" {
+                    if let Ok(c) = ConsumerRegion::from_handle(h)
+                        && let Ok(m) = s2.ipc.map_region(c.handle())
+                    {
+                        counter = Some((c, m));
+                    }
+                    return;
+                }
+                if let Some((_, m)) = &counter {
+                    let v = m.load_u64_acquire(0).unwrap();
+                    assert!(v >= last, "the counter went back from {last} to {v}");
+                    last = v;
+                }
+                let (Ok(n), Ok(w)) = (
+                    <[u8; 8]>::try_from(bytes.as_slice()),
+                    RegionWriter::from_handle(h),
+                ) else {
+                    return;
+                };
+                let n = u64::from_le_bytes(n);
+                {
+                    let Ok(m) = s2.ipc.map_region(w.handle()) else {
+                        return;
+                    };
+                    let fill: Vec<u8> = (0..LEN).map(|i| pattern(n, i)).collect();
+                    m.write_from(0, &fill).unwrap();
+                }
+                if let Ok(ro) = s2.ipc.seal_region(w) {
+                    let _ = s2.ipc.send(&to, bytes, vec![ro.into_handle()]);
+                }
+            });
+            k.lock().unwrap().push(Box::new(lis));
+        });
         *ends.lock().unwrap() = world.link(browser, renderer, 64);
         keep
     }
