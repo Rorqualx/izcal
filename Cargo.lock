@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "hg-browser"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+ "hg-ipc-gen",
+ "hg-substrate",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-build-id"
 version = "0.0.0"
 dependencies = [
@@ -12,9 +22,17 @@ dependencies = [
 [[package]]
 name = "hg-dst"
 version = "0.0.0"
+
+[[package]]
+name = "hg-dst-sim"
+version = "0.0.0"
 dependencies = [
+ "hg-browser",
+ "hg-dst",
  "hg-ipc",
  "hg-ipc-gen",
+ "hg-net-service",
+ "hg-renderer",
  "hg-substrate",
  "hg-substrate-os",
  "hg-substrate-sim",
@@ -56,6 +74,16 @@ name = "hg-launch-wire"
 version = "0.0.0"
 
 [[package]]
+name = "hg-net-service"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+ "hg-ipc-gen",
+ "hg-substrate",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-os-types"
 version = "0.0.0"
 dependencies = [
@@ -64,6 +92,16 @@ dependencies = [
  "hg-substrate",
  "hg-substrate-os",
  "hg-substrate-sim",
+ "hg-types",
+]
+
+[[package]]
+name = "hg-renderer"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+ "hg-ipc-gen",
+ "hg-substrate",
  "hg-types",
 ]
 

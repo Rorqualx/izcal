@@ -6,25 +6,9 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Izcal's deterministic simulation test runner (tier T): one seed per child process, crash signatures, replay commands, and the same-seed-same-trace check (Stage 1 design 7.4; CS-ER-2, CS-T5)"
 
-[dependencies]
-hg-ipc = { path = "../hg-ipc" }
-hg-ipc-gen = { path = "../hg-ipc-gen" }
-hg-substrate = { path = "../hg-substrate" }
-hg-substrate-os = { path = "../hg-substrate-os" }
-hg-substrate-sim = { path = "../hg-substrate-sim" }
-hg-types = { path = "../hg-types" }
-
 [[bin]]
 name = "hg-dst"
 path = "src/main.rs"
-
-[[bin]]
-name = "dst-smoke"
-path = "src/bin/dst-smoke.rs"
-
-[[test]]
-name = "it"
-path = "tests/it/main.rs"
 
 # Tier T: the base table (coding standard A.1) with A.2's tier T changes.
 [lints.rust]
