@@ -836,7 +836,13 @@ impl Inner {
         let Some((stand_data, stand_credit)) = stand else {
             // No stand-in: the end goes as it is, without its queued
             // messages; its receiver sees the gap as a sequence violation,
-            // unblamed.
+            // unblamed. Its send-possible request comes off first (R9).
+            if let Some(Role::Sender { data, armed, .. }) = st.ends.get_mut(&dep)
+                && *armed
+            {
+                sys::cancel_send_possible(*data);
+                *armed = false;
+            }
             if let Some(Role::Sender { outbox, .. }) = st.ends.get_mut(&id)
                 && let Some(head) = outbox.front_mut()
             {

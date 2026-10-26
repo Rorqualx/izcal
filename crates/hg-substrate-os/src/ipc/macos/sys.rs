@@ -563,12 +563,21 @@ pub(crate) fn release_right(name: PortName, disposition: u8) {
 }
 
 /// Releases the rights an outgoing message of ours holds while unsent:
-/// its moved receive and send rights (P17: after a failed send they are
-/// back in this task, under the names now written in the message).
+/// its moved receive and send rights, and, after a send that failed, the
+/// header's own: the kernel hands the destination back as a moved send
+/// right and the reply as a send-once right under a new name (P17,
+/// R12). A message never sent still names them as copy and make, which
+/// hold nothing.
 pub(crate) fn release_outgoing(bytes: &[u8]) {
     let Ok(l) = wire::layout(bytes) else {
         return;
     };
+    if l.header.remote_disposition() == PORT_SEND {
+        deallocate(l.header.remote);
+    }
+    if l.header.local_disposition() == PORT_SEND_ONCE {
+        deallocate(l.header.local);
+    }
     for d in wire::descs(bytes, &l) {
         if let Desc::Port { name, disposition } = d {
             release_right(name, disposition);
