@@ -173,6 +173,11 @@ const MAX_LINK_BACKLOG: usize = 4096;
 /// make the broker buffer without bound.
 const MAX_CHILD_REQUESTS: usize = 1024;
 
+/// How often a relay waiting for another relay's copy of the same
+/// section (review Q1) looks again. It waits on its own child's worker,
+/// with no lock held.
+const COPY_WAIT_POLL: Duration = Duration::from_millis(10);
+
 /// One item for a listener.
 enum Item {
     Message(Vec<u8>, Vec<Handle>),
@@ -263,6 +268,16 @@ enum Role {
     },
 }
 
+/// Why copies could not be planned now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Plan {
+    /// A charge does not fit: the relay is refused.
+    Quota,
+    /// Another relay is making a copy this one needs: plan again once it
+    /// is done.
+    Wait,
+}
+
 /// A copy the broker is to make for a relay (review Q1): planned and
 /// charged to the owner under the lock, made off it (D5 review M8).
 struct CopyJob {
@@ -302,7 +317,8 @@ struct RegionUndo {
     /// Sections whose state moved, with the state before.
     states: Vec<(u64, RState)>,
     /// Copies made.
-    copies: Vec<u64>,
+    /// Copies made: (source, copy).
+    copies: Vec<(u64, u64)>,
 }
 
 /// A registered section, as the broker knows it (D6 review B1).
@@ -317,6 +333,11 @@ struct RegEntry {
     /// were made from (review finding 3): a writer that comes back to the
     /// broker through a relay is a new table entry, but the same section.
     live: Arc<AtomicUsize>,
+    /// Its one `immutable` copy (review Q1), made once, charged once and
+    /// reused by every later relay that asks (review finding 1).
+    copy: Option<u64>,
+    /// That copy is being made, off the lock.
+    copying: bool,
 }
 
 struct End {
@@ -981,15 +1002,37 @@ impl Inner {
                 filler_trusted: o.filler_trusted,
             };
             if o.copy {
-                // Only a copy made off the lock is used here (D5 review
-                // M8); one the plan did not foresee fails the relay closed.
-                let Some(at) = prepared.iter().position(|c| c.src == id && c.len == len) else {
-                    Self::region_rollback(b, undo);
-                    return Err(Refusal::Region);
+                // The section's one copy: reused if it exists, else the
+                // one made off the lock for this relay (D5 review M8). A
+                // copy neither made nor prepared fails the relay closed.
+                let existing = b
+                    .regions
+                    .get(&id)
+                    .and_then(|e| e.copy)
+                    .and_then(|c| b.regions.get(&c).map(|ce| (c, ce)))
+                    .map(|(c, ce)| (c, sys::narrow(&ce.master, sys::SECTION_READ)));
+                let (copy_id, h) = match existing {
+                    Some((c, Ok(h))) => (c, h),
+                    Some((_, Err(_))) => {
+                        Self::region_rollback(b, undo);
+                        return Err(Refusal::Region);
+                    }
+                    None => {
+                        let Some(at) = prepared.iter().position(|c| c.src == id && c.len == len)
+                        else {
+                            Self::region_rollback(b, undo);
+                            return Err(Refusal::Region);
+                        };
+                        let c = prepared.swap_remove(at);
+                        let (copy_id, h) = Self::register_copy(b, c);
+                        if let Some(e) = b.regions.get_mut(&id) {
+                            e.copy = Some(copy_id);
+                            e.copying = false;
+                        }
+                        undo.copies.push((id, copy_id));
+                        (copy_id, h)
+                    }
                 };
-                let c = prepared.swap_remove(at);
-                let (copy_id, h) = Self::register_copy(b, c);
-                undo.copies.push(copy_id);
                 if let Some(slot) = handles.get_mut(index) {
                     spare.push(core::mem::replace(slot, h));
                 }
@@ -1014,9 +1057,12 @@ impl Inner {
                 e.state = state;
             }
         }
-        for id in undo.copies {
+        for (src, id) in undo.copies {
             if let Some(e) = b.regions.remove(&id) {
                 b.quota.refund(e.owner, u64::from(e.size));
+            }
+            if let Some(e) = b.regions.get_mut(&src) {
+                e.copy = None;
             }
         }
     }
@@ -1048,6 +1094,8 @@ impl Inner {
                 state,
                 master,
                 live: Arc::new(AtomicUsize::new(0)),
+                copy: None,
+                copying: false,
             },
         );
         Ok((id, h))
@@ -1077,6 +1125,8 @@ impl Inner {
                 state: RState::SealedByBroker,
                 master: c.master,
                 live: Arc::new(AtomicUsize::new(0)),
+                copy: None,
+                copying: false,
             },
         );
         (id, c.ro)
@@ -1089,13 +1139,14 @@ impl Inner {
     /// slow part, [`Inner::make_copies`], runs off the lock.
     ///
     /// # Errors
-    /// [`Refusal::Quota`] if a charge does not fit (nothing stays
-    /// charged).
+    /// [`Plan::Quota`] if a charge does not fit, [`Plan::Wait`] if another
+    /// relay is still making a copy this one needs (it is reused once
+    /// made); nothing stays charged.
     fn plan_copies<'a>(
         b: &mut Broker,
         from: Proc,
         items: impl Iterator<Item = (&'a OwnedHandle, WireKind, u32, u8, sys::SectionFacts)>,
-    ) -> Result<Vec<CopyJob>, Refusal> {
+    ) -> Result<Vec<CopyJob>, Plan> {
         let mut jobs: Vec<CopyJob> = Vec::new();
         for (h, kind, len, flags, section) in items {
             if !kind.is_region() {
@@ -1112,13 +1163,30 @@ impl Inner {
             let Some(e) = b.regions.get(&src) else {
                 continue;
             };
+            // One copy per section: an existing one is reused, and one
+            // being made (or planned twice in this relay) is not made
+            // again.
+            let made = e.copy.is_some_and(|c| b.regions.contains_key(&c));
+            if made || jobs.iter().any(|j| j.src == src) {
+                continue;
+            }
+            if e.copying {
+                Self::release_jobs(b, jobs);
+                return Err(Plan::Wait);
+            }
             let (owner, size) = (e.owner, e.size);
             let from_h = sys::duplicate(&e.master).ok();
             let charged = from_h.is_some() && b.quota.charge(owner, u64::from(size));
             let (true, Some(from_h)) = (charged, from_h) else {
+                if charged {
+                    b.quota.refund(owner, u64::from(size));
+                }
                 Self::release_jobs(b, jobs);
-                return Err(Refusal::Quota);
+                return Err(Plan::Quota);
             };
+            if let Some(e) = b.regions.get_mut(&src) {
+                e.copying = true;
+            }
             jobs.push(CopyJob {
                 src,
                 len: size,
@@ -1176,6 +1244,14 @@ impl Inner {
     fn release_jobs(b: &mut Broker, jobs: Vec<CopyJob>) {
         for j in jobs {
             b.quota.refund(j.owner, u64::from(j.len));
+            Self::not_copying(b, j.src);
+        }
+    }
+
+    /// The copy of `src` is no longer being made.
+    fn not_copying(b: &mut Broker, src: u64) {
+        if let Some(e) = b.regions.get_mut(&src) {
+            e.copying = false;
         }
     }
 
@@ -1186,6 +1262,7 @@ impl Inner {
         let mut out = Vec::with_capacity(prepared.len().saturating_mul(2));
         for c in prepared {
             b.quota.refund(c.owner, u64::from(c.len));
+            Self::not_copying(b, c.src);
             out.push(c.master);
             out.push(c.ro);
         }
@@ -1357,21 +1434,29 @@ impl Inner {
                 // The copies review Q1 asks for: planned and charged under
                 // the lock, made here on this child's worker with no lock
                 // held (D5 review M8), then used by the decision.
-                let plan = {
-                    let mut st = self.lock();
-                    match st.broker.as_mut() {
-                        Some(b) if b.children.contains_key(&proc) => {
-                            Self::plan_copies(b, proc, Self::pulled_regions(&pulled))
+                // A copy another relay is making is waited for here, on
+                // this child's worker, then reused.
+                let plan = loop {
+                    let p = {
+                        let mut st = self.lock();
+                        match st.broker.as_mut() {
+                            Some(b) if b.children.contains_key(&proc) => {
+                                Self::plan_copies(b, proc, Self::pulled_regions(&pulled))
+                            }
+                            _ => Ok(Vec::new()),
                         }
-                        _ => Ok(Vec::new()),
+                    };
+                    if !matches!(p, Err(Plan::Wait)) {
+                        break p;
                     }
+                    std::thread::sleep(COPY_WAIT_POLL);
                 };
                 let (mut prepared, failed, planned) = match plan {
                     Ok(jobs) => {
                         let (made, failed) = Self::make_copies(jobs);
                         (made, failed, Ok(()))
                     }
-                    Err(r) => (Vec::new(), Vec::new(), Err(r)),
+                    Err(_) => (Vec::new(), Vec::new(), Err(Refusal::Quota)),
                 };
                 let mut st = self.lock();
                 match st.broker.as_mut() {
@@ -2316,7 +2401,10 @@ impl Inner {
         );
         let jobs = match plan {
             Ok(jobs) => jobs,
-            Err(_) => {
+            // Another relay's copy: this record waits; the IO thread is
+            // woken when that relay ends, and plans again.
+            Err(Plan::Wait) => return false,
+            Err(Plan::Quota) => {
                 Self::break_sender(st, id);
                 return false;
             }

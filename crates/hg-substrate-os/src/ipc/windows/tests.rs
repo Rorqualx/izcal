@@ -1552,7 +1552,7 @@ fn copies_are_charged_when_planned_and_refunded_when_unused() {
     // A full owner: the plan is refused and charges nothing.
     assert!(matches!(
         super::Inner::plan_copies(b, 3, item()),
-        Err(super::Refusal::Quota)
+        Err(super::Plan::Quota)
     ));
     b.quota.release(owner);
     drop(st);
@@ -1661,6 +1661,138 @@ fn a_failed_handle_leaves_the_registry_as_it_was() {
     // One region charged: 255 more fit, then none.
     let mut st = r.ipc.inner.lock();
     let b = st.broker.as_mut().unwrap();
+    for _ in 1..MAX_REGIONS_PER_OWNER {
+        assert!(b.quota.charge(owner, 4096));
+    }
+    assert!(!b.quota.charge(owner, 4096));
+}
+
+/// Review finding 1: relays of duplicated handles to one child-sealed
+/// section, each asking `immutable`, make one copy and one charge; every
+/// receiver gets that copy.
+#[test]
+fn duplicates_share_one_copy_and_one_charge() {
+    let r = rig();
+    let owner = OsPeer::new(80, 0);
+    let ro = r
+        .ipc
+        .seal_region(r.ipc.allocate_region(4096, owner).unwrap())
+        .unwrap();
+    mark_child_sealed(&r, ro.handle());
+    let s = section(&r, ro.handle());
+    let (tx, rx) = r.ipc.channel(16, Transfer::Free).unwrap();
+    let (out, _l) = r.listen(rx);
+    let mut got = Vec::new();
+    for _ in 0..5 {
+        let dup = super::sys::narrow(&s, 0x4).unwrap();
+        let h = {
+            let mut st = r.ipc.inner.lock();
+            r.ipc
+                .region_handle(&mut st, dup, HandleKind::ReadOnlyRegion, 4096, false)
+                .unwrap()
+        };
+        let dup = ReadOnlyRegion::from_handle(h).unwrap();
+        dup.want_immutable();
+        r.ipc
+            .send(&tx, b"d".to_vec(), vec![dup.into_handle()])
+            .unwrap();
+        let (_, mut hs) = expect_msg(&out);
+        got.push(ReadOnlyRegion::from_handle(hs.remove(0)).unwrap());
+    }
+    assert!(got.iter().all(ReadOnlyRegion::immutable));
+    let st = r.ipc.inner.lock();
+    let b = st.broker.as_ref().unwrap();
+    // The source and its one copy.
+    assert_eq!(b.regions.values().filter(|e| e.owner == owner).count(), 2);
+    drop(st);
+    // Two charges: 254 more fit, then none.
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    for _ in 2..MAX_REGIONS_PER_OWNER {
+        assert!(b.quota.charge(owner, 4096));
+    }
+    assert!(!b.quota.charge(owner, 4096));
+}
+
+/// A relay that needs a copy another relay is still making waits for it
+/// (planning says Wait, and charges nothing), then reuses it.
+#[test]
+fn a_copy_in_progress_is_waited_for_not_refused() {
+    let r = rig();
+    let owner = OsPeer::new(82, 0);
+    let ro = r
+        .ipc
+        .seal_region(r.ipc.allocate_region(4096, owner).unwrap())
+        .unwrap();
+    mark_child_sealed(&r, ro.handle());
+    let h = section(&r, ro.handle());
+    let facts = super::sys::section_facts(&h);
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    let item = || {
+        core::iter::once((
+            &*h,
+            crate::ipc::common::codec::WireKind::ReadOnlyRegion,
+            4096u32,
+            1u8,
+            facts,
+        ))
+    };
+    let first = super::Inner::plan_copies(b, 3, item()).unwrap();
+    assert_eq!(first.len(), 1);
+    assert!(matches!(
+        super::Inner::plan_copies(b, 4, item()),
+        Err(super::Plan::Wait)
+    ));
+    // Once the first relay's copy is registered, the second plans no
+    // copy of its own: it will reuse that one.
+    let (mut made, failed) = super::Inner::make_copies(first);
+    assert!(failed.is_empty());
+    let c = made.remove(0);
+    let src = c.src;
+    let (copy_id, _ro) = super::Inner::register_copy(b, c);
+    let e = b.regions.get_mut(&src).unwrap();
+    e.copy = Some(copy_id);
+    e.copying = false;
+    assert!(super::Inner::plan_copies(b, 4, item()).unwrap().is_empty());
+}
+
+/// Review finding 2: a copy that cannot be made is refunded and leaves
+/// nothing registered (the source is not marked as being copied).
+#[test]
+fn a_failed_copy_is_refunded_and_not_registered() {
+    let r = rig();
+    let owner = OsPeer::new(81, 0);
+    let ro = r
+        .ipc
+        .seal_region(r.ipc.allocate_region(4096, owner).unwrap())
+        .unwrap();
+    mark_child_sealed(&r, ro.handle());
+    let h = section(&r, ro.handle());
+    let facts = super::sys::section_facts(&h);
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    let item = core::iter::once((
+        &*h,
+        crate::ipc::common::codec::WireKind::ReadOnlyRegion,
+        4096u32,
+        1u8,
+        facts,
+    ));
+    let mut jobs = super::Inner::plan_copies(b, 3, item).unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert!(b.regions.values().any(|e| e.copying));
+    // A source handle that cannot be mapped for reading (write access
+    // only): the copy fails.
+    let other = super::sys::create_section(4096).unwrap();
+    jobs[0].from = super::sys::narrow(&other, 0x2).unwrap();
+    let (made, failed) = super::Inner::make_copies(jobs);
+    assert!(made.is_empty());
+    assert_eq!(failed.len(), 1);
+    super::Inner::release_jobs(b, failed);
+    assert_eq!(b.regions.values().filter(|e| e.owner == owner).count(), 1);
+    assert!(b.regions.values().all(|e| !e.copying && e.copy.is_none()));
+    // Refunded: the owner holds one region; 255 more fit, then none.
     for _ in 1..MAX_REGIONS_PER_OWNER {
         assert!(b.quota.charge(owner, 4096));
     }
