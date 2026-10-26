@@ -258,3 +258,54 @@ fn a_nested_checkout_counts_by_its_commit_and_changes() {
     assert_ne!(edited.commit, committed.commit);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+#[cfg(unix)]
+fn no_checkout_setting_runs_a_command() {
+    // core.fsmonitor names a program git runs on `status`; the scan must
+    // not run one from the checkout or from a nested checkout's config.
+    let (dir, git) = scratch("fsmonitor", &[("a.txt", "one\n")]);
+    let inner = dir.join("inner");
+    std::fs::create_dir_all(&inner).unwrap();
+    std::fs::write(inner.join("x.txt"), "one\n").unwrap();
+    let git_in = |args: &[&str]| {
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&inner)
+            .args(args)
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    git_in(&["init", "-q"]);
+    git_in(&["add", "-A"]);
+    git_in(&[
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "t",
+    ]);
+    let marker = dir.with_extension("ran");
+    let hook = dir.with_extension("hook");
+    std::fs::write(
+        &hook,
+        format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display()),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let hook_path = hook.to_str().unwrap();
+    git(&["config", "core.fsmonitor", hook_path]);
+    git_in(&["config", "core.fsmonitor", hook_path]);
+    std::fs::write(dir.join("a.txt"), "two\n").unwrap();
+    std::fs::write(inner.join("x.txt"), "two\n").unwrap();
+    let _ = collect(&dir, "release", "t", "dev", "0.0.0").unwrap();
+    assert!(!marker.exists(), "a checkout's core.fsmonitor ran");
+    std::fs::remove_dir_all(&dir).unwrap();
+    std::fs::remove_file(&hook).unwrap();
+}

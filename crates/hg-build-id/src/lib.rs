@@ -163,8 +163,18 @@ impl std::fmt::Display for InputError {
 
 impl std::error::Error for InputError {}
 
+/// Runs git in `root`. A checkout's own settings may name programs git
+/// runs while it scans (core.fsmonitor on `status`); the scan runs none,
+/// and takes no optional lock, so reading a build's inputs changes and
+/// runs nothing in the checkout. (A checkout's clean filters, named in
+/// its config and `.gitattributes`, can still run when `status` must
+/// compare a file's content; git has no switch that turns all of them
+/// off.)
 fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, InputError> {
     let out = Command::new("git")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .arg("-c")
+        .arg("core.fsmonitor=false")
         .arg("-C")
         .arg(root)
         .args(args)
