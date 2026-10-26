@@ -1,0 +1,12 @@
+[package]
+name = "e-linux-probes"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "M1 phase E black-box probes of the Linux spawn path: clone3 namespaces, Landlock, execveat, credentials across a PID namespace (man pages only)"
+
+[dependencies]
+libc = "0.2"
+
+# Standalone: not a member of the repository's workspace.
+[workspace]
