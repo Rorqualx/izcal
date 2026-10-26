@@ -427,6 +427,12 @@ impl Broker {
             .push((pipe, end));
     }
 
+    /// Counts a refused relay by its reason.
+    fn count(&mut self, r: Refusal) {
+        let n = self.refused.entry(r.code()).or_insert(0);
+        *n = n.saturating_add(1);
+    }
+
     /// Removes and returns the oldest grant `who` holds at handle value
     /// `value`, which a `Closed` for that value refers to, or `None` if
     /// the broker gave it none.
@@ -916,6 +922,21 @@ impl Inner {
         mut cands: Vec<Cand>,
     ) -> Result<Ticket, Refusal> {
         let mut later: Vec<Box<dyn Any + Send>> = Vec::new();
+        // Every kernel query that can wait (probe W8) runs before a
+        // channel is claimed, so a child can stall only its own worker,
+        // never another relay of the same channel. Its peeked ends were
+        // queried already (on its own worker); one whose file object does
+        // synchronous I/O is refused here. After the pull only the object
+        // peeked is queried again: it is overlapped, and its mode cannot
+        // change (probe W14). A pulled end that is another object is
+        // refused unqueried.
+        if process.is_some() && cands.iter().any(|c| !c.own && c.facts.synchronous) {
+            Self::discard(process, cands);
+            if let Some(b) = self.lock().broker.as_mut() {
+                b.count(Refusal::Synchronous);
+            }
+            return Err(Refusal::Synchronous);
+        }
         // 1. Resolve and claim the channels.
         let mut st = self.lock();
         let (carrier, chans) = {
@@ -1043,13 +1064,20 @@ impl Inner {
                     .ok()
                     .and_then(|()| sys::pull(p, c.value, true).ok());
                 let peek = c.held.take();
+                // A value that names another object than the peek did (or
+                // one where the peek found nothing) is not queried at all:
+                // it may be a synchronous end with a read pending.
                 c.changed = match (&pulled, &peek) {
                     (Some(a), Some(b)) => !sys::same_object(a, b),
-                    _ => false,
+                    (Some(_), None) => true,
+                    (None, _) => false,
                 };
                 // The peek's copy goes before the count is taken.
                 drop(peek);
-                c.facts = pulled.as_ref().map(sys::facts).unwrap_or_default();
+                c.facts = match (&pulled, c.changed) {
+                    (Some(h), false) => sys::facts(h),
+                    _ => sys::RawFacts::default(),
+                };
                 c.held = pulled;
             }
         }
@@ -1105,8 +1133,7 @@ impl Inner {
         }
         let result = Self::commit(b, from, carrier, &mut cands, refusal);
         if let Err(r) = result {
-            let n = b.refused.entry(r.code()).or_insert(0);
-            *n = n.saturating_add(1);
+            b.count(r);
         }
         for c in &mut cands {
             if let Some(k) = c.let_go.take() {
@@ -1383,6 +1410,10 @@ impl Inner {
         let mut first_err = refusal;
         let mut ends = Vec::with_capacity(cands.len());
         for c in cands.iter() {
+            if c.changed {
+                first_err.get_or_insert(Refusal::Changed);
+                continue;
+            }
             let facts = Facts {
                 raw: c.value,
                 pulled: c.held.is_some(),

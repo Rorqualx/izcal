@@ -32,6 +32,10 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandl
 use std::sync::Arc;
 
 use windows_sys::Wdk::Foundation::NtQueryObject;
+use windows_sys::Wdk::Storage::FileSystem::{
+    FILE_SYNCHRONOUS_IO_ALERT, FILE_SYNCHRONOUS_IO_NONALERT, FileModeInformation,
+    NtQueryInformationFile,
+};
 use windows_sys::Win32::Foundation::{
     CompareObjectHandles, DUPLICATE_CLOSE_SOURCE, DUPLICATE_SAME_ACCESS, DuplicateHandle,
     ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, GetLastError, HANDLE, INVALID_HANDLE_VALUE, LocalFree,
@@ -50,6 +54,7 @@ use windows_sys::Win32::Storage::FileSystem::{
     FileNameInfo, GetFileInformationByHandleEx, GetFileType, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
     ReadFile, ReadFileEx, SYNCHRONIZE, WriteFileEx,
 };
+use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeHandleStateW, GetNamedPipeInfo, PIPE_NOWAIT,
@@ -312,7 +317,27 @@ pub(crate) fn link_pair(id: &[u8; 16]) -> io::Result<(OwnedHandle, OwnedHandle)>
 /// test that one child's waiting request delays no other child (M8).
 #[cfg(test)]
 pub(crate) fn sync_pipe_with_read_pending() -> io::Result<(OwnedHandle, OwnedHandle)> {
-    let w = wide(&format!(r"\\.\pipe\izcal-sync-{}", process_id()));
+    let (server, client) = sync_pipe()?;
+    // A second handle to the same file object, for the reading thread.
+    let reader = duplicate(&server)?;
+    crate::thread::spawn("d5-sync-read", move || {
+        let mut buf = [0u8; 64];
+        let mut n = 0u32;
+        // SAFETY: a valid synchronous handle owned by this thread; `buf`
+        // and `n` live for the call, which returns only when it is done.
+        let _ = unsafe { ReadFile(raw(&reader), buf.as_mut_ptr(), 64, &raw mut n, null_mut()) };
+    })?;
+    Ok((server, client))
+}
+
+/// A synchronous (not overlapped) message pipe, idle: (server end, client
+/// end), with a name unique in this process.
+#[cfg(test)]
+pub(crate) fn sync_pipe() -> io::Result<(OwnedHandle, OwnedHandle)> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let w = wide(&format!(r"\\.\pipe\izcal-sync-{}-{n}", process_id()));
     // SAFETY: NUL-terminated name; default security.
     let server = unsafe {
         CreateNamedPipeW(
@@ -349,15 +374,6 @@ pub(crate) fn sync_pipe_with_read_pending() -> io::Result<(OwnedHandle, OwnedHan
     }
     // SAFETY: a new handle owned here.
     let client = unsafe { OwnedHandle::from_raw_handle(client.cast()) };
-    // A second handle to the same file object, for the reading thread.
-    let reader = duplicate(&server)?;
-    crate::thread::spawn("d5-sync-read", move || {
-        let mut buf = [0u8; 64];
-        let mut n = 0u32;
-        // SAFETY: a valid synchronous handle owned by this thread; `buf`
-        // and `n` live for the call, which returns only when it is done.
-        let _ = unsafe { ReadFile(raw(&reader), buf.as_mut_ptr(), 64, &raw mut n, null_mut()) };
-    })?;
     Ok((server, client))
 }
 
@@ -464,6 +480,9 @@ pub(crate) struct RawFacts {
     pub(crate) name: Option<String>,
     /// Handles to the object in every process.
     pub(crate) handle_count: u32,
+    /// The file object does synchronous I/O (or its mode could not be
+    /// read): its queries can wait behind a pending read (probe W8).
+    pub(crate) synchronous: bool,
 }
 
 /// Asks the kernel about `h`. A query that fails leaves a value no rule
@@ -495,6 +514,7 @@ pub(crate) fn facts(h: &OwnedHandle) -> RawFacts {
         wait,
         name: pipe_name(h),
         handle_count: handle_count(h),
+        synchronous: synchronous(h),
     }
 }
 
@@ -546,6 +566,54 @@ fn pipe_name(h: &OwnedHandle) -> Option<String> {
     // against its size above).
     let name = unsafe { core::slice::from_raw_parts(info.FileName.as_ptr(), units) };
     Some(String::from_utf16_lossy(name))
+}
+
+/// The file object's mode (`NtQueryInformationFile`,
+/// `FileModeInformation`): the create options it was opened with, among
+/// them whether it does synchronous I/O. `None` if the query fails. On a
+/// synchronous object with a read pending this waits (probe W8 (mode)).
+pub(crate) fn file_mode(h: &OwnedHandle) -> Option<u32> {
+    // SAFETY: a zeroed IO_STATUS_BLOCK is a valid out-parameter.
+    let mut iosb: IO_STATUS_BLOCK = unsafe { zeroed() };
+    let mut mode = 0u32;
+    // SAFETY: valid handle; the buffer is the 4-byte FILE_MODE_INFORMATION
+    // the class fills; valid out-pointers.
+    let st = unsafe {
+        NtQueryInformationFile(
+            raw(h),
+            &raw mut iosb,
+            (&raw mut mode).cast(),
+            4,
+            FileModeInformation,
+        )
+    };
+    (st == STATUS_SUCCESS).then_some(mode)
+}
+
+/// Whether `h`'s file object does synchronous I/O, or its mode cannot be
+/// read (fail closed). Fixed when the object is opened (probe W14).
+pub(crate) fn synchronous(h: &OwnedHandle) -> bool {
+    file_mode(h).is_none_or(|m| m & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT) != 0)
+}
+
+/// For probe W14: tries to set `h`'s file mode; the `NTSTATUS`.
+#[cfg(test)]
+pub(crate) fn set_file_mode(h: &OwnedHandle, mode: u32) -> i32 {
+    use windows_sys::Wdk::Storage::FileSystem::NtSetInformationFile;
+    // SAFETY: a zeroed IO_STATUS_BLOCK is a valid out-parameter.
+    let mut iosb: IO_STATUS_BLOCK = unsafe { zeroed() };
+    let mut m = mode;
+    // SAFETY: valid handle; a 4-byte FILE_MODE_INFORMATION; valid
+    // out-pointer.
+    unsafe {
+        NtSetInformationFile(
+            raw(h),
+            &raw mut iosb,
+            (&raw mut m).cast(),
+            4,
+            FileModeInformation,
+        )
+    }
 }
 
 /// `NtQueryObject` basic information: handles to the object in every

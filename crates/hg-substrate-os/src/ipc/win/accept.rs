@@ -160,6 +160,11 @@ pub(crate) enum Refusal {
     /// The end pulled is not the one the broker peeked before it moved
     /// the peer (W3).
     Changed,
+    /// The end's file object does synchronous I/O: the kernel's queries
+    /// on it can wait without end (probe W8), so it is refused at the
+    /// peek, before its channel is claimed. Izcal's own pipes are all
+    /// overlapped.
+    Synchronous,
 }
 
 impl Refusal {
@@ -187,6 +192,7 @@ impl Refusal {
             Self::OldPipes => 19,
             Self::Rebind => 20,
             Self::Changed => 21,
+            Self::Synchronous => 22,
         }
     }
 }
@@ -757,6 +763,7 @@ mod tests {
             Refusal::OldPipes,
             Refusal::Rebind,
             Refusal::Changed,
+            Refusal::Synchronous,
         ];
         for (i, a) in all.iter().enumerate() {
             assert_ne!(a.code(), 0);

@@ -531,6 +531,114 @@ fn child(case: &str) -> i32 {
             drop(hs);
             0
         }
+        "deaf-holder" => {
+            // Takes an end and ignores every rebind; on "go" sends the end
+            // back up.
+            let Ok(Ev::Msg(_, hs)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            r.ipc.inner.lock().deaf = true;
+            r.ipc.send(&up, b"deaf".to_vec(), Vec::new()).unwrap();
+            let Ok(Ev::Msg(..)) = from_parent.recv_timeout(Duration::from_secs(60)) else {
+                return 13;
+            };
+            r.ipc.send(&up, b"back".to_vec(), hs).unwrap();
+            let _ = from_parent.recv_timeout(Duration::from_secs(60));
+            0
+        }
+        "swap-sync" => {
+            // Names a copy of a sender end it holds in a relay, then, while
+            // the broker waits for the peer's rebind, puts a synchronous
+            // pipe end with a read pending at that value: an end whose
+            // kernel queries wait until this process exits (probe W8).
+            let Ok(Ev::Msg(_, mut hs)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            let tx = ChannelSender::from_handle(hs.remove(0)).unwrap();
+            r.ipc.send(&up, b"have".to_vec(), Vec::new()).unwrap();
+            let Ok(Ev::Msg(..)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            let value_of = |h: &Handle| {
+                let id = r.ipc.held_end(h).unwrap();
+                let st = r.ipc.inner.lock();
+                super::sys::duplicate(&st.ends.get(&id).unwrap().h).unwrap()
+            };
+            let copy = value_of(tx.handle());
+            let named = super::sys::value(&copy);
+            let carrier = value_of(up.handle());
+            {
+                let mut st = r.ipc.inner.lock();
+                let req = st.req();
+                let Some(items) = super::Items::from_slice(&[super::CtlItem {
+                    value: named,
+                    kind: super::WireKind::Sender,
+                    drains: false,
+                }]) else {
+                    return 19;
+                };
+                let relay = super::Ctl::Relay {
+                    req,
+                    carrier: super::sys::value(&carrier),
+                    items,
+                };
+                r.ipc.inner.send_ctl(&mut st, None, &relay);
+            }
+            r.ipc.inner.wake();
+            std::thread::sleep(Duration::from_millis(500));
+            let Ok((sync, _client)) = super::sys::sync_pipe_with_read_pending() else {
+                return 18;
+            };
+            drop(copy);
+            let mut extra = Vec::new();
+            let mut swapped = false;
+            for _ in 0..256 {
+                let Ok(h) = super::sys::duplicate(&sync) else {
+                    break;
+                };
+                if super::sys::value(&h) == named {
+                    extra.push(h);
+                    swapped = true;
+                    break;
+                }
+                extra.push(h);
+            }
+            let report: &[u8] = if swapped { b"swapped" } else { b"noswap" };
+            r.ipc.send(&up, report.to_vec(), Vec::new()).unwrap();
+            let _ = from_parent.recv_timeout(Duration::from_secs(60));
+            drop((extra, sync, carrier, tx));
+            0
+        }
+        "sync-relay" => {
+            // Names an idle synchronous pipe end in a relay.
+            let Ok((sync, _client)) = super::sys::sync_pipe() else {
+                return 18;
+            };
+            let up_id = r.ipc.held_end(up.handle()).unwrap();
+            {
+                let mut st = r.ipc.inner.lock();
+                let req = st.req();
+                let Some(items) = super::Items::from_slice(&[super::CtlItem {
+                    value: super::sys::value(&sync),
+                    kind: super::WireKind::Receiver,
+                    drains: false,
+                }]) else {
+                    return 19;
+                };
+                let carrier = super::sys::value(&st.ends.get(&up_id).unwrap().h);
+                let relay = super::Ctl::Relay {
+                    req,
+                    carrier,
+                    items,
+                };
+                r.ipc.inner.send_ctl(&mut st, None, &relay);
+            }
+            r.ipc.inner.wake();
+            r.ipc.send(&up, b"sent".to_vec(), Vec::new()).unwrap();
+            let _ = from_parent.recv_timeout(WAIT);
+            drop(sync);
+            0
+        }
         "time-take" => {
             // For the measurement: receives receivers whose channel has an
             // old pipe queued, and times each listen's TakeDrains round
@@ -1542,5 +1650,101 @@ fn measure_take_drains() {
         us[us.len() * 99 / 100],
         us[us.len() - 1],
         us.len()
+    );
+}
+
+/// Probe W14: a file object's synchronous mode is fixed once it is
+/// opened. Setting `FileModeInformation` neither makes an overlapped end
+/// synchronous nor the reverse, so an end the broker peeked as overlapped
+/// is still overlapped when it pulls the same object.
+#[test]
+fn a_file_objects_io_mode_is_fixed_once_opened() {
+    let (server, client) = super::sys::pipe_pair(None, &[0x14; 16]).unwrap();
+    let (sync_server, sync_client) = super::sys::sync_pipe().unwrap();
+    for (h, sync) in [
+        (&server, false),
+        (&client, false),
+        (&sync_server, true),
+        (&sync_client, true),
+    ] {
+        let before = super::sys::file_mode(h).expect("the mode reads");
+        assert_eq!(super::sys::synchronous(h), sync, "mode {before:#x}");
+        let to = if sync { 0 } else { 0x20 };
+        let status = super::sys::set_file_mode(h, to);
+        let after = super::sys::file_mode(h).expect("the mode reads");
+        eprintln!(
+            "W14: sync={sync} mode {before:#x} set {to:#x} -> status {status:#x}, mode {after:#x}"
+        );
+        assert_eq!(super::sys::synchronous(h), sync, "mode {after:#x}");
+    }
+    // An overlapped end's queries do not wait behind a pending read
+    // (unlike a synchronous one's, W8).
+    let reader = super::sys::duplicate(&server).unwrap();
+    let _pending = super::sys::stale_read(super::sys::value(&reader), 64, 3000);
+    let t = std::time::Instant::now();
+    let f = super::sys::facts(&server);
+    let took = t.elapsed();
+    eprintln!("W14: facts on an overlapped end with a read pending took {took:?}");
+    assert!(f.is_pipe && f.server_end && !f.synchronous);
+    assert!(took < Duration::from_millis(500));
+    super::sys::cancel(&reader);
+    drop(reader);
+    drop(client);
+}
+
+/// A relay that finds a synchronous pipe end at the value it pulls, put
+/// there after the peek, must not hold its channel: the kernel's queries
+/// on such an end wait as long as its read is pending (probe W8). Another
+/// holder's move of the same channel goes through once the first relay is
+/// refused (review finding, W3).
+#[test]
+fn a_swapped_in_synchronous_end_does_not_stall_its_channel() {
+    let r = rig();
+    let holder = launch(&r, "deaf-holder", false);
+    let swapper = launch(&r, "swap-sync", false);
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&swapper.to_child, b"tx".to_vec(), vec![tx.into_handle()])
+        .unwrap();
+    assert_eq!(expect_msg(&swapper.from_child).0, b"have");
+    r.ipc
+        .send(&holder.to_child, b"rx".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    assert_eq!(expect_msg(&holder.from_child).0, b"deaf");
+    r.ipc
+        .send(&swapper.to_child, b"swap".to_vec(), Vec::new())
+        .unwrap();
+    assert_eq!(expect_msg(&swapper.from_child).0, b"swapped");
+    // The swapper's relay now waits for the deaf holder's rebind; the
+    // holder's own move of the receiver queues behind it.
+    r.ipc
+        .send(&holder.to_child, b"go".to_vec(), Vec::new())
+        .unwrap();
+    let (b, hs) = expect_msg(&holder.from_child);
+    assert_eq!(b, b"back");
+    assert_eq!(hs.len(), 1);
+}
+
+/// An end whose file object does synchronous I/O is refused at the peek,
+/// before its relay claims anything (review finding, W3).
+#[test]
+fn a_synchronous_end_is_refused_at_the_peek() {
+    let r = rig();
+    let c = launch(&r, "sync-relay", false);
+    assert_eq!(expect_msg(&c.from_child).0, b"sent");
+    let code = crate::ipc::win::accept::Refusal::Synchronous.code();
+    let refused = (0..400).any(|_| {
+        std::thread::sleep(Duration::from_millis(25));
+        r.ipc
+            .inner
+            .lock()
+            .broker
+            .as_ref()
+            .is_some_and(|b| b.refused.get(&code) == Some(&1))
+    });
+    let all = r.ipc.inner.lock().broker.as_ref().unwrap().refused.clone();
+    assert!(
+        refused,
+        "the synchronous end was not refused at the peek: {all:?}"
     );
 }
