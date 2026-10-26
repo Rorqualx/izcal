@@ -1,0 +1,86 @@
+# M1 D6 shared memory: facts for Linux, macOS and Windows
+
+Compiled 2026-10-25. Probes ran on:
+- **hueyj:** Linux 6.8.0-147-generic, x86_64, glibc with `fstat` as `statx`.
+- **The Mac:** macOS 27.0.1, Apple silicon.
+- **rig253:** Windows build 26300, children under the repo's AppContainer sandbox.
+
+Confidence: **High** means a primary document was read and the claim checked in its text, or a probe on this hardware showed it. **Medium** means a primary document that is old or only a snippet. **Low** means a secondary source or memory.
+
+**M-1 statement.** Prose documents only:
+- **Linux:** the man pages `memfd_create(2)`, `fcntl(2)` ("File Sealing"), `mmap(2)`, `mprotect(2)`, `madvise(2)`, `unix(7)` and `proc(5)`, as installed on hueyj.
+- **macOS:** developer.apple.com kernel reference pages, by signature only.
+- **Windows:** the Microsoft Learn pages `CreateFileMappingW`, `MapViewOfFile`, "File Mapping Security and Access Rights", "Standard Access Rights", `DuplicateHandle`, `VirtualQuery`, `VirtualProtect`, `NtQueryObject` and `CompareObjectHandles`.
+
+No kernel, libc, SDK header or third-party source was opened. Numeric constants come from the `libc` and `windows-sys` crates as compiled, never read. The macOS probe uses no `MAP_MEM_*` flag: it makes every entry from a mapped range with a plain protection, as D4's P33 did.
+
+Earlier rounds already settled part of this. They are cited here and not re-run:
+- **D4 (`../M1 D4 macOS IPC/mach_facts.md`):**
+  - P8: a memory entry is kobject type 28, `VM-OBJECT(…)`.
+  - P25: memory entries and `mach_vm_map` work under the deny-default SBPL.
+  - P33: a read-only entry refuses RW maps.
+- **D5 (`../M1 D5 Windows IPC/windows_facts.md`):**
+  - P23: a FILE_MAP_READ section handle to a section with no security descriptor can be **widened by its holder**.
+  - P24: an explicit DACL stops that.
+  - P25: an AppContainer child can create sections.
+
+Probe programs are under `probes/linux`, `probes/macos` and `probes/windows`, with run logs `probes/*-run-2026-10-25.log`. The Windows log has the machine SID redacted to `S-1-5-21-<machine>`.
+
+## 1. Linux: memfd seals (probe `probes/linux`, log rows `Lnn`)
+
+| # | Finding | Evidence | Conf. |
+|---|---|---|---|
+| L1 | **`F_SEAL_WRITE` fails with EBUSY while any `MAP_SHARED` mapping made through an O_RDWR descriptor exists, even a `PROT_READ` one.** It succeeds with no shared mapping, or when the only shared mapping was made through an O_RDONLY descriptor, or with only a `MAP_PRIVATE` RW mapping. The man page says "if any writable, shared mapping exists". In practice "writable" includes a read-only mapping that *could be* made writable. | L1b (a)–(d): 0 / EBUSY / 0 after unmap / 0 / 0. The `L1` rows after the first EBUSY ran on an **unsealed** file and are void; L1b repeats them sealed. | High |
+| L2 | Under `F_SEAL_WRITE`, every write path is refused: new shared RW `mmap` (EPERM), `mprotect` of a shared RO mapping to RW (EACCES), `pwrite` (EPERM), `fallocate(PUNCH_HOLE)` (EPERM), `madvise(MADV_REMOVE)` (EACCES), and a shared RW `mmap` through an O_RDWR fd reopened via `/proc/self/fd` (EPERM). A **private** RW mapping is allowed; its writes are copy-on-write and stay in the mapper. | L1b (e) | High |
+| L3 | `F_SEAL_FUTURE_WRITE` (Linux 5.1+) can be added while the producer's RW shared mapping exists, and that mapping keeps writing. Writes show up in every other shared mapping. New shared RW `mmap` gives EPERM; `mprotect` RO→RW gives EACCES; `pwrite` and `fallocate(PUNCH_HOLE)` give EPERM; `MADV_REMOVE` gives EACCES. A private RW `mmap` is allowed. | L2 | High |
+| L4 | **Without `F_SEAL_SEAL`, a holder can add seals.** It cannot do so through an O_RDONLY fd ("the file descriptor fd must be writable"; EPERM). But `/proc/self/fd/N` reopens **O_RDWR even when the holder was given O_RDONLY**, and through that fd it can add seals. That is a denial of service on the producer: GROW, SHRINK or FUTURE_WRITE against its plans. With `F_SEAL_SEAL`, `F_ADD_SEALS` is EPERM. | L2 (reopen O_RDWR → fd 5; L7 reopen → fd 6); fcntl(2) | High |
+| L5 | **Read-only is a property of the seals, not of the descriptor.** `F_SETFL(O_RDWR)` cannot change an access mode (L2), but the `/proc` reopen of L4 can, wherever `/proc` is visible. A receiver must therefore check seals and ignore the fd's access mode. | L2, L7 | High |
+| L6 | **Without `F_SEAL_SHRINK`, the producer can truncate under the consumer, and the consumer dies with SIGBUS (7)** on its next read. With SHRINK and GROW, both `ftruncate` directions give EPERM. | L8; L2 | High |
+| L7 | **Identifying a memfd.** `fstat`: S_IFREG, nlink 0, mode 0777 (0666 with `MFD_NOEXEC_SEAL`). `fstatfs` f_type 0x1021994 (tmpfs; hugetlbfs memfd 0x958458f6). `/proc/self/fd` link `/memfd:<name> (deleted)`. `F_GET_SEALS`: a memfd without `MFD_ALLOW_SEALING` reports `SEAL` only; a `/dev/shm` file (shm_open or O_TMPFILE) also reports `SEAL` only; an ext4 file or a socket gives EINVAL; an O_PATH fd gives EBADF and cannot be mapped. So **only a memfd made with `MFD_ALLOW_SEALING` can carry WRITE or FUTURE_WRITE**, and the seal check alone excludes every other file kind. | L5 rows | High |
+| L8 | **Seals survive `SCM_RIGHTS`.** The consumer sees the producer's FUTURE_WRITE seal set and the producer's later writes. A shared RW map on the received O_RDONLY fd gives EACCES; one through a `/proc` reopen gives EPERM (the seal). The consumer's mapping outlives the producer's exit. | L7 | High |
+| L9 | `MFD_NOEXEC_SEAL` (seal 0x20, mode 0666) **does not stop `mmap(PROT_EXEC)`** or `mprotect(R→R|X)` on a sealed region. Execute is governed by the process's seccomp filter and mount flags, not by the seal. `vm.memfd_noexec` = 0 on hueyj. | L1b (f), L2 | High |
+| L10 | **Costs (hueyj, i7-7700K, not exclusive).** Create + size + seal + close: 6 µs. Map + unmap: 3–4 µs. Map + touch every page + unmap: 16 µs at 64 KiB and 259 µs at 4 MiB (first-touch faults). **One mapping = one `/proc/self/maps` line.** | L10 | High (timings are indicative, not under an exclusive booking) |
+| L11 | Syscalls seen (strace): `memfd_create`, `ftruncate`, `fcntl(F_ADD_SEALS / F_GET_SEALS / F_GETFL)`, `statx` (glibc's `fstat`), `fstatfs`, `mmap`, `munmap`. D3's seccomp filter allows `fstat`, `newfstatat`, `mmap`, `munmap`, `mprotect` and `madvise`, but limits `fcntl` to F_GETFD/F_SETFD. It has no `memfd_create`, `ftruncate`, `fstatfs` or `statx` rule. | strace on hueyj; `sandbox/seccomp.rs` | High |
+
+## 2. macOS: Mach memory entries (probe `probes/macos`, rows `Mn`)
+
+| # | Finding | Evidence | Conf. |
+|---|---|---|---|
+| M1 | An RW entry made from a mapped range, a RO entry with that RW entry as its parent, and a RO entry made straight from the range all report **kobject type 28 and the same `VM-OBJECT(…, 64KiB)` description**. The kernel object does not tell RO from RW. | M1 | High |
+| M2 | A RO entry derived from an RW parent is still read-only. Maps with max RW give 0x11; an R/R map works (region max 1); `mach_vm_protect(RW)` gives 0x2. **Making an RW sub-entry from it gives 0x2, and that is a check that needs no mapping.** Making a RO sub-entry works. | M2 | High |
+| M3 | **Size.** The holder cannot read the size directly. A sub-entry or map larger than the entry fails with 0x4; one at or below it succeeds. Size 0 also gives 0x4. So a receiver checks "the region is at least the declared size" by mapping exactly the declared size. Sizes are page-granular (16 KiB). The `kobject_description` string carries the size, but it is a debug string. | M3 | High |
+| M4 | **A `copy=1` map of a RO entry is a snapshot.** It keeps the values from map time and never sees the creator's later writes, including on pages nobody had touched. A `copy=0` map is shared and sees every write (as P33 found). So on macOS a receiver can make a read-only region **immutable to itself without trusting its creator**: Linux gets this from F_SEAL_WRITE; Windows has no equivalent (§3). | M4 (0x11/0x0 kept after writes of 0x22/0x33; untouched page 40000 kept 0x0 after 0x44) | High |
+| M5 | **Lifetime.** After the creator deallocates its mapping and drops its RW entry, as happens at its death, an existing shared map still reads the data, and the RO entry can still be mapped. This was probed in one process; the cross-process death case is left for the transport tests (D4's P35 showed rights and trailers survive sender exit). | M5 | High (in-process), Medium (cross-process) |
+| M6 | **Costs (the Mac, light booking).** Make a RO entry + release: 0.8 µs. Map + unmap: 1.0 µs at 64 KiB, 2.5 µs at 4 MiB. Map + touch + unmap: 3 µs at 64 KiB, 90 µs at 4 MiB. **One mapping = one VM region.** | M6 | High (indicative) |
+| M7 | Sandbox: memory entries and `mach_vm_map` work under the deny-default SBPL, so children **can create regions themselves** (D4 P25). An SBPL rule cannot enforce "broker allocates every region"; only acceptance can. | D4 P25 | High |
+
+## 3. Windows: sections (probe `probes/windows`, rows `Sn`)
+
+| # | Finding | Evidence | Conf. |
+|---|---|---|---|
+| S1 | **A producer/consumer pair with a per-SID DACL works.** The broker's section has the DACL user GA plus the producer's AppContainer SID FILE_MAP_READ\|WRITE, and nothing for the consumer. The producer gets access 0x6 and maps RW; the consumer gets 0x4 and maps R; the producer's writes show up in the consumer. **Every consumer widening fails with 5**: MapViewOfFile(WRITE), and DuplicateHandle to FILE_MAP_WRITE, ALL_ACCESS, SECTION_QUERY, SECTION_EXTEND_SIZE and WRITE_DAC; VirtualProtect(RW) gives 87. The producer cannot widen past its grant either (ALL_ACCESS, QUERY, EXTEND, WRITE_DAC: 5). `VirtualProtect(WRITECOPY)` and FILE_MAP_COPY views succeed for both; they are private copy-on-write and never reach the section. | S1 | High |
+| S2 | **The receiver cannot learn a section's exact size.** `NtQuerySection` needs SECTION_QUERY (0xC0000022 with FILE_MAP_READ). A size-0 view's `VirtualQuery` RegionSize is the size rounded up to a page (100,000 → 102,400). It *can* learn the type ("Section") and its exact GrantedAccess (0x4 or 0x6) through `NtQueryObject`. | S2 | High |
+| S3 | **The broker can identify a section it created** when one comes back to it. It duplicates the handle from the child and `CompareObjectHandles` returns 1 for its own section and 0 for a section the child made itself (access 0xf0007, per D5 P25). This is the Windows check that the broker allocated every region. | S3 | High |
+| S4 | After the broker closes its handle and the producer process exits, the consumer still reads the data. | S4 | High |
+| S5 | **Costs (rig253, light).** Create with a DACL + close: 5.4 µs. Map + unmap: 1.7 µs at 64 KiB, 4.0 µs at 4 MiB. Map + touch + unmap: 15 µs at 64 KiB, 847 µs at 4 MiB (first touch of committed pagefile pages). | S5 | High (indicative) |
+| S6 | **SEC_COMMIT charges the commit limit at creation.** A 256 GiB SEC_COMMIT section fails with 1455 (commit limit 37.7 GiB); 16 GiB succeeds. SEC_RESERVE succeeds at every size tried. The broker's quota must cover commit, not just bytes mapped. | S6 | High |
+| S7 | Windows has no snapshot mapping. A FILE_MAP_COPY view is copy-on-write only for the viewer's own writes. Learn's `MapViewOfFile` makes no snapshot promise, and none was found. So a read-only region is **immutable only if the broker gives up every writable handle and view**, and only the broker can attest that. | S1, Learn `MapViewOfFile` | Medium (absence) |
+
+## 4. The spec text, checked against these facts
+
+- **Security scope IPC-R1** (`reports/Izcal security scope.md` §6.6, rule 1):
+  > **Read-only shared memory** is defined per backend: a memfd sealed with `F_SEAL_WRITE`, `F_SEAL_GROW` and `F_SEAL_SHRINK`; a Windows section duplicated without write access; a Mach memory entry created read-only. A writable mapping can never cross as the read-only kind.
+
+  It also says the pair kinds are "producer-writable/consumer-read-only pairs: the producer may write, the consumer's mapping is read-only and rejects a writable mapping crossing as the consumer kind".
+- **Networking 6.9** (`reports/Izcal networking.md`, cookie view region, NW-D10):
+  > **Handle kind.** A new IPC-R1 handle kind, *producer-writable, consumer-read-only shared memory*: on Linux a memfd sealed with `F_SEAL_FUTURE_WRITE` after the producer maps it; on Windows a section duplicated without `FILE_MAP_WRITE`; on macOS a Mach memory entry with read-only protection (Section 9.5).
+
+The two texts name different seals because they describe different kinds. `F_SEAL_WRITE` is the immutable read-only kind; `F_SEAL_FUTURE_WRITE` is the consumer half of a pair. They do not contradict each other. Both are wrong in the same places, though, and these probes show where:
+
+1. **Neither text requires `F_SEAL_SEAL`** (L4), so a holder can add seals and starve the producer. The networking text also omits `GROW` and `SHRINK` for the pair, and without SHRINK the producer can make the consumer fault (L6).
+2. **"A Windows section duplicated without write access" is not read-only** (D5 P23): with no security descriptor, its holder can widen the handle. It is read-only only together with an explicit DACL that grants the receiver no write (P24, S1). Both texts need that clause.
+3. **"A Mach memory entry created read-only" does not make the region immutable** (M4): the creator's writes stay visible in a shared map. For the immutable read-only kind the receiver must map it `copy=1` (a snapshot), which macOS makes possible.
+4. **IPC-R1's read-only `F_SEAL_WRITE` needs a sealing order the text omits** (L1): the broker fills the region by `pwrite`, or through a writable mapping it unmaps first, and holds no `MAP_SHARED` mapping made through an O_RDWR fd when it seals. A `PROT_READ` one is enough to make the seal fail.
+5. **Neither text says how a receiver checks what it got.** Linux: `F_GET_SEALS` ⊇ the kind's set, which also excludes every other file kind (L7). macOS: an RW sub-entry fails (M2), plus a map at the declared size (M3). Windows: GrantedAccess is exactly the kind's mask and the type is "Section" (S2). And the size is always declared in the message, because Windows and macOS can only bound it from below (S2, M3).
+
+**Implications:** D6 implements per-kind seal and mask sets, receiver checks and sizes as the design in `~/.claude/plans/m1-finish.md` (D6) states. The amendment text proposed there replaces both quoted passages. It is a proposal, not an edit.

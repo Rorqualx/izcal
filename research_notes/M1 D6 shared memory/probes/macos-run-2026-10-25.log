@@ -1,0 +1,21 @@
+M1 RW entry from a mapping: kr=0x0 size=65536 kobject kr=0x0 type=28 desc="VM-OBJECT(0x8d0ed42a, 64KiB)"
+M1 RO entry with parent = RW entry: kr=0x0 size=65536 kobject kr=0x0 type=28 desc="VM-OBJECT(0x8d0ed42a, 64KiB)"
+M1 RO entry from the mapping: kr=0x0 kobject kr=0x0 type=28 desc="VM-OBJECT(0x8d0ed42a, 64KiB)"
+M2 RO(from RW) map RW/RW copy=0: 0x11
+M2 RO(from RW) map R/RW copy=0: 0x11
+M2 RO(from RW) map R/R copy=0: ok region kr=0x0 size=65536 prot=1 max=1 reads 0x11; protect->RW 0x2
+M2 RW sub-entry from RO(from RW): kr=0x2
+M2 RO sub-entry from RO(from RW): kr=0x0 kobject kr=0x0 type=28 desc="VM-OBJECT(0x8d0ed42a, 64KiB)"
+M3 RO sub-entry asking size 0: kr=0x4 returned size=0
+M3 RO sub-entry asking size SZ/2: kr=0x0 returned size=32768
+M3 RO sub-entry asking size SZ: kr=0x0 returned size=65536
+M3 RO sub-entry asking size SZ+16K: kr=0x4 returned size=81920
+M3 RO sub-entry asking size 1 TiB: kr=0x4 returned size=1099511627776
+M3 map R/R of SZ+16K from a 65536-byte entry: Err("0x4")
+M3 map R/R of 2*SZ from a 65536-byte entry: Err("0x4")
+M4 after the creator writes 0x22 at 0 and 0x33 at 20000: shared map reads 0x22/0x33; copy=1 map reads 0x11/0x0 (region kr=0x0 size=65536 prot=1 max=1)
+M4 copy=1 map read 40000 before (0x0) and after the creator writes 0x44: 0x0
+M5 after the creator deallocates its mapping and RW entry: existing shared map reads 0x22
+M5 a new map of the RO entry: ok, reads 0x22/0x33
+M6 64 KiB: make RO entry+release 0.83 µs; map+unmap 1.03 µs; map+read every 16 KiB page+unmap 2.99 µs; regions +1
+M6 4096 KiB: make RO entry+release 0.81 µs; map+unmap 2.51 µs; map+read every 16 KiB page+unmap 90.19 µs; regions +1
