@@ -86,6 +86,23 @@
 //! that may own a handle object is dropped with it held, and no sink
 //! runs with it held. Completion routines run only in the IO thread's
 //! alertable wait, never with the lock held.
+//!
+//! **Threads.** Every process runs one transport thread, its IO thread.
+//! A broker also runs one worker per live child (M8), started when the
+//! child is launched and ended when the broker forgets it: a broker with
+//! *n* children runs *n* + 1 transport threads, each with the platform's
+//! default stack. Every one of them waits with no timeout when idle, so
+//! idle threads cost memory, not wakeups (FP-18). A child's worker
+//! handles its relays, redemptions, binds and unbinds one at a time, in
+//! the order the child sent them: the pulls and kernel queries run there,
+//! off the IO thread and the lock, and the decisions under the lock.
+//! Those queries can wait without end on a pipe end that has a
+//! synchronous read pending (probe W8). Starting such a read takes a
+//! handle to that end, and only the process that holds the end has one
+//! (a moved end leaves none behind, `HandleCount`, probe W1), so the
+//! request that waits is one about the child's own end, and only that
+//! child's later requests wait behind it. A child with more than
+//! `MAX_CHILD_REQUESTS` queued has its link dropped.
 
 pub(crate) mod sys;
 
@@ -96,7 +113,7 @@ use core::any::Any;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::os::windows::io::OwnedHandle;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak, mpsc};
 use std::time::{Duration, Instant as StdInstant};
 
 use hg_substrate::ipc::{
@@ -144,12 +161,13 @@ const BROKER: Proc = 0;
 /// child cannot make the broker buffer without bound.
 const MAX_LINK_BACKLOG: usize = 4096;
 
-/// The most relays one child may have in flight on relay threads at once
-/// (M8): the per-child relay quota. A child over it is refused until its
-/// earlier relays finish, so it cannot spawn unbounded threads or pin
-/// the broker's memory, and a child whose classification blocks (a
-/// crafted synchronous pipe, probe W8) stalls only its own relays.
-const MAX_RELAYS_INFLIGHT: usize = 256;
+/// The most requests (relays, redemptions, binds, unbinds) one child may
+/// have queued for its worker (M8). Its worker handles one at a time, so
+/// the queue grows only while a request of that child's is slow or
+/// blocked (a synchronous pipe, probe W8); a child past the cap has its
+/// link dropped, as a child past [`MAX_LINK_BACKLOG`] does, so it cannot
+/// make the broker buffer without bound.
+const MAX_CHILD_REQUESTS: usize = 1024;
 
 /// One item for a listener.
 enum Item {
@@ -241,17 +259,11 @@ struct ChildEntry {
     /// created in.
     sid: Option<String>,
     link: u64,
-    /// Relays this child has in flight on relay threads (M8): bounded so
-    /// a child cannot queue unbounded relay work.
-    relays: usize,
-    /// Redeems and Binds in flight on request threads: a separate quota,
-    /// so a child's relays cannot starve its redemptions.
-    peeks: usize,
-    /// Listener ids with a Bind still in flight, and those of them the
-    /// child has since unbound: a Bind completing after its Unbind is
-    /// dropped (requests on threads can finish out of order).
-    binding: BTreeSet<u64>,
-    unbound: BTreeSet<u64>,
+    /// The queue to this child's worker (M8), which handles its relays,
+    /// redemptions, binds and unbinds in the order the child sent them.
+    /// Dropping it (the child is forgotten) ends the worker once the
+    /// queue is drained.
+    jobs: mpsc::SyncSender<Job>,
 }
 
 /// The broker's state: the ledger, the handles held under tickets, and
@@ -330,14 +342,23 @@ impl Broker {
     }
 }
 
-/// A child request that names one of its receiver ends by value, decided
-/// after that end is classified off the IO thread (M8).
-#[derive(Clone, Copy)]
-enum PeekJob {
+/// A child's request, handled by that child's worker (M8): the pull and
+/// the kernel queries run there, off the IO thread and the lock.
+enum Job {
+    /// `Ctl::Relay`.
+    Relay {
+        req: u64,
+        carrier: u64,
+        /// Boxed, so every queued job is small.
+        items: Box<Items>,
+    },
     /// `Ctl::Redeem`.
-    Redeem { req: u64, ticket: Ticket },
+    Redeem { req: u64, ticket: Ticket, rx: u64 },
     /// `Ctl::Bind`.
-    Bind { rx_id: u64, peer: u32 },
+    Bind { rx: u64, rx_id: u64, peer: u32 },
+    /// `Ctl::Unbind`: queued behind the child's earlier Binds, so an
+    /// Unbind is never handled before the Bind it undoes.
+    Unbind { rx_id: u64 },
 }
 
 /// One pulled handle for a relay: the value the child named, the kind it
@@ -643,8 +664,8 @@ impl Inner {
     /// kernel about them, off the lock (M8). The carrier is peeked (no
     /// close-source) and its copy dropped; the items are taken with
     /// close-source. A crafted synchronous handle can make the kernel
-    /// queries block here (probe W8); this runs on a relay thread, so
-    /// only that child's relays wait.
+    /// queries block here (probe W8); this runs on the child's worker, so
+    /// only that child's requests wait.
     fn classify_relay(
         process: &sys::Process,
         carrier: u64,
@@ -767,7 +788,7 @@ impl Inner {
     /// What the kernel says about a receiver end a child names by value,
     /// without taking it: a peek (no close-source) whose copy is dropped.
     /// Can wait on a synchronous end with a read pending (W8), so it runs
-    /// on a request thread, never on the IO thread (M8).
+    /// on the child's worker, never on the IO thread (M8).
     fn peek_raw(process: &sys::Process, raw: u64) -> sys::RawFacts {
         check_value(raw)
             .ok()
@@ -855,152 +876,122 @@ impl Inner {
         }
     }
 
-    /// Spawns a Redeem or Bind off the IO thread (M8), as
-    /// [`Self::spawn_relay`] does for relays, under the same per-child
-    /// quota. Returns whether the thread started.
-    fn spawn_peek(
-        self: &Arc<Self>,
-        proc: Proc,
-        process: sys::Process,
-        rx: u64,
-        job: PeekJob,
-    ) -> bool {
-        let inner = Arc::clone(self);
-        crate::thread::spawn("hg-ipc-peek", move || {
-            let raw = Self::peek_raw(&process, rx);
-            let mut st = inner.lock();
-            let mut later: Vec<Box<dyn Any + Send>> = Vec::new();
-            let mut events = Vec::new();
-            let mut reply = None;
-            if let Some(b) = st.broker.as_mut()
-                && b.children.contains_key(&proc)
-            {
-                let key = Self::receiver_key(b, &raw);
-                match job {
-                    PeekJob::Redeem { req, ticket } => {
-                        reply = Some(Self::redeem_with_key(
-                            b,
-                            proc,
-                            req,
-                            ticket,
-                            key,
-                            &mut later,
-                            &mut events,
-                        ));
-                    }
-                    PeekJob::Bind { rx_id, peer } => {
-                        let cancelled = b.children.get_mut(&proc).is_some_and(|c| {
-                            c.binding.remove(&rx_id);
-                            c.unbound.remove(&rx_id)
+    /// A child's worker (M8): handles the child's relays, redemptions,
+    /// binds and unbinds one at a time, in the order the child sent
+    /// them, so a request whose kernel queries block (a synchronous pipe,
+    /// probe W8) stalls only this child's later requests, never the IO
+    /// thread or another child. It blocks in `recv` with no timeout, so
+    /// an idle worker never wakes (FP-18), and it ends once the broker
+    /// forgets the child (dropping the queue's sender) and the queue is
+    /// drained. It holds the transport weakly, so it never keeps it
+    /// alive.
+    fn worker(inner: &Weak<Self>, proc: Proc, process: &sys::Process, jobs: &mpsc::Receiver<Job>) {
+        while let Ok(job) = jobs.recv() {
+            let Some(inner) = inner.upgrade() else {
+                return;
+            };
+            inner.run_job(proc, process, job);
+        }
+    }
+
+    /// Handles one of child `proc`'s requests on its worker: the pull and
+    /// the kernel queries first, off the lock; then the decision under
+    /// it. A request whose child is gone by then is dropped unanswered,
+    /// and whatever it pulled is closed outside the lock.
+    fn run_job(self: &Arc<Self>, proc: Proc, process: &sys::Process, job: Job) {
+        let mut later: Vec<Box<dyn Any + Send>> = Vec::new();
+        let mut events = Vec::new();
+        let mut reply = None;
+        let mut st = match job {
+            Job::Relay {
+                req,
+                carrier,
+                items,
+            } => {
+                let (carrier_raw, pulled) = Self::classify_relay(process, carrier, &items);
+                let mut st = self.lock();
+                match st.broker.as_mut() {
+                    Some(b) if b.children.contains_key(&proc) => {
+                        let (res, spare) = Self::relay_decide(b, proc, &carrier_raw, pulled);
+                        later.push(Box::new(spare));
+                        reply = Some(match res {
+                            Ok(ticket) => Ctl::RelayOk { req, ticket },
+                            Err(r) => Ctl::RelayRefused {
+                                req,
+                                reason: r.code(),
+                            },
                         });
-                        if cancelled {
-                            // Unbound before this Bind finished: nothing to
-                            // record.
-                        } else if let Some(k) = key {
+                    }
+                    _ => {
+                        let spare: Vec<OwnedHandle> =
+                            pulled.into_iter().filter_map(|p| p.handle).collect();
+                        later.push(Box::new(spare));
+                    }
+                }
+                st
+            }
+            Job::Redeem { req, ticket, rx } => {
+                let raw = Self::peek_raw(process, rx);
+                let mut st = self.lock();
+                if let Some(b) = st.broker.as_mut()
+                    && b.children.contains_key(&proc)
+                {
+                    let key = Self::receiver_key(b, &raw);
+                    reply = Some(Self::redeem_with_key(
+                        b,
+                        proc,
+                        req,
+                        ticket,
+                        key,
+                        &mut later,
+                        &mut events,
+                    ));
+                }
+                st
+            }
+            Job::Bind { rx, rx_id, peer } => {
+                let raw = Self::peek_raw(process, rx);
+                let mut st = self.lock();
+                if let Some(b) = st.broker.as_mut()
+                    && b.children.contains_key(&proc)
+                {
+                    match Self::receiver_key(b, &raw) {
+                        Some(k) => {
                             if let Ok(Some(ev)) = b.ledger.bind(proc, k, rx_id, peer) {
                                 events.push(ev);
                             }
-                        } else {
-                            // The end could not be classified: fail closed,
-                            // the listener ends with an Identity fault.
-                            reply = Some(Ctl::BindBroken { rx_id, peer });
                         }
+                        // The end could not be classified: fail closed,
+                        // the listener ends with an Identity fault.
+                        None => reply = Some(Ctl::BindBroken { rx_id, peer }),
                     }
                 }
-                if let Some(c) = b.children.get_mut(&proc) {
-                    c.peeks = c.peeks.saturating_sub(1);
+                st
+            }
+            Job::Unbind { rx_id } => {
+                let mut st = self.lock();
+                if let Some(b) = st.broker.as_mut() {
+                    b.ledger.unbind(proc, rx_id);
                 }
+                st
             }
-            if let Some(r) = reply {
-                inner.send_ctl(&mut st, Some(proc), &r);
-            }
-            inner.dispatch(&mut st, events);
-            drop(st);
-            drop(later);
-            inner.wake();
-        })
-        .is_ok()
+        };
+        if let Some(r) = reply {
+            self.send_ctl(&mut st, Some(proc), &r);
+        }
+        self.dispatch(&mut st, events);
+        drop(st);
+        drop(later);
+        self.wake();
     }
 
-    /// Spawns a relay off the IO thread (M8): the pull and the kernel
-    /// queries, which can block on a crafted synchronous handle (W8),
-    /// run on this thread, so one child's blocked relay never stalls the
-    /// broker's IO thread or another child. The per-child relay quota
-    /// bounds how many such threads a child can have at once.
-    fn spawn_relay(
-        self: &Arc<Self>,
-        proc: Proc,
-        process: sys::Process,
-        req: u64,
-        carrier: u64,
-        items: Items,
-    ) -> bool {
-        let inner = Arc::clone(self);
-        crate::thread::spawn("hg-ipc-relay", move || {
-            let (carrier_raw, pulled) = Self::classify_relay(&process, carrier, &items);
-            let mut st = inner.lock();
-            let alive = st
-                .broker
-                .as_ref()
-                .is_some_and(|b| b.children.contains_key(&proc));
-            let (reply, spare): (Option<Ctl>, Vec<OwnedHandle>) = match st.broker.as_mut() {
-                Some(b) if alive => {
-                    let (res, drop_now) = Self::relay_decide(b, proc, &carrier_raw, pulled);
-                    let r = match res {
-                        Ok(ticket) => Ctl::RelayOk { req, ticket },
-                        Err(r) => Ctl::RelayRefused {
-                            req,
-                            reason: r.code(),
-                        },
-                    };
-                    (Some(r), drop_now)
-                }
-                // No broker, or the child died while this relay was in
-                // flight: drop the pulled handles, send nothing.
-                _ => (None, pulled.into_iter().filter_map(|p| p.handle).collect()),
-            };
-            if let Some(b) = st.broker.as_mut()
-                && let Some(c) = b.children.get_mut(&proc)
-            {
-                c.relays = c.relays.saturating_sub(1);
-            }
-            if let Some(r) = reply {
-                inner.send_ctl(&mut st, Some(proc), &r);
-            }
-            drop(st);
-            drop(spare);
-            inner.wake();
-        })
-        .is_ok()
-    }
-
-    /// Charges child `from`'s request quota and starts a peek job;
-    /// false if over quota or the thread could not start (the slot is
-    /// given back).
-    fn start_peek(self: &Arc<Self>, b: &mut Broker, from: Proc, rx: u64, job: PeekJob) -> bool {
-        let Some(c) = b.children.get_mut(&from) else {
-            return false;
-        };
-        if c.peeks >= MAX_RELAYS_INFLIGHT {
-            return false;
-        }
-        let Ok(process) = sys::duplicate(&c.process.0) else {
-            return false;
-        };
-        c.peeks = c.peeks.saturating_add(1);
-        if let PeekJob::Bind { rx_id, .. } = job {
-            c.binding.insert(rx_id);
-        }
-        if self.spawn_peek(from, sys::Process(process), rx, job) {
-            return true;
-        }
-        if let Some(c) = b.children.get_mut(&from) {
-            c.peeks = c.peeks.saturating_sub(1);
-            if let PeekJob::Bind { rx_id, .. } = job {
-                c.binding.remove(&rx_id);
-            }
-        }
-        false
+    /// Queues one of child `from`'s requests for its worker (M8). False
+    /// if the child is unknown, its queue is full or its worker is gone;
+    /// the caller then drops the child's link.
+    fn enqueue(b: &Broker, from: Proc, job: Job) -> bool {
+        b.children
+            .get(&from)
+            .is_some_and(|c| c.jobs.try_send(job).is_ok())
     }
 
     /// Handles one control record from child `from`.
@@ -1016,73 +1007,43 @@ impl Inner {
         let events: Vec<BindEvent> = Vec::new();
         let later: Vec<Box<dyn Any + Send>> = Vec::new();
         let reply = match c {
+            // Relays, redemptions, binds and unbinds go to the child's
+            // worker, which handles them in the order sent, off the IO
+            // thread (M8). A child whose queue is full has its link
+            // dropped.
             Ctl::Relay {
                 req,
                 carrier,
                 items,
             } => {
-                // The relay's pull and kernel queries run off the IO
-                // thread (M8): dup the child's process for the relay
-                // thread, charge the per-child quota, and hand it over.
-                // Over quota, refuse at once.
-                let over = b
-                    .children
-                    .get(&from)
-                    .is_none_or(|c| c.relays >= MAX_RELAYS_INFLIGHT);
-                let dup = b
-                    .children
-                    .get(&from)
-                    .and_then(|c| sys::duplicate(&c.process.0).ok());
-                match (over, dup) {
-                    (false, Some(process)) => {
-                        if let Some(c) = b.children.get_mut(&from) {
-                            c.relays = c.relays.saturating_add(1);
-                        }
-                        if self.spawn_relay(from, sys::Process(process), req, carrier, items) {
-                            None
-                        } else {
-                            // No relay thread: give the slot back and
-                            // refuse, so the child is not left waiting.
-                            if let Some(c) = b.children.get_mut(&from) {
-                                c.relays = c.relays.saturating_sub(1);
-                            }
-                            Some(Ctl::RelayRefused {
-                                req,
-                                reason: Refusal::Quota.code(),
-                            })
-                        }
-                    }
-                    _ => Some(Ctl::RelayRefused {
+                if !Self::enqueue(
+                    b,
+                    from,
+                    Job::Relay {
                         req,
-                        reason: Refusal::Quota.code(),
-                    }),
+                        carrier,
+                        items: Box::new(items),
+                    },
+                ) {
+                    return self.child_gone(st, from);
                 }
+                None
             }
             Ctl::Redeem { req, ticket, rx } => {
-                match self.start_peek(b, from, rx, PeekJob::Redeem { req, ticket }) {
-                    true => None,
-                    false => Some(Ctl::RedeemRefused {
-                        req,
-                        reason: crate::ipc::win::ledger::LedgerError::Quota.code(),
-                    }),
+                if !Self::enqueue(b, from, Job::Redeem { req, ticket, rx }) {
+                    return self.child_gone(st, from);
                 }
+                None
             }
             Ctl::Bind { rx, rx_id, peer } => {
-                // A Bind that cannot be queued fails closed: the child's
-                // listener ends with an Identity fault rather than run
-                // unbound.
-                if self.start_peek(b, from, rx, PeekJob::Bind { rx_id, peer }) {
-                    None
-                } else {
-                    Some(Ctl::BindBroken { rx_id, peer })
+                if !Self::enqueue(b, from, Job::Bind { rx, rx_id, peer }) {
+                    return self.child_gone(st, from);
                 }
+                None
             }
             Ctl::Unbind { rx_id } => {
-                b.ledger.unbind(from, rx_id);
-                if let Some(c) = b.children.get_mut(&from)
-                    && c.binding.contains(&rx_id)
-                {
-                    c.unbound.insert(rx_id);
+                if !Self::enqueue(b, from, Job::Unbind { rx_id }) {
+                    return self.child_gone(st, from);
                 }
                 None
             }
@@ -2658,6 +2619,19 @@ impl WindowsIpc {
             sys::spawn::kill(&child);
             return Err(std::io::Error::other("no room for the link"));
         };
+        // The child's worker (M8), started before the child can send a
+        // request. It has its own copy of the process handle.
+        let (jobs, queue) = mpsc::sync_channel(MAX_CHILD_REQUESTS);
+        let worker = sys::duplicate(&process.0)
+            .ok()
+            .map(sys::Process)
+            .and_then(|wp| {
+                let weak = Arc::downgrade(&self.inner);
+                crate::thread::spawn("hg-ipc-child", move || {
+                    Inner::worker(&weak, p, &wp, &queue);
+                })
+                .ok()
+            });
         if let Some(b) = st.broker.as_mut() {
             if let Some(s) = &sid {
                 b.reserved_sids.remove(s);
@@ -2671,12 +2645,16 @@ impl WindowsIpc {
                     process,
                     sid,
                     link,
-                    relays: 0,
-                    peeks: 0,
-                    binding: BTreeSet::new(),
-                    unbound: BTreeSet::new(),
+                    jobs,
                 },
             );
+        }
+        if worker.is_none() {
+            let dropped = self.inner.abandon(&mut st, p, [None, None]);
+            drop(st);
+            drop(dropped);
+            sys::spawn::kill(&child);
+            return Err(std::io::Error::other("no worker thread for the child"));
         }
         let hello = Ctl::Hello {
             to_parent: v_up,

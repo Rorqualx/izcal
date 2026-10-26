@@ -486,6 +486,15 @@ impl Ledger {
     pub(crate) fn entry_count(&self) -> usize {
         self.entries.len()
     }
+
+    /// Bindings process `binder` holds.
+    #[cfg(test)]
+    pub(crate) fn bindings_by(&self, binder: Proc) -> usize {
+        self.entries
+            .values()
+            .filter(|e| e.binding.is_some_and(|b| b.binder == binder))
+            .count()
+    }
 }
 
 #[cfg(test)]
@@ -539,6 +548,9 @@ mod tests {
         l.place(pipe(A, 1), End::Sender, A).unwrap();
         // B binds to some other peer (pid 555) before A grants the sender.
         assert_eq!(l.bind(B, pipe(A, 1), 0x40, 555), Ok(None));
+        assert_eq!(l.bindings_by(B), 1);
+        l.unbind(B, 0x40);
+        assert_eq!(l.bindings_by(B), 0);
     }
 
     #[test]

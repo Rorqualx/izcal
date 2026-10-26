@@ -332,6 +332,67 @@ fn child(case: &str) -> i32 {
                 }
             }
         }
+        "stuck-relay" => {
+            // Names a synchronous pipe end with a read pending in a relay
+            // record, so the broker's queries for it wait (probe W8)
+            // until this process exits. Then a message carrying an end of
+            // a real channel: its relay is queued behind the first one.
+            let Ok((server, _client)) = super::sys::sync_pipe_with_read_pending() else {
+                return 18;
+            };
+            {
+                let mut st = r.ipc.inner.lock();
+                let req = st.req();
+                let Some(items) = super::Items::from_slice(&[]) else {
+                    return 19;
+                };
+                let relay = super::Ctl::Relay {
+                    req,
+                    carrier: super::sys::value(&server),
+                    items,
+                };
+                r.ipc.inner.send_ctl(&mut st, None, &relay);
+            }
+            r.ipc.inner.wake();
+            r.ipc.send(&up, b"stuck".to_vec(), Vec::new()).unwrap();
+            let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+            r.ipc
+                .send(&up, b"behind".to_vec(), vec![rx.into_handle()])
+                .unwrap();
+            let _ = from_parent.recv_timeout(WAIT);
+            drop(server);
+            0
+        }
+        "bind-unbind" => {
+            // Fifty bound listeners on channels made here, each dropped at
+            // once (a Bind, then an Unbind and a Closed), then a message
+            // carrying an end, whose relay is queued behind all of them.
+            // Then one more bound listener, kept, and another such
+            // message.
+            let mut senders = Vec::new();
+            for _ in 0..50 {
+                let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+                let (_o, l) = r.listen_bound(rx, boot.parent);
+                senders.push(tx);
+                drop(l);
+            }
+            let (_t1, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+            r.ipc
+                .send(&up, b"unbound".to_vec(), vec![rx.into_handle()])
+                .unwrap();
+            let Ok(Ev::Msg(..)) = from_parent.recv_timeout(WAIT) else {
+                return 13;
+            };
+            let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+            let (_o, kept) = r.listen_bound(rx, boot.parent);
+            let (_t2, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+            r.ipc
+                .send(&up, b"bound".to_vec(), vec![rx.into_handle()])
+                .unwrap();
+            let _ = from_parent.recv_timeout(WAIT);
+            drop((tx, kept, senders));
+            0
+        }
         _ => 14,
     }
 }
@@ -783,6 +844,67 @@ fn a_reused_handle_value_releases_grants_oldest_first() {
     assert_eq!(b.take_grant(who, value), Some(first));
     assert_eq!(b.take_grant(who, value), Some(second));
     assert_eq!(b.take_grant(who, value), None);
+}
+
+/// Item 1 (M8): a child's requests are handled by its own worker, so one
+/// whose kernel queries wait (a synchronous pipe end with a read pending,
+/// probe W8) delays only that child. Another child's relays and
+/// redemptions complete meanwhile, and the waiting child's later relay
+/// stays queued behind its first.
+#[test]
+fn a_childs_waiting_request_delays_no_other_child() {
+    let r = rig();
+    let stuck = launch(&r, "stuck-relay", false);
+    assert_eq!(expect_msg(&stuck.from_child).0, b"stuck");
+    let other = launch(&r, "echo", false);
+    for i in 0u8..20 {
+        let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+        r.ipc
+            .send(&other.to_child, vec![i], vec![rx.into_handle()])
+            .unwrap();
+        let (b, hs) = expect_msg(&other.from_child);
+        assert_eq!(b, vec![i]);
+        assert_eq!(hs.len(), 1);
+    }
+    // The first child's second relay is still waiting behind its first.
+    assert!(!matches!(
+        stuck.from_child.recv_timeout(Duration::from_millis(500)),
+        Ok(Ev::Msg(..))
+    ));
+}
+
+/// Item 1 (M8): a child's Binds and Unbinds are handled in the order it
+/// sent them, so an Unbind is never overtaken by the Bind it undoes and no
+/// binding outlives its listener. After fifty bound listeners the child
+/// dropped at once, the broker holds only the binding of the child's own
+/// bootstrap listener; after one more, kept, it holds two. Each count is
+/// read after a relay the child sent last, which its worker handles after
+/// everything before it.
+#[test]
+fn a_childs_binds_and_unbinds_are_handled_in_order() {
+    let r = rig();
+    let c = launch(&r, "bind-unbind", true);
+    let bindings = || {
+        r.ipc
+            .inner
+            .lock()
+            .broker
+            .as_ref()
+            .map(|b| b.ledger.bindings_by(1))
+            .unwrap()
+    };
+    let (b, hs) = expect_msg(&c.from_child);
+    assert_eq!((b.as_slice(), hs.len()), (&b"unbound"[..], 1));
+    assert_eq!(bindings(), 1, "only the bootstrap listener's binding");
+    r.ipc
+        .send(&c.to_child, b"next".to_vec(), Vec::new())
+        .unwrap();
+    let (b, hs) = expect_msg(&c.from_child);
+    assert_eq!((b.as_slice(), hs.len()), (&b"bound"[..], 1));
+    assert_eq!(bindings(), 2, "the bootstrap listener's and the kept one");
+    r.ipc
+        .send(&c.to_child, b"bye".to_vec(), Vec::new())
+        .unwrap();
 }
 
 /// Item 1 (M8): a child that will not drain its control link cannot make

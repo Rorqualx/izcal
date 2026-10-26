@@ -270,6 +270,63 @@ pub(crate) fn link_pair(id: &[u8; 16]) -> io::Result<(OwnedHandle, OwnedHandle)>
     named_pair("izcal-link-", None, id)
 }
 
+/// A synchronous (not overlapped) message pipe with a read pending on its
+/// server end, made by a thread of its own: the state in which probe W8
+/// found the kernel's pipe queries on that end wait until the read
+/// completes or the process exits. Returns (server end, client end); the
+/// client is kept open so the read stays pending. For the conformance
+/// test that one child's waiting request delays no other child (M8).
+#[cfg(test)]
+pub(crate) fn sync_pipe_with_read_pending() -> io::Result<(OwnedHandle, OwnedHandle)> {
+    let w = wide(&format!(r"\\.\pipe\izcal-sync-{}", process_id()));
+    // SAFETY: NUL-terminated name; default security.
+    let server = unsafe {
+        CreateNamedPipeW(
+            w.as_ptr(),
+            PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+            1,
+            PIPE_BUFFER,
+            PIPE_BUFFER,
+            0,
+            null(),
+        )
+    };
+    if server == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: a new handle owned here.
+    let server = unsafe { OwnedHandle::from_raw_handle(server.cast()) };
+    // SAFETY: NUL-terminated name; no security attributes or template;
+    // no FILE_FLAG_OVERLAPPED, so the client is synchronous too.
+    let client = unsafe {
+        CreateFileW(
+            w.as_ptr(),
+            FILE_READ_DATA | FILE_WRITE_DATA,
+            0,
+            null(),
+            OPEN_EXISTING,
+            0,
+            null_mut(),
+        )
+    };
+    if client == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: a new handle owned here.
+    let client = unsafe { OwnedHandle::from_raw_handle(client.cast()) };
+    // A second handle to the same file object, for the reading thread.
+    let reader = duplicate(&server)?;
+    crate::thread::spawn("d5-sync-read", move || {
+        let mut buf = [0u8; 64];
+        let mut n = 0u32;
+        // SAFETY: a valid synchronous handle owned by this thread; `buf`
+        // and `n` live for the call, which returns only when it is done.
+        let _ = unsafe { ReadFile(raw(&reader), buf.as_mut_ptr(), 64, &raw mut n, null_mut()) };
+    })?;
+    Ok((server, client))
+}
+
 fn named_pair(
     prefix: &str,
     container: Option<&str>,
