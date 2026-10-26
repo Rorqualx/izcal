@@ -44,17 +44,16 @@ why = "Stage 1 2.1 L6: the shipping binaries are the hg-*-main packages"
 
 # --- Q-CS-1 (Stage 1 8.1 M1 exit; coding standard Q-CS-1) ------------------
 # Shipping hg-*-main binaries link only hg-substrate-os; only the
-# simulation binary run by hg-dst and hg-replay-main may link
+# simulation binaries run by hg-dst and hg-replay-main may link
 # hg-substrate-sim. The distribution spec (217, 686) adds hg-launch-main
 # and hg-updater-main to the OS-only list; every hg-*-main not listed
 # below is OS-only already, so they need no entry.
-# hg-dst: the package holds both the runner and the dst-smoke simulation
-# binary today, so the whole package is allowed. M1 phase E splits the
-# simulation binary into its own package; this entry then names that
-# package instead of hg-dst.
+# hg-dst-sim: M1 phase E split the simulation binaries (dst-sim,
+# dst-smoke) out of hg-dst into this package (plan E-R1, C7); the hg-dst
+# runner links no simulator.
 [q-cs-1]
 simulator = "hg-substrate-sim"
-linkers = ["hg-replay-main", "hg-dst"]
+linkers = ["hg-replay-main", "hg-dst-sim"]
 # The cryptographic-randomness trait: CryptoRandom in hg-substrate's code,
 # CryptoRng in Stage 1 3.1's sketch; both names are checked.
 crypto-traits = ["CryptoRandom", "CryptoRng"]

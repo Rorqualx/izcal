@@ -57,10 +57,10 @@
 //! `Entropy::crypto()`. Two checks together keep it there:
 //!
 //! 1. **Package level**: only the binaries `graph-rules.toml` lists
-//!    (`hg-replay-main`, and for now the `hg-dst` package, which holds
-//!    both the runner and the `dst-smoke` simulation binary until phase E
-//!    splits it out) may link `hg-substrate-sim`, directly or not, in any
-//!    feature combination, on any of the three OSes.
+//!    (`hg-replay-main`, and the `hg-dst-sim` package, which holds the
+//!    simulation binaries phase E split out of `hg-dst`) may link
+//!    `hg-substrate-sim`, directly or not, in any feature combination, on
+//!    any of the three OSes.
 //! 2. **Code level**: a crypto source exists only where a type
 //!    implements the cryptographic-randomness trait (`CryptoRandom` in
 //!    the code; Stage 1 3.1 calls it `CryptoRng`, so both names are

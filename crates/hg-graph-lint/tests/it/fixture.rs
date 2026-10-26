@@ -110,8 +110,16 @@ impl Fixture {
             "L6",
             "hg-substrate = { path = \"../hg-substrate\" }\nhg-substrate-os = { path = \"../hg-substrate-os\" }\n",
         );
+        // The runner links no simulator; the simulation binaries are
+        // hg-dst-sim's (M1 phase E).
         f.bin(
             "hg-dst",
+            "T",
+            "tools",
+            "hg-substrate-os = { path = \"../hg-substrate-os\" }\n",
+        );
+        f.bin(
+            "hg-dst-sim",
             "T",
             "tools",
             "hg-substrate-os = { path = \"../hg-substrate-os\" }\nhg-substrate-sim = { path = \"../hg-substrate-sim\" }\n",

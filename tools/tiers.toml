@@ -52,9 +52,71 @@ why = "6.2 names hg-ipc-codegen in tier T; Stage 1 2.1: tools"
 [crates.hg-dst]
 tier = "T"
 layer = "tools"
-why = "6.2 and 6.3: the hg-dst runner is tier T; Stage 1 2.1: tools. The package also holds dst-smoke, a simulation binary, until M1 phase E splits it out; that binary then gets its own row"
+why = "6.2 and 6.3: the hg-dst runner is tier T; Stage 1 2.1: tools. Since M1 phase E it links no simulator: the simulation binaries are hg-dst-sim's (E-R1, C7)"
+
+[crates.hg-dst-sim]
+tier = "T"
+layer = "tools"
+why = "M1 plan E-R1: the simulation binaries (dst-sim, dst-smoke), split out of hg-dst so Q-CS-1 can name them; tools, tier T"
 
 [crates.hg-graph-lint]
 tier = "T"
 layer = "tools"
 why = "6.2 names hg-graph-lint in tier T; Stage 1 2.1: tools"
+
+# --- M1 phase E (plan E-R1 and its design-review dispositions) -------------
+
+[crates.hg-launch-wire]
+tier = "P"
+layer = "L2s"
+why = "OS integration 6.x crate table: L2s, the IZLH codec, tier P with no dependencies (G232)"
+
+[crates.hg-os-types]
+tier = "R"
+layer = "L2"
+why = "OS integration crate table: L2, OsInput/OsCommand/OsRegistration generated from os.hgidl, tier R"
+
+[crates.hg-launch-plan]
+tier = "P"
+layer = "L2"
+why = "M1 plan E-R1: the spawner request/reply codec and per-kind sandbox plan as pure data, shared by broker and spawner (C11); L2, tier P"
+
+[crates.hg-build-id]
+tier = "T"
+layer = "tools"
+why = "Distribution 13 item 5 (DU-M0a): the tool that computes a build's BuildId before compilation; its own docs: tools layer, tier T"
+
+[crates.hg-browser]
+tier = "P"
+layer = "L5"
+why = "M1 plan E-R1: broker logic, run(Substrate, BrowserConfig); L5, tier P (S1-M1a)"
+
+[crates.hg-renderer]
+tier = "R"
+layer = "L4"
+why = "M1 plan E-R1: renderer logic, run(Substrate, RendererConfig); L4, tier R"
+
+[crates.hg-net-service]
+tier = "P"
+layer = "L5"
+why = "M1 plan E-R1, layer L5; tier P by design-review disposition M5 (the partition-service split stays open)"
+
+[crates.hg-browser-main]
+tier = "P"
+layer = "L6"
+why = "M1 plan E-R1: a shipping main, as its library (hg-browser, P); S1-M1b"
+
+[crates.hg-renderer-main]
+tier = "R"
+layer = "L6"
+why = "M1 plan E-R1: a shipping main, as its library (hg-renderer, R); S1-M1b"
+
+[crates.hg-net-main]
+tier = "P"
+layer = "L6"
+why = "M1 plan E-R1, as its library; tier P by design-review disposition M5"
+
+[crates.hg-launch-tool]
+tier = "T"
+layer = "tools"
+why = "M1 plan E design review (minor, other): --measure-spawn lives in a tool binary, never in a main; also runs the OS round trip (E-R12); tools, tier T"

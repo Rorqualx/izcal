@@ -35,7 +35,7 @@ path = "tests/it/main.rs"
 
 # Tier T: the base table (coding standard A.1) with A.2's tier T changes.
 [lints.rust]
-unsafe_code = "deny"
+unsafe_code = "forbid"
 unsafe_op_in_unsafe_fn = "deny"
 missing_docs = "deny"
 
