@@ -90,3 +90,17 @@ A network namespace adds about 0.55 ms, and seccomp about 0.5 ms. The full path 
 - **E-Q1:** Does a host with an AppArmor profile granting `userns` (and `attach_disconnected`) give the full floor: id maps, an empty root, a pre-opened fd exec? Installing a profile needs root on hueyj. This is a question for the owner.
 - **E-Q6:** Cold spawn-to-ready on Linux needs `drop_caches` (root). G measures FP-27 cold on the reference devices.
 - macOS and Windows each need **one combined run**: D4's or D5's launch with the FP-M0 sandbox and Izcal's own bootstrap, measured spawn-to-ready. That is a phase E deliverable (FP-27 hook), not a probe.
+
+## 8. Round 2 (2026-10-26): the probes E-R4 and E-R6 rest on
+
+Probe: `probes/linux/src/bin/er46.rs`, run as a static build on hueyj (same host and settings as above) under the light booking b-3320da. Log: `probes/logs/linux-hueyj-er46-2026-10-26.log`, with the kernel's AppArmor lines for the run.
+
+| # | Finding | Evidence | Conf. |
+|---|---|---|---|
+| E22 | **A directory fd does not help either.** The parent opens the build directory `O_PATH | O_DIRECTORY` before the clone. Then `openat(dir_fd, name, O_PATH)` succeeds in the child, but `execveat` of the result fails with EACCES once the child has a new mount namespace, with or without PID and net namespaces. `openat(…, O_RDONLY)` fails as well. The kernel logs `operation="exec" … "Failed name lookup - disconnected path"` and `operation="open" … "disconnected path" name="home/joe/izcal-eprobe/er46"`. With a user namespace only, the same `openat` plus `execveat` works. | `E-R4 …` rows | High |
+| E23 | **Grandchild credentials.** Broker → spawner (plain child) → grandchild in new user and PID namespaces: <br>• The grandchild reads **pid 0, uid 65534** in `SO_PEERCRED` on both the broker-made pair and the spawner-made pair, and in `SCM_CREDENTIALS` from both the broker and the spawner. <br>• The broker and the spawner both read the grandchild's `SCM_CREDENTIALS` as its **outer pid** and uid 1000, equal to `clone3`'s return value. <br>• The broker's `SO_PEERCRED` on its own end of a pair it made names **the broker itself**: a socketpair's peer credentials are its creator's on both ends. | `E-R6a` rows | High |
+| E24 | **A pidfd's inode is not a generation on 6.8.** Pidfds of two live children have the same `st_dev`/`st_ino` (15/69), and a pidfd made after both exited has it too. `/proc/self/fd` shows `anon_inode:[pidfd]`: every pidfd shares one anonymous inode. Because the inode is identical across distinct processes, there was no need to churn for pid reuse; the question is answered without it. Newer kernels were not measured. | `E-R6b` rows | High |
+
+**Implications:**
+- **E-R4:** under the AppArmor userns restriction, **no form of exec by handle works in a new mount namespace**: pre-opened file fd (E4), procfs reopen (E4b) and directory fd (E22). On those hosts the child gets no new mount namespace. That costs nothing, since E2 already showed it can't mount anything there.
+- **E-R6:** `SO_PEERCRED` identifies only the creator, so a pair's peer credentials identify neither side's later holder. Only `SCM_CREDENTIALS` identifies a sender, and only from outside the sender's PID namespace. The generation has to come from somewhere other than the pidfd inode.

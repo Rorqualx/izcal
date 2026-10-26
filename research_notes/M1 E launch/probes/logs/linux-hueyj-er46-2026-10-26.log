@@ -1,0 +1,15 @@
+# er46 (static) on 6.8.0-147-generic, 2026-10-26T03:42:30-06:00
+E-R4 user only, O_PATH: openat ok; exec ok, child pid=2194474 | exit status 0
+E-R4 user+mnt, O_PATH: openat ok; execveat rc=-1 errno=13 | exit status 127
+E-R4 user+mnt, O_RDONLY: openat errno=13; execveat rc=-1 errno=9 | exit status 127
+E-R4 user+pid+net+mnt, O_PATH: openat ok; execveat rc=-1 errno=13 | exit status 127
+E-R6a broker pid=2194478 spawner pid=2194479
+  broker got from grandchild: 'grandchild getpid=1; SO_PEERCRED on broker-made end [pid=0 uid=65534]; on spawner-made end [pid=0 uid=65534]' creds[pid=2194480 uid=1000]
+  broker SO_PEERCRED on its end of the broker-made pair: [pid=2194478 uid=1000]
+  broker got: 'grandchild saw broker's 'from-broker' creds[pid=0 uid=65534]; spawner's 'from-spawner' creds[pid=0 uid=65534]' creds[pid=2194480 uid=1000]
+  broker got from spawner: 'spawner pid=2194479 saw grandchild 'to-spawner' creds[pid=2194480 uid=1000]; clone3 outer pid=2194480; SO_PEERCRED on its own end [pid=2194479 uid=1000]' creds[pid=2194479 uid=1000]
+E-R6b two live children: pid=2194482 pidfd dev=15 ino=69 ; pid=2194483 pidfd dev=15 ino=69 | link anon_inode:[pidfd]
+  after both exited: new pid=2194507 ino=69 dev=15
+# kernel AppArmor denials for this run
+      2 apparmor="DENIED" operation="exec" class="file" info="Failed name lookup - disconnected path" error=-13 profile="unprivileged_userns" name="/dev/fd/5" comm="er46" requested_mask="x" denied_mask="x" fsuid=1000 ouid=1000
+      1 apparmor="DENIED" operation="open" class="file" info="Failed name lookup - disconnected path" error=-13 profile="unprivileged_userns" name="home/joe/izcal-eprobe/er46" comm="er46" requested_mask="r" denied_mask="r" fsuid=1000 ouid=1000
