@@ -65,7 +65,7 @@
 
 use hg_substrate::ipc::{Fault, FaultKind, HandleKind, MAX_MESSAGE_HANDLES};
 
-use super::accept::{AcceptCtx, FdFacts, Held, Refusal, accept, distinct};
+use super::accept::{AcceptCtx, FdFacts, Held, Refusal, accept, accept_region, distinct};
 use super::cmsg::{CmsgError, ParsedControl};
 use crate::ipc::common::codec::{CodecError, DataView, HandleDesc, WireKind, decode_data};
 use crate::ipc::common::flow::{FlowError, ReceiverFlow, SenderFlow};
@@ -96,6 +96,9 @@ pub(crate) struct Binding {
     /// pid it was bound to when it started listening. `None` for a free
     /// channel.
     pub(crate) peer: Option<i32>,
+    /// The broker's pid, the only sender of region writers; `None` in
+    /// the broker itself (D6 review M1).
+    pub(crate) broker: Option<i32>,
 }
 
 /// Why a record was a violation.
@@ -134,14 +137,18 @@ impl Reason {
             }
             Self::EmptyRights | Self::CountMismatch => FaultKind::BadHandle,
             Self::Handle(r) => match r {
-                Refusal::NotByCreator => FaultKind::Identity,
+                Refusal::NotByCreator | Refusal::WriterNotFromBroker => FaultKind::Identity,
                 Refusal::Stdio
                 | Refusal::NotSocket
                 | Refusal::Domain
                 | Refusal::Type
                 | Refusal::Protocol
                 | Refusal::AlreadyHeld
-                | Refusal::Duplicate => FaultKind::BadHandle,
+                | Refusal::Duplicate
+                | Refusal::NotRegion
+                | Refusal::Seals
+                | Refusal::Size
+                | Refusal::Flags => FaultKind::BadHandle,
             },
             Self::NoCredentials | Self::WrongPeer => FaultKind::Identity,
             Self::Counters(_) | Self::Sequence(_) => FaultKind::Sequence,
@@ -222,6 +229,8 @@ fn counters(d: &HandleDesc) -> Result<(), FlowError> {
     match d.kind {
         WireKind::Sender | WireKind::BoundSender => SenderFlow::from_transfer(d).map(|_f| ()),
         WireKind::Receiver => ReceiverFlow::from_transfer(d).map(|_f| ()),
+        // A region carries no counters (the codec checked its fields).
+        WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => Ok(()),
     }
 }
 
@@ -325,10 +334,16 @@ where
     let ctx = AcceptCtx {
         cred_pid: pid,
         held,
+        broker_pid: binding.broker,
     };
     let mut kinds = [HandleKind::ChannelReceiver; MAX_MESSAGE_HANDLES];
     for ((slot, d), f) in kinds.iter_mut().zip(descs).zip(rec.facts) {
-        match accept(d.kind, f, &ctx) {
+        let verdict = if d.kind.is_region() {
+            accept_region(d, f, &ctx)
+        } else {
+            accept(d.kind, f, &ctx)
+        };
+        match verdict {
             Ok(k) => *slot = k,
             Err(r) => return refuse(Reason::Handle(r), true),
         }
@@ -449,7 +464,10 @@ mod proofs {
             control: &control,
             facts: &facts[..n_facts],
         };
-        let binding = Binding { peer: kani::any() };
+        let binding = Binding {
+            peer: kani::any(),
+            broker: kani::any(),
+        };
         let capacity: u32 = kani::any_where(|&c: &u32| c <= 4);
         let received: u64 = kani::any_where(|&r: &u64| r <= 4);
         let delivered: u64 = kani::any_where(|&d: &u64| d <= received);
@@ -486,10 +504,17 @@ mod proofs {
                 let ctx = AcceptCtx {
                     cred_pid: cred.map(|c| c.pid).filter(|&p| p > 0),
                     held: &held,
+                    broker_pid: binding.broker,
                 };
                 for i in 0..2 {
                     if i < count {
-                        assert!(accept(view.descs()[i].kind, &facts[i], &ctx) == Ok(kinds[i]));
+                        let d = &view.descs()[i];
+                        let k = if d.kind.is_region() {
+                            accept_region(d, &facts[i], &ctx)
+                        } else {
+                            accept(d.kind, &facts[i], &ctx)
+                        };
+                        assert!(k == Ok(kinds[i]));
                     }
                 }
                 assert!(flow.received == before.received + 1);
@@ -636,6 +661,9 @@ mod tests {
             dev: 1,
             ino,
             peercred_pid: PEER,
+            is_regular: false,
+            size: 0,
+            seals: -1,
         }
     }
 
@@ -652,7 +680,10 @@ mod tests {
         false
     }
 
-    const FREE: Binding = Binding { peer: None };
+    const FREE: Binding = Binding {
+        peer: None,
+        broker: None,
+    };
 
     struct Case {
         bytes: Vec<u8>,
@@ -860,7 +891,10 @@ mod tests {
     #[test]
     fn a_bound_receiver_takes_records_from_its_peer_only() {
         let mut c = Case::new(&[]);
-        c.binding = Binding { peer: Some(PEER) };
+        c.binding = Binding {
+            peer: Some(PEER),
+            broker: None,
+        };
         let (d, _) = c.run();
         assert!(matches!(d, Decision::Accept { .. }));
 
@@ -869,6 +903,7 @@ mod tests {
         let mut c = Case::new(&[WireKind::Sender]);
         c.binding = Binding {
             peer: Some(PEER + 1),
+            broker: None,
         };
         let (reason, sender, close) = c.violation();
         assert_eq!(
@@ -878,7 +913,10 @@ mod tests {
         assert_eq!(reason.fault_kind(), FaultKind::Identity);
 
         let mut c = Case::new(&[]);
-        c.binding = Binding { peer: Some(PEER) };
+        c.binding = Binding {
+            peer: Some(PEER),
+            broker: None,
+        };
         c.control = ParsedControl::from_parts(&[], &[], 0, None, Ok(()));
         assert_eq!(c.violation(), (Reason::NoCredentials, None, vec![]));
     }

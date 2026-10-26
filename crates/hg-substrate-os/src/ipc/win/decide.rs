@@ -88,6 +88,10 @@ fn counters(d: &HandleDesc) -> Result<(), FlowError> {
     match d.kind {
         WireKind::Sender | WireKind::BoundSender => SenderFlow::from_transfer(d).map(|_f| ()),
         WireKind::Receiver => ReceiverFlow::from_transfer(d).map(|_f| ()),
+        // Regions are refused here until this OS's D6 step accepts them.
+        WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {
+            Err(FlowError::BadTransfer)
+        }
     }
 }
 
@@ -142,6 +146,9 @@ pub(crate) const fn handle_kind(k: WireKind) -> HandleKind {
         WireKind::Sender => HandleKind::ChannelSender,
         WireKind::BoundSender => HandleKind::BoundChannelSender,
         WireKind::Receiver => HandleKind::ChannelReceiver,
+        WireKind::RegionWriter => HandleKind::RegionWriter,
+        WireKind::ReadOnlyRegion => HandleKind::ReadOnlyRegion,
+        WireKind::ConsumerRegion => HandleKind::ConsumerRegion,
     }
 }
 

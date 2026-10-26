@@ -196,7 +196,11 @@ pub(crate) const fn check_value(raw: u64) -> Result<(), Refusal> {
 pub(crate) const fn end_for(claimed: WireKind) -> End {
     match claimed {
         WireKind::Sender | WireKind::BoundSender => End::Sender,
-        WireKind::Receiver => End::Receiver,
+        // Regions are refused by `accept` until this OS's D6 step.
+        WireKind::Receiver
+        | WireKind::RegionWriter
+        | WireKind::ReadOnlyRegion
+        | WireKind::ConsumerRegion => End::Receiver,
     }
 }
 
@@ -207,6 +211,10 @@ pub(crate) const fn end_for(claimed: WireKind) -> End {
 /// The [`Refusal`]; the broker then refuses the whole relay.
 pub(crate) fn accept(claimed: WireKind, f: &Facts, ctx: &Ctx) -> Result<(PipeKey, End), Refusal> {
     check_value(f.raw)?;
+    if claimed.is_region() {
+        // A region is not a pipe; sections join in this OS's D6 step.
+        return Err(Refusal::NotPipe);
+    }
     if !f.pulled {
         return Err(Refusal::PullFailed);
     }
@@ -258,6 +266,9 @@ pub(crate) fn accept(claimed: WireKind, f: &Facts, ctx: &Ctx) -> Result<(PipeKey
             if view.bound || view.bound_receiver {
                 return Err(Refusal::BoundReceiver);
             }
+        }
+        WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {
+            return Err(Refusal::NotPipe);
         }
     }
     Ok((pipe, end))

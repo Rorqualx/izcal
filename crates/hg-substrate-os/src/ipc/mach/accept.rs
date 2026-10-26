@@ -131,6 +131,11 @@ pub(crate) const fn slots(kind: WireKind) -> ([Slot; 2], usize) {
     match kind {
         WireKind::Sender | WireKind::BoundSender => ([Slot::Send, Slot::Credit], 2),
         WireKind::Receiver => ([Slot::Receive, Slot::Receive], 1),
+        // One memory-entry send right (refused by `counters` until this
+        // OS's D6 step).
+        WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {
+            ([Slot::Send, Slot::Send], 1)
+        }
     }
 }
 
@@ -140,6 +145,9 @@ pub(crate) const fn handle_kind(claimed: WireKind) -> HandleKind {
         WireKind::Sender => HandleKind::ChannelSender,
         WireKind::BoundSender => HandleKind::BoundChannelSender,
         WireKind::Receiver => HandleKind::ChannelReceiver,
+        WireKind::RegionWriter => HandleKind::RegionWriter,
+        WireKind::ReadOnlyRegion => HandleKind::ReadOnlyRegion,
+        WireKind::ConsumerRegion => HandleKind::ConsumerRegion,
     }
 }
 

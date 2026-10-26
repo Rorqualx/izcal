@@ -185,6 +185,10 @@ fn counters(d: &HandleDesc) -> Result<(), FlowError> {
     match d.kind {
         WireKind::Sender | WireKind::BoundSender => SenderFlow::from_transfer(d).map(|_f| ()),
         WireKind::Receiver => ReceiverFlow::from_transfer(d).map(|_f| ()),
+        // Regions are refused here until this OS's D6 step accepts them.
+        WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {
+            Err(FlowError::BadTransfer)
+        }
     }
 }
 
@@ -653,6 +657,12 @@ mod tests {
                         slots.push(recv_fact(name | 1));
                     }
                     WireKind::Receiver => slots.push(recv_fact(name)),
+                    WireKind::RegionWriter
+                    | WireKind::ReadOnlyRegion
+                    | WireKind::ConsumerRegion => {
+                        // No case here sends a region; D6's macOS step adds them.
+                        slots.push(send_fact(name));
+                    }
                 }
                 name = name.wrapping_add(0x10);
             }

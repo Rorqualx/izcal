@@ -22,7 +22,10 @@
 //! A descriptor: wire kind (1 byte, [`WireKind`]), 3 reserved bytes (0),
 //! `capacity` (u32), `sent` (u64), `delivered` (u64). For a sender these
 //! are its holder's sent and delivered-known counts; for a receiver its
-//! delivered count and capacity, with `sent` = its received count. The
+//! delivered count and capacity, with `sent` = its received count. For a
+//! shared-memory region (M1 phase D6) `capacity` is the declared length
+//! (never 0), `sent` holds the region flags ([`REGION_IMMUTABLE`],
+//! [`REGION_FILLER_TRUSTED`]; no other bit) and `delivered` is 0. The
 //! descriptor table is in the same order as the OS handles the record
 //! carries (Linux: its `SCM_RIGHTS` descriptors).
 //!
@@ -61,6 +64,15 @@ pub(crate) const CREDIT_LEN: usize = 20;
 const _: () = assert!(MAX_DATA_RECORD == 16 + 16 * 24 + 65_536);
 const _: () = assert!(MAX_MESSAGE_HANDLES <= 255, "the count is one byte");
 
+/// A region descriptor's flag: the sender asked for the region to cross
+/// as `immutable` (the IDL attribute).
+pub(crate) const REGION_IMMUTABLE: u64 = 1;
+
+/// A region descriptor's flag, set only by the Windows broker's relay:
+/// the region was sealed by a sandboxed process, so its contents are
+/// trusted to that process (D6 review B1). Every other backend refuses it.
+pub(crate) const REGION_FILLER_TRUSTED: u64 = 2;
+
 /// What a descriptor says its handle is. The transport checks the claim
 /// against the kernel's facts before believing it (see `accept`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -71,6 +83,12 @@ pub(crate) enum WireKind {
     BoundSender,
     /// A channel's receiving end (wire value 3).
     Receiver,
+    /// A fresh region from the broker (wire value 4).
+    RegionWriter,
+    /// A sealed region (wire value 5).
+    ReadOnlyRegion,
+    /// A producer's region, viewed read-only (wire value 6).
+    ConsumerRegion,
 }
 
 impl WireKind {
@@ -80,17 +98,31 @@ impl WireKind {
             Self::Sender => 1,
             Self::BoundSender => 2,
             Self::Receiver => 3,
+            Self::RegionWriter => 4,
+            Self::ReadOnlyRegion => 5,
+            Self::ConsumerRegion => 6,
         }
     }
 
-    /// The kind for a wire byte; 0 and every value above 3 are invalid.
+    /// The kind for a wire byte; 0 and every value above 6 are invalid.
     pub(crate) const fn from_byte(b: u8) -> Option<Self> {
         match b {
             1 => Some(Self::Sender),
             2 => Some(Self::BoundSender),
             3 => Some(Self::Receiver),
+            4 => Some(Self::RegionWriter),
+            5 => Some(Self::ReadOnlyRegion),
+            6 => Some(Self::ConsumerRegion),
             _ => None,
         }
+    }
+
+    /// Whether it is a shared-memory region.
+    pub(crate) const fn is_region(self) -> bool {
+        matches!(
+            self,
+            Self::RegionWriter | Self::ReadOnlyRegion | Self::ConsumerRegion
+        )
     }
 }
 
@@ -108,6 +140,24 @@ pub(crate) struct HandleDesc {
 }
 
 impl HandleDesc {
+    /// A region's descriptor: `kind` must be a region kind, `len` its
+    /// declared length, `flags` its region flags.
+    #[cfg_attr(
+        all(windows, not(any(test, kani))),
+        expect(
+            dead_code,
+            reason = "D6: the Windows transport sends regions from its step"
+        )
+    )]
+    pub(crate) const fn region(kind: WireKind, len: u32, flags: u64) -> Self {
+        Self {
+            kind,
+            capacity: len,
+            sent: flags,
+            delivered: 0,
+        }
+    }
+
     /// A filler for the unused slots of [`DataView::descs`].
     pub(crate) const EMPTY: Self = Self {
         kind: WireKind::Sender,
@@ -247,12 +297,22 @@ fn desc_bytes(d: &HandleDesc) -> [u8; DESC_LEN] {
 fn decode_desc(input: &mut &[u8]) -> Result<HandleDesc, CodecError> {
     let kind = WireKind::from_byte(take_u8(input)?).ok_or(CodecError::BadKind)?;
     reserved::<3>(input)?;
-    Ok(HandleDesc {
+    let d = HandleDesc {
         kind,
         capacity: take_u32(input)?,
         sent: take_u64(input)?,
         delivered: take_u64(input)?,
-    })
+    };
+    // A region's descriptor has a length, known flags only, and no
+    // delivered count: anything else is unused space set.
+    if kind.is_region()
+        && (d.capacity == 0
+            || d.sent & !(REGION_IMMUTABLE | REGION_FILLER_TRUSTED) != 0
+            || d.delivered != 0)
+    {
+        return Err(CodecError::Reserved);
+    }
+    Ok(d)
 }
 
 /// Encodes a data record.
@@ -582,19 +642,49 @@ pub(crate) mod proofs {
         assert!(decode_data(&encode_credit(c)) == Err(CodecError::BadMagic));
     }
 
-    /// Any descriptor.
+    /// Any descriptor the decoder accepts: a channel end's with any
+    /// counters, or a region's with a length, known flags and no
+    /// delivered count.
     pub(crate) fn any_desc() -> HandleDesc {
-        let kind = match kani::any::<u8>() % 3 {
+        let kind = match kani::any::<u8>() % 6 {
             0 => WireKind::Sender,
             1 => WireKind::BoundSender,
-            _ => WireKind::Receiver,
+            2 => WireKind::Receiver,
+            3 => WireKind::RegionWriter,
+            4 => WireKind::ReadOnlyRegion,
+            _ => WireKind::ConsumerRegion,
         };
-        HandleDesc {
+        let d = HandleDesc {
             kind,
             capacity: kani::any(),
             sent: kani::any(),
             delivered: kani::any(),
+        };
+        if kind.is_region() {
+            kani::assume(d.capacity > 0 && d.sent <= 3 && d.delivered == 0);
         }
+        d
+    }
+
+    /// A region descriptor decodes only with a length, known flags and no
+    /// delivered count (D6).
+    #[kani::proof]
+    #[kani::unwind(42)]
+    fn region_descriptors_are_strict() {
+        let input: [u8; DATA_HEADER_LEN + DESC_LEN] = kani::any();
+        if let Ok(v) = decode_data(&input)
+            && let Some(d) = v.descs().first()
+            && d.kind.is_region()
+        {
+            assert!(d.capacity > 0);
+            assert!(d.sent & !(REGION_IMMUTABLE | REGION_FILLER_TRUSTED) == 0);
+            assert!(d.delivered == 0);
+        }
+        kani::cover!(
+            decode_data(&input)
+                .is_ok_and(|v| v.descs().first().is_some_and(|d| d.kind.is_region())),
+            "a region descriptor is accepted"
+        );
     }
 }
 
@@ -669,7 +759,8 @@ mod tests {
         assert_eq!(with(6, 1), Err(CodecError::Reserved));
         assert_eq!(with(7, 1), Err(CodecError::Reserved));
         assert_eq!(with(16, 0), Err(CodecError::BadKind));
-        assert_eq!(with(16, 4), Err(CodecError::BadKind));
+        // 4 to 6 are region kinds since D6; 7 is the first unassigned.
+        assert_eq!(with(16, 7), Err(CodecError::BadKind));
         assert_eq!(with(17, 1), Err(CodecError::Reserved));
         assert_eq!(with(19, 1), Err(CodecError::Reserved));
         for n in 0..DATA_HEADER_LEN + DESC_LEN {
@@ -721,11 +812,34 @@ mod tests {
     }
 
     #[test]
-    fn wire_kinds_are_exactly_one_to_three() {
+    fn wire_kinds_are_exactly_one_to_six() {
         for b in 0..=u8::MAX {
             let k = WireKind::from_byte(b);
-            assert_eq!(k.is_some(), (1..=3).contains(&b));
+            assert_eq!(k.is_some(), (1..=6).contains(&b));
             assert_eq!(k.map(WireKind::to_byte), k.map(|_| b));
+            assert_eq!(k.is_some_and(WireKind::is_region), (4..=6).contains(&b));
+        }
+    }
+
+    #[test]
+    fn region_descriptors_round_trip_and_unused_space_is_refused() {
+        let ok = HandleDesc::region(WireKind::ReadOnlyRegion, 4096, REGION_IMMUTABLE);
+        let rec = encode_data(0, &[ok], b"x").unwrap();
+        assert_eq!(decode_data(&rec).unwrap().descs(), &[ok]);
+        for bad in [
+            HandleDesc::region(WireKind::ReadOnlyRegion, 0, 0),
+            HandleDesc::region(WireKind::ConsumerRegion, 1, 4),
+            HandleDesc {
+                delivered: 1,
+                ..HandleDesc::region(WireKind::RegionWriter, 1, 0)
+            },
+        ] {
+            let rec = encode_data(0, &[bad], b"").unwrap();
+            assert_eq!(
+                decode_data(&rec).err(),
+                Some(CodecError::Reserved),
+                "{bad:?}"
+            );
         }
     }
 }
