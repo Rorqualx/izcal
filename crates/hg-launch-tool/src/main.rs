@@ -10,6 +10,11 @@
 //!   `spawn_to_ready_ms`) of the time from the launch request to the
 //!   child's accepted `ready`, on the substrate clock. Cold runs are the
 //!   caller's job (drop the page cache before each, E-Q6).
+//! - `hold SECS`: the renderer skeleton at rest, for M1 phase G's
+//!   samplers (FP-M0's method: the OS counters are read from outside, by
+//!   process). Runs `round-trip`, prints `hold: ready broker=<pid>`, then
+//!   keeps the browser and its children alive and idle for SECS seconds
+//!   with no wakeup of its own (one sleep), and exits.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -34,6 +39,11 @@ fn wait_for(what: impl Fn() -> bool) -> bool {
 }
 
 fn round_trip() -> ExitCode {
+    hold(None)
+}
+
+/// `round-trip`, then, with `secs`, the hold.
+fn hold(secs: Option<u64>) -> ExitCode {
     let s = match os_broker_substrate(Threads::for_this_machine()) {
         Ok(s) => s,
         Err(e) => {
@@ -68,8 +78,18 @@ fn round_trip() -> ExitCode {
         p.sandbox_mismatches.load(Ordering::SeqCst),
         times
     );
+    let ok = done && p.sandbox_mismatches.load(Ordering::SeqCst) == 0;
+    if let (true, Some(secs)) = (ok, secs) {
+        println!("round-trip: ok {line}");
+        println!("hold: ready broker={}", std::process::id());
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        std::thread::sleep(Duration::from_secs(secs));
+        drop(running);
+        println!("hold: done");
+        return ExitCode::SUCCESS;
+    }
     drop(running);
-    if done && p.sandbox_mismatches.load(Ordering::SeqCst) == 0 {
+    if ok {
         println!("round-trip: ok {line}");
         ExitCode::SUCCESS
     } else {
@@ -128,6 +148,10 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["round-trip"] => round_trip(),
+        ["hold", secs] => match secs.parse() {
+            Ok(secs) => hold(Some(secs)),
+            Err(_) => usage(),
+        },
         ["measure-spawn", n] => match n.parse() {
             Ok(n) => measure_spawn(n),
             Err(_) => usage(),
@@ -137,6 +161,6 @@ fn main() -> ExitCode {
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: hg-launch-tool round-trip | measure-spawn N");
+    eprintln!("usage: hg-launch-tool round-trip | measure-spawn N | hold SECS");
     ExitCode::from(2)
 }
