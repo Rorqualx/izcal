@@ -9,13 +9,26 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# KANI_AS_LIMIT (bytes, optional; Linux): caps each run's address space
+# with prlimit, as shared rigs need. CBMC's address space runs about
+# 1 GiB above its resident memory (measured 25 Oct 2026, see
+# measurements/milestones/m1-kani/), so 10737418240 (10 GiB) stops a
+# run near 8.9 GiB resident. Raising it did not rescue the run measured
+# at that cap: it ran out of time instead.
+limit=()
+if [[ -n "${KANI_AS_LIMIT:-}" ]]; then
+  limit=(prlimit "--as=$KANI_AS_LIMIT")
+fi
+
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 status=0
 for pkg in hg-ipc hg-ipc-gen hg-substrate-os; do
   echo "== cargo kani -p $pkg"
   # pipefail: the pipeline fails if cargo kani does.
-  if ! cargo kani -p "$pkg" "$@" 2>&1 | grep -v "aborting path" >>"$log"; then
+  # -Z stubbing: the generated unknown-ordinal harnesses stub each
+  # message's validator (see hg-ipc-codegen's emit.rs).
+  if ! ${limit[@]+"${limit[@]}"} cargo kani -p "$pkg" -Z stubbing "$@" 2>&1 | grep -v "aborting path" >>"$log"; then
     status=1
   fi
 done

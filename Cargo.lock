@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "hg-build-id"
+version = "0.0.0"
+dependencies = [
+ "hg-types",
+]
+
+[[package]]
 name = "hg-dst"
 version = "0.0.0"
 dependencies = [
@@ -30,6 +37,22 @@ dependencies = [
 
 [[package]]
 name = "hg-ipc-gen"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+ "hg-ipc-codegen",
+ "hg-substrate",
+ "hg-substrate-os",
+ "hg-substrate-sim",
+ "hg-types",
+]
+
+[[package]]
+name = "hg-launch-wire"
+version = "0.0.0"
+
+[[package]]
+name = "hg-os-types"
 version = "0.0.0"
 dependencies = [
  "hg-ipc",

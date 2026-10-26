@@ -358,7 +358,12 @@ mod ipc {
                 return;
             };
             let host = Remote::<ProcessHost>::from_sender(&s.ipc, boot.to_parent);
-            let _ = host.ready(ProcessKind::Renderer, BuildId { id: 1 });
+            let _ = host.ready(
+                ProcessKind::Renderer,
+                BuildId {
+                    id: hg_types::BUILD_ID,
+                },
+            );
             let mut side = Renderer { host };
             let seq = s.exec.sequence("control", Priority::UserVisible);
             let serving = Endpoint::<ProcessControl>::from_receiver(&s.ipc, boot.from_parent)

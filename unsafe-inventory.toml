@@ -22,5 +22,5 @@ entries = [
 
 [crates.hg-ipc]
 entries = [
-  "utf8",                       # from_utf8_unchecked after the Table 3-7 validator (Kani-checked against core)
+  "utf8",                       # from_utf8_unchecked after the safe byte-at-a-time Table 3-7 validator (Kani-checked against core to 6 bytes; 10M-input differential test)
 ]
