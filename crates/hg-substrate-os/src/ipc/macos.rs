@@ -67,9 +67,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant as StdInstant};
 
 use hg_substrate::ipc::{
-    Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, Flow, Handle, HandleKind,
-    HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES, OsPeer, Sink,
-    Transfer,
+    Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, FaultKind, Flow, Handle,
+    HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES,
+    OsPeer, Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
@@ -973,23 +973,18 @@ impl Inner {
                     }
                 }
                 Err(Kr(RCV_TOO_LARGE)) => {
-                    // The kernel reports only the size, not the port, and
-                    // keeps the message at the head of the set (R1): read
-                    // it into a buffer of that size (at most the kernel's
-                    // 48 MiB, P13) and judge it like any other; a data
-                    // message that large decodes as no record, a fault the
-                    // audit token attributes.
-                    let size = wire::word(buf.bytes(), 4)
-                        .and_then(|s| usize::try_from(s).ok())
-                        .unwrap_or(0);
-                    let mut big = Buf::new(size.saturating_add(wire::TRAILER_MAX));
-                    match sys::receive(self.set, &mut big) {
-                        Ok(()) => {
-                            if self.dispatch(&big, &mut flush) {
-                                return;
-                            }
-                        }
-                        Err(_) => failed = true,
+                    // The kernel destroyed it, released its rights and
+                    // names only its port, with no sender (R10): no
+                    // message of this transport is that large, so that
+                    // channel ends in a violation no one is blamed for.
+                    let local = wire::header(buf.bytes()).map_or(NAME_NULL, |h| h.local);
+                    let mut st = self.lock();
+                    if let Some(&id) = st.listening.get(&local) {
+                        let fault = Fault {
+                            kind: FaultKind::Malformed,
+                            sender: None,
+                        };
+                        self.end_listener(&mut st, id, Item::Violation(fault));
                     }
                 }
                 Err(Kr(wire::RCV_TIMED_OUT)) => {}

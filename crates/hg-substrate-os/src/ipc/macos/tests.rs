@@ -681,7 +681,8 @@ fn an_oversized_message_ends_only_its_channel() {
         body: &huge,
     })
     .unwrap();
-    expect_fault(&out, FaultKind::Malformed, Some(me()));
+    // The kernel destroys it and names only the port (R10): no blame.
+    expect_fault(&out, FaultKind::Malformed, None);
     r.ipc.send(&tx2, b"still".to_vec(), Vec::new()).unwrap();
     assert_eq!(expect_msg(&out2).0, b"still");
 }

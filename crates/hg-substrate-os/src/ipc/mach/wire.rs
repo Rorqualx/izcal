@@ -37,9 +37,6 @@ use hg_substrate::ipc::MAX_MESSAGE_HANDLES;
 pub(crate) const OPT_SEND: i32 = 0x1;
 /// `mach_msg` option: receive (P12).
 pub(crate) const OPT_RCV: i32 = 0x2;
-/// `mach_msg` option: a message too large for the buffer stays queued
-/// and its size is reported (P24).
-pub(crate) const OPT_RCV_LARGE: i32 = 0x4;
 /// `mach_msg` option: the send times out (with timeout 0, at once) when
 /// the queue is full (P17).
 pub(crate) const OPT_SEND_TIMEOUT: i32 = 0x10;
@@ -57,7 +54,13 @@ pub(crate) const OPT_TRAILER_AUDIT: i32 = 3 << 24;
 /// built from these and nothing else.
 pub(crate) const SEND_OPTIONS: i32 = OPT_SEND | OPT_SEND_TIMEOUT | OPT_SEND_NOTIFY;
 /// The only receive options this transport passes, without a timeout.
-pub(crate) const RCV_OPTIONS: i32 = OPT_RCV | OPT_RCV_LARGE | OPT_TRAILER_AUDIT;
+/// No RCV_LARGE: a message larger than the receive buffer (the largest
+/// one this transport sends) is then dequeued and destroyed by the
+/// kernel, its rights released, and only its port is named (R10). With
+/// RCV_LARGE it would stay at the head of the set until read into a
+/// buffer of its size, up to 48 MiB a message (P13, R1), which a peer
+/// must not be able to make this process allocate.
+pub(crate) const RCV_OPTIONS: i32 = OPT_RCV | OPT_TRAILER_AUDIT;
 
 /// Return: the destination queue is full (P16, P17).
 pub(crate) const SEND_TIMED_OUT: i32 = 0x1000_0004;

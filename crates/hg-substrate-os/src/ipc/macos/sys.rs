@@ -432,8 +432,9 @@ pub(crate) fn send(buf: &mut Buf, size: usize) -> Result<(), Kr> {
 }
 
 /// Receives one message from `port` (a port or a port set) into `buf`,
-/// waiting with no timeout. A message too large stays queued and
-/// [`wire::RCV_TOO_LARGE`] is returned, its size in the header (P24).
+/// waiting with no timeout. A message too large is destroyed by the
+/// kernel, its rights released, and [`wire::RCV_TOO_LARGE`] is returned
+/// with its port's name as the header's local name and no sender (R10).
 pub(crate) fn receive(port: PortName, buf: &mut Buf) -> Result<(), Kr> {
     let len = buf.len32();
     let ptr = buf.ptr();
@@ -461,7 +462,7 @@ pub(crate) fn receive(port: PortName, buf: &mut Buf) -> Result<(), Kr> {
 pub(crate) fn receive_now(port: PortName, buf: &mut Buf) -> Result<(), Kr> {
     let len = buf.len32();
     let ptr = buf.ptr();
-    // SAFETY: as `receive`, with a zero timeout and without RCV_LARGE.
+    // SAFETY: as `receive`, with a zero timeout.
     let r = kr(unsafe {
         mach_msg_overwrite(
             ptr,
