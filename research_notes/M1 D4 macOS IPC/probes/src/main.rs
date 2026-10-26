@@ -6,6 +6,7 @@ mod ffi;
 mod mach;
 mod parent;
 mod round2;
+mod round3;
 
 use ffi::{k, me};
 use mach::*;
@@ -51,6 +52,10 @@ fn main() {
         Some("r6") => round2::r6(),
         Some("r6child") => round2::r6child(),
         Some("r7") => round2::r7(),
+        Some("r8") => round3::r8(),
+        Some("r9") => round3::r9(),
+        Some("r10") => round3::r10(),
+        Some("r11") => round3::r11(),
         _ => eprintln!(
             "usage: d4-probes discover|inproc|cross [--sandbox]|p3b N|p10guard|p14|p23 SECS|p28|p29|p34|p38|sbxop OP"
         ),
