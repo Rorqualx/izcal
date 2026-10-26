@@ -86,6 +86,14 @@ pub trait Launcher: Send + Sync {
     /// [`LaunchError`].
     fn launch(&self, kind: ChildKind, capacity: u32) -> Result<Launched, LaunchError>;
 
+    /// Ends the child this launcher started as `peer` ([`Launched::peer`])
+    /// and releases what the launcher held for it. The broker calls it for
+    /// a child that missed its `ready` deadline (phase E rule E-R3: the
+    /// child is killed and the spawn is a failure) or that it gives up
+    /// on. A `peer` this launcher did not start, or one already gone, is
+    /// left alone: the call never reaches another process.
+    fn kill(&self, peer: OsPeer);
+
     /// Enters the restart-required state (distribution DU-3, 13 item 6): a
     /// child reported another build. Every later [`Launcher::launch`]
     /// returns [`LaunchError::RestartRequired`]; there is no way out but a

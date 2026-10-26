@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use hg_substrate::ipc::OsPeer;
 use hg_substrate::launch::{ChildKind, LaunchError, Launched, Launcher};
 use hg_substrate::{Memory, Substrate};
 
@@ -56,6 +57,9 @@ pub(crate) struct SimLauncher {
     parent: ProcessId,
     table: Arc<ChildTable>,
     restart_required: AtomicBool,
+    /// The children this launcher started, with the incarnation each was
+    /// started as: `kill` reaches only these.
+    started: std::sync::Mutex<BTreeMap<ProcessId, u32>>,
 }
 
 impl SimLauncher {
@@ -65,6 +69,7 @@ impl SimLauncher {
             parent,
             table,
             restart_required: AtomicBool::new(false),
+            started: std::sync::Mutex::default(),
         }
     }
 }
@@ -106,11 +111,36 @@ impl Launcher for SimLauncher {
             crate::world::crash_in(&self.shared, pid);
             return Err(LaunchError::Failed);
         };
+        if let Ok(generation) = u32::try_from(peer.generation()) {
+            self.started
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(pid, generation);
+        }
         Ok(Launched {
             from_child,
             to_child,
             peer,
         })
+    }
+
+    fn kill(&self, peer: OsPeer) {
+        let pid = ProcessId(peer.pid());
+        let ours = self
+            .started
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&pid)
+            .is_some_and(|&g| u64::from(g) == peer.generation());
+        if !ours {
+            return;
+        }
+        {
+            let mut st = self.shared.lock();
+            st.trace
+                .record(format_args!("kill {} by {}", pid.0, self.parent.0));
+        }
+        crate::world::crash_in_generation(&self.shared, pid, peer.generation());
     }
 
     fn restart_required(&self) {
