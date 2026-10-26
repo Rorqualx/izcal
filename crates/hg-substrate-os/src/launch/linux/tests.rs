@@ -1,7 +1,6 @@
 //! Tests of the spawner, run against the real `hg-spawner-main` and the
-//! `hg-launch-probe` test child, which `cargo test` builds next to this
-//! test binary (the crate's integration test makes Cargo build its
-//! binaries).
+//! `hg-launch-probe` test child, which the tests build next to this test
+//! binary ([`crate::launch::test_bins`]).
 
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 use std::path::{Path, PathBuf};
@@ -14,15 +13,10 @@ use crate::ipc::linux::launch_pair;
 use crate::ipc::linux::sys as ipc_sys;
 use crate::ipc::unix::cmsg;
 
-/// `target/<profile>`: the binaries' directory.
+/// `target/<profile>`: the binaries' directory, built for this run
+/// ([`crate::launch::test_bins`]).
 fn bin_dir() -> PathBuf {
-    let exe = std::env::current_exe().unwrap();
-    let dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
-    assert!(
-        dir.join(super::SPAWNER_NAME).exists() && dir.join("hg-launch-probe").exists(),
-        "build the crate's binaries first (cargo test builds them; cargo test --lib does not)"
-    );
-    dir
+    crate::launch::test_bins::bin_dir()
 }
 
 fn files_with(child: &Path) -> BuildFiles {

@@ -1,6 +1,8 @@
-//! Integration tests of `hg-substrate-os`. Their presence also makes
-//! `cargo test` build the crate's binaries, which the launch tests run
-//! (the spawner and its probe child).
+//! Integration tests of `hg-substrate-os`: the binaries the launch tests
+//! run (the spawner and its probe child) are built by `cargo test`. The
+//! lib's launch tests no longer rely on this target being selected; they
+//! build the binaries themselves (`launch::test_bins`), so `--lib` runs
+//! work too.
 
 #[test]
 fn the_launch_binaries_are_built() {

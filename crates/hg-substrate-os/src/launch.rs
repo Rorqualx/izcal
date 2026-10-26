@@ -6,6 +6,8 @@
 pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
+#[cfg(test)]
+pub(crate) mod test_bins;
 #[cfg(windows)]
 pub mod windows;
 

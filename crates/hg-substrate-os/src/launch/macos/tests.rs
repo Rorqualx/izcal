@@ -14,18 +14,7 @@ use crate::executor::OsExecutor;
 use crate::ipc::macos::{MacIpc, sys as mach};
 
 fn probe() -> PathBuf {
-    let exe = std::env::current_exe().unwrap();
-    let p = exe
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("hg-launch-probe");
-    assert!(
-        p.exists(),
-        "build the crate's binaries first (cargo test builds them)"
-    );
-    p
+    crate::launch::test_bins::bin("hg-launch-probe")
 }
 
 fn launcher() -> MacLauncher {
