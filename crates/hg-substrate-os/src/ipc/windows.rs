@@ -313,6 +313,10 @@ struct RegEntry {
     /// The broker's own full-access handle: identifies the section when
     /// it comes back (fact S3), and is the source of a copy.
     master: OwnedHandle,
+    /// The broker's live mappings of the section, whatever handle they
+    /// were made from (review finding 3): a writer that comes back to the
+    /// broker through a relay is a new table entry, but the same section.
+    live: Arc<AtomicUsize>,
 }
 
 struct End {
@@ -487,6 +491,9 @@ pub(crate) struct Inner {
     wake_pending: AtomicBool,
     /// This process's AppContainer SID, if it runs in one.
     container: Option<String>,
+    /// Tests only: the next region handle cannot be made.
+    #[cfg(test)]
+    fail_region_handle: AtomicBool,
 }
 
 impl Inner {
@@ -1040,6 +1047,7 @@ impl Inner {
                 owner,
                 state,
                 master,
+                live: Arc::new(AtomicUsize::new(0)),
             },
         );
         Ok((id, h))
@@ -1068,6 +1076,7 @@ impl Inner {
                 owner: c.owner,
                 state: RState::SealedByBroker,
                 master: c.master,
+                live: Arc::new(AtomicUsize::new(0)),
             },
         );
         (id, c.ro)
@@ -2814,6 +2823,8 @@ impl WindowsIpc {
             thread: OnceLock::new(),
             wake_pending: AtomicBool::new(false),
             container,
+            #[cfg(test)]
+            fail_region_handle: AtomicBool::new(false),
         });
         let io = Arc::clone(&inner);
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
@@ -2848,6 +2859,11 @@ impl WindowsIpc {
         len: u32,
         immutable: bool,
     ) -> Result<Handle, IpcError> {
+        #[cfg(test)]
+        if self.inner.fail_region_handle.swap(false, Ordering::AcqRel) {
+            drop(h);
+            return Err(IpcError::Refused);
+        }
         let role = Role::Region {
             kind,
             len,
@@ -3180,14 +3196,27 @@ impl Ipc for WindowsIpc {
         let Some(b) = st.broker.as_mut() else {
             return Err(IpcError::Unsupported);
         };
-        let (_id, h) = Inner::register(
+        let (rid, h) = Inner::register(
             b,
             len,
             owner,
             RState::WriterOut(Some(BROKER)),
             sys::SECTION_RW,
         )?;
-        let h = self.region_handle(&mut st, h, HandleKind::RegionWriter, len, false)?;
+        let h = match self.region_handle(&mut st, h, HandleKind::RegionWriter, len, false) {
+            Ok(h) => h,
+            Err(e) => {
+                // No region was given out: forget it and refund it.
+                let gone = st.broker.as_mut().and_then(|b| {
+                    let e = b.regions.remove(&rid)?;
+                    b.quota.refund(owner, u64::from(len));
+                    Some(e)
+                });
+                drop(st);
+                drop(gone);
+                return Err(e);
+            }
+        };
         drop(st);
         RegionWriter::from_handle(h).map_err(|_h| IpcError::Refused)
     }
@@ -3233,7 +3262,13 @@ impl Ipc for WindowsIpc {
             _ => return Err(IpcError::Refused),
         };
         let n = usize::try_from(*len).map_err(|_e| IpcError::Refused)?;
-        sys::map_section(h, n, writable, Some(Arc::clone(live)))
+        // In the broker the count is the section's, whichever handle maps.
+        let live = st
+            .broker
+            .as_ref()
+            .and_then(|b| Inner::region_id(b, h).and_then(|i| b.regions.get(&i)))
+            .map_or_else(|| Arc::clone(live), |e| Arc::clone(&e.live));
+        sys::map_section(h, n, writable, Some(live))
             .map(|m| Mapping::new(Box::new(m)))
             .map_err(|_e| IpcError::Refused)
     }
@@ -3256,7 +3291,12 @@ impl Ipc for WindowsIpc {
                     },
                 ..
             }) => {
-                if live.load(Ordering::Acquire) != 0 {
+                let section_live = st
+                    .broker
+                    .as_ref()
+                    .and_then(|b| Inner::region_id(b, h).and_then(|i| b.regions.get(&i)))
+                    .is_some_and(|e| e.live.load(Ordering::Acquire) != 0);
+                if live.load(Ordering::Acquire) != 0 || section_live {
                     drop(st);
                     return refuse(writer, IpcError::Busy);
                 }
@@ -3273,20 +3313,32 @@ impl Ipc for WindowsIpc {
         };
         // In the broker, which holds the writer and no view of it now,
         // the section is sealed for good: attested immutable.
-        let mut immutable = false;
+        let mut sealed = None;
         let sm: &mut State = &mut st;
         if let (Some(b), Some(e)) = (sm.broker.as_mut(), sm.ends.get(&id)) {
             let hid = Inner::region_id(b, &e.h);
-            if let Some(e) = hid.and_then(|i| b.regions.get_mut(&i))
+            if let Some((i, e)) = hid.and_then(|i| b.regions.get_mut(&i).map(|e| (i, e)))
                 && e.state == RState::WriterOut(Some(BROKER))
             {
                 e.state = RState::SealedByBroker;
-                immutable = true;
+                sealed = Some(i);
             }
         }
-        let h = match self.region_handle(&mut st, ro, HandleKind::ReadOnlyRegion, len, immutable) {
+        let h = match self.region_handle(
+            &mut st,
+            ro,
+            HandleKind::ReadOnlyRegion,
+            len,
+            sealed.is_some(),
+        ) {
             Ok(h) => h,
             Err(e) => {
+                // The writer comes back unsealed: so does the registry.
+                if let (Some(b), Some(i)) = (st.broker.as_mut(), sealed)
+                    && let Some(e) = b.regions.get_mut(&i)
+                {
+                    e.state = RState::WriterOut(Some(BROKER));
+                }
                 drop(st);
                 return refuse(writer, e);
             }

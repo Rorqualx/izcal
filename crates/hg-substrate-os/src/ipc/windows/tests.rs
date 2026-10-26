@@ -2,6 +2,7 @@
 //! with children started (sandboxed, in their own AppContainers) by this
 //! test binary acting as their broker.
 
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -1600,4 +1601,68 @@ fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
         .filter(|e| e.owner == a.peer)
         .count();
     assert_eq!(kept, 8);
+}
+
+/// Review finding 3: the broker's live mappings are the section's, so a
+/// writer that came back to the broker through a relay (a new table
+/// entry) still cannot be sealed while an earlier mapping writes.
+#[test]
+fn a_writer_relayed_back_cannot_be_sealed_while_mapped() {
+    let r = rig();
+    let w = r.ipc.allocate_region(4096, OsPeer::new(77, 0)).unwrap();
+    let m = r.ipc.map_region(w.handle()).unwrap();
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let (out, _l) = r.listen(rx);
+    r.ipc
+        .send(&tx, b"w".to_vec(), vec![w.into_handle()])
+        .unwrap();
+    let (_, mut hs) = expect_msg(&out);
+    let back = RegionWriter::from_handle(hs.remove(0)).unwrap();
+    let refused = r.ipc.seal_region(back).unwrap_err();
+    assert_eq!(refused.error, IpcError::Busy);
+    let back = refused.into_writer().unwrap();
+    m.write_from(0, b"late").unwrap();
+    drop(m);
+    let ro = r.ipc.seal_region(back).unwrap();
+    assert!(ro.immutable());
+}
+
+/// Review finding 3: a seal or allocation whose handle cannot be made
+/// leaves the registry and the charges as they were.
+#[test]
+fn a_failed_handle_leaves_the_registry_as_it_was() {
+    let r = rig();
+    let owner = OsPeer::new(79, 0);
+    let count = |r: &Rig| {
+        let st = r.ipc.inner.lock();
+        st.broker
+            .as_ref()
+            .unwrap()
+            .regions
+            .values()
+            .filter(|e| e.owner == owner)
+            .count()
+    };
+    r.ipc
+        .inner
+        .fail_region_handle
+        .store(true, Ordering::Release);
+    assert!(r.ipc.allocate_region(4096, owner).is_err());
+    assert_eq!(count(&r), 0);
+    let w = r.ipc.allocate_region(4096, owner).unwrap();
+    r.ipc
+        .inner
+        .fail_region_handle
+        .store(true, Ordering::Release);
+    let w = r.ipc.seal_region(w).unwrap_err().into_writer().unwrap();
+    // Still a writer the broker holds: it seals, attested immutable.
+    let ro = r.ipc.seal_region(w).unwrap();
+    assert!(ro.immutable());
+    // One region charged: 255 more fit, then none.
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    for _ in 1..MAX_REGIONS_PER_OWNER {
+        assert!(b.quota.charge(owner, 4096));
+    }
+    assert!(!b.quota.charge(owner, 4096));
 }
