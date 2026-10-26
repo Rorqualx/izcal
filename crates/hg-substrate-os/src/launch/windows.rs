@@ -85,6 +85,133 @@ impl BuildFiles {
     }
 }
 
+/// How many fresh AppContainer profiles the launcher keeps registered
+/// ahead of their launches (†, set from first principles: the browser
+/// starts two kinds at once).
+const SPARE_PROFILES: usize = 2;
+
+/// One fresh profile, registered and never used.
+struct Spare {
+    name: String,
+    sid: sb::AppContainerSid,
+}
+
+/// Fresh AppContainer profiles made ahead of the launches that use them
+/// (M1 phase G). Registering a profile (`CreateAppContainerProfile`)
+/// took about 5 ms of FP-27's 11 ms on rig253, inside the launch; it
+/// does not depend on the launch, so it is done before: at broker start,
+/// and on a background thread after each launch takes one. Each child
+/// still gets its own profile and SID, never used by any process before
+/// it (D5: one SID per live child; nothing is reused). A launch that
+/// finds none registers one itself, as before.
+struct Spares {
+    ready: Mutex<Vec<Spare>>,
+    /// Set when the launcher ends: profiles made after it are removed.
+    closed: AtomicBool,
+    /// A refill thread is running.
+    refilling: AtomicBool,
+}
+
+/// The number in the next profile's name: one counter for the process,
+/// so two launchers in one process never name the same profile.
+static NEXT_PROFILE: AtomicU64 = AtomicU64::new(0);
+
+impl Spares {
+    fn lock(&self) -> MutexGuard<'_, Vec<Spare>> {
+        self.ready.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Registers a new profile, named for this process and a counter.
+    /// The profile must be new: one left registered under the same name
+    /// (an earlier broker with this pid that ended without removing its
+    /// profiles) may have held a child, so it is removed and registered
+    /// again, empty, never handed out as it was.
+    fn make(&self) -> Option<Spare> {
+        let n = NEXT_PROFILE.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
+        Self::register_fresh(format!("izcal.{}.{n}", std::process::id()))
+    }
+
+    /// Registers profile `name` new, removing one left under that name
+    /// first (see [`Spares::make`]).
+    fn register_fresh(name: String) -> Option<Spare> {
+        let sid = match sb::new_app_container(&name).ok()? {
+            Some(sid) => sid,
+            None => {
+                win::spawn::delete_container(&name);
+                sb::new_app_container(&name).ok()??
+            }
+        };
+        Some(Spare { name, sid })
+    }
+
+    fn take(&self) -> Option<Spare> {
+        self.lock().pop()
+    }
+
+    /// Keeps `s`, unless the launcher has ended (then removes it).
+    fn put(&self, s: Spare) {
+        let mut v = self.lock();
+        if self.closed.load(Ordering::SeqCst) {
+            drop(v);
+            win::spawn::delete_container(&s.name);
+        } else {
+            v.push(s);
+        }
+    }
+
+    /// Registers profiles until [`SPARE_PROFILES`] are ready; `false` if
+    /// a registration failed.
+    fn fill(&self) -> bool {
+        while !self.closed.load(Ordering::SeqCst) && self.lock().len() < SPARE_PROFILES {
+            match self.make() {
+                Some(s) => self.put(s),
+                None => return false,
+            }
+        }
+        true
+    }
+
+    /// Whether the pool is short and open.
+    fn short(&self) -> bool {
+        !self.closed.load(Ordering::SeqCst) && self.lock().len() < SPARE_PROFILES
+    }
+
+    /// Refills on a thread of its own, off the launch path.
+    fn refill(self: &Arc<Self>) {
+        if self.refilling.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let me = Arc::clone(self);
+        let started = crate::thread::spawn("hg-profile-spares", move || {
+            loop {
+                let filled = me.fill();
+                me.refilling.store(false, Ordering::SeqCst);
+                // A take after fill's last check saw `refilling` set and
+                // left the refill to this thread: look again. Stop if a
+                // registration failed (the next launch tries again) or
+                // another refill took over.
+                if !filled || !me.short() || me.refilling.swap(true, Ordering::SeqCst) {
+                    break;
+                }
+            }
+        });
+        if started.is_err() {
+            self.refilling.store(false, Ordering::SeqCst);
+        }
+    }
+
+    /// The launcher ends: no more spares, and the unused ones removed.
+    fn close(&self) {
+        let mut v = self.lock();
+        self.closed.store(true, Ordering::SeqCst);
+        let left: Vec<Spare> = v.drain(..).collect();
+        drop(v);
+        for s in left {
+            win::spawn::delete_container(&s.name);
+        }
+    }
+}
+
 /// One live child.
 struct Entry {
     child: win::spawn::Child,
@@ -107,6 +234,7 @@ pub struct WinLauncher {
     ipc: Arc<WindowsIpc>,
     files: BuildFiles,
     children: Mutex<BTreeMap<OsPeer, Entry>>,
+    spares: Arc<Spares>,
     launches: AtomicU64,
     halted: AtomicBool,
 }
@@ -128,10 +256,18 @@ const fn plan_kind(k: ChildKind) -> Kind {
 
 impl WinLauncher {
     pub(crate) fn new(ipc: Arc<WindowsIpc>, files: BuildFiles) -> Self {
+        let spares = Arc::new(Spares {
+            ready: Mutex::new(Vec::new()),
+            closed: AtomicBool::new(false),
+            refilling: AtomicBool::new(false),
+        });
+        // At broker start, before any launch is requested.
+        spares.fill();
         Self {
             ipc,
             files,
             children: Mutex::new(BTreeMap::new()),
+            spares,
             launches: AtomicU64::new(0),
             halted: AtomicBool::new(false),
         }
@@ -168,7 +304,9 @@ impl WinLauncher {
 impl Drop for WinLauncher {
     fn drop(&mut self) {
         // The jobs would end the children on close anyway; ending them
-        // here also unregisters their containers, which persist per user.
+        // here also unregisters their containers, which persist per user,
+        // and so are the spares'.
+        self.spares.close();
         let all = std::mem::take(&mut *self.lock());
         for e in all.into_values() {
             e.end();
@@ -193,8 +331,12 @@ impl Launcher for WinLauncher {
         let spec = plan_kind(kind).spec();
         let exe = self.files.path(spec.exe()).ok_or(LaunchError::Failed)?;
         let n = self.launches.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
-        let container = format!("izcal.{}.{}.{n}", spec.token(), std::process::id());
-        let sid = sb::app_container(&container, &container).map_err(|_e| LaunchError::Failed)?;
+        // A fresh profile made ahead, or (none ready) one made now.
+        let spare = self.spares.take().or_else(|| self.spares.make());
+        let Spare {
+            name: container,
+            sid,
+        } = spare.ok_or(LaunchError::Failed)?;
         stamp!("profile");
         let fail = |e: LaunchError| {
             win::spawn::delete_container(&container);
@@ -231,6 +373,8 @@ impl Launcher for WinLauncher {
                 container,
             },
         );
+        // The next spare, made after this child is on its way.
+        self.spares.refill();
         Ok(Launched {
             from_child: launched.from_child,
             to_child: launched.to_child,

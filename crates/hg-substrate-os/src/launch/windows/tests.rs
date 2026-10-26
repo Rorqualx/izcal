@@ -77,3 +77,68 @@ fn the_build_cannot_be_replaced_while_held() {
     drop(held);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// The profile folder Windows keeps for a registered AppContainer
+/// profile (`%LOCALAPPDATA%\Packages\<name>`), present while registered.
+fn profile_folder(name: &str) -> PathBuf {
+    PathBuf::from(std::env::var("LOCALAPPDATA").unwrap())
+        .join("Packages")
+        .join(name)
+}
+
+/// M1 phase G (FP-27): profiles are registered ahead of their launches.
+/// The launcher starts with [`super::SPARE_PROFILES`] fresh profiles; a
+/// launch takes one, and a refill replaces it off the launch path. Every
+/// child still gets a profile no process used before (D5: one SID per
+/// live child; nothing is reused), and the spares are unregistered when
+/// the launcher ends.
+#[test]
+fn each_launch_takes_a_fresh_profile_made_ahead() {
+    let l = launcher();
+    let spare_names = |l: &WinLauncher| -> Vec<String> {
+        l.spares.lock().iter().map(|s| s.name.clone()).collect()
+    };
+    let first = spare_names(&l);
+    assert_eq!(first.len(), super::SPARE_PROFILES, "made at broker start");
+    for n in &first {
+        assert!(profile_folder(n).exists(), "{n} registered");
+    }
+    let mut used = Vec::new();
+    for _ in 0..3 {
+        let c = l.launch(ChildKind::Renderer, 64).unwrap();
+        let name = l.lock().get(&c.peer).unwrap().container.clone();
+        assert!(!used.contains(&name), "{name} used twice");
+        used.push(name);
+        let t = Instant::now();
+        while spare_names(&l).len() < super::SPARE_PROFILES {
+            assert!(t.elapsed() < Duration::from_secs(5), "refilled");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        for n in spare_names(&l) {
+            assert!(!used.contains(&n), "a spare {n} was already used");
+        }
+        l.kill(c.peer);
+    }
+    assert!(first.contains(&used[0]), "the first launch took a spare");
+    let left = spare_names(&l);
+    drop(l);
+    for n in left.iter().chain(&used) {
+        assert!(!profile_folder(n).exists(), "{n} unregistered");
+    }
+}
+
+/// A profile left registered under a spare's name (an earlier broker with
+/// this pid that ended without removing it) is never handed out as it
+/// was: it is removed and registered again, empty.
+#[test]
+fn a_stale_profile_is_registered_again_empty() {
+    let name = format!("izcal.{}.stale-test", std::process::id());
+    drop(crate::sandbox::windows::app_container(&name, &name).unwrap());
+    let marker = profile_folder(&name).join("left-by-an-earlier-child");
+    std::fs::write(&marker, b"x").unwrap();
+    let s = super::Spares::register_fresh(name.clone()).unwrap();
+    assert_eq!(s.name, name);
+    assert!(profile_folder(&name).exists(), "registered again");
+    assert!(!marker.exists(), "its old contents went with it");
+    crate::ipc::windows::sys::spawn::delete_container(&s.name);
+}

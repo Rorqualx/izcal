@@ -92,6 +92,11 @@ impl Drop for AppContainerSid {
     }
 }
 
+// The launcher's profile spares (M1 phase G) move SIDs between threads.
+// SAFETY: memory this value alone owns, never written after creation and
+// freed once on drop by FreeSid, which has no thread affinity.
+unsafe impl Send for AppContainerSid {}
+
 impl AppContainerSid {
     /// The raw SID for the process-creation attribute.
     pub const fn as_psid(&self) -> PSID {
@@ -133,6 +138,31 @@ pub fn app_container(name: &str, display: &str) -> Result<AppContainerSid, Strin
         ));
     }
     Ok(AppContainerSid(sid))
+}
+
+/// Registers a **new** AppContainer profile `name` and returns its SID;
+/// `Ok(None)` if a profile of that name is already registered (it may
+/// have been used: the caller must not take it as fresh).
+pub fn new_app_container(name: &str) -> Result<Option<AppContainerSid>, String> {
+    let name_w = wide(name);
+    let mut sid: PSID = ptr::null_mut();
+    // SAFETY: NUL-terminated strings valid for the call; no
+    // capabilities (null array, count 0); valid out-pointer.
+    let hr = unsafe {
+        CreateAppContainerProfile(
+            name_w.as_ptr(),
+            name_w.as_ptr(),
+            name_w.as_ptr(),
+            ptr::null(),
+            0,
+            &mut sid,
+        )
+    };
+    match hr {
+        0 => Ok(Some(AppContainerSid(sid))),
+        HR_ALREADY_EXISTS => Ok(None),
+        _ => Err(format!("CreateAppContainerProfile: hr={hr:#x}")),
+    }
 }
 
 /// Builds the lockdown token: a restricted version of this process's
