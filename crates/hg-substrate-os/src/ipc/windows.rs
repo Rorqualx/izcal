@@ -759,6 +759,9 @@ pub(crate) struct Inner {
     /// Tests only: the next copy thread fails to start.
     #[cfg(test)]
     fail_copy_spawn: AtomicBool,
+    /// Tests only: a child's worker waits before making its copies.
+    #[cfg(test)]
+    hold_copies: AtomicBool,
 }
 
 impl Inner {
@@ -1367,6 +1370,12 @@ impl Inner {
         let jobs = plan.map_err(|_p| Refusal::Quota)?;
         if jobs.is_empty() {
             return Ok(());
+        }
+        // Tests only: hold the copy until the test lets go (to order it
+        // against a child's death).
+        #[cfg(test)]
+        while self.hold_copies.load(Ordering::Acquire) {
+            std::thread::sleep(COPY_WAIT_POLL);
         }
         let (made, failed) = Self::make_copies(jobs);
         let mut st = self.lock();
@@ -4349,6 +4358,8 @@ impl WindowsIpc {
             fail_region_handle: AtomicBool::new(false),
             #[cfg(test)]
             fail_copy_spawn: AtomicBool::new(false),
+            #[cfg(test)]
+            hold_copies: AtomicBool::new(false),
         });
         let io = Arc::clone(&inner);
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
