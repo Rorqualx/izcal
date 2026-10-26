@@ -23,9 +23,14 @@ struct St {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let lowered = match d6probe::sandbox_windows::apply_empty_process_profile() {
-        Ok(()) => "ok".to_string(),
-        Err(e) => e,
+    // `--medium`: keep the integrity the broker gave (finding 5 probes).
+    let lowered = if args.iter().any(|a| a == "--medium") {
+        "kept".to_string()
+    } else {
+        match d6probe::sandbox_windows::apply_empty_process_profile() {
+            Ok(()) => "ok".to_string(),
+            Err(e) => e,
+        }
     };
     let mut out = std::io::stdout();
     let _ = writeln!(
@@ -129,6 +134,7 @@ fn run(p: &[&str], st: &mut St) -> Vec<String> {
             let h = hp(n(p[1]));
             o.push(format!("describe {}", describe(h)));
             o.push(nt_query_section(h));
+            // SAFETY: a valid section handle; a whole-section view.
             let v = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
             if v.Value.is_null() {
                 o.push(format!("map READ size 0 FAILED err={}", le()));
@@ -215,6 +221,7 @@ fn run(p: &[&str], st: &mut St) -> Vec<String> {
         // widen <h>: every way the consumer might get write access.
         "widen" => {
             let h = hp(n(p[1]));
+            // SAFETY: a valid section handle; a whole-section view.
             let v = unsafe { MapViewOfFile(h, FILE_MAP_WRITE, 0, 0, 0) };
             o.push(format!(
                 "MapViewOfFile(WRITE) {}",
@@ -224,6 +231,7 @@ fn run(p: &[&str], st: &mut St) -> Vec<String> {
                     "MAPPED".into()
                 }
             ));
+            // SAFETY: a valid section handle; a whole-section view.
             let v = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
             if !v.Value.is_null() {
                 let mut old = 0u32;
@@ -260,6 +268,55 @@ fn run(p: &[&str], st: &mut St) -> Vec<String> {
                     "MAPPED (private copy-on-write)".into()
                 }
             ));
+        }
+        "steal" => {
+            // A hostile holder goes around its handle: it opens the
+            // broker's process and duplicates the broker's own handle.
+            let (pid, v) = (n(p[1]) as u32, hp(n(p[2])));
+            // SAFETY: plain call; a null result is reported.
+            let bp = unsafe { OpenProcess(PROCESS_DUP_HANDLE, 0, pid) };
+            if bp.is_null() {
+                o.push(format!("OpenProcess(DUP_HANDLE) FAILED err={}", le()));
+            } else {
+                o.push("OpenProcess(DUP_HANDLE) OK".into());
+                match dup(bp, v, me(), FILE_MAP_WRITE | FILE_MAP_READ, 0) {
+                    Ok(h) => {
+                        o.push(format!(
+                            "DuplicateHandle(broker's, RW) OK -> {}",
+                            describe(h)
+                        ));
+                        // SAFETY: a valid section handle; a whole-section view.
+                        let w = unsafe { MapViewOfFile(h, FILE_MAP_WRITE, 0, 0, 0) };
+                        if w.Value.is_null() {
+                            o.push(format!("MapViewOfFile(WRITE) FAILED err={}", le()));
+                        } else {
+                            // SAFETY: the writable view maps the whole section, at least 64 KiB.
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    b"stolen".as_ptr(),
+                                    w.Value as *mut u8,
+                                    6,
+                                )
+                            };
+                            o.push("MapViewOfFile(WRITE) MAPPED, wrote \"stolen\"".into());
+                            // SAFETY: the view mapped above.
+                            unsafe { UnmapViewOfFile(w) };
+                        }
+                    }
+                    Err(e) => o.push(format!("DuplicateHandle(broker's, RW) FAILED err={e}")),
+                }
+                // SAFETY: the process handle opened above.
+                unsafe { CloseHandle(bp) };
+            }
+            // SAFETY: plain call; a null result is reported.
+            let vp = unsafe { OpenProcess(PROCESS_VM_WRITE | PROCESS_VM_OPERATION, 0, pid) };
+            o.push(if vp.is_null() {
+                format!("OpenProcess(VM_WRITE) FAILED err={}", le())
+            } else {
+                // SAFETY: the process handle opened above.
+                unsafe { CloseHandle(vp) };
+                "OpenProcess(VM_WRITE) OK".into()
+            });
         }
         "mksection" => {
             let h = unsafe {

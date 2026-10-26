@@ -1234,6 +1234,50 @@ fn any_holder_forwards_a_consumer() {
     r.ipc.release_owner(c.peer);
 }
 
+/// D6 review finding 5 (fact S12): a child outside a container at this
+/// process's own integrity could open this process and duplicate its
+/// sections, so a region is never given to it; its channel ends still
+/// move.
+#[test]
+fn a_child_outside_a_container_gets_no_regions() {
+    let r = rig();
+    let c = launch(&r, "echo", false);
+    let w = r.ipc.allocate_region(4096, c.peer).unwrap();
+    let ro = r.ipc.seal_region(w).unwrap();
+    // The send is the broker's own and succeeds; the child's redemption
+    // is refused, its channel closes, and it never echoes the region
+    // (before the fix: `msg "ro" 1`).
+    r.ipc
+        .send(&c.to_child, b"ro".to_vec(), vec![ro.into_handle()])
+        .unwrap();
+    let seen = match next(&c.from_child) {
+        Ev::Msg(m, hs) => format!("msg {:?} {}", String::from_utf8_lossy(&m), hs.len()),
+        other => format!("{other:?}"),
+    };
+    assert_eq!(seen, "Closed");
+}
+
+/// Every section carries a no-write-up label at the broker's own
+/// integrity (D6 review finding 5, fact S12).
+#[test]
+fn sections_carry_the_brokers_integrity_label() {
+    let h = super::sys::create_section(4096).unwrap();
+    let sddl = super::sys::label_sddl(&h).unwrap();
+    let own = super::sys::own_integrity().unwrap();
+    let alias = match own {
+        0x1000 => "LW",
+        0x2000 => "ME",
+        0x3000 => "HI",
+        0x4000 => "SI",
+        _ => "",
+    };
+    assert!(
+        sddl.contains(&format!("(ML;;NW;;;{alias})"))
+            || sddl.contains(&format!("(ML;;NW;;;S-1-16-{own})")),
+        "{sddl}"
+    );
+}
+
 /// What a forged region relay from a sandboxed child gets: the child's
 /// report, and what this process's receiver saw.
 fn forge(mode: &str) -> (String, Ev) {
@@ -1569,7 +1613,7 @@ fn copies_are_charged_when_planned_and_refunded_when_unused() {
             facts,
         ))
     };
-    let jobs = super::Inner::plan_copies(b, 3, item()).unwrap();
+    let jobs = super::Inner::plan_copies(b, super::BROKER, item()).unwrap();
     assert_eq!(jobs.len(), 1);
     // Charged: the owner holds two of its 256.
     let (made, failed) = super::Inner::make_copies(jobs);
@@ -1583,7 +1627,7 @@ fn copies_are_charged_when_planned_and_refunded_when_unused() {
     assert!(!b.quota.charge(owner, 4096));
     // A full owner: the plan is refused and charges nothing.
     assert!(matches!(
-        super::Inner::plan_copies(b, 3, item()),
+        super::Inner::plan_copies(b, super::BROKER, item()),
         Err(super::Plan::Quota)
     ));
     b.quota.release(owner);
@@ -1770,10 +1814,14 @@ fn a_copy_in_progress_is_waited_for_not_refused() {
             facts,
         ))
     };
-    let first = super::Inner::plan_copies(b, 3, item()).unwrap();
+    // The relayer does not matter to the copy plan (a region relay comes
+    // only from the broker or a child that may hold regions, finding 5;
+    // these registry tests have no such child), so both relays are the
+    // broker's: the wait is per section.
+    let first = super::Inner::plan_copies(b, super::BROKER, item()).unwrap();
     assert_eq!(first.len(), 1);
     assert!(matches!(
-        super::Inner::plan_copies(b, 4, item()),
+        super::Inner::plan_copies(b, super::BROKER, item()),
         Err(super::Plan::Wait)
     ));
     // Once the first relay's copy is registered, the second plans no
@@ -1786,7 +1834,11 @@ fn a_copy_in_progress_is_waited_for_not_refused() {
     let e = b.regions.get_mut(&src).unwrap();
     e.copy = Some(copy_id);
     e.copying = false;
-    assert!(super::Inner::plan_copies(b, 4, item()).unwrap().is_empty());
+    assert!(
+        super::Inner::plan_copies(b, super::BROKER, item())
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// Review finding 2: a copy that cannot be made is refunded and leaves
@@ -1811,7 +1863,7 @@ fn a_failed_copy_is_refunded_and_not_registered() {
         1u8,
         facts,
     ));
-    let mut jobs = super::Inner::plan_copies(b, 3, item).unwrap();
+    let mut jobs = super::Inner::plan_copies(b, super::BROKER, item).unwrap();
     assert_eq!(jobs.len(), 1);
     assert!(b.regions.values().any(|e| e.copying));
     // A source handle that cannot be mapped for reading (write access

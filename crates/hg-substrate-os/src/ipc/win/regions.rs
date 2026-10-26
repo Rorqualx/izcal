@@ -174,6 +174,24 @@ pub(crate) fn relay_rule(
     }
 }
 
+/// Whether a child may hold regions (D6 review finding 5, fact S12): it
+/// runs in an AppContainer, or its integrity is known and below the
+/// broker's `own`. Only such a child is stopped from widening a
+/// read-only handle and from opening the broker's process.
+pub(crate) const fn may_hold_regions(
+    app_container: bool,
+    integrity: Option<u32>,
+    own: u32,
+) -> bool {
+    if app_container {
+        return true;
+    }
+    match integrity {
+        Some(il) => il < own,
+        None => false,
+    }
+}
+
 /// One region in a ticket: the registry entry, how it travels, and the
 /// flags the receiver is given.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,6 +267,18 @@ mod tests {
             relay_rule(c, 4096, false, 5, &SECTION, 4096, first),
             Err(RegionRefusal::State)
         );
+    }
+
+    /// Fact S12: a container, or strictly below the broker.
+    #[test]
+    fn only_a_container_or_a_lower_child_holds_regions() {
+        const MEDIUM: u32 = 0x2000;
+        assert!(may_hold_regions(true, Some(MEDIUM), MEDIUM));
+        assert!(may_hold_regions(true, None, MEDIUM));
+        assert!(may_hold_regions(false, Some(0x1000), MEDIUM));
+        assert!(!may_hold_regions(false, Some(MEDIUM), MEDIUM));
+        assert!(!may_hold_regions(false, Some(0x3000), MEDIUM));
+        assert!(!may_hold_regions(false, None, MEDIUM));
     }
 
     #[test]

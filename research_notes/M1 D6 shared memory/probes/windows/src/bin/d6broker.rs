@@ -89,6 +89,9 @@ fn main() {
     if on("s11") {
         s11_offer();
     }
+    if on("s12") {
+        s12_plain_children();
+    }
 }
 
 /// S9: a 0x6 handle the broker duplicates into a child whose AppContainer
@@ -102,8 +105,11 @@ fn s9_dacl() {
     says("S9", c.cmd(&format!("query {ch}")));
     says("S9", c.cmd(&format!("map {ch} rw")));
     says("S9", c.cmd("write 0 s9-child"));
+    // SAFETY: a valid section handle; a whole-section view.
     let bv = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
+    // SAFETY: the view maps at least 64 KiB, so 6 bytes are readable.
     let b = unsafe { std::slice::from_raw_parts(bv.Value as *const u8, 8) }.to_vec();
+    // SAFETY: the view mapped above.
     unsafe { UnmapViewOfFile(bv) };
     say(
         "S9",
@@ -188,6 +194,7 @@ fn s10_charge() {
             mem(c.process)
         ),
     );
+    // SAFETY: the section handle made above, no longer used.
     unsafe { CloseHandle(h) };
     say(
         "S10",
@@ -208,6 +215,7 @@ fn s11_offer() {
     let sddl = format!("D:P(A;;GA;;;{})", user_sid());
     let size = 1u32 << 20;
     let h = section(&sddl, size);
+    // SAFETY: a valid section handle; a whole-section view.
     let bv = unsafe { MapViewOfFile(h, FILE_MAP_WRITE, 0, 0, 0) };
     let bp = bv.Value as *mut u8;
     for i in (0..size as usize).step_by(4096) {
@@ -229,6 +237,7 @@ fn s11_offer() {
         ),
     );
     says("S11", c.cmd("read 0 1"));
+    // SAFETY: the view mapped above.
     unsafe { UnmapViewOfFile(bv) };
     c.kill();
 }
@@ -251,6 +260,7 @@ fn s7_counts() {
         )
     };
     show("broker's handle only, no view", h);
+    // SAFETY: a valid section handle; a whole-section view.
     let v = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
     show("broker's handle + one broker view", h);
     unsafe { UnmapViewOfFile(v) };
@@ -272,8 +282,11 @@ fn s7_counts() {
         h,
     );
     says("S7", c.cmd("write 0 after-pull"));
+    // SAFETY: a valid section handle; a whole-section view.
     let bv = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
+    // SAFETY: the view maps at least 64 KiB, so 6 bytes are readable.
     let b = unsafe { std::slice::from_raw_parts(bv.Value as *const u8, 10) }.to_vec();
+    // SAFETY: the view mapped above.
     unsafe { UnmapViewOfFile(bv) };
     say(
         "S7",
@@ -364,6 +377,7 @@ fn s1_s4() {
         );
     }
     // S4: the broker closes its handle; the producer exits; the consumer keeps reading.
+    // SAFETY: the section handle made above, no longer used.
     unsafe { CloseHandle(h) };
     say(
         "S4",
@@ -380,12 +394,14 @@ fn s5_costs() {
         let t = Instant::now();
         for _ in 0..n {
             let h = section(&sddl, size);
+            // SAFETY: the section handle made above, no longer used.
             unsafe { CloseHandle(h) };
         }
         let create = t.elapsed().as_nanos() as f64 / n as f64 / 1000.0;
         let h = section(&sddl, size);
         let t = Instant::now();
         for _ in 0..n {
+            // SAFETY: a valid section handle; a whole-section view.
             let v = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
             unsafe { UnmapViewOfFile(v) };
         }
@@ -393,6 +409,7 @@ fn s5_costs() {
         let t = Instant::now();
         let m = n / 10;
         for _ in 0..m {
+            // SAFETY: a valid section handle; a whole-section view.
             let v = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
             let p = v.Value as *const u8;
             let mut s = 0u64;
@@ -410,6 +427,7 @@ fn s5_costs() {
                 size / 1024
             ),
         );
+        // SAFETY: the section handle made above, no longer used.
         unsafe { CloseHandle(h) };
     }
 }
@@ -454,8 +472,123 @@ fn s6_commit() {
                 ),
             );
             if !h.is_null() {
+                // SAFETY: the section handle made above, no longer used.
                 unsafe { CloseHandle(h) };
             }
         }
+    }
+}
+
+/// S12 (D6 review finding 5): what a child without an AppContainer can do
+/// to a read-only handle, for each section DACL, and whether it can go
+/// around the handle through the broker's process. Child kinds: the
+/// sandbox (control), a plain child at the user's own integrity, and a
+/// plain child the broker starts at Low integrity. Each child keeps the
+/// integrity it was started with (`--medium`).
+fn s12_plain_children() {
+    let user = user_sid();
+    // The broker's own integrity, as an SDDL label alias.
+    let il = match std::env::var("S12_IL").as_deref() {
+        Ok("ME") => "ME",
+        _ => "HI",
+    };
+    let dacls = [
+        ("user GA (today)", format!("D:P(A;;GA;;;{user})")),
+        ("owner RC only", "D:P(A;;RC;;;OW)".to_string()),
+        (
+            "user GA + label NW at the broker's level",
+            format!("D:P(A;;GA;;;{user})S:(ML;;NW;;;{il})"),
+        ),
+    ];
+    let kinds: [(&str, Launch); 4] = [
+        (
+            "appcontainer",
+            Launch {
+                container: "izcal.d6probe.s12",
+                ..Default::default()
+            },
+        ),
+        (
+            "plain same-level",
+            Launch {
+                sandbox: false,
+                args: "--medium".into(),
+                ..Default::default()
+            },
+        ),
+        (
+            "plain medium (below a High broker)",
+            Launch {
+                sandbox: false,
+                medium: true,
+                args: "--medium".into(),
+                ..Default::default()
+            },
+        ),
+        (
+            "plain low",
+            Launch {
+                sandbox: false,
+                low: true,
+                args: "--medium".into(),
+                ..Default::default()
+            },
+        ),
+    ];
+    for (dname, sddl) in &dacls {
+        let h = section(sddl, 65536);
+        say("S12", format!("--- DACL {dname}: {}", sddl_of(h)));
+        say("S12", format!("broker's own handle: {}", describe(h)));
+        for (label, acc) in [
+            ("READ", FILE_MAP_READ),
+            ("RW", FILE_MAP_READ | FILE_MAP_WRITE),
+        ] {
+            say(
+                "S12",
+                match dup(me(), h, me(), acc, 0) {
+                    Ok(x) => format!("broker narrows to {label}: OK {}", describe(x)),
+                    Err(e) => format!("broker narrows to {label}: FAILED err={e}"),
+                },
+            );
+        }
+        for (kname, l) in &kinds {
+            let mut c = launch(l).expect("launch");
+            c.resume();
+            for line in c.collect(Duration::from_secs(20)) {
+                say("S12", format!("[{kname}] {line}"));
+            }
+            let rh = c.give(h, FILE_MAP_READ, 0).unwrap();
+            say("S12", format!("[{kname}] widen a FILE_MAP_READ handle:"));
+            for line in c.cmd(&format!("widen {rh}")) {
+                say("S12", format!("[{kname}]   {line}"));
+            }
+            say(
+                "S12",
+                format!("[{kname}] go around it through the broker's process:"),
+            );
+            for line in c.cmd(&format!("steal {} {}", std::process::id(), hv(h))) {
+                say("S12", format!("[{kname}]   {line}"));
+            }
+            // SAFETY: a valid section handle; a whole-section view.
+            let bv = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
+            // SAFETY: the view maps at least 64 KiB, so 6 bytes are readable.
+            let b = unsafe { std::slice::from_raw_parts(bv.Value as *const u8, 6) }.to_vec();
+            // SAFETY: the view mapped above.
+            unsafe { UnmapViewOfFile(bv) };
+            say(
+                "S12",
+                format!("[{kname}] broker reads {:?}", String::from_utf8_lossy(&b)),
+            );
+            // Reset for the next child.
+            // SAFETY: a valid section handle; a whole-section view.
+            let wv = unsafe { MapViewOfFile(h, FILE_MAP_WRITE, 0, 0, 0) };
+            // SAFETY: the writable view maps at least 64 KiB.
+            unsafe { std::ptr::write_bytes(wv.Value as *mut u8, 0, 6) };
+            // SAFETY: the view mapped above.
+            unsafe { UnmapViewOfFile(wv) };
+            say("S12", format!("[{kname}] {}", c.kill()));
+        }
+        // SAFETY: the section handle made above, no longer used.
+        unsafe { CloseHandle(h) };
     }
 }

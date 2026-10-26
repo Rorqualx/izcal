@@ -361,6 +361,9 @@ struct ChildEntry {
     /// created in.
     sid: Option<String>,
     link: u64,
+    /// It may hold regions: in an AppContainer or below the broker's
+    /// integrity (D6 review finding 5, fact S12); measured at launch.
+    regions: bool,
     /// The queue to this child's worker (M8), which handles its relays,
     /// redemptions, binds and unbinds in the order the child sent them.
     /// Dropping it (the child is forgotten) ends the worker once the
@@ -956,6 +959,10 @@ impl Inner {
         flags: u8,
         section: sys::SectionFacts,
     ) -> Result<(u64, crate::ipc::win::regions::Outcome), Refusal> {
+        // Nor come from one (D6 review finding 5, fact S12).
+        if from != BROKER && !b.children.get(&from).is_some_and(|c| c.regions) {
+            return Err(Refusal::Region);
+        }
         let p = RegionFacts {
             kind,
             len,
@@ -1352,7 +1359,12 @@ impl Inner {
         let mut noted = Vec::with_capacity(handles.len());
         let mut writers = Vec::new();
         let mut ok = handles.len() == held.ends.len() + held.regions.len();
-        if let Some(c) = b.children.get(&from) {
+        // Regions never go to a child that could widen them (D6 review
+        // finding 5, fact S12).
+        if !held.regions.is_empty() && !b.children.get(&from).is_some_and(|c| c.regions) {
+            ok = false;
+        }
+        if let Some(c) = b.children.get(&from).filter(|_| ok) {
             let mut ends = held.ends.iter();
             for (index, h) in handles.iter().enumerate() {
                 let region = held.regions.iter().find(|(i, _)| *i == index);
@@ -3779,6 +3791,7 @@ impl WindowsIpc {
         };
         // The child's worker (M8), started before the child can send a
         // request. It has its own copy of the process handle.
+        let regions = sys::own_integrity().is_some_and(|own| sys::may_hold_regions(&process, own));
         let (jobs, queue) = mpsc::sync_channel(MAX_CHILD_REQUESTS);
         let worker = sys::duplicate(&process.0)
             .ok()
@@ -3800,6 +3813,7 @@ impl WindowsIpc {
             b.children.insert(
                 p,
                 ChildEntry {
+                    regions,
                     process,
                     sid,
                     link,
