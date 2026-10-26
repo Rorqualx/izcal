@@ -13,7 +13,7 @@
 #   IZCAL_REVIEW_MAX_LINES=4000      diff lines sent to the review
 #
 # Checks: conflict, size, binary, secrets, rustfmt, shellcheck, actionlint,
-#         mdlinks, revision, provenance, security, review.
+#         mdlinks, revision, provenance, security, graph, review.
 # Bash 3.2 compatible (macOS /bin/bash).
 
 set -u
@@ -358,6 +358,49 @@ $(printf '%s\n' "$lout" | grep -E '^[0-9]+ │ license = |^ +├ [A-Za-z0-9_-]+ 
     echo "    fix it, or skip with IZCAL_HOOKS_SKIP=security and say why in the commit body" | indent
   else ok security; fi
   [ -n "$sec_warn" ] && warn "security: not checked (tool missing or offline):$sec_warn"
+fi
+
+# --- graph: the crate-graph lint (hg-graph-lint) ----------------------------
+# Stage 1 2.2's crate rules, Q-CS-1 (only the simulation and replay
+# binaries link hg-substrate-sim) and the coding standard's A.6 graph
+# checks, on cargo metadata for Linux, macOS and Windows. The tree being
+# checked (the index for --staged, HEAD for --range) is exported to a
+# temporary directory first, so a partially staged change is linted as it
+# will be committed. Runs always with --range (CI; A.5 "always", 60 s T0
+# budget), and with --staged when a manifest, the lockfile, a file the
+# lint reads, or Rust code changed. Without ast-grep the code-level half
+# (crate-root forbid(unsafe_code), inventory reasons, the crypto check)
+# is skipped with a warning; CI installs it.
+if ! skipped graph; then
+  graph_files=$(files_matching '(^|/)Cargo\.(toml|lock)$|^tools/(tiers|graph-rules)\.toml$|^unsafe-inventory\.toml$|^\.cargo/config\.toml$|^crates/.*\.rs$' || true)
+  if [ "$MODE" = staged ] && [ -z "$graph_files" ]; then ok "graph (no manifest, gate-file or Rust changes)"
+  elif ! command -v cargo >/dev/null; then warn "graph: cargo not installed"
+  else
+    tree="$TMP/graph-tree"
+    mkdir -p "$tree"
+    graph_paths=""
+    for p in Cargo.toml Cargo.lock crates tools unsafe-inventory.toml .cargo; do
+      if [ "$MODE" = staged ]; then [ -n "$(git ls-files -- "$p" | head -1)" ] && graph_paths="$graph_paths $p"
+      else git cat-file -e "$HEAD:$p" 2>/dev/null && graph_paths="$graph_paths $p"; fi
+    done
+    # shellcheck disable=SC2086 # graph_paths is a list of fixed names
+    if [ "$MODE" = staged ]; then git ls-files -z -- $graph_paths | xargs -0 git checkout-index --prefix="$tree/" --
+    else git archive "$HEAD" -- $graph_paths | tar -x -C "$tree"; fi
+    code_flag=""
+    command -v ast-grep >/dev/null || { code_flag="--no-code-checks"; warn "graph: ast-grep not installed; code-level checks skipped"; }
+    start=$(date +%s)
+    # The lint is built from the working tree's hg-graph-lint, and lints
+    # the exported tree.
+    # shellcheck disable=SC2086 # code_flag is empty or one flag
+    gout=$(cargo run -q --locked -p hg-graph-lint -- --root "$tree" --locked $code_flag 2>&1); grc=$?
+    secs=$(( $(date +%s) - start ))
+    if [ $grc -eq 0 ]; then ok "graph (${secs}s)"
+    else
+      fail "graph"
+      printf '%s\n' "$gout" | head -40 | indent
+      echo "    see tools/graph-rules.toml and tools/tiers.toml; a rule or tier change is a gate change (CS-GA-1)" | indent
+    fi
+  fi
 fi
 
 # --- review: AI code review of the diff (code only) ---------------------------

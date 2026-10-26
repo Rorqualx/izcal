@@ -18,6 +18,10 @@
 //! broker's scripted OS ([`OsScript`], OS integration 6.1) with M1's
 //! OS-integration inputs; `hg-netsim` joins with the network stack.
 
+// G5: not inventoried. The manifest inherits the workspace table, whose
+// unsafe_code is deny (inventoried crates need deny), so forbid is here.
+#![forbid(unsafe_code)]
+
 mod clock;
 mod entropy;
 mod exec;

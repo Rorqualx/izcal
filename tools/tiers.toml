@@ -1,0 +1,60 @@
+# Izcal crate tiers and layers: the normative file of coding standard 6.2
+# and CS-ST-10. hg-graph-lint (tools/checks.sh `graph`) fails when:
+#   - a workspace crate has no row here;
+#   - a crate's declared tier is laxer than the strictest tier of any
+#     binary that links it ("crate X is now linked by Y; declare tier P
+#     in its own PR"); O counts as strict as P (6.2: "Panics: as tier P");
+#   - a shipping binary (hg-*-main) links a tier T crate;
+#   - a crate depends on a higher layer (Stage 1 design 2.1; the order is
+#     in tools/graph-rules.toml).
+# Tiers: P shared, R per site, O the OS substrate, T tools and tests.
+# Layers: Stage 1 2.1's L0-L6 and sub-layers (L2s, L2e, ...), and `tools`.
+# A tier change is a gate-file change (CS-GA-1): review by the owner.
+#
+# Rows exist for today's crates only; the rows the standard's revision
+# notes list for crates that do not exist yet arrive with their crates.
+
+[crates.hg-types]
+tier = "P"
+layer = "L2"
+why = "Coding standard 6.2 names hg-types in tier P; Stage 1 2.1 puts it in L2 contracts (geometry, time, ids)"
+
+[crates.hg-substrate]
+tier = "P"
+layer = "L1"
+why = "6.2 names hg-substrate in tier P (every binary links the traits); Stage 1 2.1: L1 substrate (traits)"
+
+[crates.hg-substrate-os]
+tier = "O"
+layer = "L1"
+why = "6.2: tier O is hg-substrate-os only, the one crate allowed ambient OS effects (G3); Stage 1 2.1: L1"
+
+[crates.hg-substrate-sim]
+tier = "R"
+layer = "L1"
+why = "6.2 and 6.3: tier R with G3 wherever it ships (hg-replay-main), Q-CS-1; Stage 1 2.1: L1"
+
+[crates.hg-ipc]
+tier = "P"
+layer = "L1"
+why = "6.2 names hg-ipc in tier P; Stage 1 2.1: L1 (transport)"
+
+[crates.hg-ipc-gen]
+tier = "P"
+layer = "L2"
+why = "6.2 names hg-ipc-gen in tier P; Stage 1 2.1: L2 contracts (generated endpoints)"
+
+[crates.hg-ipc-codegen]
+tier = "T"
+layer = "tools"
+why = "6.2 names hg-ipc-codegen in tier T; Stage 1 2.1: tools"
+
+[crates.hg-dst]
+tier = "T"
+layer = "tools"
+why = "6.2 and 6.3: the hg-dst runner is tier T; Stage 1 2.1: tools. The package also holds dst-smoke, a simulation binary, until M1 phase E splits it out; that binary then gets its own row"
+
+[crates.hg-graph-lint]
+tier = "T"
+layer = "tools"
+why = "6.2 names hg-graph-lint in tier T; Stage 1 2.1: tools"
