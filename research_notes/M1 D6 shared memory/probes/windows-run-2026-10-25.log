@@ -52,3 +52,17 @@
 [S6] 256 GiB SEC_COMMIT: FAILED err=1455
 [S6] 256 GiB SEC_RESERVE: created
 run exit=0
+[child] pid=28108 hello pid=28108 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[S7] broker's handle only, no view: (HandleCount, PointerCount) = Ok((1, 32769))
+[S7] broker's handle + one broker view: (HandleCount, PointerCount) = Ok((1, 32767))
+[S7] broker view unmapped: (HandleCount, PointerCount) = Ok((1, 32766))
+[S7] given to the child (two handles): (HandleCount, PointerCount) = Ok((2, 32766))
+[S7]   child: map rw OK VirtualQuery r=48 RegionSize=65536 Protect=0x4 AllocationProtect=0x4 Type=0x40000 State=0x1000
+[S7] child mapped a view: (HandleCount, PointerCount) = Ok((2, 65532))
+[S7] child's handle pulled with CLOSE_SOURCE; child keeps its view: (HandleCount, PointerCount) = Ok((2, 32764))
+[S7]   child: wrote "after-pull" at 0
+[S7] broker reads "after-pull": the child's view still writes
+[S7]   child: unmap ok=1
+[S7] child unmapped its view: (HandleCount, PointerCount) = Ok((2, 32762))
+[S7] pulled handle closed: (HandleCount, PointerCount) = Ok((1, 32760))
+run exit=0

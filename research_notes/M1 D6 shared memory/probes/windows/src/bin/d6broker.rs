@@ -77,6 +77,65 @@ fn main() {
     if on("s6") {
         s6_commit();
     }
+    if on("s7") {
+        s7_counts();
+    }
+}
+
+/// S7: can the broker see that a child still holds a view of a section,
+/// after pulling the child's only handle with DUPLICATE_CLOSE_SOURCE?
+fn s7_counts() {
+    let mut c = start("izcal.d6probe.producer");
+    let sid = field(&c.cmd("info"), "ac-sid");
+    let sddl = format!(
+        "D:P(A;;GA;;;{})(A;;{:#x};;;{sid})",
+        user_sid(),
+        FILE_MAP_READ | FILE_MAP_WRITE
+    );
+    let h = section(&sddl, 65536);
+    let show = |label: &str, x: H| {
+        say(
+            "S7",
+            format!("{label}: (HandleCount, PointerCount) = {:?}", counts(x)),
+        )
+    };
+    show("broker's handle only, no view", h);
+    let v = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
+    show("broker's handle + one broker view", h);
+    unsafe { UnmapViewOfFile(v) };
+    show("broker view unmapped", h);
+    let ch = c.give(h, FILE_MAP_READ | FILE_MAP_WRITE, 0).unwrap();
+    show("given to the child (two handles)", h);
+    says("S7", c.cmd(&format!("map {ch} rw")));
+    show("child mapped a view", h);
+    let pulled = dup(
+        c.process,
+        hp(ch),
+        me(),
+        0,
+        DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE,
+    )
+    .unwrap();
+    show(
+        "child's handle pulled with CLOSE_SOURCE; child keeps its view",
+        h,
+    );
+    says("S7", c.cmd("write 0 after-pull"));
+    let bv = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
+    let b = unsafe { std::slice::from_raw_parts(bv.Value as *const u8, 10) }.to_vec();
+    unsafe { UnmapViewOfFile(bv) };
+    say(
+        "S7",
+        format!(
+            "broker reads {:?}: the child's view still writes",
+            String::from_utf8_lossy(&b)
+        ),
+    );
+    says("S7", c.cmd("unmap"));
+    show("child unmapped its view", h);
+    unsafe { CloseHandle(pulled) };
+    show("pulled handle closed", h);
+    c.kill();
 }
 
 /// S1 pair with a per-SID DACL; S2 what the consumer can learn; S3 the

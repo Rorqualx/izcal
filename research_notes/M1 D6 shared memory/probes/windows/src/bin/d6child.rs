@@ -153,6 +153,19 @@ fn run(p: &[&str], st: &mut St) -> Vec<String> {
                 o.push(format!("map {} OK {}", p[2], vq(v.Value)));
             }
         }
+        "unmap" => {
+            let ok = unsafe {
+                UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS {
+                    Value: st.view.cast(),
+                })
+            };
+            st.view = std::ptr::null_mut();
+            o.push(format!("unmap ok={ok}"));
+        }
+        "close" => {
+            let ok = unsafe { CloseHandle(hp(n(p[1]))) };
+            o.push(format!("close ok={ok}"));
+        }
         "write" => {
             let off: usize = p[1].parse().unwrap();
             let s = p[2].as_bytes();
