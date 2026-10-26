@@ -79,3 +79,29 @@ fn a_planted_ipc_bug_is_one_signature() {
     let again = t.run_seed(seeds[0]);
     assert_eq!(Some(&again), results.iter().find(|r| r.seed == seeds[0]));
 }
+
+/// The phase E fault classes draw from streams of their own, and only
+/// when on: with them off, `dst-smoke --ipc` over seeds 0..59 gives the
+/// report lines it gave before they existed. The value is the SHA-256 of
+/// the 60 report lines, one per line, as the phase D and E commits record
+/// it (10996dfe…961b since df7fc67). A change that moves it must say why
+/// in its commit.
+#[test]
+fn the_ipc_seeds_keep_their_traces() {
+    let results = smoke(&["--ipc"]).run_seeds(0..60, 4);
+    let mut text = String::new();
+    for r in &results {
+        let Outcome::Pass(p) = &r.outcome else {
+            panic!("seed {} failed: {:?}", r.seed, r.outcome);
+        };
+        text.push_str(&format!(
+            "hg-dst: seed={} steps={} time_ns={} crashes={} trace={:016x}\n",
+            r.seed, p.steps, p.time_ns, p.crashes, p.trace
+        ));
+    }
+    let hash = hg_build_id::sha256::hex(&hg_build_id::sha256::sha256(text.as_bytes()));
+    assert_eq!(
+        hash,
+        "10996dfeec1ca7d40351ffec698e0bf225635ed56b82ac2672193408bac1961b"
+    );
+}

@@ -1157,7 +1157,7 @@ pub(crate) mod spawn {
     /// loader; `LOCALAPPDATA` because process creation in an AppContainer
     /// fails without it with error 203, ERROR_ENVVAR_NOT_FOUND (measured
     /// on rig253, 26 Oct: each other variable alone failed the same way;
-    /// launch facts E28).
+    /// launch facts E37).
     const KEPT_VARS: [&str; 2] = ["SystemRoot", "LOCALAPPDATA"];
 
     /// A child's environment: [`KEPT_VARS`] and `extra`, nothing else.

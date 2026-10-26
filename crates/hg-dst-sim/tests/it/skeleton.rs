@@ -68,3 +68,65 @@ fn work_survives_a_network_relaunch() {
 fn a_child_reporting_another_sandbox_tier_is_killed() {
     all_pass_and_rerun(&sim(&["--scenario", "liar"]));
 }
+
+/// The round trip under every phase E fault (E-R8): IPC delay, reorder
+/// and drop, spawner death, refused launches, missed `ready` deadlines
+/// and crashes. No answer is misrouted, duplicated or out of order, and a
+/// renderer completes unless the browser itself crashed or spent a
+/// budget; the same way twice.
+#[test]
+fn the_round_trip_survives_every_fault() {
+    all_pass_and_rerun(&sim(&["--scenario", "faults"]));
+}
+
+/// A renderer crashed mid-conversation is relaunched and the new one
+/// completes; the dead renderer's answers never reach it.
+#[test]
+fn a_crashed_renderer_is_relaunched_and_completes() {
+    all_pass_and_rerun(&sim(&["--scenario", "relaunch"]));
+}
+
+/// Each fault class alone, at a high rate, passes and reruns the same.
+#[test]
+fn each_fault_class_alone() {
+    for flag in [
+        "--delay-ppm",
+        "--reorder-ppm",
+        "--drop-ppm",
+        "--spawner-death-ppm",
+        "--launch-fail-ppm",
+        "--stall-ppm",
+    ] {
+        let t = sim(&[flag, "100000"]);
+        let results = t.run_seeds(0..10, 4);
+        assert!(
+            results
+                .iter()
+                .all(|r| matches!(r.outcome, Outcome::Pass(_))),
+            "{flag}: {results:?}"
+        );
+        assert!(t.rerun_mismatches(0..10, 4).is_empty(), "{flag}");
+    }
+}
+
+/// No scenario here depends on the OS the simulator models, so the three
+/// OS models give the same trace: a hash taken on one OS's model can be
+/// compared with another's (OI-M0: hashes compared across OSes).
+#[test]
+fn the_three_os_models_give_the_same_trace() {
+    for scenario in ["faults", "relaunch"] {
+        let runs: Vec<Vec<Outcome>> = ["linux", "macos", "windows"]
+            .iter()
+            .map(|os| {
+                sim(&["--scenario", scenario, "--os", os])
+                    .run_seeds(0..10, 4)
+                    .into_iter()
+                    .map(|r| r.outcome)
+                    .collect()
+            })
+            .collect();
+        assert!(runs[0].iter().all(|o| matches!(o, Outcome::Pass(_))));
+        assert_eq!(runs[0], runs[1], "{scenario}: linux vs macos");
+        assert_eq!(runs[0], runs[2], "{scenario}: linux vs windows");
+    }
+}

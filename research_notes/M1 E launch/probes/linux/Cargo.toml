@@ -3,10 +3,12 @@ name = "e-linux-probes"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "M1 phase E black-box probes of the Linux spawn path: clone3 namespaces, Landlock, execveat, credentials across a PID namespace (man pages only)"
+description = "M1 phase E black-box probes of the Linux spawn path: clone3 namespaces, Landlock, execveat, credentials across a PID namespace, Unix-socket reach under the restricted tier (man pages only)"
 
 [dependencies]
 libc = "0.2"
+# unixsock installs the real D3 steady filter (sandbox::linux), not a copy.
+hg-substrate-os = { path = "../../../../crates/hg-substrate-os" }
 
 # Standalone: not a member of the repository's workspace.
 [workspace]

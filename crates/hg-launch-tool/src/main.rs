@@ -55,7 +55,11 @@ fn round_trip() -> ExitCode {
     };
     let rounds = hg_renderer::LAUNCHED_ROUNDS;
     let done = wait_for(|| p.returned.load(Ordering::SeqCst) >= rounds);
-    let times = p.ready_times.lock().map(|t| t.clone()).unwrap_or_default();
+    let times = p
+        .spawn_to_ready
+        .lock()
+        .map(|t| t.clone())
+        .unwrap_or_default();
     let line = format!(
         "launches={} routed={} returned={} sandbox_mismatches={} ready={:?}",
         p.launches.load(Ordering::SeqCst),
@@ -90,8 +94,17 @@ fn measure_spawn(n: u32) -> ExitCode {
             eprintln!("measure-spawn: run {run}: launch failed");
             return ExitCode::FAILURE;
         };
-        let both = wait_for(|| p.ready_times.lock().map(|t| t.len() >= 2).unwrap_or(false));
-        let times = p.ready_times.lock().map(|t| t.clone()).unwrap_or_default();
+        let both = wait_for(|| {
+            p.spawn_to_ready
+                .lock()
+                .map(|t| t.len() >= 2)
+                .unwrap_or(false)
+        });
+        let times = p
+            .spawn_to_ready
+            .lock()
+            .map(|t| t.clone())
+            .unwrap_or_default();
         drop(running);
         if !both {
             eprintln!("measure-spawn: run {run}: no ready from both kinds");

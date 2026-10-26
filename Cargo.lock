@@ -36,6 +36,7 @@ name = "hg-dst-sim"
 version = "0.0.0"
 dependencies = [
  "hg-browser",
+ "hg-build-id",
  "hg-dst",
  "hg-ipc",
  "hg-ipc-gen",

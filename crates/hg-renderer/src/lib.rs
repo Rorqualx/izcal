@@ -35,6 +35,11 @@ pub struct Progress {
     pub answered: AtomicU64,
     /// Whether `start` arrived.
     pub started: AtomicU64,
+    /// Incarnations that received the answer to every one of their asks.
+    pub completed: AtomicU64,
+    /// Answers refused: out of order, or not the answer to the ask they
+    /// name (a misrouted or duplicated answer).
+    pub refused: AtomicU64,
 }
 
 /// How a renderer runs.
@@ -119,6 +124,14 @@ fn ask_payload(n: u64) -> BoundedBytes<256> {
     BoundedBytes::try_new(n.to_le_bytes().to_vec()).unwrap_or_default()
 }
 
+/// What the network answers to ask `n`: `N` and the ask's bytes reversed
+/// (`hg-net-service`'s answer).
+fn answer_payload(n: u64) -> Vec<u8> {
+    let mut v = vec![b'N'];
+    v.extend(n.to_le_bytes().iter().rev());
+    v
+}
+
 impl Side {
     fn ask(&self, n: u64) -> Result<(), ProcessError> {
         self.host
@@ -168,10 +181,12 @@ impl ProcessControlHandler for Side {
         &mut self,
         _from: &CallerIdentity,
         id: u64,
-        _payload: BoundedBytes<256>,
+        payload: BoundedBytes<256>,
     ) -> Result<(), ProcessError> {
-        if id != self.next {
-            // Answers come in order, one per ask.
+        if id != self.next || payload.as_slice() != answer_payload(id).as_slice() {
+            // Answers come in order, one per ask, each the answer to its
+            // own ask.
+            self.progress.refused.fetch_add(1, Ordering::SeqCst);
             return Err(ProcessError::Unsupported);
         }
         self.next = id.saturating_add(1);
@@ -179,6 +194,8 @@ impl ProcessControlHandler for Side {
         let next = id.saturating_add(1);
         if next < self.rounds {
             self.ask(next)?;
+        } else {
+            self.progress.completed.fetch_add(1, Ordering::SeqCst);
         }
         Ok(())
     }

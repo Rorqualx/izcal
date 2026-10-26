@@ -12,6 +12,14 @@
 //!   names another `BuildId` is told `exit(BuildMismatch)` and the
 //!   launcher enters restart-required: no further launches of any kind,
 //!   no retry.
+//! - **Ready deadline (E-R3).** A child that has not reported `ready`
+//!   within [`READY_DEADLINE`] of its launch, on the substrate's clock, is
+//!   killed and launched again within the kind's budget. So is a launch
+//!   that fails.
+//! - **Routing.** The browser names each piece of work it sends the
+//!   network with its own id, never the renderer's, and remembers which
+//!   renderer launch asked: an answer reaches only that renderer, and an
+//!   answer for a renderer that has ended is dropped.
 //! - **Identity (design review M6, M8).** Each child's channel is bound to
 //!   the `OsPeer` its launch returned; a record from any other process is
 //!   a violation the transport reports, and the child is not relaunched
@@ -31,6 +39,12 @@ use hg_ipc_gen::sandbox::launch_tier;
 use hg_substrate::ipc::{OsPeer, PeerAttest};
 use hg_substrate::launch::{ChildKind, LaunchError, Launcher, SandboxTier};
 use hg_substrate::{Priority, SequenceHandle, Substrate, Task};
+use hg_types::{Duration, Instant};
+
+/// How long a launched child has to report `ready` before it is killed
+/// and the spawn counts as a failure (phase E rule E-R3: 5 s†). Measured
+/// on the substrate's clock, so the simulator runs it in virtual time.
+pub const READY_DEADLINE: Duration = Duration::from_secs(5);
 
 /// Bootstrap channel capacity for each child.
 const CAPACITY: u32 = 64;
@@ -61,9 +75,13 @@ pub struct Progress {
     /// Children killed because their sandbox report named another tier
     /// than their launcher applied (design review M3).
     pub sandbox_mismatches: AtomicU64,
-    /// FP-27's hook (E-R12): for each accepted `ready`, the kind and the
-    /// time from the launch request to it, on the substrate clock.
-    pub ready_times: Mutex<Vec<(ChildKind, hg_types::Duration)>>,
+    /// Children killed for missing their `ready` deadline.
+    pub missed_deadlines: AtomicU64,
+    /// Kinds the browser stopped relaunching: their budget was spent.
+    pub gave_up: AtomicU64,
+    /// Spawn to ready of every child that reported `ready` with this
+    /// build, by the substrate's clock (FP-27's hook, E-R12).
+    pub spawn_to_ready: Mutex<Vec<(ChildKind, Duration)>>,
 }
 
 /// How the browser runs.
@@ -98,33 +116,68 @@ impl Running {
 /// One child the browser holds.
 struct Child {
     control: Remote<ProcessControl>,
-    /// Its identity, to kill it.
-    peer: OsPeer,
     /// The sandbox tier its launcher applied (review M3).
     sandbox: SandboxTier,
-    /// When the launch was requested (E-R12).
-    launched_at: hg_types::Instant,
     ready: bool,
+    /// Which launch this is: never repeats in the browser's life. A
+    /// message, an end or a deadline of an earlier launch of the kind
+    /// carries an older serial and changes nothing.
+    serial: u64,
+    /// The identity the launch returned, to kill it by.
+    peer: OsPeer,
+    /// Substrate time when the launch was requested (FP-27).
+    requested_at: Instant,
     /// Set once serving started; the slot is filled before, so a `ready`
     /// on the browser's sequence always finds its child.
     serving: Option<Serving>,
+}
+
+/// A renderer's ask, waiting for a ready network.
+struct Ask {
+    /// The launch serial of the renderer that asked.
+    renderer: u64,
+    /// The renderer's own id for it.
+    id: u64,
+    payload: BoundedBytes<256>,
+}
+
+/// Work sent to the network and not yet answered.
+struct Work {
+    /// The browser's id for it: unique in the browser's life, so an
+    /// answer can never be taken for another renderer's ask.
+    work: u64,
+    ask: Ask,
 }
 
 #[derive(Default)]
 struct State {
     renderer: Option<Child>,
     network: Option<Child>,
-    /// Asks waiting for a ready network, in order: (renderer's id, payload).
-    pending: Vec<(u64, BoundedBytes<256>)>,
-    /// Asks sent to the network and not yet answered, in order. If the
-    /// network ends they go back to the front of `pending`, so the
-    /// relaunched network answers them and the renderer is not left
-    /// waiting.
-    inflight: Vec<(u64, BoundedBytes<256>)>,
+    /// Asks waiting for a ready network, in order.
+    pending: Vec<Ask>,
+    /// Work sent to the network and not yet answered, in order. If the
+    /// network ends, the current renderer's go back to the front of
+    /// `pending`, so the relaunched network answers them and the
+    /// renderer is not left waiting. Work of a renderer that ended stays
+    /// until the network answers it, and the answer is dropped.
+    inflight: Vec<Work>,
     budget_renderer: u32,
     budget_network: u32,
+    next_serial: u64,
+    next_work: u64,
     /// Restart-required: set once, never cleared (DU-3).
     halted: bool,
+}
+
+impl State {
+    fn current(&self, kind: ChildKind) -> Option<u64> {
+        let slot = if kind == ChildKind::Renderer {
+            &self.renderer
+        } else {
+            &self.network
+        };
+        slot.as_ref().map(|c| c.serial)
+    }
 }
 
 struct Inner {
@@ -170,12 +223,18 @@ impl Inner {
         }
     }
 
-    /// Launches `kind` and serves its bootstrap channel.
+    /// Launches `kind`, serves its bootstrap channel and arms its `ready`
+    /// deadline.
     fn launch(self: &Arc<Self>, kind: ChildKind) -> Result<(), LaunchError> {
-        if self.lock().halted {
-            return Err(LaunchError::RestartRequired);
-        }
-        let launched_at = self.s.clock.monotonic();
+        let serial = {
+            let mut st = self.lock();
+            if st.halted {
+                return Err(LaunchError::RestartRequired);
+            }
+            st.next_serial = st.next_serial.saturating_add(1);
+            st.next_serial
+        };
+        let requested_at = self.s.clock.monotonic();
         let launched = match self.launcher.launch(kind, CAPACITY) {
             Ok(l) => l,
             Err(e) => {
@@ -187,18 +246,20 @@ impl Inner {
         let mut side = HostSide {
             inner: Arc::clone(self),
             kind,
+            serial,
         };
         let on_end = {
             let inner = Arc::clone(self);
-            move |why: EndReason<ProcessError>| inner.ended(kind, &why)
+            move |why: EndReason<ProcessError>| inner.ended(kind, serial, &why)
         };
         let peer_id = PeerId::new(if kind == ChildKind::Renderer { 1 } else { 2 }, 0);
         *Self::slot(&mut self.lock(), kind) = Some(Child {
             control,
-            peer: launched.peer,
             sandbox: launched.sandbox,
-            launched_at,
             ready: false,
+            serial,
+            peer: launched.peer,
+            requested_at,
             serving: None,
         });
         let served = Endpoint::<ProcessHost>::from_receiver(&self.s.ipc, launched.from_child)
@@ -213,6 +274,7 @@ impl Inner {
             // Dropping the child's ends closes its channels; it ends.
             *Self::slot(&mut st, kind) = None;
             drop(st);
+            self.launcher.kill(launched.peer);
             self.progress.launch_failures.fetch_add(1, Ordering::SeqCst);
             return Err(LaunchError::Failed);
         };
@@ -220,76 +282,161 @@ impl Inner {
             child.serving = Some(serving);
         }
         drop(st);
+        // E-R3: `ready` within the deadline, by the substrate's clock, or
+        // the child is killed and the spawn is a failure.
+        let inner = Arc::clone(self);
+        let _ = self.s.exec.post(
+            self.seq,
+            Task::new(move || inner.deadline(kind, serial)),
+            Some(READY_DEADLINE),
+            Duration::ZERO,
+        );
         self.progress.launches.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
-    /// A child's channel ended: relaunch it within the budget, unless
-    /// the browser is halted or the end was a violation by its peer
-    /// (IPC-R5: a violating child is not given a new process).
-    fn ended(self: &Arc<Self>, kind: ChildKind, why: &EndReason<ProcessError>) {
-        let relaunch = {
+    /// Launch `serial` of `kind`'s deadline: if it is still the current
+    /// child and not ready, kill it and launch again within the budget.
+    fn deadline(self: &Arc<Self>, kind: ChildKind, serial: u64) {
+        let gone = {
             let mut st = self.lock();
-            *Self::slot(&mut st, kind) = None;
-            if kind == ChildKind::Renderer {
-                // Its asks die with it: a relaunched renderer starts over.
-                st.pending.clear();
-                st.inflight.clear();
+            let slot = Self::slot(&mut st, kind);
+            if slot
+                .as_ref()
+                .is_some_and(|c| c.serial == serial && !c.ready)
+            {
+                slot.take()
             } else {
-                // The network's unanswered work goes back in line.
-                let mut back = std::mem::take(&mut st.inflight);
-                back.append(&mut st.pending);
-                st.pending = back;
+                None
             }
+        };
+        let Some(child) = gone else { return };
+        self.progress
+            .missed_deadlines
+            .fetch_add(1, Ordering::SeqCst);
+        let peer = child.peer;
+        // Its channels close with it.
+        drop(child);
+        self.launcher.kill(peer);
+        self.forget(kind);
+        self.relaunch(kind);
+    }
+
+    /// What a child that ended leaves behind. The renderer's waiting asks
+    /// die with it (a relaunched renderer starts over); its work already
+    /// at the network stays until answered. The network's unanswered work
+    /// for the current renderer goes back in line; work for a renderer
+    /// that ended is dropped.
+    fn forget(&self, kind: ChildKind) {
+        let mut st = self.lock();
+        if kind == ChildKind::Renderer {
+            st.pending.clear();
+        } else {
+            let current = st.current(ChildKind::Renderer);
+            let mut back: Vec<Ask> = std::mem::take(&mut st.inflight)
+                .into_iter()
+                .map(|w| w.ask)
+                .filter(|a| Some(a.renderer) == current)
+                .collect();
+            back.append(&mut st.pending);
+            st.pending = back;
+        }
+    }
+
+    /// Launches `kind` again on the browser's own sequence, never inside
+    /// a delivery, within its budget. A launch that fails (a refused
+    /// launch, a spawner that died) is tried again, also within the
+    /// budget; a refusal of another kind (restart-required, below the
+    /// floor) ends the attempts.
+    fn relaunch(self: &Arc<Self>, kind: ChildKind) {
+        let go = {
+            let mut st = self.lock();
             let halted = st.halted;
             let budget = if kind == ChildKind::Renderer {
                 &mut st.budget_renderer
             } else {
                 &mut st.budget_network
             };
-            let ok = !halted && matches!(why, EndReason::PeerClosed) && *budget > 0;
-            if ok {
+            if halted {
+                false
+            } else if *budget == 0 {
+                self.progress.gave_up.fetch_add(1, Ordering::SeqCst);
+                false
+            } else {
                 *budget = budget.saturating_sub(1);
+                true
             }
-            ok
         };
-        if !relaunch {
+        if !go {
             return;
         }
         let inner = Arc::clone(self);
-        // Relaunch on the browser's own sequence, never inside a delivery.
         let _ = self.s.exec.post(
             self.seq,
-            Task::new(move || {
-                if inner.launch(kind).is_ok() {
+            Task::new(move || match inner.launch(kind) {
+                Ok(()) => {
                     inner.progress.relaunches.fetch_add(1, Ordering::SeqCst);
                 }
+                Err(LaunchError::Failed) => inner.relaunch(kind),
+                Err(_) => {}
             }),
             None,
-            hg_types::Duration::ZERO,
+            Duration::ZERO,
         );
+    }
+
+    /// Launch `serial` of `kind`'s channel ended: relaunch it within the
+    /// budget, unless the browser is halted, a later launch has already
+    /// replaced it, or the end was a violation by its peer (IPC-R5: a
+    /// violating child is not given a new process).
+    fn ended(self: &Arc<Self>, kind: ChildKind, serial: u64, why: &EndReason<ProcessError>) {
+        {
+            let mut st = self.lock();
+            let slot = Self::slot(&mut st, kind);
+            if slot.as_ref().is_none_or(|c| c.serial != serial) {
+                return;
+            }
+            *slot = None;
+        }
+        self.forget(kind);
+        if matches!(why, EndReason::PeerClosed) {
+            self.relaunch(kind);
+        }
     }
 
     /// Sends the waiting asks to a ready network, in order.
     fn flush(st: &mut State, progress: &Progress) {
-        let Some(net) = st.network.as_ref().filter(|n| n.ready) else {
+        if !st.network.as_ref().is_some_and(|n| n.ready) {
             return;
-        };
-        let mut sent = Vec::new();
-        for (id, payload) in st.pending.drain(..) {
+        }
+        let asks = std::mem::take(&mut st.pending);
+        for ask in asks {
+            st.next_work = st.next_work.saturating_add(1);
+            let work = st.next_work;
             // A failed send means the network is gone; its closing puts
             // these back in line.
-            let _ = net.control.work(id, payload.clone());
+            if let Some(net) = st.network.as_ref() {
+                let _ = net.control.work(work, ask.payload.clone());
+            }
             progress.routed.fetch_add(1, Ordering::SeqCst);
-            sent.push((id, payload));
+            st.inflight.push(Work { work, ask });
         }
-        st.inflight.append(&mut sent);
     }
 }
 
 struct HostSide {
     inner: Arc<Inner>,
     kind: ChildKind,
+    serial: u64,
+}
+
+impl HostSide {
+    /// This channel's child, if it is still the current one of its kind.
+    fn mine<'a>(&self, st: &'a mut State) -> Option<&'a mut Child> {
+        Inner::slot(st, self.kind)
+            .as_mut()
+            .filter(|c| c.serial == self.serial)
+    }
 }
 
 impl ProcessHostHandler for HostSide {
@@ -303,8 +450,9 @@ impl ProcessHostHandler for HostSide {
         if kind != wire_kind(self.kind) {
             return Err(ProcessError::Unsupported);
         }
+        let now = self.inner.s.clock.monotonic();
         let mut st = self.inner.lock();
-        let Some(child) = Inner::slot(&mut st, self.kind).as_mut() else {
+        let Some(child) = self.mine(&mut st) else {
             return Err(ProcessError::ShuttingDown);
         };
         // Review M3: the child's own report is a cross-check of the tier
@@ -341,15 +489,11 @@ impl ProcessHostHandler for HostSide {
             return Err(ProcessError::Unsupported);
         }
         child.ready = true;
-        let took = self
-            .inner
-            .s
-            .clock
-            .monotonic()
-            .saturating_duration_since(child.launched_at);
+        // FP-27: spawn to ready, by the substrate's clock.
+        let took = now.saturating_duration_since(child.requested_at);
         self.inner
             .progress
-            .ready_times
+            .spawn_to_ready
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push((self.kind, took));
@@ -374,20 +518,35 @@ impl ProcessHostHandler for HostSide {
             return Err(ProcessError::Unsupported);
         }
         let mut st = self.inner.lock();
-        if !st.renderer.as_ref().is_some_and(|r| r.ready) {
+        if !self.mine(&mut st).is_some_and(|r| r.ready) {
             // No asks before `ready` passed the build check.
             return Err(ProcessError::Unsupported);
         }
-        if st.pending.len().saturating_add(st.inflight.len()) >= MAX_PENDING {
+        let serial = self.serial;
+        let waiting = st
+            .pending
+            .iter()
+            .filter(|a| a.renderer == serial)
+            .count()
+            .saturating_add(
+                st.inflight
+                    .iter()
+                    .filter(|w| w.ask.renderer == serial)
+                    .count(),
+            );
+        if waiting >= MAX_PENDING {
             self.inner
                 .progress
                 .refused_asks
                 .fetch_add(1, Ordering::SeqCst);
             return Err(ProcessError::Unsupported);
         }
-        st.pending.push((id, payload));
-        let waiting =
-            u64::try_from(st.pending.len().saturating_add(st.inflight.len())).unwrap_or(u64::MAX);
+        st.pending.push(Ask {
+            renderer: serial,
+            id,
+            payload,
+        });
+        let waiting = u64::try_from(waiting.saturating_add(1)).unwrap_or(u64::MAX);
         self.inner
             .progress
             .max_pending
@@ -406,13 +565,21 @@ impl ProcessHostHandler for HostSide {
             return Err(ProcessError::Unsupported);
         }
         let mut st = self.inner.lock();
-        let Some(pos) = st.inflight.iter().position(|(i, _)| *i == id) else {
+        if self.mine(&mut st).is_none() {
+            return Err(ProcessError::ShuttingDown);
+        }
+        let Some(pos) = st.inflight.iter().position(|w| w.work == id) else {
             // Work the browser did not send, or already answered.
             return Err(ProcessError::Unsupported);
         };
-        st.inflight.remove(pos);
-        if let Some(r) = st.renderer.as_ref().filter(|r| r.ready)
-            && r.control.answered(id, payload).is_ok()
+        let Work { ask, .. } = st.inflight.remove(pos);
+        // The answer goes to the renderer that asked, if it is still the
+        // current one; a dead renderer's answer is dropped.
+        if let Some(r) = st
+            .renderer
+            .as_ref()
+            .filter(|r| r.ready && r.serial == ask.renderer)
+            && r.control.answered(ask.id, payload).is_ok()
         {
             self.inner.progress.returned.fetch_add(1, Ordering::SeqCst);
         }
@@ -420,12 +587,14 @@ impl ProcessHostHandler for HostSide {
     }
 }
 
-/// Runs the browser on `s`: launches a renderer and a network partition
-/// service and routes between them.
+/// Runs the browser on `s`: launches a network partition service and a
+/// renderer and routes between them. A first launch that fails is tried
+/// again within the kind's budget.
 ///
 /// # Errors
 /// [`LaunchError::Unsupported`] when `s` has no launcher (only a broker
-/// does), or the first launch's error.
+/// does), or a first launch's refusal other than
+/// [`LaunchError::Failed`].
 pub fn run(s: &Substrate, config: BrowserConfig) -> Result<Running, LaunchError> {
     let launcher = s.launcher.clone().ok_or(LaunchError::Unsupported)?;
     let inner = Arc::new(Inner {
@@ -439,7 +608,12 @@ pub fn run(s: &Substrate, config: BrowserConfig) -> Result<Running, LaunchError>
             ..State::default()
         }),
     });
-    inner.launch(ChildKind::NetworkPartition)?;
-    inner.launch(ChildKind::Renderer)?;
+    for kind in [ChildKind::NetworkPartition, ChildKind::Renderer] {
+        match inner.launch(kind) {
+            Ok(()) => {}
+            Err(LaunchError::Failed) => inner.relaunch(kind),
+            Err(e) => return Err(e),
+        }
+    }
     Ok(Running { inner })
 }
