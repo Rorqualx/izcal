@@ -51,6 +51,9 @@ struct Side {
     host: Remote<ProcessHost>,
     kind: ProcessKind,
     progress: Arc<Progress>,
+    /// This incarnation's `start` arrived (the counters may be shared
+    /// across incarnations).
+    started: bool,
 }
 
 /// The answer to a work payload: the bytes reversed, marked as the
@@ -86,10 +89,12 @@ impl ProcessControlHandler for Side {
                     ChildConfig::NetworkPartition { .. }
                 )
         );
-        if !fits || self.progress.started.fetch_add(1, Ordering::SeqCst) != 0 {
+        if !fits || self.started {
             // A configuration for another kind, or a second `start`.
             return Err(ProcessError::Unsupported);
         }
+        self.started = true;
+        self.progress.started.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -99,7 +104,7 @@ impl ProcessControlHandler for Side {
         id: u64,
         payload: BoundedBytes<256>,
     ) -> Result<(), ProcessError> {
-        if self.progress.started.load(Ordering::SeqCst) == 0 {
+        if !self.started {
             return Err(ProcessError::Unsupported);
         }
         self.progress.answered.fetch_add(1, Ordering::SeqCst);
@@ -140,6 +145,7 @@ pub fn run(s: &Substrate, config: NetConfig) -> Option<Running> {
         host,
         kind: config.kind,
         progress: config.progress,
+        started: false,
     };
     let seq = s.exec.sequence("control", Priority::UserVisible);
     let serving = Endpoint::<ProcessControl>::from_receiver(&s.ipc, boot.from_parent)
