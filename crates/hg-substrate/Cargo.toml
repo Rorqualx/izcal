@@ -13,6 +13,8 @@ hg-types = { path = "../hg-types" }
 unsafe_code = "forbid"
 unsafe_op_in_unsafe_fn = "deny"
 missing_docs = "deny"
+# `cargo kani` sets cfg(kani) (the region access proofs, tools/kani.sh).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 # Tier P additions (coding standard A.2); written by hand until
 # `cargo xtask lints` generates them from tools/lints.toml.

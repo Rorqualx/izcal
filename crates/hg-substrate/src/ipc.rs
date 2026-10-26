@@ -20,6 +20,13 @@ use core::any::Any;
 
 use crate::executor::SequenceHandle;
 
+mod region;
+
+pub use region::{
+    AccessError, ConsumerRegion, Mapping, MappingObject, ProducerRegion, ReadOnlyRegion,
+    RegionObject, RegionRefused, RegionWriter, check_range, check_word,
+};
+
 /// The most bytes one message may carry: 64 KiB†. Bulk data crosses as
 /// shared memory, never as a large message (Stage 1 4.1).
 pub const MAX_MESSAGE_BYTES: usize = 64 * 1024;
@@ -37,6 +44,26 @@ pub enum HandleKind {
     BoundChannelSender,
     /// The receiving end of a channel: the right to receive from it.
     ChannelReceiver,
+    /// A fresh shared-memory region, writable by its one holder; it
+    /// crosses only from the broker ([`RegionWriter`]).
+    RegionWriter,
+    /// A sealed region nobody can write ([`ReadOnlyRegion`]).
+    ReadOnlyRegion,
+    /// A read-only view of a region whose producer keeps writing it
+    /// ([`ConsumerRegion`]).
+    ConsumerRegion,
+    /// A region this process keeps writing ([`ProducerRegion`]). It never
+    /// crosses a process boundary: every transport refuses to send it.
+    ProducerRegion,
+    /// Reserved for an OS GPU buffer (a macOS IOSurface). No backend makes
+    /// or accepts one yet (D6 minor 7).
+    GpuIoSurface,
+    /// Reserved for an OS GPU buffer (a Linux dma-buf). No backend makes or
+    /// accepts one yet.
+    GpuDmaBuf,
+    /// Reserved for an OS GPU buffer (a Windows DXGI shared NT handle). No
+    /// backend makes or accepts one yet.
+    GpuDxgiShared,
 }
 
 /// A backend's handle object. Dropping it closes what it names.
@@ -47,6 +74,10 @@ pub trait HandleObject: Send + Sync + core::fmt::Debug {
     fn as_any(&self) -> &dyn Any;
     /// The backend's own type, owned, for a backend taking a handle back.
     fn into_any(self: Box<Self>) -> Box<dyn Any + Send>;
+    /// The region it is, for the region kinds.
+    fn region(&self) -> Option<&dyn RegionObject> {
+        None
+    }
 }
 
 /// An owned handle of some kind.
@@ -72,6 +103,11 @@ impl Handle {
     /// The backend object, owned. For backends only.
     pub fn into_object(self) -> Box<dyn Any + Send> {
         self.0.into_any()
+    }
+
+    /// The region it is, for the region kinds.
+    pub fn region(&self) -> Option<&dyn RegionObject> {
+        self.0.region()
     }
 }
 
@@ -284,8 +320,14 @@ pub enum IpcError {
     /// The sequence to deliver on cannot take a task.
     Sequence,
     /// This substrate has no transport yet (the OS backends arrive in
-    /// M1 phases D3 to D5).
+    /// M1 phases D3 to D5), or this process may not do this (only the
+    /// broker allocates regions).
     Unsupported,
+    /// A mapping of the region is still live, so it cannot be sealed yet
+    /// (Linux refuses `F_SEAL_WRITE` while one exists; D6 minor 6).
+    Busy,
+    /// This process's region quota, or the browser's, is used up.
+    Quota,
 }
 
 impl core::fmt::Display for IpcError {
@@ -296,7 +338,9 @@ impl core::fmt::Display for IpcError {
             Self::Refused => "the transport refused a handle",
             Self::TooLarge => "too many bytes or handles for one message",
             Self::Sequence => "the delivery sequence cannot take a task",
-            Self::Unsupported => "no IPC transport on this substrate yet",
+            Self::Unsupported => "not supported by this transport or process",
+            Self::Busy => "a mapping of the region is still live",
+            Self::Quota => "the region quota is used up",
         })
     }
 }
@@ -367,4 +411,61 @@ pub trait Ipc: Send + Sync {
     /// This process's launch channels. The first call takes them; later
     /// calls, and processes launched without them, get `None`.
     fn bootstrap(&self) -> Option<Bootstrap>;
+
+    /// A new shared-memory region of `len` bytes, zeroed, charged to this
+    /// process's ledger entry. Only the broker allocates regions.
+    ///
+    /// # Errors
+    /// [`IpcError::Unsupported`] in any other process or on a substrate
+    /// without regions, [`IpcError::Quota`], or a backend's resource
+    /// failure ([`IpcError::Refused`]).
+    fn allocate_region(&self, len: usize) -> Result<RegionWriter, IpcError> {
+        let _ = len;
+        Err(IpcError::Unsupported)
+    }
+
+    /// Maps `region` into this process: a [`RegionWriter`] read-write, a
+    /// [`ReadOnlyRegion`] or [`ConsumerRegion`] read-only (on macOS an
+    /// `immutable` read-only region as a snapshot).
+    ///
+    /// # Errors
+    /// [`IpcError::Refused`] for a handle that is not a region this
+    /// process holds, or a backend's failure.
+    fn map_region(&self, region: &Handle) -> Result<Mapping, IpcError> {
+        let _ = region;
+        Err(IpcError::Unsupported)
+    }
+
+    /// Seals a writer: afterwards nobody can write it. Every mapping of it
+    /// must be dropped first.
+    ///
+    /// # Errors
+    /// The writer back, with [`IpcError::Busy`] while a mapping is live.
+    fn seal_region(&self, writer: RegionWriter) -> Result<ReadOnlyRegion, RegionRefused> {
+        Err(RegionRefused {
+            writer,
+            error: IpcError::Unsupported,
+        })
+    }
+
+    /// Turns a writer into a producer this process keeps writing, with its
+    /// one writable mapping.
+    ///
+    /// # Errors
+    /// The writer back, with the backend's error.
+    fn share_region(&self, writer: RegionWriter) -> Result<ProducerRegion, RegionRefused> {
+        Err(RegionRefused {
+            writer,
+            error: IpcError::Unsupported,
+        })
+    }
+
+    /// A read-only view of `producer` to hand to a consumer.
+    ///
+    /// # Errors
+    /// A backend's failure.
+    fn consumer_of(&self, producer: &ProducerRegion) -> Result<ConsumerRegion, IpcError> {
+        let _ = producer;
+        Err(IpcError::Unsupported)
+    }
 }

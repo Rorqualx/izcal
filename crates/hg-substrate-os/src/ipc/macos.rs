@@ -646,6 +646,15 @@ impl Inner {
                                 carried: false,
                             }
                         }
+                        // The accept step makes no other kind (regions
+                        // join in D6's macOS step).
+                        HandleKind::RegionWriter
+                        | HandleKind::ReadOnlyRegion
+                        | HandleKind::ConsumerRegion
+                        | HandleKind::ProducerRegion
+                        | HandleKind::GpuIoSurface
+                        | HandleKind::GpuDmaBuf
+                        | HandleKind::GpuDxgiShared => break,
                         HandleKind::ChannelReceiver => {
                             let Ok(flow) = ReceiverFlow::from_transfer(desc) else {
                                 break;
