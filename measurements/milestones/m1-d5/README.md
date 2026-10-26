@@ -52,6 +52,15 @@ Three runs each. The plain round trip and throughput did not change beyond run-t
 
 **One worker per child (`40ea55f`) brings it to 104 to 105 µs, not back to 82 µs.** A temporary probe (not committed) timed each of the 2,000 worker requests in three runs: the worker took 3.5 to 4.1 µs to wake once a request was queued, did the request's work in 7.5 µs (work the IO thread used to do itself), and its wake of the IO thread (an APC into `SleepEx`) took 4.4 to 5.0 µs to return there. The two wakes add about 8 µs per request, about 16 µs per trip of the 22 µs gap; the other 6 µs is not attributed. Any design that runs these queries off the IO thread pays the two wakes, so closing the rest of the gap needs a different design, not tuning this one.
 
+**A candidate for later: the broker creates every pipe (decided 26 Oct: not now).** The per-child worker stays. Recorded here because the measurements above bound what it would buy:
+- **The design.** The broker would make both ends of every channel: overlapped, message mode, one instance. Children would receive the ends through the move access mask, which lacks `FILE_WRITE_ATTRIBUTES`, so no child could make a synchronous handle or change an end's modes. The broker would keep a reference to each end and identify a relayed handle with `CompareObjectHandles`, which never waits (probe W8).
+- **What it would remove.** Every classification query that can wait (W8), and with them the per-child workers and their two wakes per request: about 16 µs of the 22 µs gap per handle-carrying trip, measured above. The return to about 82 µs is an estimate, not measured.
+- **What it would cost.**
+  - Creating a channel becomes one round trip to the broker (about 35 µs at today's p50), unless children fetch channels ahead of time.
+  - The ledger is keyed by an id the broker assigns, and `accept` checks identity and a handle count of 2 (the holder's handle plus the broker's).
+  - The broker's handle table grows by two entries per live channel, which needs a creation quota.
+  - Because the broker holds a copy of each end, a peer sees `Closed` only once the broker drops its copy (on the end-closed record, or when the holder dies). A slow broker would delay every channel's `Closed`.
+
 ## Also checked under the same build
 
 - **Deterministic simulation:** the 60 `dst-smoke --ipc` seeds (0 to 59, stdout and stderr together) hash to `f06e8ea9488ab8cae1eb4054119ae52ddbebb41da8940781a9c0f57fe449911b` on rig253, the same value as on macOS and Linux.
