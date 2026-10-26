@@ -27,3 +27,23 @@ Every FP-M0 finding that sets or moves a † threshold is recorded in `results/d
 3. The same matrix on Linux and Windows rigs (booked per the rig rules).
 4. Substrate floor once the empty-process milestone builds (macOS first).
 5. Spawn-latency and `MADV_FREE_REUSABLE` probes (small standalone binaries, no engine needed).
+
+## Closure (26 October 2026): split and carry
+
+**Owner decision (25 October 2026, "split and carry"), applied 26 October 2026.** FP-M0 is **closed on the three lab rigs that exist**: the Mac (`local`, Apple silicon, DC-16), hueyj (Linux x86-64, DC-16) and rig253 (Windows x86-64, DC-16). The rows that need hardware the lab does not have are an **owner waiver, carried to M2**, not dropped.
+
+**Closed on the Mac, hueyj and rig253** (evidence in `results/decision-log.md` unless named):
+- Section 6.2's definitions as a lab harness: charged and resident time series per process per OS (`harness/sample-tree*.sh`, `sample-tree-windows.ps1`).
+- The empty-process probe on Izcal's substrate with the full sandbox, two threads and an IPC endpoint, on all three OSes: the FP-2 floor and running blocker sum (Half B).
+- Spawn cost on the full sandbox path per OS (the spare-process rule): macOS and Windows in Half B; the Linux spawner path and the launched renderer skeleton on all three in M1 phase G (`../m1-g/README.md`).
+- Idle wakeups: 0/s for the empty process and for the substrate at rest, on all three.
+- Reservations and mapping counts per OS (Section 6.20.6): measured on the launched renderer skeleton in M1 phase G, on the Mac and rig253; hueyj's row lands with G's Linux runs.
+- The incumbents (Chrome, Firefox, Safari, Edge) with the same harness, including open question 17's black-box checks.
+
+**Owner waiver, carried to M2** (not measured, not claimed):
+- **riscv64**: the RVA23 reference device (SpacemiT K3 class), the riscv64 CI runners, its address-space size (Sv39 or Sv48, open question 19) and the empty-process probe on it.
+- **DC-8**: the x86-64 Windows laptop class (8 GB) lab device.
+- **DC-4**: the 4 GB x86-64 Linux laptop lab device.
+- **DC-2**: the 2 GB memory-limited emulation configuration of the DC-4 laptop.
+
+Until M2 every FP figure from FP-M0 is a DC-16 figure on x86-64 or AArch64 only; no DC-8, DC-4, DC-2 or riscv64 target is claimed from it.

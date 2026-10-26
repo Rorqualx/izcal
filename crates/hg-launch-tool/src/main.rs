@@ -70,13 +70,19 @@ fn hold(secs: Option<u64>) -> ExitCode {
         .lock()
         .map(|t| t.clone())
         .unwrap_or_default();
+    let tiers = p
+        .sandbox_tiers
+        .lock()
+        .map(|t| t.clone())
+        .unwrap_or_default();
     let line = format!(
-        "launches={} routed={} returned={} sandbox_mismatches={} ready={:?}",
+        "launches={} routed={} returned={} sandbox_mismatches={} ready={:?} tiers={:?}",
         p.launches.load(Ordering::SeqCst),
         p.routed.load(Ordering::SeqCst),
         p.returned.load(Ordering::SeqCst),
         p.sandbox_mismatches.load(Ordering::SeqCst),
-        times
+        times,
+        tiers
     );
     let ok = done && p.sandbox_mismatches.load(Ordering::SeqCst) == 0;
     if let (true, Some(secs)) = (ok, secs) {

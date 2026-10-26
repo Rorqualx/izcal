@@ -82,6 +82,10 @@ pub struct Progress {
     /// Spawn to ready of every child that reported `ready` with this
     /// build, by the substrate's clock (FP-27's hook, E-R12).
     pub spawn_to_ready: Mutex<Vec<(ChildKind, Duration)>>,
+    /// The sandbox tier of every child that reported `ready`: the tier
+    /// its launcher applied, which its own report matched (review M3).
+    /// Reported by name with every measurement (E-R5).
+    pub sandbox_tiers: Mutex<Vec<(ChildKind, SandboxTier)>>,
 }
 
 /// How the browser runs.
@@ -497,6 +501,12 @@ impl ProcessHostHandler for HostSide {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push((self.kind, took));
+        self.inner
+            .progress
+            .sandbox_tiers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((self.kind, child.sandbox));
         // A child gone before `start` reaches it is not at fault: its own
         // channel's closing ends it and drives the relaunch.
         let _ = child.control.start(config_for(self.kind));
