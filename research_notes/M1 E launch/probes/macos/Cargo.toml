@@ -1,0 +1,14 @@
+[package]
+name = "e-macos-sbpl-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "M1 phase E, SEC-8: does the custom SBPL path Izcal uses (sandbox_init_with_parameters) apply and enforce in a binary built against the real macOS SDK 27? Black-box, Apple's manual pages only"
+
+[dependencies]
+libc = "0.2"
+# The path under test is the code's own (sandbox::macos), not a copy.
+hg-substrate-os = { path = "../../../../crates/hg-substrate-os" }
+
+# Standalone: not a member of the repository's workspace.
+[workspace]
