@@ -157,8 +157,13 @@ fn the_sweep_removes_only_profiles_of_brokers_that_are_gone() {
     let live = format!("izcal.l.{me}.{start}.900001");
     let other = format!("izcal.other-scheme.{me}");
     let malformed = format!("izcal.l.{me}.x");
+    // Another test's launcher may sweep the first two before this one
+    // does (every launcher sweeps at its start), so only the outcome is
+    // checked for them.
     for n in [&reused, &no_process, &live, &other, &malformed] {
         drop(crate::sandbox::windows::app_container(n, n).unwrap());
+    }
+    for n in [&live, &other, &malformed] {
         assert!(profile_folder(n).exists(), "{n} registered");
     }
     let _ = super::sweep_stale_profiles();

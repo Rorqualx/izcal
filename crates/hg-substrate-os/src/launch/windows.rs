@@ -247,6 +247,9 @@ impl Spares {
             return;
         }
         let me = Arc::clone(self);
+        // Spawned and stored under the lock `close` takes to join, so a
+        // `close` can never miss a thread that has started.
+        let mut worker = self.worker.lock().unwrap_or_else(PoisonError::into_inner);
         let started = crate::thread::spawn("hg-profile-spares", move || {
             loop {
                 let filled = me.fill();
@@ -261,9 +264,7 @@ impl Spares {
             }
         });
         match started {
-            Ok(h) => {
-                *self.worker.lock().unwrap_or_else(PoisonError::into_inner) = Some(h);
-            }
+            Ok(h) => *worker = Some(h),
             Err(_e) => self.refilling.store(false, Ordering::SeqCst),
         }
     }
