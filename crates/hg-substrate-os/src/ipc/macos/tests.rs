@@ -839,7 +839,10 @@ fn a_peer_s_own_credit_port_as_a_receiver_is_blamed_on_it() {
     let c = spawn(&r, "credit-as-receiver");
     expect_fault(&c.from_child, FaultKind::BadHandle, Some(c.peer.pid()));
     drop(c.to_child);
-    assert_eq!(sys::wait_child(c.pid).unwrap(), 0);
+    // Under Enhanced Security the system kills this child (SIGKILL,
+    // observed) after its message is out; either way the fault came.
+    let code = sys::wait_child(c.pid).unwrap();
+    assert!(code == 0 || code == 128 + libc::SIGKILL, "exit {code}");
 }
 
 /// A child whose audit token cannot be read is killed before it runs,
