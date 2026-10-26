@@ -133,6 +133,22 @@ interface ProcessHost bound capacity 64 overflow terminate {
         /// The ping's nonce.
         nonce: u64,
     );
+    /// M1's skeleton work (Stage 1 M1 exit: an IPC round trip through the
+    /// browser): the child asks for something only another child can
+    /// answer; the browser routes it and returns `ProcessControl.answered`.
+    ask(
+        /// The child's own request number.
+        id: u64,
+        /// What it asks.
+        payload: bytes<256>,
+    );
+    /// The answer to `ProcessControl.work`.
+    answer(
+        /// The work's number.
+        id: u64,
+        /// The result.
+        payload: bytes<256>,
+    );
 }
 
 /// Browser to child, on the bootstrap endpoint.
@@ -151,5 +167,19 @@ interface ProcessControl bound capacity 64 overflow terminate {
     start(
         /// The child's configuration.
         config: ChildConfig,
+    );
+    /// Work the browser routes to this child (M1 skeleton).
+    work(
+        /// The browser's number for it.
+        id: u64,
+        /// What to do.
+        payload: bytes<256>,
+    );
+    /// The answer to this child's `ProcessHost.ask`.
+    answered(
+        /// The ask's number.
+        id: u64,
+        /// The answer.
+        payload: bytes<256>,
     );
 }

@@ -89,6 +89,24 @@ struct BrokerSide {
 }
 
 impl ProcessHostHandler for BrokerSide {
+    fn ask(
+        &mut self,
+        _from: &CallerIdentity,
+        _id: u64,
+        _payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError> {
+        Ok(())
+    }
+
+    fn answer(
+        &mut self,
+        _from: &CallerIdentity,
+        _id: u64,
+        _payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError> {
+        Ok(())
+    }
+
     fn ready(
         &mut self,
         from: &CallerIdentity,
@@ -120,6 +138,24 @@ struct ChildSide {
 }
 
 impl ProcessControlHandler for ChildSide {
+    fn work(
+        &mut self,
+        _from: &CallerIdentity,
+        _id: u64,
+        _payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError> {
+        Ok(())
+    }
+
+    fn answered(
+        &mut self,
+        _from: &CallerIdentity,
+        _id: u64,
+        _payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError> {
+        Ok(())
+    }
+
     fn ping(&mut self, from: &CallerIdentity, nonce: u64) -> Result<(), ProcessError> {
         if from.peer() != BROKER {
             return Err(ProcessError::Unsupported);

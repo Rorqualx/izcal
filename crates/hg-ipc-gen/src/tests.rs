@@ -133,7 +133,7 @@ fn the_wire_bytes_are_fixed() {
         [1, 0, 1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0]
     );
     assert_eq!(
-        decode_exact::<process::ProcessControl>(&[3, 0]),
+        decode_exact::<process::ProcessControl>(&[5, 0]),
         Err(BadMessage::UnknownOrdinal)
     );
     assert_eq!(
@@ -141,11 +141,9 @@ fn the_wire_bytes_are_fixed() {
         Err(BadMessage::UnknownTag)
     );
     assert_eq!(process::ProcessHost::INFO.name, "process.ProcessHost");
-    // ready: ordinal, kind, build id, then the sandbox report (tier, a
-    // vec count and at most eight features, each a u32).
-    assert_eq!(
-        process::ProcessHost::INFO.max_message_len,
-        2 + 4 + 8 + 4 + 4 + 8 * 4
-    );
+    // The longest ProcessHost message is ask/answer: ordinal, id, a
+    // byte count and at most 256 bytes (ready, with its sandbox report,
+    // is at most 2 + 4 + 8 + 4 + 4 + 8 * 4).
+    assert_eq!(process::ProcessHost::INFO.max_message_len, 2 + 8 + 4 + 256);
     assert_eq!(sample::Loose::INFO.binding, hg_ipc::Binding::Free);
 }

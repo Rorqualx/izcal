@@ -275,6 +275,24 @@ mod ipc {
     }
 
     impl ProcessHostHandler for Browser {
+        fn ask(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _id: u64,
+            _payload: hg_ipc::BoundedBytes<256>,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+
+        fn answer(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _id: u64,
+            _payload: hg_ipc::BoundedBytes<256>,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+
         fn ready(
             &mut self,
             _from: &hg_ipc::CallerIdentity,
@@ -300,6 +318,24 @@ mod ipc {
     }
 
     impl ProcessControlHandler for Renderer {
+        fn work(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _id: u64,
+            _payload: hg_ipc::BoundedBytes<256>,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+
+        fn answered(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _id: u64,
+            _payload: hg_ipc::BoundedBytes<256>,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+
         fn ping(&mut self, _from: &hg_ipc::CallerIdentity, nonce: u64) -> Result<(), ProcessError> {
             // A closed browser is fine: this process is ending too.
             let _ = self.host.pong(nonce);
