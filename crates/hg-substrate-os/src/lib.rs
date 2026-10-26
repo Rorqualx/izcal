@@ -238,10 +238,14 @@ pub(crate) fn base(
         // A second caller lost a race to the same end state: a key is set.
         let _ = hg_types::set_process_hash_key(word(k0), word(k1));
     }
+    #[cfg(all(windows, feature = "measure-launch"))]
+    crate::launch::windows::timing::mark("entropy");
     let exec = Arc::new(
         executor::OsExecutor::new(threads.general, threads.may_block)
             .map_err(StartError::Thread)?,
     );
+    #[cfg(all(windows, feature = "measure-launch"))]
+    crate::launch::windows::timing::mark("executor");
     Ok((entropy, exec))
 }
 

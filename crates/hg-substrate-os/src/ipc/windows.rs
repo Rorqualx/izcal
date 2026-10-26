@@ -4301,8 +4301,12 @@ impl WindowsIpc {
         let container = sys::app_container_sid();
         let mut state = State::default();
         if let Some(link) = link {
+            #[cfg(feature = "measure-launch")]
+            crate::launch::windows::timing::mark("ipc_sid");
             let hello = sys::read_blocking(&link, MAX_CTL_LEN, HELLO_TIMEOUT_MS)
                 .map_err(|_e| StartError::Bootstrap)?;
+            #[cfg(feature = "measure-launch")]
+            crate::launch::windows::timing::mark("ipc_hello");
             let Ok(Ctl::Hello {
                 to_parent,
                 from_parent,
@@ -4357,6 +4361,8 @@ impl WindowsIpc {
         })
         .map_err(StartError::Os)?;
         let _ = ready_rx.recv();
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("ipc_io_thread");
         if inner.lock().broker.is_some() {
             // The worker for the broker's own relays (W3): like a child's,
             // it ends once the transport is gone.
@@ -5164,6 +5170,8 @@ impl WindowsIpc {
         let (up_id, down_id) = (name()?, name()?);
         let (up_rx, up_tx) = sys::pipe_pair(None, &up_id)?;
         let (down_rx, down_tx) = sys::pipe_pair(None, &down_id)?;
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("pipes");
         // The launch channels are the broker's: keyed by their names.
         let up_key = PipeKey {
             creator: BROKER,
@@ -5224,6 +5232,8 @@ impl WindowsIpc {
         };
         drop(inherit);
         drop(link_client);
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("spawned");
         let started = (|| -> std::io::Result<(u64, u64)> {
             let v_up = sys::give(&child.process, &up_tx)
                 .map_err(|e| std::io::Error::from_raw_os_error(i32::try_from(e).unwrap_or(0)))?;
@@ -5240,6 +5250,8 @@ impl WindowsIpc {
             }
         };
         drop((up_tx, down_rx));
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("given");
         let process = match sys::spawn::process_handle(&child) {
             Ok(p) => p,
             Err(e) => {
@@ -5326,6 +5338,8 @@ impl WindowsIpc {
             sys::spawn::kill(&child);
             return Err(std::io::Error::other("no worker thread for the child"));
         }
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("worker");
         let hello = Ctl::Hello {
             to_parent: v_up,
             from_parent: v_down,
@@ -5371,6 +5385,8 @@ impl WindowsIpc {
         }
         drop(st);
         self.inner.wake();
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("hello");
         if let Err(e) = sys::spawn::resume(&child) {
             let mut st = self.inner.lock();
             let dropped = self.inner.abandon(&mut st, p, [Some(rx), Some(tx)]);
@@ -5379,6 +5395,8 @@ impl WindowsIpc {
             sys::spawn::kill(&child);
             return Err(e);
         }
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("resumed");
         let from_child = ChannelReceiver::from_handle(self.handle(rx, HandleKind::ChannelReceiver))
             .map_err(|_e| std::io::Error::other("kind"))?;
         let to_child = ChannelSender::from_handle(self.handle(tx, HandleKind::ChannelSender))

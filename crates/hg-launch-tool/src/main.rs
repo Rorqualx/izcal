@@ -10,6 +10,11 @@
 //!   `spawn_to_ready_ms`) of the time from the launch request to the
 //!   child's accepted `ready`, on the substrate clock. Cold runs are the
 //!   caller's job (drop the page cache before each, E-Q6).
+//! - `measure-phases N` (Windows, `--features measure-launch` only): as
+//!   `measure-spawn`, then one row per launch phase (`run`, `kind`,
+//!   `pid`, `side`, `phase`, `ms` since the launch request), the broker's
+//!   stamps and the child's, for M1 phase G's FP-27 breakdown. A
+//!   measurement build; production builds have no stamps.
 //! - `hold SECS`: the renderer skeleton at rest, for M1 phase G's
 //!   samplers (FP-M0's method: the OS counters are read from outside, by
 //!   process). Runs `round-trip`, prints `hold: ready broker=<pid>`, then
@@ -145,6 +150,56 @@ fn measure_spawn(n: u32) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+#[cfg(all(windows, feature = "measure-launch"))]
+fn measure_phases(n: u32) -> ExitCode {
+    use hg_substrate_os::launch::windows::timing;
+    println!("run\tkind\tpid\tside\tphase\tms");
+    for run in 1..=n {
+        timing::clear();
+        let Ok(s) = os_broker_substrate(Threads::for_this_machine()) else {
+            eprintln!("measure-phases: run {run}: the substrate did not start");
+            return ExitCode::FAILURE;
+        };
+        let p = Arc::new(Progress::default());
+        let config = BrowserConfig {
+            restart_budget: 0,
+            progress: Arc::clone(&p),
+        };
+        let Ok(running) = hg_browser::run(&s, config) else {
+            eprintln!("measure-phases: run {run}: launch failed");
+            return ExitCode::FAILURE;
+        };
+        let both = wait_for(|| {
+            p.spawn_to_ready
+                .lock()
+                .map(|t| t.len() >= 2)
+                .unwrap_or(false)
+        });
+        // The children publish their stamps before `ready`; read them
+        // while they are alive.
+        let rows = timing::report();
+        let times = p
+            .spawn_to_ready
+            .lock()
+            .map(|t| t.clone())
+            .unwrap_or_default();
+        drop(running);
+        if !both {
+            eprintln!("measure-phases: run {run}: no ready from both kinds");
+            return ExitCode::FAILURE;
+        }
+        for r in rows {
+            println!("{run}\t{r}");
+        }
+        for (kind, d) in times {
+            #[expect(clippy::cast_precision_loss, reason = "milliseconds for a TSV")]
+            let ms = d.as_nanos() as f64 / 1e6;
+            println!("{run}\t{kind:?}\t-\tbroker\tready\t{ms:.3}");
+        }
+    }
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args
@@ -160,6 +215,11 @@ fn main() -> ExitCode {
         },
         ["measure-spawn", n] => match n.parse() {
             Ok(n) => measure_spawn(n),
+            Err(_) => usage(),
+        },
+        #[cfg(all(windows, feature = "measure-launch"))]
+        ["measure-phases", n] => match n.parse() {
+            Ok(n) => measure_phases(n),
             Err(_) => usage(),
         },
         _ => usage(),

@@ -9,6 +9,18 @@
 
 mod sys;
 
+/// FP-27's phase timestamps (measurement builds only).
+#[cfg(feature = "measure-launch")]
+pub use sys::timing;
+
+/// Stamps a launch phase in a measurement build; nothing otherwise.
+macro_rules! stamp {
+    ($phase:literal) => {
+        #[cfg(feature = "measure-launch")]
+        sys::timing::mark($phase);
+    };
+}
+
 use std::collections::BTreeMap;
 use std::io;
 use std::os::windows::io::OwnedHandle;
@@ -172,19 +184,26 @@ impl Launcher for WinLauncher {
         if capacity != crate::ipc::windows::BOOTSTRAP_CAPACITY {
             return Err(LaunchError::Unsupported);
         }
+        #[cfg(feature = "measure-launch")]
+        let _ = sys::timing::take();
+        stamp!("request");
         self.sweep();
+        stamp!("sweep");
         // The plan, the executable and the token from one value (E-R7).
         let spec = plan_kind(kind).spec();
         let exe = self.files.path(spec.exe()).ok_or(LaunchError::Failed)?;
         let n = self.launches.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
         let container = format!("izcal.{}.{}.{n}", spec.token(), std::process::id());
         let sid = sb::app_container(&container, &container).map_err(|_e| LaunchError::Failed)?;
+        stamp!("profile");
         let fail = |e: LaunchError| {
             win::spawn::delete_container(&container);
             e
         };
         let token = sb::restricted_token().map_err(|_e| fail(LaunchError::Failed))?;
+        stamp!("token");
         let job = sb::job_object().map_err(|_e| fail(LaunchError::Failed))?;
+        stamp!("job");
         let launched = self
             .ipc
             .launch(LaunchSpec {
@@ -199,6 +218,11 @@ impl Launcher for WinLauncher {
             })
             .map_err(|_e| fail(LaunchError::Failed))?;
         let peer = OsPeer::new(launched.peer.pid(), n);
+        stamp!("launched");
+        #[cfg(feature = "measure-launch")]
+        if let Ok(t) = win::spawn::thread_handle(&launched.child) {
+            sys::timing::record(spec.token(), launched.peer.pid(), t);
+        }
         self.lock().insert(
             peer,
             Entry {
@@ -261,7 +285,9 @@ pub(crate) fn broker_with(
 /// # Errors
 /// [`ChildError`].
 pub(crate) fn child_start(threads: Threads) -> Result<(Substrate, SandboxReached), ChildError> {
+    stamp!("entry");
     sandbox::windows::apply_empty_process_profile().map_err(ChildError::Sandbox)?;
+    stamp!("untrusted");
     if win::app_container_sid().is_none() {
         return Err(ChildError::Sandbox("not in an AppContainer".into()));
     }
@@ -270,7 +296,11 @@ pub(crate) fn child_start(threads: Threads) -> Result<(Substrate, SandboxReached
         .and_then(|v| v.parse::<u64>().ok())
         .and_then(|v| win::adopt_pipe(v, false))
         .ok_or(ChildError::Arguments)?;
+    stamp!("link");
     let s = crate::os_substrate_launched(threads, link).map_err(ChildError::Start)?;
+    stamp!("substrate");
+    #[cfg(feature = "measure-launch")]
+    sys::timing::publish();
     Ok((
         s,
         SandboxReached {
