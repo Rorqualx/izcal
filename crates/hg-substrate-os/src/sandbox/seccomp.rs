@@ -8,11 +8,14 @@
 //! subset it emits. `sandbox::linux` installs the result.
 //!
 //! **Layout.** The arch is checked first (anything else is denied).
-//! Then each rule is one block: `jeq nr` falls into the block or jumps
-//! past it; the block checks the rule's argument conditions and ends in
-//! its own `ret ALLOW` and `ret DENY`, so every jump is short (no jump
-//! offset can overflow its 8-bit field, whatever the table's length). A
-//! syscall no rule names reaches the final `ret DENY`.
+//! Then each rule is one block: `ld nr; jeq nr` falls into the block or
+//! jumps past it; the block checks the rule's argument conditions, any
+//! failure jumping past the block, and ends in its own `ret action`. So
+//! every jump is short (no jump offset can overflow its 8-bit field,
+//! whatever the table's length), and several rules for one syscall are
+//! alternatives: the first whose conditions all hold decides (D6: the
+//! two shapes of `fcntl`). A call no rule allows reaches the final
+//! `ret DENY`.
 //!
 //! **Arguments are compared on their low 32 bits.** The kernel truncates
 //! the `int` arguments these rules check, so a check on the high word
@@ -130,8 +133,18 @@ const SOL_SOCKET: u32 = 1;
 const GETSOCKOPT_NAMES: &[u32] = &[3, 4, 7, 16, 17, 38, 39];
 /// The ones it sets: `SO_SNDBUF`, `SO_PASSCRED`.
 const SETSOCKOPT_NAMES: &[u32] = &[7, 16];
-/// `F_GETFD`, `F_SETFD`.
-const FCNTL_CMDS: &[u32] = &[1, 2];
+/// `F_GETFD`, `F_SETFD`, and `F_GET_SEALS` (D6: region acceptance).
+const FCNTL_CMDS: &[u32] = &[1, 2, 1034];
+/// `F_ADD_SEALS` (fcntl(2) "File sealing").
+const F_ADD_SEALS: u32 = 1033;
+/// The two seal sets a sandboxed process may add to a region it holds:
+/// `F_SEAL_WRITE | F_SEAL_SEAL` (sealing a writer) and
+/// `F_SEAL_FUTURE_WRITE | F_SEAL_SEAL` (sharing it as a producer).
+const REGION_SEAL_SETS: &[u32] = &[0x8 | 0x1, 0x10 | 0x1];
+/// `PROT_EXEC`: never granted, so no executable mapping can be made
+/// (jitless tiers; D6 review M5, since `MFD_NOEXEC_SEAL` does not stop a
+/// `PROT_EXEC` mapping, fact L13).
+const PROT_EXEC: u32 = 0x4;
 /// `SHUT_WR`.
 const SHUT_WR: u32 = 1;
 /// `CLONE_VM | CLONE_THREAD`: a thread, never a new process.
@@ -178,6 +191,17 @@ const SETSOCKOPT_ARGS: &[(u32, Cond)] = &[
     (2, Cond::OneOf(SETSOCKOPT_NAMES)),
 ];
 const FCNTL_ARGS: &[(u32, Cond)] = &[(1, Cond::OneOf(FCNTL_CMDS))];
+const ADD_SEALS_ARGS: &[(u32, Cond)] = &[
+    (1, Cond::Eq(F_ADD_SEALS)),
+    (2, Cond::OneOf(REGION_SEAL_SETS)),
+];
+const NO_EXEC_ARGS: &[(u32, Cond)] = &[(
+    2,
+    Cond::Masked {
+        mask: PROT_EXEC,
+        value: 0,
+    },
+)];
 const SHUTDOWN_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(SHUT_WR))];
 
 /// The x86_64 table: the empty process's needs, then the IPC
@@ -188,8 +212,16 @@ pub const RULES_X86_64: &[Rule] = &[
     allow(3, "close"),
     allow(5, "fstat — std's fd queries; IPC handle acceptance"),
     allow(8, "lseek"),
-    allow(9, "mmap — the allocator"),
-    allow(10, "mprotect — the allocator"),
+    allow_if(
+        9,
+        NO_EXEC_ARGS,
+        "mmap — the allocator, IPC regions; never executable",
+    ),
+    allow_if(
+        10,
+        NO_EXEC_ARGS,
+        "mprotect — the allocator; never executable",
+    ),
     allow(11, "munmap — the allocator"),
     allow(12, "brk — the allocator"),
     allow(13, "rt_sigaction — thread setup"),
@@ -237,7 +269,12 @@ pub const RULES_X86_64: &[Rule] = &[
     allow_if(
         72,
         FCNTL_ARGS,
-        "fcntl — close-on-exec of received IPC handles",
+        "fcntl — close-on-exec of received IPC handles; region seals read",
+    ),
+    allow_if(
+        72,
+        ADD_SEALS_ARGS,
+        "fcntl — sealing an IPC region (write or future-write, and seal)",
     ),
     allow(97, "getrlimit — std's resource queries; IPC fd headroom"),
     allow(131, "sigaltstack — signal handling"),
@@ -277,7 +314,12 @@ pub const RULES_AARCH64: &[Rule] = &[
     allow_if(
         25,
         FCNTL_ARGS,
-        "fcntl — close-on-exec of received IPC handles",
+        "fcntl — close-on-exec of received IPC handles; region seals read",
+    ),
+    allow_if(
+        25,
+        ADD_SEALS_ARGS,
+        "fcntl — sealing an IPC region (write or future-write, and seal)",
     ),
     allow(29, "ioctl"),
     allow(57, "close"),
@@ -340,8 +382,8 @@ pub const RULES_AARCH64: &[Rule] = &[
         CLONE_ARGS,
         "clone — threads only (the sanctioned thread spawn)",
     ),
-    allow(222, "mmap"),
-    allow(226, "mprotect"),
+    allow_if(222, NO_EXEC_ARGS, "mmap — never executable"),
+    allow_if(226, NO_EXEC_ARGS, "mprotect — never executable"),
     allow(233, "madvise"),
     allow(261, "prlimit64"),
     allow(278, "getrandom"),
@@ -368,10 +410,10 @@ const MAX_INSNS: usize = 4096;
 
 /// One rule's argument checks and returns: everything after its `jeq nr`.
 fn block(rule: &Rule) -> Result<Vec<Insn>, BuildError> {
-    // Build the checks with jf placeholders aimed at the block's DENY,
-    // then fix the distances once the length is known.
+    // Build the checks with jf placeholders aimed past the block, then
+    // fix the distances once the length is known.
     let mut b: Vec<Insn> = Vec::new();
-    // Indices of jumps whose false branch goes to DENY.
+    // Indices of jumps whose false branch leaves the block.
     let mut to_deny: Vec<usize> = Vec::new();
     for &(arg, cond) in rule.args {
         let off = OFF_ARGS + arg * 8;
@@ -408,7 +450,7 @@ fn block(rule: &Rule) -> Result<Vec<Insn>, BuildError> {
             }
             Cond::OneOf(values) => {
                 // `jeq v_i` jumps past the rest of the list on a match;
-                // the last one's false branch goes to DENY.
+                // the last one's false branch leaves the block.
                 let n = values.len();
                 for (i, v) in values.iter().enumerate() {
                     let rest = n - 1 - i;
@@ -432,23 +474,16 @@ fn block(rule: &Rule) -> Result<Vec<Insn>, BuildError> {
             }
         }
     }
-    let ret_action = b.len();
     b.push(Insn {
         code: RET_K,
         jt: 0,
         jf: 0,
         k: rule.action,
     });
-    let deny = b.len();
-    b.push(Insn {
-        code: RET_K,
-        jt: 0,
-        jf: 0,
-        k: RET_DENY,
-    });
-    debug_assert!(ret_action < deny);
+    // A failed condition skips the rest of the block, to the next rule.
+    let past = b.len();
     for at in to_deny {
-        let dist = deny - at - 1;
+        let dist = past - at - 1;
         if let Some(insn) = b.get_mut(at) {
             insn.jf = u8::try_from(dist).map_err(|_e| BuildError::BlockTooLong)?;
         }
@@ -481,15 +516,16 @@ pub fn program(arch: u32, rules: &[Rule]) -> Result<Vec<Insn>, BuildError> {
             jf: 0,
             k: RET_DENY,
         },
-        Insn {
+    ];
+    for rule in rules {
+        let body = block(rule)?;
+        // The number again: the last block's checks loaded an argument.
+        p.push(Insn {
             code: LD_W_ABS,
             jt: 0,
             jf: 0,
             k: OFF_NR,
-        },
-    ];
-    for rule in rules {
-        let body = block(rule)?;
+        });
         p.push(Insn {
             code: JEQ_K,
             jt: 0,
@@ -594,25 +630,27 @@ pub fn expected(arch: u32, rules: &[Rule], call: &Call) -> u32 {
     if call.arch != arch {
         return RET_DENY;
     }
-    let Some(rule) = rules.iter().find(|r| r.nr == call.nr) else {
-        return RET_DENY;
+    let holds = |rule: &Rule| {
+        rule.args.iter().all(|&(i, cond)| {
+            let Some(&raw) = call.args.get(usize::try_from(i).unwrap_or(usize::MAX)) else {
+                return false;
+            };
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "the low 32 bits, as the kernel"
+            )]
+            let a = raw as u32;
+            match cond {
+                Cond::Eq(v) => a == v,
+                Cond::Masked { mask, value } => a & mask == value,
+                Cond::OneOf(vs) => vs.contains(&a),
+            }
+        })
     };
-    let holds = rule.args.iter().all(|&(i, cond)| {
-        let Some(&raw) = call.args.get(usize::try_from(i).unwrap_or(usize::MAX)) else {
-            return false;
-        };
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "the low 32 bits, as the kernel"
-        )]
-        let a = raw as u32;
-        match cond {
-            Cond::Eq(v) => a == v,
-            Cond::Masked { mask, value } => a & mask == value,
-            Cond::OneOf(vs) => vs.contains(&a),
-        }
-    });
-    if holds { rule.action } else { RET_DENY }
+    rules
+        .iter()
+        .find(|r| r.nr == call.nr && holds(r))
+        .map_or(RET_DENY, |r| r.action)
 }
 
 #[cfg(test)]
@@ -623,13 +661,19 @@ mod tests {
         [(ARCH_X86_64, RULES_X86_64), (ARCH_AARCH64, RULES_AARCH64)]
     }
 
+    /// Every rule has a reason; a syscall named twice is `fcntl` only,
+    /// whose two shapes are alternatives with the same action.
     #[test]
-    fn every_syscall_number_appears_once_with_a_reason() {
-        for (_, rules) in tables() {
-            let mut seen = std::collections::BTreeSet::new();
+    fn every_rule_has_a_reason_and_only_fcntl_has_two() {
+        for (arch, rules) in tables() {
+            let fcntl = if arch == ARCH_X86_64 { 72 } else { 25 };
+            let mut seen = std::collections::BTreeMap::new();
             for r in rules {
-                assert!(seen.insert(r.nr), "duplicate rule for {}", r.nr);
                 assert!(!r.reason.is_empty());
+                if let Some(action) = seen.insert(r.nr, r.action) {
+                    assert_eq!(r.nr, fcntl, "duplicate rule for {}", r.nr);
+                    assert_eq!(action, r.action);
+                }
             }
         }
     }
@@ -639,7 +683,7 @@ mod tests {
     /// table on all of them.
     #[test]
     fn program_agrees_with_the_table() {
-        let probes: [u64; 12] = [
+        let probes: [u64; 17] = [
             0,
             1,
             2,
@@ -653,6 +697,12 @@ mod tests {
             (1 << 32) | u64::from(IPC_SOCKET_TYPE),
             u64::MAX,
             39,
+            // fcntl's seal commands and sets, and PROT_* with PROT_EXEC.
+            1033,
+            1034,
+            9,
+            17,
+            7,
         ];
         let mut checked = 0u32;
         for (arch, rules) in tables() {
@@ -745,6 +795,70 @@ mod tests {
                 run(&prog, &call(2, u64::from(IPC_SOCKET_TYPE), 0)),
                 Ok(RET_DENY)
             ); // inet
+        }
+    }
+
+    /// D6: a sandboxed process reads seals and adds only the two region
+    /// seal sets; nothing else through `fcntl`.
+    #[test]
+    fn fcntl_seals_only_the_two_region_sets() {
+        for (arch, rules) in tables() {
+            let prog = program(arch, rules).unwrap();
+            let nr = if arch == ARCH_X86_64 { 72 } else { 25 };
+            let call = |cmd: u64, arg: u64| Call {
+                arch,
+                nr,
+                args: [5, cmd, arg, 0, 0, 0],
+            };
+            for ok in [
+                call(1, 0),
+                call(2, 1),
+                call(1034, 0),
+                call(1033, 9),
+                call(1033, 17),
+            ] {
+                assert_eq!(run(&prog, &ok), Ok(RET_ALLOW), "{ok:?}");
+            }
+            // F_SETFL (4), F_DUPFD (0), seals alone or with grow, shrink
+            // or exec, any other set.
+            for no in [
+                call(4, 0),
+                call(0, 10),
+                call(1033, 8),
+                call(1033, 16),
+                call(1033, 1),
+                call(1033, 0x26),
+                call(1033, 9 | 2),
+                call(1033, 0),
+            ] {
+                assert_eq!(run(&prog, &no), Ok(RET_DENY), "{no:?}");
+            }
+        }
+    }
+
+    /// D6 review M5: no executable mapping, by `mmap` or `mprotect`.
+    #[test]
+    fn nothing_is_mapped_executable() {
+        for (arch, rules) in tables() {
+            let prog = program(arch, rules).unwrap();
+            let (mmap, mprotect) = if arch == ARCH_X86_64 {
+                (9, 10)
+            } else {
+                (222, 226)
+            };
+            for nr in [mmap, mprotect] {
+                let call = |prot: u64| Call {
+                    arch,
+                    nr,
+                    args: [0, 4096, prot, 1, 0, 0],
+                };
+                for ok in [0, 1, 3] {
+                    assert_eq!(run(&prog, &call(ok)), Ok(RET_ALLOW));
+                }
+                for no in [4, 5, 7, (1 << 32) | 4] {
+                    assert_eq!(run(&prog, &call(no)), Ok(RET_DENY), "{nr} {no:#x}");
+                }
+            }
         }
     }
 
