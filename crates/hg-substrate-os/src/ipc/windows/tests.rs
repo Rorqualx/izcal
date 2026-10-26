@@ -721,6 +721,54 @@ fn a_dead_creators_channel_is_still_keyed() {
     assert_ne!(key.creator, BROKER);
 }
 
+/// Items 2, 3: Windows reuses a handle value once its end is closed, so a
+/// redeem can hand a child a value that an end awaiting its `Closed` still
+/// occupies. The control link delivers the child's records in order and a
+/// value is reused only after the child closed the end that held it, so
+/// the broker releases grants at a shared value oldest first and a
+/// `Closed` never frees the wrong channel's end.
+#[test]
+fn a_reused_handle_value_releases_grants_oldest_first() {
+    use super::{Broker, PipeEnd, PipeKey};
+    use crate::ipc::win::ledger::Ledger;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let mut b = Broker {
+        ledger: Ledger::default(),
+        held: BTreeMap::new(),
+        children: BTreeMap::new(),
+        reserved_sids: BTreeSet::new(),
+        creator_sids: BTreeMap::new(),
+        given: BTreeMap::new(),
+        own: BTreeMap::new(),
+        next_proc: 9,
+    };
+    let who = 7;
+    let value = 0x40;
+    let first = (
+        PipeKey {
+            creator: who,
+            id: [1u8; 16],
+        },
+        PipeEnd::Sender,
+    );
+    let second = (
+        PipeKey {
+            creator: who,
+            id: [2u8; 16],
+        },
+        PipeEnd::Receiver,
+    );
+    // The older end is granted at the value; the newer end reuses the same
+    // value after the older was closed but before its `Closed` is read.
+    b.grant(who, value, first.0, first.1);
+    b.grant(who, value, second.0, second.1);
+    // Each `Closed` for the value frees the oldest outstanding grant.
+    assert_eq!(b.take_grant(who, value), Some(first));
+    assert_eq!(b.take_grant(who, value), Some(second));
+    assert_eq!(b.take_grant(who, value), None);
+}
+
 /// Item 1 (M8): a child that will not drain its control link cannot make
 /// the broker buffer records without bound. Flooding the broker's queue
 /// to a child past the cap drops that child's link.

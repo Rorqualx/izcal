@@ -265,8 +265,13 @@ struct Broker {
     reserved_sids: BTreeSet<String>,
     /// Channel ends the broker gave each process, by the end's handle
     /// value there, so a process's `Closed` releases the ledger entry
-    /// (items 2, 3).
-    given: BTreeMap<(Proc, u64), (PipeKey, PipeEnd)>,
+    /// (items 2, 3). A handle value is reused after its end is closed, so
+    /// each value holds a FIFO of the grants made at it, oldest first: a
+    /// redeem pushes, a `Closed` pops the front. The control link delivers
+    /// a process's records in order, and a grant can only reuse a value
+    /// whose end the process already closed, so the front is always the
+    /// grant the next `Closed` for that value refers to.
+    given: BTreeMap<(Proc, u64), Vec<(PipeKey, PipeEnd)>>,
     /// The broker's own ledgered ends, by their transport id, so it can
     /// release one it closes without re-deriving the channel from the
     /// handle (a client end reports no queryable name, items 2, 3).
@@ -281,6 +286,29 @@ struct Broker {
 }
 
 impl Broker {
+    /// Records that `who` was given `end` of `pipe` at handle value
+    /// `value`, appending to that value's FIFO so a later reuse of the
+    /// value queues behind an end still awaiting its `Closed` (items 2,
+    /// 3).
+    fn grant(&mut self, who: Proc, value: u64, pipe: PipeKey, end: PipeEnd) {
+        self.given
+            .entry((who, value))
+            .or_default()
+            .push((pipe, end));
+    }
+
+    /// Removes and returns the oldest grant `who` holds at handle value
+    /// `value`, which a `Closed` for that value refers to, or `None` if
+    /// the broker gave it none.
+    fn take_grant(&mut self, who: Proc, value: u64) -> Option<(PipeKey, PipeEnd)> {
+        let grants = self.given.get_mut(&(who, value))?;
+        let g = grants.remove(0);
+        if grants.is_empty() {
+            self.given.remove(&(who, value));
+        }
+        Some(g)
+    }
+
     /// Whether a live child or a launch in progress already holds `sid`.
     fn sid_in_use(&self, sid: &str) -> bool {
         self.reserved_sids.contains(sid)
@@ -805,7 +833,7 @@ impl Inner {
         match Items::from_slice(&items) {
             Some(items) if ok => {
                 for (v, pipe, end) in noted {
-                    b.given.insert((from, v), (pipe, end));
+                    b.grant(from, v, pipe, end);
                 }
                 Ctl::Redeemed { req, items }
             }
@@ -1060,10 +1088,11 @@ impl Inner {
             }
             Ctl::Closed { end } => {
                 // Resolved from the give map, so no handle is pulled and
-                // no kernel query blocks (items 2, 3). In the link's
-                // order, so a value reused by a later redeem is mapped
-                // only after this has run.
-                if let Some((pipe, which)) = b.given.remove(&(from, end)) {
+                // no kernel query blocks (items 2, 3). The oldest grant
+                // made at this handle value is the one being closed; a
+                // value reused by a later redeem sits behind it, so taking
+                // the front never closes the wrong channel's end.
+                if let Some((pipe, which)) = b.take_grant(from, end) {
                     b.ledger.close_end(pipe, which, from);
                     b.sweep();
                 }
