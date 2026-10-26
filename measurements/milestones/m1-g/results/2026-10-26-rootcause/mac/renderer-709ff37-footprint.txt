@@ -1,0 +1,36 @@
+======================================================================
+hg-renderer-main [92654]: 64-bit    Footprint: 4688 KB (16384 bytes per page)
+======================================================================
+
+  Dirty      Clean  Reclaimable    Regions    Category
+    ---        ---          ---        ---    ---
+2944 KB        0 B          0 B          4    Malloc Small
+ 480 KB        0 B          0 B          9    Malloc Metadata
+ 352 KB        0 B          0 B          1    page table
+ 291 KB        0 B          0 B        287    __DATA_DIRTY
+ 144 KB        0 B          0 B         12    Stack
+ 125 KB        0 B          0 B        336    __DATA
+  96 KB        0 B          0 B          1    Malloc Tiny
+  65 KB        0 B          0 B        969    unused dyld shared cache area
+  48 KB        0 B          0 B          4    __TPRO_CONST
+  47 KB        0 B          0 B          1    __OBJC_RW
+  32 KB        0 B          0 B         16    Untagged
+  16 KB        0 B          0 B          1    Deferred Reclaim
+  16 KB        0 B          0 B        326    __DATA_CONST
+  16 KB        0 B          0 B          1    Malloc Nano
+  16 KB        0 B          0 B          1    OS Alloc Once
+   48 B        0 B          0 B        168    __AUTH
+    0 B     336 KB          0 B        392    __TEXT
+    0 B      32 KB          0 B          2    __LINKEDIT
+    0 B        0 B          0 B          1    __CTF
+    0 B        0 B          0 B        328    __AUTH_CONST
+    0 B        0 B          0 B          1    __FONT_DATA
+    0 B        0 B          0 B          1    __OBJC_RO
+    0 B        0 B          0 B          1    mapped file
+    ---        ---          ---        ---    ---
+4688 KB     368 KB          0 B       2865    TOTAL
+
+Auxiliary data:
+    phys_footprint: 4688 KB
+    phys_footprint_peak: 4688 KB
+

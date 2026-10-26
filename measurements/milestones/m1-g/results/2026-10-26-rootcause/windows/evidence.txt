@@ -1,0 +1,16 @@
+base warm: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:48:37-06:00 (exit 0)
+base fresh: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:48:41-06:00 (exit 0)
+gui warm: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 3% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:48:49-06:00 (exit 0)
+gui fresh: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 3% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:48:53-06:00 (exit 0)
+spares warm: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:49:01-06:00 (exit 0)
+spares fresh: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:49:04-06:00 (exit 0)
+fresh phases: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:49:33-06:00
+fresh av: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 3% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:49:58-06:00
+fresh pre-exec: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:50:19-06:00
+windows memory (spares build): rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:50:49-06:00
+rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T16:07:03-06:00
+rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T16:07:07-06:00
+final warm: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T16:07:10-06:00
+final fresh: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T16:07:16-06:00
+prewarm (console build, profile strategy): rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 0% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:39:13-06:00
+reuse (console build, profile strategy): rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 0% (32 cpus) | bookings: b-2ac71e exclusive cpu by m1-substrate until 17:35 | game lock: free q0 | 2026-10-26T15:39:14-06:00

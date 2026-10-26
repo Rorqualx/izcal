@@ -1,0 +1,8 @@
+rig253, 26 Oct 2026 ~15:41 -06:00, exclusive booking b-2ac71e; harness/g-conhost-windows.ps1 on the
+measure-launch build of the console-subsystem children (before b3a821e). Children of the hold's broker,
+and each child's own children (Win32_Process ParentProcessId):
+child 19280 conhost.exe            (the tool's own console, started by PowerShell)
+child 14452 hg-net-main.exe
+   grandchild 19484 conhost.exe private=944 KiB ws=6196 KiB
+child 9164 hg-renderer-main.exe
+   grandchild 31536 conhost.exe private=944 KiB ws=6196 KiB

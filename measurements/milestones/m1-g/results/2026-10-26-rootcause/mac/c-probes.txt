@@ -1,0 +1,24 @@
+== sbx-cost (C, libSystem only)
+start                        footprint=  1200 KiB  malloc in_use=     9 KiB touched=     0 KiB
+after sandbox_init           footprint=  4032 KiB  malloc in_use=    16 KiB touched=     0 KiB
+pressure_relief returned 0 bytes
+after pressure_relief        footprint=  4032 KiB  malloc in_use=    16 KiB touched=     0 KiB
+== sbx-cost-cf (C, + CoreFoundation + Security)
+start                        footprint=  1712 KiB  malloc in_use=    78 KiB touched=     0 KiB
+after sandbox_init           footprint=  4528 KiB  malloc in_use=    82 KiB touched=     0 KiB
+pressure_relief returned 0 bytes
+after pressure_relief        footprint=  4528 KiB  malloc in_use=    82 KiB touched=     0 KiB
+== sbx-cost2 pin (80 KiB calloc after sandbox_init, then malloc_zone_pressure_relief)
+start                        footprint=  1184 KiB  malloc in_use=     9 KiB touched=     0 KiB
+after sandbox_init           footprint=  4048 KiB  malloc in_use=    16 KiB touched=     0 KiB
+after 80K calloc (pin)       footprint=  4048 KiB  malloc in_use=    16 KiB touched=     0 KiB
+pressure_relief returned 0 KiB
+after pressure_relief        footprint=  4048 KiB  malloc in_use=    16 KiB touched=     0 KiB
+2 s later                    footprint=  4048 KiB  malloc in_use=    16 KiB touched=     0 KiB
+== sbx-exec (sandbox_init with an exec grant, then execv of itself; second sandbox_init in the new image)
+parent: after sandbox_init footprint=4080 KiB
+child: footprint=1184 KiB sandboxed=1 file-read(/etc/hosts)=D
+sandbox initialization failed: Operation not permitted
+child: second sandbox_init rc=-1 (Operation not permitted) footprint=4032 KiB file-read(/usr/lib/dyld)=A
+== selfmap (unsandboxed C)
+PROC_PIDREGIONINFO walk: 58 entries; top-level map entries: 58 (19 submaps)
