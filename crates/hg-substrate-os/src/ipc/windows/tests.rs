@@ -706,3 +706,40 @@ fn a_dead_creators_channel_is_still_keyed() {
     assert_eq!(key.creator, 7);
     assert_ne!(key.creator, BROKER);
 }
+
+/// Item 1 (M8): a child that will not drain its control link cannot make
+/// the broker buffer records without bound. Flooding the broker's queue
+/// to a child past the cap drops that child's link.
+#[test]
+fn a_child_that_will_not_read_its_link_is_dropped() {
+    let r = rig();
+    let c = launch(&r, "echo", false);
+    {
+        let mut st = r.ipc.inner.lock();
+        let link_id = st
+            .broker
+            .as_ref()
+            .and_then(|b| b.children.values().next())
+            .map(|c| c.link)
+            .expect("the child has a link");
+        if let Some(e) = st.ends.get_mut(&link_id)
+            && let super::Role::Link { out, .. } = &mut e.role
+        {
+            for _ in 0..=super::MAX_LINK_BACKLOG {
+                out.push_back(Vec::new());
+            }
+        }
+    }
+    r.ipc.inner.wake();
+    let gone = (0..200).any(|_| {
+        std::thread::sleep(Duration::from_millis(25));
+        r.ipc
+            .inner
+            .lock()
+            .broker
+            .as_ref()
+            .is_some_and(|b| b.children.is_empty())
+    });
+    assert!(gone, "the broker kept a child that would not read its link");
+    drop(c);
+}

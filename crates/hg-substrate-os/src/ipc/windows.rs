@@ -139,6 +139,11 @@ const CREDIT_READ: usize = CREDIT_LEN;
 /// The broker's own process number in its ledger.
 const BROKER: Proc = 0;
 
+/// The most control records the broker queues for a child that is not
+/// reading its link before the broker gives up on that child (M8): a
+/// child cannot make the broker buffer without bound.
+const MAX_LINK_BACKLOG: usize = 4096;
+
 /// One item for a listener.
 enum Item {
     Message(Vec<u8>, Vec<Handle>),
@@ -1076,11 +1081,23 @@ impl Inner {
             self.advance_carry(st, id, &mut deadline, &mut later);
         }
         let ids: Vec<u64> = st.ends.keys().copied().collect();
+        let is_broker = st.broker.is_some();
         let mut lost_links: Vec<Proc> = Vec::new();
         for id in ids {
             let Some(end) = st.ends.get_mut(&id) else {
                 continue;
             };
+            // A child that will not drain its link cannot make the broker
+            // buffer without bound: drop the link past the cap (M8). Only
+            // the broker enforces this (a child never drops its own link
+            // to the broker).
+            if is_broker
+                && let Role::Link { proc, out } = &end.role
+                && out.len() > MAX_LINK_BACKLOG
+            {
+                lost_links.push(*proc);
+                continue;
+            }
             let mut credit = None;
             let (read, write): (Option<usize>, Option<Vec<u8>>) = match &mut end.role {
                 Role::Sender {
