@@ -10,11 +10,12 @@
 //! CS-TY-12) although the crate is tier O: they parse what a peer sends.
 //! The lints below enforce that here until the generated tier table does.
 
-// Only the Linux transport calls this code outside the tests and the
-// Kani harnesses until the macOS and Windows transports (D4, D5) do.
+// Outside the tests and the Kani harnesses, the Linux and Windows
+// transports use all of this code; the macOS transport uses only part
+// of it, so on macOS (and any OS without a transport) some is unused.
 #![cfg_attr(
-    not(any(test, kani, target_os = "linux")),
-    expect(dead_code, reason = "only the Linux transport uses it until D4 and D5")
+    not(any(test, kani, target_os = "linux", windows)),
+    expect(dead_code, reason = "the macOS transport uses only part of it")
 )]
 #![deny(
     clippy::unwrap_used,

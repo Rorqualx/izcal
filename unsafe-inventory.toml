@@ -16,6 +16,7 @@ entries = [
   "memory",                     # ledger-checked calls into os::vm, and the test's page write
   "ipc::linux::sys",            # the Linux IPC transport's socket, sendmsg/recvmsg (SCM_RIGHTS), epoll and eventfd calls
   "ipc::macos::sys",            # the macOS IPC transport's Mach port and mach_msg calls, posix_spawn with a bootstrap port
+  "ipc::windows::sys",          # the Windows IPC transport's named pipes, ReadFileEx/WriteFileEx, DuplicateHandle and child start
 ]
 
 [crates.hg-ipc]
