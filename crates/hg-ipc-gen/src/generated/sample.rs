@@ -764,14 +764,14 @@ fn verify_strict_nothing_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `sample.Strict.nothing` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 2 bytes (its encodings are 2
-/// to 2); loops unwound 2 times.
+/// VER-1 for `sample.Strict.nothing` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 2 bytes (its encodings are
+/// 2 to 2); loops unwound 2 times. Its round trip is
+/// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_strict_nothing_round_trip() {
+fn verify_strict_nothing_decodes() {
     let bytes: [u8; 0] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 0);
     let Some(input) = bytes.get(..len) else {
@@ -780,12 +780,24 @@ fn verify_strict_nothing_round_trip() {
     let mut r = Reader::new(input);
     let decoded = Strict::decode_nothing(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Strict.nothing` (IPC-R6): every accepted
+/// input of layout 0 (0 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_strict_nothing_round_trip_0() {
+    let bytes: [u8; 0] = kani::any();
+    let mut r = Reader::new(&bytes);
+    let decoded = Strict::decode_nothing(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok(()) = decoded {
         let mut w = Writer::new();
         0u16.encode(&mut w);
         Strict::encode_nothing(&mut w);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 0 + 2);
         assert!(out.first() == Some(&0));
         assert!(out.get(1) == Some(&0));
     }
@@ -808,14 +820,14 @@ fn verify_strict_scalars_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `sample.Strict.scalars` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 42 bytes (its encodings are 42
-/// to 42); loops unwound 2 times.
+/// VER-1 for `sample.Strict.scalars` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 42 bytes (its encodings are
+/// 42 to 42); loops unwound 2 times. Its round trip is
+/// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_strict_scalars_round_trip() {
+fn verify_strict_scalars_decodes() {
     let bytes: [u8; 40] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 40);
     let Some(input) = bytes.get(..len) else {
@@ -824,134 +836,66 @@ fn verify_strict_scalars_round_trip() {
     let mut r = Reader::new(input);
     let decoded = Strict::decode_scalars(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Strict.scalars` (IPC-R6): every accepted
+/// input of layout 0 (40 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_strict_scalars_round_trip_0() {
+    let bytes: [u8; 40] = kani::any();
+    let mut r = Reader::new(&bytes);
+    let decoded = Strict::decode_scalars(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((value,)) = decoded {
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Strict::encode_scalars(&mut w, &value);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 40 + 2);
         assert!(out.first() == Some(&1));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
-        if len > 22 {
-            assert!(out.get(24) == bytes.get(22));
-        }
-        if len > 23 {
-            assert!(out.get(25) == bytes.get(23));
-        }
-        if len > 24 {
-            assert!(out.get(26) == bytes.get(24));
-        }
-        if len > 25 {
-            assert!(out.get(27) == bytes.get(25));
-        }
-        if len > 26 {
-            assert!(out.get(28) == bytes.get(26));
-        }
-        if len > 27 {
-            assert!(out.get(29) == bytes.get(27));
-        }
-        if len > 28 {
-            assert!(out.get(30) == bytes.get(28));
-        }
-        if len > 29 {
-            assert!(out.get(31) == bytes.get(29));
-        }
-        if len > 30 {
-            assert!(out.get(32) == bytes.get(30));
-        }
-        if len > 31 {
-            assert!(out.get(33) == bytes.get(31));
-        }
-        if len > 32 {
-            assert!(out.get(34) == bytes.get(32));
-        }
-        if len > 33 {
-            assert!(out.get(35) == bytes.get(33));
-        }
-        if len > 34 {
-            assert!(out.get(36) == bytes.get(34));
-        }
-        if len > 35 {
-            assert!(out.get(37) == bytes.get(35));
-        }
-        if len > 36 {
-            assert!(out.get(38) == bytes.get(36));
-        }
-        if len > 37 {
-            assert!(out.get(39) == bytes.get(37));
-        }
-        if len > 38 {
-            assert!(out.get(40) == bytes.get(38));
-        }
-        if len > 39 {
-            assert!(out.get(41) == bytes.get(39));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+        assert!(out.get(24) == bytes.get(22));
+        assert!(out.get(25) == bytes.get(23));
+        assert!(out.get(26) == bytes.get(24));
+        assert!(out.get(27) == bytes.get(25));
+        assert!(out.get(28) == bytes.get(26));
+        assert!(out.get(29) == bytes.get(27));
+        assert!(out.get(30) == bytes.get(28));
+        assert!(out.get(31) == bytes.get(29));
+        assert!(out.get(32) == bytes.get(30));
+        assert!(out.get(33) == bytes.get(31));
+        assert!(out.get(34) == bytes.get(32));
+        assert!(out.get(35) == bytes.get(33));
+        assert!(out.get(36) == bytes.get(34));
+        assert!(out.get(37) == bytes.get(35));
+        assert!(out.get(38) == bytes.get(36));
+        assert!(out.get(39) == bytes.get(37));
+        assert!(out.get(40) == bytes.get(38));
+        assert!(out.get(41) == bytes.get(39));
     }
 }
 
@@ -1268,14 +1212,14 @@ fn verify_loose_tick_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `sample.Loose.tick` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 3 bytes (its encodings are 3
-/// to 3); loops unwound 2 times.
+/// VER-1 for `sample.Loose.tick` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 3 bytes (its encodings are
+/// 3 to 3); loops unwound 2 times. Its round trip is
+/// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_loose_tick_round_trip() {
+fn verify_loose_tick_decodes() {
     let bytes: [u8; 1] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 1);
     let Some(input) = bytes.get(..len) else {
@@ -1284,17 +1228,27 @@ fn verify_loose_tick_round_trip() {
     let mut r = Reader::new(input);
     let decoded = Loose::decode_tick(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Loose.tick` (IPC-R6): every accepted
+/// input of layout 0 (1 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_loose_tick_round_trip_0() {
+    let bytes: [u8; 1] = kani::any();
+    let mut r = Reader::new(&bytes);
+    let decoded = Loose::decode_tick(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((value,)) = decoded {
         let mut w = Writer::new();
         0u16.encode(&mut w);
         Loose::encode_tick(&mut w, &value);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 1 + 2);
         assert!(out.first() == Some(&0));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
+        assert!(out.get(2) == bytes.get(0));
     }
 }
 
@@ -1315,14 +1269,14 @@ fn verify_loose_maybe_event_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `sample.Loose.maybe_event` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 12 bytes (its encodings are 3
-/// to 12); loops unwound 2 times.
+/// VER-1 for `sample.Loose.maybe_event` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 12 bytes (its encodings are
+/// 3 to 12); loops unwound 2 times. Its round trip is
+/// proved per layout below (4 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_loose_maybe_event_round_trip() {
+fn verify_loose_maybe_event_decodes() {
     let bytes: [u8; 10] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 10);
     let Some(input) = bytes.get(..len) else {
@@ -1331,44 +1285,162 @@ fn verify_loose_maybe_event_round_trip() {
     let mut r = Reader::new(input);
     let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Loose.maybe_event` (IPC-R6): every accepted
+/// input of layout 0 (1 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_loose_maybe_event_round_trip_0() {
+    let mut bytes: [u8; 1] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((event,)) = decoded {
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Loose::encode_maybe_event(&mut w, &event);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 1 + 2);
         assert!(out.first() == Some(&1));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
+        assert!(out.get(2) == bytes.get(0));
+    }
+}
+
+/// VER-1 for `sample.Loose.maybe_event` (IPC-R6): every accepted
+/// input of layout 1 (5 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_loose_maybe_event_round_trip_1() {
+    let mut bytes: [u8; 5] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((event,)) = decoded {
+        let mut w = Writer::new();
+        1u16.encode(&mut w);
+        Loose::encode_maybe_event(&mut w, &event);
+        let out = w.into_bytes();
+        assert!(out.len() == 5 + 2);
+        assert!(out.first() == Some(&1));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+    }
+}
+
+/// VER-1 for `sample.Loose.maybe_event` (IPC-R6): every accepted
+/// input of layout 2 (10 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_loose_maybe_event_round_trip_2() {
+    let mut bytes: [u8; 10] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((event,)) = decoded {
+        let mut w = Writer::new();
+        1u16.encode(&mut w);
+        Loose::encode_maybe_event(&mut w, &event);
+        let out = w.into_bytes();
+        assert!(out.len() == 10 + 2);
+        assert!(out.first() == Some(&1));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+    }
+}
+
+/// VER-1 for `sample.Loose.maybe_event` (IPC-R6): every accepted
+/// input of layout 3 (9 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_loose_maybe_event_round_trip_3() {
+    let mut bytes: [u8; 9] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((event,)) = decoded {
+        let mut w = Writer::new();
+        1u16.encode(&mut w);
+        Loose::encode_maybe_event(&mut w, &event);
+        let out = w.into_bytes();
+        assert!(out.len() == 9 + 2);
+        assert!(out.first() == Some(&1));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
     }
 }
 
@@ -1660,14 +1732,14 @@ fn verify_handles_connect_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `sample.Handles.connect` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 3 bytes (its encodings are 3
-/// to 3); loops unwound 2 times.
+/// VER-1 for `sample.Handles.connect` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 3 bytes (its encodings are
+/// 3 to 3); loops unwound 2 times. Its round trip is
+/// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_handles_connect_round_trip() {
+fn verify_handles_connect_decodes() {
     let bytes: [u8; 1] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 1);
     let Some(input) = bytes.get(..len) else {
@@ -1676,17 +1748,27 @@ fn verify_handles_connect_round_trip() {
     let mut r = Reader::new(input);
     let decoded = Handles::decode_connect(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Handles.connect` (IPC-R6): every accepted
+/// input of layout 0 (1 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_handles_connect_round_trip_0() {
+    let bytes: [u8; 1] = kani::any();
+    let mut r = Reader::new(&bytes);
+    let decoded = Handles::decode_connect(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((note,)) = decoded {
         let mut w = Writer::new();
         0u16.encode(&mut w);
         Handles::encode_connect(&mut w, &note);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 1 + 2);
         assert!(out.first() == Some(&0));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
+        assert!(out.get(2) == bytes.get(0));
     }
 }
 
@@ -1707,14 +1789,14 @@ fn verify_handles_hand_over_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `sample.Handles.hand_over` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 2 bytes (its encodings are 2
-/// to 2); loops unwound 2 times.
+/// VER-1 for `sample.Handles.hand_over` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 2 bytes (its encodings are
+/// 2 to 2); loops unwound 2 times. Its round trip is
+/// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_handles_hand_over_round_trip() {
+fn verify_handles_hand_over_decodes() {
     let bytes: [u8; 0] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 0);
     let Some(input) = bytes.get(..len) else {
@@ -1723,12 +1805,24 @@ fn verify_handles_hand_over_round_trip() {
     let mut r = Reader::new(input);
     let decoded = Handles::decode_hand_over(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `sample.Handles.hand_over` (IPC-R6): every accepted
+/// input of layout 0 (0 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_handles_hand_over_round_trip_0() {
+    let bytes: [u8; 0] = kani::any();
+    let mut r = Reader::new(&bytes);
+    let decoded = Handles::decode_hand_over(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok(()) = decoded {
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Handles::encode_hand_over(&mut w);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 0 + 2);
         assert!(out.first() == Some(&1));
         assert!(out.get(1) == Some(&0));
     }

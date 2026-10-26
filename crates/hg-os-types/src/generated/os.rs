@@ -3338,14 +3338,14 @@ fn verify_os_input_default_status_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsInput.default_status` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 7
-/// to 71); loops unwound 9 times.
+/// VER-1 for `os.OsInput.default_status` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 7 to 71); loops unwound 4 times. Its round trip is
+/// proved per layout below (5 layouts).
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(9)]
-fn verify_os_input_default_status_round_trip() {
+#[kani::unwind(4)]
+fn verify_os_input_default_status_decodes() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
     let Some(input) = bytes.get(..len) else {
@@ -3354,89 +3354,267 @@ fn verify_os_input_default_status_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsInput::decode_default_status(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsInput.default_status` (IPC-R6): every accepted
+/// input of layout 0 (5 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(4)]
+fn verify_os_input_default_status_round_trip_0() {
+    let mut bytes: [u8; 5] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_default_status(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((call, types)) = decoded {
         let mut w = Writer::new();
         1u16.encode(&mut w);
         OsInput::encode_default_status(&mut w, &call, &types);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 5 + 2);
         assert!(out.first() == Some(&1));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+    }
+}
+
+/// VER-1 for `os.OsInput.default_status` (IPC-R6): every accepted
+/// input of layout 1 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(4)]
+fn verify_os_input_default_status_round_trip_1() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_default_status(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, types)) = decoded {
+        let mut w = Writer::new();
+        1u16.encode(&mut w);
+        OsInput::encode_default_status(&mut w, &call, &types);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&1));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `os.OsInput.default_status` (IPC-R6): every accepted
+/// input of layout 2 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(4)]
+fn verify_os_input_default_status_round_trip_2() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_default_status(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, types)) = decoded {
+        let mut w = Writer::new();
+        1u16.encode(&mut w);
+        OsInput::encode_default_status(&mut w, &call, &types);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&1));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsInput.default_status` (IPC-R6): every accepted
+/// input of layout 3 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(4)]
+fn verify_os_input_default_status_round_trip_3() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_default_status(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, types)) = decoded {
+        let mut w = Writer::new();
+        1u16.encode(&mut w);
+        OsInput::encode_default_status(&mut w, &call, &types);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&1));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `os.OsInput.default_status` (IPC-R6): every accepted
+/// input of layout 4 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(4)]
+fn verify_os_input_default_status_round_trip_4() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_default_status(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, types)) = decoded {
+        let mut w = Writer::new();
+        1u16.encode(&mut w);
+        OsInput::encode_default_status(&mut w, &call, &types);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&1));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
     }
 }
 
 /// VER-1 for `os.OsInput.settings` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 42 to 2746); loops unwound 64 times.
+/// 64 bytes (its encodings are 42 to 2746); loops unwound 34 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(64)]
+#[kani::unwind(34)]
 fn verify_os_input_settings_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -3492,14 +3670,14 @@ fn verify_os_input_time_zone_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsInput.time_zone` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 7
-/// to 79); loops unwound 24 times.
+/// VER-1 for `os.OsInput.time_zone` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 7 to 79); loops unwound 24 times. Its round trip is
+/// proved per layout below (28 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(24)]
-fn verify_os_input_time_zone_round_trip() {
+fn verify_os_input_time_zone_decodes() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
     let Some(input) = bytes.get(..len) else {
@@ -3508,80 +3686,1431 @@ fn verify_os_input_time_zone_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 0 (5 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_0() {
+    let mut bytes: [u8; 5] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((call, zone)) = decoded {
         let mut w = Writer::new();
         4u16.encode(&mut w);
         OsInput::encode_time_zone(&mut w, &call, &zone);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 5 + 2);
         assert!(out.first() == Some(&4));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 1 (6 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_1() {
+    let mut bytes: [u8; 6] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 6 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 2 (7 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_2() {
+    let mut bytes: [u8; 7] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 7 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 3 (8 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_3() {
+    let mut bytes: [u8; 8] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 8 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 4 (9 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_4() {
+    let mut bytes: [u8; 9] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 9 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 5 (10 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_5() {
+    let mut bytes: [u8; 10] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 10 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 6 (11 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_6() {
+    let mut bytes: [u8; 11] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 11 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 7 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_7() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 7;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 8 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_8() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 8;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 9 (14 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_9() {
+    let mut bytes: [u8; 14] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 9;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 14 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 10 (15 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_10() {
+    let mut bytes: [u8; 15] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 10;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 15 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 11 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_11() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 11;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 16 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 12 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_12() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 12;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 13 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_13() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 13;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 14 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_14() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 14;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 15 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_15() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 15;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 16 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_16() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 16;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 17 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_17() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 17;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 18 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_18() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 19 (14 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_19() {
+    let mut bytes: [u8; 14] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 14 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 20 (15 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_20() {
+    let mut bytes: [u8; 15] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 15 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 21 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_21() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 16 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 22 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_22() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 23 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_23() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 24 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_24() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 25 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_25() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 7;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 26 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_26() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 8;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsInput.time_zone` (IPC-R6): every accepted
+/// input of layout 27 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_input_time_zone_round_trip_27() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 9;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_time_zone(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, zone)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsInput::encode_time_zone(&mut w, &call, &zone);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
     }
 }
 
@@ -3602,14 +5131,14 @@ fn verify_os_input_hardware_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsInput.hardware` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 19 bytes (its encodings are 11
-/// to 19); loops unwound 2 times.
+/// VER-1 for `os.OsInput.hardware` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 19 bytes (its encodings are
+/// 11 to 19); loops unwound 2 times. Its round trip is
+/// proved per layout below (2 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_os_input_hardware_round_trip() {
+fn verify_os_input_hardware_decodes() {
     let bytes: [u8; 17] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 17);
     let Some(input) = bytes.get(..len) else {
@@ -3618,74 +5147,88 @@ fn verify_os_input_hardware_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsInput::decode_hardware(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsInput.hardware` (IPC-R6): every accepted
+/// input of layout 0 (9 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_hardware_round_trip_0() {
+    let mut bytes: [u8; 9] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_hardware(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((call, logical_cores, memory_gib, isa)) = decoded {
         let mut w = Writer::new();
         5u16.encode(&mut w);
         OsInput::encode_hardware(&mut w, &call, &logical_cores, &memory_gib, &isa);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 9 + 2);
         assert!(out.first() == Some(&5));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+    }
+}
+
+/// VER-1 for `os.OsInput.hardware` (IPC-R6): every accepted
+/// input of layout 1 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_hardware_round_trip_1() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_hardware(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, logical_cores, memory_gib, isa)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsInput::encode_hardware(&mut w, &call, &logical_cores, &memory_gib, &isa);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
     }
 }
 
 /// VER-1 for `os.OsInput.displays` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 7 to 799); loops unwound 18 times.
+/// 64 bytes (its encodings are 7 to 799); loops unwound 3 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(18)]
+#[kani::unwind(3)]
 fn verify_os_input_displays_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -3697,14 +5240,14 @@ fn verify_os_input_displays_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsInput.displays` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 7
-/// to 799); loops unwound 18 times.
+/// VER-1 for `os.OsInput.displays` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 7 to 799); loops unwound 2 times. Its round trip is
+/// proved per layout below (2 layouts).
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(18)]
-fn verify_os_input_displays_round_trip() {
+#[kani::unwind(2)]
+fn verify_os_input_displays_decodes() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
     let Some(input) = bytes.get(..len) else {
@@ -3713,80 +5256,95 @@ fn verify_os_input_displays_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsInput::decode_displays(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsInput.displays` (IPC-R6): every accepted
+/// input of layout 0 (5 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_displays_round_trip_0() {
+    let mut bytes: [u8; 5] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_displays(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((call, monitors)) = decoded {
         let mut w = Writer::new();
         6u16.encode(&mut w);
         OsInput::encode_displays(&mut w, &call, &monitors);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 5 + 2);
         assert!(out.first() == Some(&6));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+    }
+}
+
+/// VER-1 for `os.OsInput.displays` (IPC-R6): every accepted
+/// input of layout 1 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_displays_round_trip_1() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_displays(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, monitors)) = decoded {
+        let mut w = Writer::new();
+        6u16.encode(&mut w);
+        OsInput::encode_displays(&mut w, &call, &monitors);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&6));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
     }
 }
 
@@ -3807,14 +5365,14 @@ fn verify_os_input_power_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsInput.power` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 7
-/// to 31); loops unwound 2 times.
+/// VER-1 for `os.OsInput.power` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 7 to 31); loops unwound 2 times. Its round trip is
+/// proved per layout below (6 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_os_input_power_round_trip() {
+fn verify_os_input_power_decodes() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
     let Some(input) = bytes.get(..len) else {
@@ -3823,80 +5381,311 @@ fn verify_os_input_power_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsInput::decode_power(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsInput.power` (IPC-R6): every accepted
+/// input of layout 0 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_power_round_trip_0() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_power(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((call, event)) = decoded {
         let mut w = Writer::new();
         7u16.encode(&mut w);
         OsInput::encode_power(&mut w, &call, &event);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 21 + 2);
         assert!(out.first() == Some(&7));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsInput.power` (IPC-R6): every accepted
+/// input of layout 1 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_power_round_trip_1() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_power(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, event)) = decoded {
+        let mut w = Writer::new();
+        7u16.encode(&mut w);
+        OsInput::encode_power(&mut w, &call, &event);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&7));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsInput.power` (IPC-R6): every accepted
+/// input of layout 2 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_power_round_trip_2() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_power(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, event)) = decoded {
+        let mut w = Writer::new();
+        7u16.encode(&mut w);
+        OsInput::encode_power(&mut w, &call, &event);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&7));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsInput.power` (IPC-R6): every accepted
+/// input of layout 3 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_power_round_trip_3() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_power(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, event)) = decoded {
+        let mut w = Writer::new();
+        7u16.encode(&mut w);
+        OsInput::encode_power(&mut w, &call, &event);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&7));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsInput.power` (IPC-R6): every accepted
+/// input of layout 4 (5 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_power_round_trip_4() {
+    let mut bytes: [u8; 5] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_power(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, event)) = decoded {
+        let mut w = Writer::new();
+        7u16.encode(&mut w);
+        OsInput::encode_power(&mut w, &call, &event);
+        let out = w.into_bytes();
+        assert!(out.len() == 5 + 2);
+        assert!(out.first() == Some(&7));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+    }
+}
+
+/// VER-1 for `os.OsInput.power` (IPC-R6): every accepted
+/// input of layout 5 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_input_power_round_trip_5() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsInput::decode_power(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((call, event)) = decoded {
+        let mut w = Writer::new();
+        7u16.encode(&mut w);
+        OsInput::encode_power(&mut w, &call, &event);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&7));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
     }
 }
 
@@ -4713,14 +6502,14 @@ fn verify_os_command_query_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsCommand.query` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 6 bytes (its encodings are 6
-/// to 6); loops unwound 2 times.
+/// VER-1 for `os.OsCommand.query` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 6 bytes (its encodings are
+/// 6 to 6); loops unwound 2 times. Its round trip is
+/// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_os_command_query_round_trip() {
+fn verify_os_command_query_decodes() {
     let bytes: [u8; 4] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 4);
     let Some(input) = bytes.get(..len) else {
@@ -4729,26 +6518,30 @@ fn verify_os_command_query_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsCommand::decode_query(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsCommand.query` (IPC-R6): every accepted
+/// input of layout 0 (4 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_command_query_round_trip_0() {
+    let bytes: [u8; 4] = kani::any();
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_query(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((what,)) = decoded {
         let mut w = Writer::new();
         0u16.encode(&mut w);
         OsCommand::encode_query(&mut w, &what);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 4 + 2);
         assert!(out.first() == Some(&0));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
     }
 }
 
@@ -4769,14 +6562,14 @@ fn verify_os_command_ask_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsCommand.ask` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 6 bytes (its encodings are 6
-/// to 6); loops unwound 2 times.
+/// VER-1 for `os.OsCommand.ask` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 6 bytes (its encodings are
+/// 6 to 6); loops unwound 2 times. Its round trip is
+/// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_os_command_ask_round_trip() {
+fn verify_os_command_ask_decodes() {
     let bytes: [u8; 4] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 4);
     let Some(input) = bytes.get(..len) else {
@@ -4785,26 +6578,30 @@ fn verify_os_command_ask_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsCommand::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsCommand.ask` (IPC-R6): every accepted
+/// input of layout 0 (4 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_command_ask_round_trip_0() {
+    let bytes: [u8; 4] = kani::any();
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((what,)) = decoded {
         let mut w = Writer::new();
         1u16.encode(&mut w);
         OsCommand::encode_ask(&mut w, &what);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 4 + 2);
         assert!(out.first() == Some(&1));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
     }
 }
 
@@ -4825,14 +6622,14 @@ fn verify_os_command_register_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsCommand.register` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 27 bytes (its encodings are 27
-/// to 10355); loops unwound 27 times.
+/// VER-1 for `os.OsCommand.register` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 27 bytes (its encodings are
+/// 27 to 10355); loops unwound 27 times. Its round trip is
+/// proved per layout below (3 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(27)]
-fn verify_os_command_register_round_trip() {
+fn verify_os_command_register_decodes() {
     let bytes: [u8; 25] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 25);
     let Some(input) = bytes.get(..len) else {
@@ -4841,89 +6638,296 @@ fn verify_os_command_register_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsCommand::decode_register(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsCommand.register` (IPC-R6): every accepted
+/// input of layout 0 (25 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(27)]
+fn verify_os_command_register_round_trip_0() {
+    let mut bytes: [u8; 25] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(20) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(21) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(22) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(23) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(24) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_register(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((registration,)) = decoded {
         let mut w = Writer::new();
         2u16.encode(&mut w);
         OsCommand::encode_register(&mut w, &registration);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 25 + 2);
         assert!(out.first() == Some(&2));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
-        if len > 22 {
-            assert!(out.get(24) == bytes.get(22));
-        }
-        if len > 23 {
-            assert!(out.get(25) == bytes.get(23));
-        }
-        if len > 24 {
-            assert!(out.get(26) == bytes.get(24));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+        assert!(out.get(24) == bytes.get(22));
+        assert!(out.get(25) == bytes.get(23));
+        assert!(out.get(26) == bytes.get(24));
+    }
+}
+
+/// VER-1 for `os.OsCommand.register` (IPC-R6): every accepted
+/// input of layout 1 (25 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(27)]
+fn verify_os_command_register_round_trip_1() {
+    let mut bytes: [u8; 25] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(20) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(21) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(22) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(23) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(24) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_register(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((registration,)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        OsCommand::encode_register(&mut w, &registration);
+        let out = w.into_bytes();
+        assert!(out.len() == 25 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+        assert!(out.get(24) == bytes.get(22));
+        assert!(out.get(25) == bytes.get(23));
+        assert!(out.get(26) == bytes.get(24));
+    }
+}
+
+/// VER-1 for `os.OsCommand.register` (IPC-R6): every accepted
+/// input of layout 2 (25 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(27)]
+fn verify_os_command_register_round_trip_2() {
+    let mut bytes: [u8; 25] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(20) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(21) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(22) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(23) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(24) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_register(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((registration,)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        OsCommand::encode_register(&mut w, &registration);
+        let out = w.into_bytes();
+        assert!(out.len() == 25 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+        assert!(out.get(24) == bytes.get(22));
+        assert!(out.get(25) == bytes.get(23));
+        assert!(out.get(26) == bytes.get(24));
     }
 }
 
@@ -4944,14 +6948,14 @@ fn verify_os_command_hold_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsCommand.hold` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 19
-/// to 275); loops unwound 24 times.
+/// VER-1 for `os.OsCommand.hold` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 19 to 275); loops unwound 24 times. Its round trip is
+/// proved per layout below (6 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(24)]
-fn verify_os_command_hold_round_trip() {
+fn verify_os_command_hold_decodes() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
     let Some(input) = bytes.get(..len) else {
@@ -4960,80 +6964,320 @@ fn verify_os_command_hold_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsCommand::decode_hold(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsCommand.hold` (IPC-R6): every accepted
+/// input of layout 0 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_hold_round_trip_0() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_hold(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((what, hold_id, reason, take)) = decoded {
         let mut w = Writer::new();
         3u16.encode(&mut w);
         OsCommand::encode_hold(&mut w, &what, &hold_id, &reason, &take);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 17 + 2);
         assert!(out.first() == Some(&3));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsCommand.hold` (IPC-R6): every accepted
+/// input of layout 1 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_hold_round_trip_1() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_hold(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((what, hold_id, reason, take)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        OsCommand::encode_hold(&mut w, &what, &hold_id, &reason, &take);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `os.OsCommand.hold` (IPC-R6): every accepted
+/// input of layout 2 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_hold_round_trip_2() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_hold(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((what, hold_id, reason, take)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        OsCommand::encode_hold(&mut w, &what, &hold_id, &reason, &take);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsCommand.hold` (IPC-R6): every accepted
+/// input of layout 3 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_hold_round_trip_3() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_hold(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((what, hold_id, reason, take)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        OsCommand::encode_hold(&mut w, &what, &hold_id, &reason, &take);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsCommand.hold` (IPC-R6): every accepted
+/// input of layout 4 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_hold_round_trip_4() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_hold(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((what, hold_id, reason, take)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        OsCommand::encode_hold(&mut w, &what, &hold_id, &reason, &take);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.hold` (IPC-R6): every accepted
+/// input of layout 5 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_hold_round_trip_5() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_hold(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((what, hold_id, reason, take)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        OsCommand::encode_hold(&mut w, &what, &hold_id, &reason, &take);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
     }
 }
 
@@ -5054,14 +7298,14 @@ fn verify_os_command_post_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsCommand.post` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 18
-/// to 5138); loops unwound 24 times.
+/// VER-1 for `os.OsCommand.post` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 18 to 5138); loops unwound 24 times. Its round trip is
+/// proved per layout below (28 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(24)]
-fn verify_os_command_post_round_trip() {
+fn verify_os_command_post_decodes() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
     let Some(input) = bytes.get(..len) else {
@@ -5070,80 +7314,1825 @@ fn verify_os_command_post_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 0 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_0() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((notification, title, body)) = decoded {
         let mut w = Writer::new();
         4u16.encode(&mut w);
         OsCommand::encode_post(&mut w, &notification, &title, &body);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 16 + 2);
         assert!(out.first() == Some(&4));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 1 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_1() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 2 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_2() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 3 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_3() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 4 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_4() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 5 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_5() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 6 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_6() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(12) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 7 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_7() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 8 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_8() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 9 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_9() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 10 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_10() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 11 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_11() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 12 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_12() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(13) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 13 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_13() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 14 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_14() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 15 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_15() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 16 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_16() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 17 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_17() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(14) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 18 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_18() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 19 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_19() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 20 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_20() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 21 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_21() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(15) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 22 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_22() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 23 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_23() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 24 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_24() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 25 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_25() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(20) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 26 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_26() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(20) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `os.OsCommand.post` (IPC-R6): every accepted
+/// input of layout 27 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_post_round_trip_27() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(20) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(21) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_post(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((notification, title, body)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        OsCommand::encode_post(&mut w, &notification, &title, &body);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
     }
 }
 
@@ -5164,14 +9153,14 @@ fn verify_os_command_launch_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsCommand.launch` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 10
-/// to 8202); loops unwound 24 times.
+/// VER-1 for `os.OsCommand.launch` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 10 to 8202); loops unwound 24 times. Its round trip is
+/// proved per layout below (30 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(24)]
-fn verify_os_command_launch_round_trip() {
+fn verify_os_command_launch_decodes() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
     let Some(input) = bytes.get(..len) else {
@@ -5180,80 +9169,1805 @@ fn verify_os_command_launch_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 0 (8 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_0() {
+    let mut bytes: [u8; 8] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((target,)) = decoded {
         let mut w = Writer::new();
         5u16.encode(&mut w);
         OsCommand::encode_launch(&mut w, &target);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 8 + 2);
         assert!(out.first() == Some(&5));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
-        if len > 12 {
-            assert!(out.get(14) == bytes.get(12));
-        }
-        if len > 13 {
-            assert!(out.get(15) == bytes.get(13));
-        }
-        if len > 14 {
-            assert!(out.get(16) == bytes.get(14));
-        }
-        if len > 15 {
-            assert!(out.get(17) == bytes.get(15));
-        }
-        if len > 16 {
-            assert!(out.get(18) == bytes.get(16));
-        }
-        if len > 17 {
-            assert!(out.get(19) == bytes.get(17));
-        }
-        if len > 18 {
-            assert!(out.get(20) == bytes.get(18));
-        }
-        if len > 19 {
-            assert!(out.get(21) == bytes.get(19));
-        }
-        if len > 20 {
-            assert!(out.get(22) == bytes.get(20));
-        }
-        if len > 21 {
-            assert!(out.get(23) == bytes.get(21));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 1 (9 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_1() {
+    let mut bytes: [u8; 9] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 9 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 2 (10 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_2() {
+    let mut bytes: [u8; 10] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 10 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 3 (11 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_3() {
+    let mut bytes: [u8; 11] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 11 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 4 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_4() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 5 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_5() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 6 (14 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_6() {
+    let mut bytes: [u8; 14] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 14 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 7 (15 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_7() {
+    let mut bytes: [u8; 15] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 7;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 15 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 8 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_8() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 8;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 16 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 9 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_9() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 9;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 10 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_10() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 10;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 11 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_11() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 11;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 12 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_12() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 12;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 13 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_13() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 13;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 14 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_14() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 14;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 15 (8 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_15() {
+    let mut bytes: [u8; 8] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 8 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 16 (9 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_16() {
+    let mut bytes: [u8; 9] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 9 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 17 (10 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_17() {
+    let mut bytes: [u8; 10] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 10 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 18 (11 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_18() {
+    let mut bytes: [u8; 11] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 11 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 19 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_19() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 20 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_20() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 21 (14 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_21() {
+    let mut bytes: [u8; 14] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 14 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 22 (15 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_22() {
+    let mut bytes: [u8; 15] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 7;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 15 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 23 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_23() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 8;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 16 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 24 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_24() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 9;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 25 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_25() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 10;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 26 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_26() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 11;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 27 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_27() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 12;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 28 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_28() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 13;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `os.OsCommand.launch` (IPC-R6): every accepted
+/// input of layout 29 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(24)]
+fn verify_os_command_launch_round_trip_29() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(4) {
+        *b = 14;
+    }
+    if let Some(b) = bytes.get_mut(5) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(6) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(7) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_launch(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((target,)) = decoded {
+        let mut w = Writer::new();
+        5u16.encode(&mut w);
+        OsCommand::encode_launch(&mut w, &target);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&5));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
     }
 }
 
@@ -5274,14 +10988,14 @@ fn verify_os_command_reply_validates() {
     kani::cover!(checked.is_ok(), "some input is accepted");
 }
 
-/// VER-1 for `os.OsCommand.reply` (IPC-R5, IPC-R6): decoding
-/// never panics, and every accepted input re-encodes to the same
-/// bytes. Bounds: messages of 2 to 14 bytes (its encodings are 14
-/// to 14); loops unwound 2 times.
+/// VER-1 for `os.OsCommand.reply` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 14 bytes (its encodings are
+/// 14 to 14); loops unwound 2 times. Its round trip is
+/// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(2)]
-fn verify_os_command_reply_round_trip() {
+fn verify_os_command_reply_decodes() {
     let bytes: [u8; 12] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 12);
     let Some(input) = bytes.get(..len) else {
@@ -5290,50 +11004,38 @@ fn verify_os_command_reply_round_trip() {
     let mut r = Reader::new(input);
     let decoded = OsCommand::decode_reply(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `os.OsCommand.reply` (IPC-R6): every accepted
+/// input of layout 0 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_os_command_reply_round_trip_0() {
+    let bytes: [u8; 12] = kani::any();
+    let mut r = Reader::new(&bytes);
+    let decoded = OsCommand::decode_reply(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((token, verdict)) = decoded {
         let mut w = Writer::new();
         6u16.encode(&mut w);
         OsCommand::encode_reply(&mut w, &token, &verdict);
         let out = w.into_bytes();
-        assert!(out.len() == len + 2);
+        assert!(out.len() == 12 + 2);
         assert!(out.first() == Some(&6));
         assert!(out.get(1) == Some(&0));
-        if len > 0 {
-            assert!(out.get(2) == bytes.get(0));
-        }
-        if len > 1 {
-            assert!(out.get(3) == bytes.get(1));
-        }
-        if len > 2 {
-            assert!(out.get(4) == bytes.get(2));
-        }
-        if len > 3 {
-            assert!(out.get(5) == bytes.get(3));
-        }
-        if len > 4 {
-            assert!(out.get(6) == bytes.get(4));
-        }
-        if len > 5 {
-            assert!(out.get(7) == bytes.get(5));
-        }
-        if len > 6 {
-            assert!(out.get(8) == bytes.get(6));
-        }
-        if len > 7 {
-            assert!(out.get(9) == bytes.get(7));
-        }
-        if len > 8 {
-            assert!(out.get(10) == bytes.get(8));
-        }
-        if len > 9 {
-            assert!(out.get(11) == bytes.get(9));
-        }
-        if len > 10 {
-            assert!(out.get(12) == bytes.get(10));
-        }
-        if len > 11 {
-            assert!(out.get(13) == bytes.get(11));
-        }
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
     }
 }
 
