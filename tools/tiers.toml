@@ -78,8 +78,8 @@ why = "OS integration crate table: L2, OsInput/OsCommand/OsRegistration generate
 
 [crates.hg-launch-plan]
 tier = "P"
-layer = "L2"
-why = "M1 plan E-R1: the spawner request/reply codec and per-kind sandbox plan as pure data, shared by broker and spawner (C11); L2, tier P"
+layer = "L1"
+why = "M1 plan E-R1 and review B2: the substrate's own launch vocabulary (the spawner's request/reply records and each kind's sandbox plan), with no project dependencies; hg-substrate-os (L1: the spawner and the launchers) and higher layers use it, so no edge goes upward. Stage 1 2.1 does not list the crate yet (C13 amendment, proposed)"
 
 [crates.hg-build-id]
 tier = "T"
