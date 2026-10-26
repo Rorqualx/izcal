@@ -263,6 +263,14 @@ struct Broker {
     /// AppContainer SIDs of launches in progress, reserved before the
     /// child is spawned so a duplicate never runs (M10, probe W4).
     reserved_sids: BTreeSet<String>,
+    /// Channel ends the broker gave each process, by the end's handle
+    /// value there, so a process's `Closed` releases the ledger entry
+    /// (items 2, 3).
+    given: BTreeMap<(Proc, u64), (PipeKey, PipeEnd)>,
+    /// The broker's own ledgered ends, by their transport id, so it can
+    /// release one it closes without re-deriving the channel from the
+    /// handle (a client end reports no queryable name, items 2, 3).
+    own: BTreeMap<u64, (PipeKey, PipeEnd)>,
     /// Each sandboxed child's container SID to its process number. Kept
     /// after the child dies for as long as the ledger has a channel it
     /// created, so those channels can still be keyed and redeemed by the
@@ -384,6 +392,9 @@ impl Inner {
     /// is released.
     fn remove(st: &mut State, id: u64) -> Option<End> {
         let end = st.ends.remove(&id)?;
+        if let Some(b) = st.broker.as_mut() {
+            b.own.remove(&id);
+        }
         sys::cancel(&end.h);
         Some(end)
     }
@@ -505,8 +516,41 @@ impl Inner {
     }
 
     /// Releases an end whose handle object was dropped.
+    /// Releases the ledger entry for a channel end being closed normally
+    /// (items 2, 3). A child sends its broker the end's handle value,
+    /// which the broker resolves through its give map; the broker
+    /// resolves its own ends itself (its own pipes are overlapped, so
+    /// the kernel queries do not block). The value is read while the
+    /// handle is still open.
+    fn note_close(&self, st: &mut State, id: u64) {
+        let Some(e) = st.ends.get(&id) else {
+            return;
+        };
+        let which = match &e.role {
+            Role::Sender { .. } => PipeEnd::Sender,
+            Role::Receiver { .. } => PipeEnd::Receiver,
+            Role::Link { .. } => return,
+        };
+        let value = sys::value(&e.h);
+        let handle = Arc::clone(&e.h);
+        if let Some(b) = st.broker.as_mut() {
+            let found = b
+                .own
+                .get(&id)
+                .copied()
+                .or_else(|| Self::key_of(b, &sys::facts(&handle)).map(|k| (k, which)));
+            if let Some((pipe, end)) = found {
+                b.ledger.close_end(pipe, end, BROKER);
+                b.sweep();
+            }
+        } else {
+            self.send_ctl(st, None, &Ctl::Closed { end: value });
+        }
+    }
+
     fn release(&self, id: u64) {
         let mut st = self.lock();
+        self.note_close(&mut st, id);
         let keep = match st.ends.get_mut(&id).map(|e| &mut e.role) {
             Some(Role::Sender {
                 outbox,
@@ -739,14 +783,18 @@ impl Inner {
         events.extend(ev);
         let handles = b.held.remove(&ticket).unwrap_or_default();
         let mut items = Vec::with_capacity(handles.len());
+        let mut noted = Vec::with_capacity(handles.len());
         let mut ok = handles.len() == held.ends.len();
         if let Some(c) = b.children.get(&from) {
-            for (h, (_, _, kind)) in handles.iter().zip(&held.ends) {
+            for (h, (pipe, end, kind)) in handles.iter().zip(&held.ends) {
                 match sys::give(&c.process, h) {
-                    Ok(v) => items.push(CtlItem {
-                        value: v,
-                        kind: *kind,
-                    }),
+                    Ok(v) => {
+                        items.push(CtlItem {
+                            value: v,
+                            kind: *kind,
+                        });
+                        noted.push((v, *pipe, *end));
+                    }
                     Err(_) => ok = false,
                 }
             }
@@ -755,7 +803,12 @@ impl Inner {
         }
         later.push(Box::new(handles));
         match Items::from_slice(&items) {
-            Some(items) if ok => Ctl::Redeemed { req, items },
+            Some(items) if ok => {
+                for (v, pipe, end) in noted {
+                    b.given.insert((from, v), (pipe, end));
+                }
+                Ctl::Redeemed { req, items }
+            }
             _ => {
                 // Take back what was given, closing the child's copies,
                 // so no end stays open there unreported; the ends are
@@ -1005,6 +1058,17 @@ impl Inner {
                 }
                 None
             }
+            Ctl::Closed { end } => {
+                // Resolved from the give map, so no handle is pulled and
+                // no kernel query blocks (items 2, 3). In the link's
+                // order, so a value reused by a later redeem is mapped
+                // only after this has run.
+                if let Some((pipe, which)) = b.given.remove(&(from, end)) {
+                    b.ledger.close_end(pipe, which, from);
+                    b.sweep();
+                }
+                None
+            }
             // Records only a broker sends: a child that sends one has
             // broken the protocol; its link is closed.
             Ctl::Hello { .. }
@@ -1094,6 +1158,7 @@ impl Inner {
                 out.push(Box::new(hs));
             }
         }
+        b.given.retain(|(owner, _), _| *owner != p);
         b.sweep();
         // A dead child whose channels are all gone (including one that
         // never made any) keeps no SID entry (item 5).
@@ -1165,7 +1230,8 @@ impl Inner {
             | Ctl::Relay { .. }
             | Ctl::Redeem { .. }
             | Ctl::Bind { .. }
-            | Ctl::Unbind { .. } => {}
+            | Ctl::Unbind { .. }
+            | Ctl::Closed { .. } => {}
         }
         out
     }
@@ -1553,6 +1619,9 @@ impl Inner {
             let Some(e) = st.ends.remove(cid) else {
                 continue;
             };
+            if let Some(b) = st.broker.as_mut() {
+                b.own.remove(cid);
+            }
             match Arc::try_unwrap(e.h) {
                 Ok(h) => taken.push((h, *kind)),
                 Err(shared) => {
@@ -1940,6 +2009,7 @@ impl Drop for WinListening {
     fn drop(&mut self) {
         let mut st = self.inner.lock();
         self.inner.drop_binding(&mut st, self.id);
+        self.inner.note_close(&mut st, self.id);
         let gone = Inner::remove(&mut st, self.id);
         drop(st);
         drop(gone);
@@ -2016,6 +2086,8 @@ impl WindowsIpc {
                 children: BTreeMap::new(),
                 reserved_sids: BTreeSet::new(),
                 creator_sids: BTreeMap::new(),
+                given: BTreeMap::new(),
+                own: BTreeMap::new(),
                 next_proc: 1,
             });
         }
@@ -2175,6 +2247,14 @@ impl Ipc for WindowsIpc {
                 in_transit: false,
             },
         );
+        if let (Some(b), Some(tx), Some(rx)) = (st.broker.as_mut(), tx, rx) {
+            let key = PipeKey {
+                creator: BROKER,
+                id: name,
+            };
+            b.own.insert(tx, (key, PipeEnd::Sender));
+            b.own.insert(rx, (key, PipeEnd::Receiver));
+        }
         drop(st);
         self.inner.wake();
         let (Some(tx), Some(rx)) = (tx, rx) else {

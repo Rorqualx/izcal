@@ -246,6 +246,12 @@ pub(crate) enum Ctl {
         /// The binder's listener id, as given in `Bind`.
         rx_id: u64,
     },
+    /// The child closed the channel end at handle value `end`, which the
+    /// broker had given it: release the ledger entry (items 2, 3).
+    Closed {
+        /// The end's handle value in the child.
+        end: u64,
+    },
 }
 
 impl Ctl {
@@ -261,6 +267,7 @@ impl Ctl {
             Self::Bind { .. } => 8,
             Self::BindBroken { .. } => 9,
             Self::Unbind { .. } => 10,
+            Self::Closed { .. } => 11,
         }
     }
 }
@@ -304,7 +311,8 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
         | Ctl::RedeemRefused { .. }
         | Ctl::Bind { .. }
         | Ctl::BindBroken { .. }
-        | Ctl::Unbind { .. } => 0,
+        | Ctl::Unbind { .. }
+        | Ctl::Closed { .. } => 0,
     };
     let mut o = Out(Vec::with_capacity(MAX_CTL_LEN));
     o.u32(CTL_MAGIC);
@@ -364,6 +372,10 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
         }
         Ctl::Unbind { rx_id } => {
             o.u64(*rx_id);
+            o.zeros(8);
+        }
+        Ctl::Closed { end } => {
+            o.u64(*end);
             o.zeros(8);
         }
     }
@@ -506,6 +518,11 @@ pub(crate) fn decode_ctl(input: &[u8]) -> Result<Ctl, FrameError> {
             r.zeros::<8>()?;
             Ctl::Unbind { rx_id }
         }
+        11 => {
+            let end = r.u64()?;
+            r.zeros::<8>()?;
+            Ctl::Closed { end }
+        }
         _ => return Err(FrameError::BadKind),
     };
     r.end()?;
@@ -629,6 +646,7 @@ mod tests {
                 peer: 77,
             },
             Ctl::Unbind { rx_id: 0x44 },
+            Ctl::Closed { end: 0x30 },
         ]
     }
 

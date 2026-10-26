@@ -320,6 +320,18 @@ fn child(case: &str) -> i32 {
             let _ = from_parent.recv_timeout(WAIT);
             0
         }
+        "take-and-drop" => {
+            // Receive a handle, drop it at once, acknowledge.
+            loop {
+                match from_parent.recv_timeout(WAIT) {
+                    Ok(Ev::Msg(_, hs)) => {
+                        drop(hs);
+                        r.ipc.send(&up, b"dropped".to_vec(), Vec::new()).unwrap();
+                    }
+                    _ => return 0,
+                }
+            }
+        }
         _ => 14,
     }
 }
@@ -697,6 +709,8 @@ fn a_dead_creators_channel_is_still_keyed() {
         children: BTreeMap::new(),
         reserved_sids: BTreeSet::new(),
         creator_sids: BTreeMap::new(),
+        given: BTreeMap::new(),
+        own: BTreeMap::new(),
         next_proc: 9,
     };
     // Child 7 made the channel, then died: it is gone from `children`,
@@ -742,4 +756,48 @@ fn a_child_that_will_not_read_its_link_is_dropped() {
     });
     assert!(gone, "the broker kept a child that would not read its link");
     drop(c);
+}
+
+/// Items 2 and 3: a channel end closed normally releases its ledger
+/// entry. The parent gives a child one channel's receiver, the child
+/// drops it, the parent drops the sender, and the broker then tracks no
+/// more channels than before the channel existed.
+#[test]
+fn a_closed_channel_is_forgotten_by_the_broker() {
+    let r = rig();
+    let c = launch(&r, "take-and-drop", false);
+    let base = r
+        .ipc
+        .inner
+        .lock()
+        .broker
+        .as_ref()
+        .map(|b| b.ledger.entry_count())
+        .unwrap();
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&c.to_child, b"take".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    assert_eq!(expect_msg(&c.from_child).0, b"dropped");
+    drop(tx);
+    // The child's Closed and the parent's own close release both ends;
+    // the broker then sweeps the channel.
+    let forgotten = (0..200).any(|_| {
+        std::thread::sleep(Duration::from_millis(25));
+        r.ipc
+            .inner
+            .lock()
+            .broker
+            .as_ref()
+            .is_some_and(|b| b.ledger.entry_count() <= base && b.given.is_empty())
+    });
+    let (ec, gl) = {
+        let st = r.ipc.inner.lock();
+        let b = st.broker.as_ref().unwrap();
+        (b.ledger.entry_count(), b.given.len())
+    };
+    assert!(
+        forgotten,
+        "the broker kept a closed channel: base={base} entries={ec} given={gl}"
+    );
 }

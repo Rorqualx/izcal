@@ -429,6 +429,23 @@ impl Ledger {
         }
     }
 
+    /// Process `by` closed its `end` of `pipe` normally: mark it gone, so
+    /// a following [`Ledger::sweep`] can forget the channel and give its
+    /// creator a slot back (design review items 2, 3). Only the holder's
+    /// close counts; a stale report about an end held by someone else is
+    /// ignored.
+    pub(crate) fn close_end(&mut self, pipe: PipeKey, end: End, by: Proc) {
+        if let Some(e) = self.entries.get_mut(&pipe) {
+            let slot = match end {
+                End::Sender => &mut e.sender,
+                End::Receiver => &mut e.receiver,
+            };
+            if *slot == Holder::Proc(by) {
+                *slot = Holder::Gone;
+            }
+        }
+    }
+
     /// Forgets channels whose two ends are both gone. Returns the
     /// creators left with no channels, so the broker can drop a dead
     /// creator's name map (item 5).
@@ -462,6 +479,12 @@ impl Ledger {
     #[cfg(test)]
     pub(crate) fn tickets_outstanding(&self) -> usize {
         self.tickets.len()
+    }
+
+    /// Channels the ledger still tracks.
+    #[cfg(test)]
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entries.len()
     }
 }
 
@@ -770,6 +793,40 @@ mod tests {
         let n = u64::try_from(i).unwrap_or(0).wrapping_add(1);
         t[..8].copy_from_slice(&n.to_le_bytes());
         t
+    }
+
+    #[test]
+    fn closing_channels_frees_their_creators_slots() {
+        // A long-lived process creates far more than its pipe quota of
+        // channels, dropping each before the next, and keeps going:
+        // closing both ends and sweeping gives the slot back (item 3).
+        let mut l = ledger();
+        for i in 0..(MAX_PIPES_PER_PROC * 2) {
+            let n = u8::try_from(i % 2).unwrap();
+            let ch = pipe(A, n);
+            l.place(ch, End::Sender, A).unwrap();
+            l.place(ch, End::Receiver, A).unwrap();
+            l.close_end(ch, End::Sender, A);
+            l.close_end(ch, End::Receiver, A);
+            l.sweep();
+            assert!(!l.has_creator(A));
+        }
+        // After all that churn A still has room, and the ledger is not
+        // holding the churned channels.
+        assert!(l.entry_count() <= 1);
+        assert!(l.place(pipe(A, 0), End::Sender, A).is_ok());
+    }
+
+    #[test]
+    fn a_close_by_a_non_holder_is_ignored() {
+        let mut l = ledger();
+        let ch = pipe(A, 1);
+        l.place(ch, End::Sender, A).unwrap();
+        // B does not hold the sender: its close changes nothing.
+        l.close_end(ch, End::Sender, B);
+        assert_eq!(l.view(ch, End::Sender).unwrap().holder, Some(A));
+        l.close_end(ch, End::Sender, A);
+        assert_eq!(l.view(ch, End::Sender).unwrap().holder, None);
     }
 
     #[test]
