@@ -1,6 +1,6 @@
 //! `hg-launch-plan`: the launch plan as data (M1 phase E).
 //!
-//! Layer L2, tier P, no dependencies (design rules E-R1, B2). Shared by
+//! Layer L1, tier P, no dependencies (design rules E-R1, B2; owner decision 26 Oct). Shared by
 //! the broker and the Linux spawner (`hg-substrate-os`'s
 //! `hg-spawner-main` binary), so both read one table:
 //!
