@@ -72,7 +72,7 @@ fn browser(
                 .ipc
                 .listen_bound(
                     from_child,
-                    peer,
+                    peer.into(),
                     seq,
                     Box::new(move |d| {
                         seen2.lock().unwrap().events.push(match d {
