@@ -242,8 +242,12 @@ fn a_receiver_holds_one_reply_right_per_channel() {
         assert!(std::time::Instant::now() < until, "not read in time");
         std::thread::sleep(Duration::from_millis(1));
     }
-    let send_once = sys::receive_status(credit).unwrap()[wire::STATUS_SEND_ONCE];
-    assert!(send_once <= 1, "{send_once} reply rights held");
+    // A send-once right counts until its message is dequeued (R8b): the
+    // released replies' notifications wait on the credit port, so the
+    // rights still held are the count less the messages queued there.
+    let status = sys::receive_status(credit).unwrap();
+    let held = status[wire::STATUS_SEND_ONCE] - status[wire::STATUS_MSGCOUNT];
+    assert!(held <= 1, "{held} reply rights held ({status:?})");
     for _ in 0..64 {
         let _ = gate_tx.send(());
     }

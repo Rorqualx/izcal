@@ -137,6 +137,9 @@ pub(crate) const ATTR_LIMITS: i32 = 1;
 pub(crate) const ATTR_RECEIVE_STATUS: i32 = 2;
 /// Words of [`ATTR_RECEIVE_STATUS`] (P10).
 pub(crate) const RECEIVE_STATUS_WORDS: usize = 10;
+/// The receive status word counting the messages queued on the port
+/// (P10).
+pub(crate) const STATUS_MSGCOUNT: usize = 4;
 /// The receive status word counting the port's send-once rights,
 /// wherever they are (R8).
 pub(crate) const STATUS_SEND_ONCE: usize = 5;

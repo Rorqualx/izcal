@@ -191,11 +191,11 @@ pub(crate) fn set_qlimit(name: PortName, limit: u32) -> Result<(), Kr> {
     kr(unsafe { mach_port_set_attributes(task(), name, ATTR_LIMITS, v.as_mut_ptr(), 1) })
 }
 
-/// Aims `name`'s no-senders notification at the port itself, firing
-/// once its make-send count reaches `sync` and no send right is left
-/// (P20). Any request it carried is replaced; the right that request
-/// held (a send-once right) is released.
-pub(crate) fn request_no_senders(name: PortName, sync: u32) -> Result<(), Kr> {
+/// Aims `name`'s no-senders notification at `notify` (a receive right
+/// this process holds), firing once its make-send count reaches `sync`
+/// and no send right is left (P20). Any request it carried is replaced;
+/// the right that request held (a send-once right) is released.
+pub(crate) fn request_no_senders(name: PortName, sync: u32, notify: PortName) -> Result<(), Kr> {
     let mut previous: PortName = NAME_NULL;
     // SAFETY: plain values and a valid out-pointer for the previous
     // notify right.
@@ -205,7 +205,7 @@ pub(crate) fn request_no_senders(name: PortName, sync: u32) -> Result<(), Kr> {
             name,
             i32::try_from(NOTIFY_NO_SENDERS).unwrap_or(0),
             sync,
-            name,
+            notify,
             u32::from(MAKE_SEND_ONCE),
             &raw mut previous,
         )
@@ -259,8 +259,8 @@ fn cancel_request(name: PortName, id: u32) {
 }
 
 /// Cancels this process's no-senders request on receive right `name`
-/// before the right moves: the request holds a send-once right to the
-/// port, which the receiving side would refuse (R8).
+/// before the right moves: the request belongs to this process's closer
+/// port, which stays (R8).
 pub(crate) fn cancel_no_senders(name: PortName) {
     cancel_request(name, NOTIFY_NO_SENDERS);
 }

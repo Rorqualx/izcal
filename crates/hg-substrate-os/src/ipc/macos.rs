@@ -84,7 +84,7 @@ use crate::ipc::mach::notify::{Kind, classify};
 use crate::ipc::mach::wire::{
     self, COPY_SEND, ID_CREDIT, ID_DATA, ID_HELLO, ID_HELLO_REPLY, MAKE_SEND, MAKE_SEND_ONCE,
     MAX_SLOTS, MOVE_RECEIVE, MOVE_SEND, MOVE_SEND_ONCE, NAME_DEAD, NAME_NULL, Outgoing as WireMsg,
-    RCV_TOO_LARGE, RECEIVE_BUFFER, SEND_INVALID_DEST, SEND_TIMED_OUT, Token,
+    RCV_TOO_LARGE, RECEIVE_BUFFER, SEND_INVALID_DEST, SEND_TIMED_OUT, STATUS_MSGCOUNT, Token,
 };
 use sys::{Buf, Kr};
 
@@ -171,9 +171,13 @@ enum Role {
         flow: ReceiverFlow,
         bound: bool,
         listener: Option<Listener>,
-        /// This process's own no-senders request is armed on the port:
-        /// only then does a no-senders notification mean `Closed`.
-        closes: bool,
+        /// This process's closer port for this end: the data port's
+        /// no-senders request notifies it (R8: never the data port itself,
+        /// so the data port has no send-once right out when it moves).
+        closer: Option<u32>,
+        /// The no-senders notification came: no sender is left, so once
+        /// the data port's queue is empty the channel is `Closed`.
+        peer_gone: bool,
     },
 }
 
@@ -183,6 +187,8 @@ struct State {
     next: u64,
     /// Listening receivers by data port name.
     listening: BTreeMap<u32, u64>,
+    /// Receivers by closer port name.
+    closers: BTreeMap<u32, u64>,
     /// Send references this process's sender ends hold, by name.
     send_refs: BTreeMap<u32, u32>,
     /// Data port names of this process's receiver ends.
@@ -212,8 +218,11 @@ impl State {
                 let r = self.send_refs.entry(*data).or_insert(0);
                 *r = r.saturating_add(1);
             }
-            Role::Receiver { data, .. } => {
+            Role::Receiver { data, closer, .. } => {
                 self.receivers.insert(*data, id);
+                if let Some(c) = closer {
+                    self.closers.insert(*c, id);
+                }
             }
         }
         self.ends.insert(id, role);
@@ -233,9 +242,12 @@ impl State {
                     }
                 }
             }
-            Role::Receiver { data, .. } => {
+            Role::Receiver { data, closer, .. } => {
                 self.receivers.remove(data);
                 self.listening.remove(data);
+                if let Some(c) = closer {
+                    self.closers.remove(c);
+                }
             }
         }
         Some(role)
@@ -247,11 +259,14 @@ impl State {
 /// sender's send-possible request unless its own outbox still needs it
 /// (then it comes off when that outbox drains, before the message that
 /// carries it is sent).
-fn unrequest(st: &mut State, id: u64) {
+fn unrequest(st: &mut State, id: u64, set: u32) {
     match st.ends.get_mut(&id) {
-        Some(Role::Receiver { data, closes, .. }) => {
+        Some(Role::Receiver { data, closer, .. }) => {
             sys::cancel_no_senders(*data);
-            *closes = false;
+            if let Some(c) = closer.take() {
+                drop_closer(c, set);
+                st.closers.remove(&c);
+            }
         }
         Some(Role::Sender {
             data,
@@ -278,10 +293,38 @@ fn outbox_head_after(st: &State, id: u64) -> Vec<u64> {
 }
 
 /// Re-arms what [`unrequest`] took off, when the rights did not move.
-fn rerequest(st: &mut State, id: u64) {
-    if let Some(Role::Receiver { data, closes, .. }) = st.ends.get_mut(&id) {
-        *closes = sys::request_no_senders(*data, 1).is_ok();
+fn rerequest(st: &mut State, id: u64, set: u32) {
+    let Some(Role::Receiver { data, closer, .. }) = st.ends.get_mut(&id) else {
+        return;
+    };
+    *closer = arm_closer(*data, 1, set);
+    if let Some(c) = *closer {
+        st.closers.insert(c, id);
     }
+}
+
+/// A closer port for receiver data port `data`, in the IO thread's set,
+/// that the data port's no-senders request notifies once its make-send
+/// count reaches `sync` and no send right is left (P20). `None` if it
+/// cannot be made: the end then never reports `Closed` on its own.
+fn arm_closer(data: u32, sync: u32, set: u32) -> Option<u32> {
+    let c = sys::allocate_receive().ok()?;
+    if sys::insert_member(c, set).is_err() {
+        sys::destroy_receive(c);
+        return None;
+    }
+    if sys::request_no_senders(data, sync, c).is_err() {
+        drop_closer(c, set);
+        return None;
+    }
+    Some(c)
+}
+
+/// Destroys closer port `c` (its request was cancelled or its data port
+/// destroyed).
+fn drop_closer(c: u32, set: u32) {
+    sys::extract_member(c, set);
+    sys::destroy_receive(c);
 }
 
 /// Releases an end's rights and whatever it still holds.
@@ -300,9 +343,17 @@ fn release_role(role: Role, set: u32) -> Vec<Item> {
             sys::destroy_receive(credit);
             Vec::new()
         }
-        Role::Receiver { data, listener, .. } => {
+        Role::Receiver {
+            data,
+            listener,
+            closer,
+            ..
+        } => {
             sys::extract_member(data, set);
             sys::destroy_receive(data);
+            if let Some(c) = closer {
+                drop_closer(c, set);
+            }
             let Some(l) = listener else {
                 return Vec::new();
             };
@@ -351,7 +402,6 @@ struct Boot {
     up_flow: SenderFlow,
     down_data: u32,
     down_flow: ReceiverFlow,
-    down_closes: bool,
     parent: Token,
 }
 
@@ -508,13 +558,9 @@ impl Inner {
                 return;
             }
             Kind::NoSenders => {
+                // This process aims no request at a data port (its closer
+                // port takes them), so this one is not its own: ignored.
                 sys::release_received(buf);
-                let mut st = self.lock();
-                // Only the request this process armed on the port means
-                // Closed; any other is ignored.
-                if matches!(st.ends.get(&id), Some(Role::Receiver { closes: true, .. })) {
-                    self.end_listener(&mut st, id, Item::Closed);
-                }
                 return;
             }
             Kind::NoToken => {
@@ -608,13 +654,13 @@ impl Inner {
                             // reset the one, re-arm the other (its
                             // make-send count restarted at 0, P10).
                             let _ = sys::set_qlimit(d.name, desc.capacity);
-                            let closes = sys::request_no_senders(d.name, 0).is_ok();
                             Role::Receiver {
                                 data: d.name,
                                 flow,
                                 bound: false,
                                 listener: None,
-                                closes,
+                                closer: arm_closer(d.name, 0, self.set),
+                                peer_gone: false,
                             }
                         }
                     };
@@ -895,7 +941,9 @@ impl Inner {
             sys::destroy_receive(credit);
             return None;
         }
-        let _ = sys::request_no_senders(data, 1);
+        // Its receive right never moves: the request may notify the sink
+        // itself, which the IO thread destroys at its first message.
+        let _ = sys::request_no_senders(data, 1, data);
         Some((data, credit))
     }
 
@@ -991,14 +1039,60 @@ impl Inner {
                 sys::destroy_receive(local);
                 return false;
             }
+            if let Some(&id) = st.closers.get(&local) {
+                drop(st);
+                self.on_closer(id, buf);
+                return false;
+            }
             let id = st.listening.get(&local).copied();
             drop(st);
             match id {
-                Some(id) => self.on_message(id, buf),
+                Some(id) => {
+                    self.on_message(id, buf);
+                    self.close_if_drained(id);
+                }
                 None => sys::release_received(buf),
             }
         }
         false
+    }
+
+    /// A message on receiver `id`'s closer port: its data port's
+    /// no-senders notification (exact size, the kernel's token), or the
+    /// send-once notification a cancelled request leaves (ignored).
+    fn on_closer(self: &Arc<Self>, id: u64, buf: &Buf) {
+        let kind = wire::layout(buf.bytes())
+            .map(|l| classify(&l.header, l.token))
+            .ok();
+        sys::release_received(buf);
+        if kind != Some(Kind::NoSenders) {
+            return;
+        }
+        if let Some(Role::Receiver { peer_gone, .. }) = self.lock().ends.get_mut(&id) {
+            *peer_gone = true;
+        }
+        self.close_if_drained(id);
+    }
+
+    /// Reports `Closed` on listening receiver `id` once no sender is left
+    /// and its data port's queue is empty: no message can arrive after
+    /// that (a send right in flight in another message keeps the
+    /// notification back, P20), so `Closed` comes after every message.
+    fn close_if_drained(self: &Arc<Self>, id: u64) {
+        let mut st = self.lock();
+        let data = match st.ends.get(&id) {
+            Some(Role::Receiver {
+                data,
+                peer_gone: true,
+                listener: Some(l),
+                ..
+            }) if !l.ended => *data,
+            _ => return,
+        };
+        let queued = sys::receive_status(data).and_then(|w| w.get(STATUS_MSGCOUNT).copied());
+        if queued == Some(0) {
+            self.end_listener(&mut st, id, Item::Closed);
+        }
     }
 }
 
@@ -1243,12 +1337,10 @@ impl MacIpc {
         }))
     }
 
-    /// A channel's ports: the data port, with its queue limit and its
-    /// no-senders request set (and, with `own_send`, a send right beside
-    /// its receive right), and the credit port. The request fires once a
-    /// send right has been made (sync 1) and none is left; without
-    /// `own_send` the first send right is made when the port is sent, so
-    /// the request cannot fire before.
+    /// A channel's ports: the data port, with its queue limit (and,
+    /// with `own_send`, a send right beside its receive right), and the
+    /// credit port. Its receiver end's closer is armed by whoever keeps
+    /// that end ([`arm_closer`]).
     fn new_ports(capacity: u32, own_send: bool) -> Result<(u32, u32), Kr> {
         let data = sys::allocate_receive()?;
         let credit = match sys::allocate_receive() {
@@ -1263,9 +1355,7 @@ impl MacIpc {
         } else {
             Ok(())
         };
-        let set_up = made
-            .and_then(|()| sys::set_qlimit(data, capacity))
-            .and_then(|()| sys::request_no_senders(data, 1));
+        let set_up = made.and_then(|()| sys::set_qlimit(data, capacity));
         if let Err(e) = set_up {
             sys::destroy_receive(data);
             sys::destroy_receive(credit);
@@ -1317,6 +1407,8 @@ impl MacIpc {
         st.listening.insert(d, id);
         drop(st);
         disarm(from.into_handle());
+        // Its sender may already be gone with nothing queued.
+        self.inner.close_if_drained(id);
         Ok(Listening::new(Handle::new(Box::new(MacListening {
             inner: Arc::clone(&self.inner),
             id,
@@ -1430,8 +1522,10 @@ impl MacIpc {
             flow: ReceiverFlow::new(BOOTSTRAP_CAPACITY),
             bound: false,
             listener: None,
-            // `new_ports` armed it.
-            closes: true,
+            // Fires once the child's send right, made as the answer is
+            // sent, is gone.
+            closer: arm_closer(up_data, 1, self.inner.set),
+            peer_gone: false,
         });
         let tx = st.insert(Role::Sender {
             data: down_data,
@@ -1515,7 +1609,6 @@ fn hello() -> Option<Boot> {
         sys::release_received(&buf);
         return None;
     };
-    let down_closes = sys::request_no_senders(down_data, 0).is_ok();
     // Its three rights are the launch channels now.
     buf.adopted();
     Some(Boot {
@@ -1524,7 +1617,6 @@ fn hello() -> Option<Boot> {
         up_flow,
         down_data,
         down_flow,
-        down_closes,
         parent,
     })
 }
@@ -1570,8 +1662,8 @@ impl Ipc for MacIpc {
             flow: ReceiverFlow::new(capacity),
             bound,
             listener: None,
-            // `new_ports` armed it.
-            closes: true,
+            closer: arm_closer(data, 1, self.inner.set),
+            peer_gone: false,
         });
         drop(st);
         let tk = if bound {
@@ -1726,7 +1818,7 @@ impl Ipc for MacIpc {
         // the carried ports (R8): a receiver's no-senders request is a
         // send-once right to its port, which the receiving side refuses.
         for &id in &ids {
-            unrequest(&mut st, id);
+            unrequest(&mut st, id, self.inner.set);
         }
         let outcome = if queue_first {
             Err(Kr(SEND_TIMED_OUT))
@@ -1739,7 +1831,7 @@ impl Ipc for MacIpc {
             Err(e) => {
                 // Not sent: the carried rights are still ours (R7).
                 for &id in &ids {
-                    rerequest(&mut st, id);
+                    rerequest(&mut st, id, self.inner.set);
                 }
                 if e == Kr(SEND_INVALID_DEST)
                     && let Some(Role::Sender { broken, .. }) = st.ends.get_mut(&to_id)
@@ -1846,7 +1938,10 @@ impl Ipc for MacIpc {
             flow: b.down_flow,
             bound: false,
             listener: None,
-            closes: b.down_closes,
+            // A moved receive right's make-send count restarts at 0 (P10):
+            // sync 0 fires at once if the launcher's sender is gone.
+            closer: arm_closer(b.down_data, 0, self.inner.set),
+            peer_gone: false,
         });
         drop(st);
         let to_parent =
