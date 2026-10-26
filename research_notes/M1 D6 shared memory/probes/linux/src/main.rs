@@ -824,7 +824,169 @@ fn l1b_what_blocks_seal_write() {
     unsafe { libc::close(fd) };
 }
 
+/// L12: which cgroup is charged for a memfd's pages: the creator's,
+/// the mapper's or the toucher's? Run inside a delegated cgroup v2
+/// subtree (`l12` mode), with two leaf cgroups A and B.
+fn l12_memcg(base: &str) {
+    let rd = |cg: &str| {
+        std::fs::read_to_string(format!("{base}/{cg}/memory.current"))
+            .map(|s| s.trim().parse::<u64>().unwrap_or(0) >> 10)
+            .unwrap_or(0)
+    };
+    let join = |cg: &str| {
+        std::fs::write(
+            format!("{base}/{cg}/cgroup.procs"),
+            format!("{}", std::process::id()),
+        )
+        .expect("join cgroup")
+    };
+    join("A");
+    let len = 32 << 20;
+    let fd = memfd("l12", libc::MFD_ALLOW_SEALING | libc::MFD_CLOEXEC | 0x8);
+    sized(fd, len);
+    println!(
+        "L12 created 32 MiB memfd in A: A={} KiB B={} KiB",
+        rd("A"),
+        rd("B")
+    );
+    let mut sv = [0i32; 2];
+    unsafe {
+        libc::socketpair(
+            libc::AF_UNIX,
+            libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC,
+            0,
+            sv.as_mut_ptr(),
+        )
+    };
+    let pid = unsafe { libc::fork() };
+    if pid == 0 {
+        std::fs::write(
+            format!("{base}/B/cgroup.procs"),
+            format!("{}", std::process::id()),
+        )
+        .expect("join B");
+        let p = map(
+            fd,
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_SHARED,
+        );
+        for i in (0..len).step_by(4096) {
+            unsafe { std::ptr::write_volatile(p.add(i), 1) };
+        }
+        unsafe { libc::write(sv[1], b"t".as_ptr().cast(), 1) };
+        let mut b = [0u8; 1];
+        unsafe { libc::read(sv[1], b.as_mut_ptr().cast(), 1) };
+        unsafe { libc::munmap(p.cast(), len) };
+        unsafe { libc::write(sv[1], b"u".as_ptr().cast(), 1) };
+        unsafe { libc::read(sv[1], b.as_mut_ptr().cast(), 1) };
+        unsafe { libc::_exit(0) };
+    }
+    let mut b = [0u8; 1];
+    unsafe { libc::read(sv[0], b.as_mut_ptr().cast(), 1) };
+    println!(
+        "L12 a process in B mapped it and wrote every page: A={} KiB B={} KiB",
+        rd("A"),
+        rd("B")
+    );
+    let p = map(fd, len, libc::PROT_READ, libc::MAP_SHARED);
+    let mut x = 0u64;
+    for i in (0..len).step_by(4096) {
+        x = x.wrapping_add(unsafe { std::ptr::read_volatile(p.add(i)) } as u64);
+    }
+    println!(
+        "L12 the creator in A then read every page (sum {x}): A={} KiB B={} KiB",
+        rd("A"),
+        rd("B")
+    );
+    unsafe { libc::write(sv[0], b"g".as_ptr().cast(), 1) };
+    unsafe { libc::read(sv[0], b.as_mut_ptr().cast(), 1) };
+    println!("L12 B unmapped: A={} KiB B={} KiB", rd("A"), rd("B"));
+    unsafe { libc::write(sv[0], b"x".as_ptr().cast(), 1) };
+    let mut st = 0;
+    unsafe { libc::waitpid(pid, &mut st, 0) };
+    println!(
+        "L12 B's process exited: A={} KiB B={} KiB",
+        rd("A"),
+        rd("B")
+    );
+    unsafe {
+        libc::munmap(p.cast(), len);
+        libc::close(fd)
+    };
+    println!(
+        "L12 the creator closed and unmapped: A={} KiB B={} KiB",
+        rd("A"),
+        rd("B")
+    );
+}
+
+/// L13: MFD_NOEXEC_SEAL with the D6 seal sets; the raw fstat syscall.
+fn l13_noexec_sets() {
+    let fd = memfd("l13", libc::MFD_ALLOW_SEALING | libc::MFD_CLOEXEC | 0x8);
+    println!(
+        "L13 MFD_NOEXEC_SEAL|ALLOW_SEALING: initial seals {}",
+        seals_str(get_seals(fd))
+    );
+    sized(fd, 64 * KB);
+    println!(
+        "L13 add GROW|SHRINK: {} -> {}",
+        rc(
+            "add",
+            add_seals(fd, libc::F_SEAL_GROW | libc::F_SEAL_SHRINK)
+        ),
+        seals_str(get_seals(fd))
+    );
+    let w = map(
+        fd,
+        64 * KB,
+        libc::PROT_READ | libc::PROT_WRITE,
+        libc::MAP_SHARED,
+    );
+    println!(
+        "L13 writer seals with a live RW map: add WRITE|SEAL: {}",
+        rc("add", add_seals(fd, libc::F_SEAL_WRITE | libc::F_SEAL_SEAL))
+    );
+    unsafe { libc::munmap(w.cast(), 64 * KB) };
+    println!(
+        "L13 after unmapping: add WRITE|SEAL: {} -> {}",
+        rc("add", add_seals(fd, libc::F_SEAL_WRITE | libc::F_SEAL_SEAL)),
+        seals_str(get_seals(fd))
+    );
+    println!(
+        "L13 sealed NOEXEC region: mmap PROT_READ|PROT_EXEC shared: {}",
+        map_rc(
+            fd,
+            64 * KB,
+            libc::PROT_READ | libc::PROT_EXEC,
+            libc::MAP_SHARED
+        )
+    );
+    println!(
+        "L13 fchmod(0755) under the EXEC seal: {}",
+        rc("fchmod", unsafe { libc::fchmod(fd, 0o755) } as libc::c_long)
+    );
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    let r = unsafe { libc::syscall(libc::SYS_fstat, fd, &mut st) };
+    println!(
+        "L13 raw SYS_fstat: rc={r} mode={:#o} size={} nlink={}",
+        st.st_mode, st.st_size, st.st_nlink
+    );
+    unsafe { libc::close(fd) };
+}
+
 fn main() {
+    if let Some(base) = std::env::args()
+        .nth(2)
+        .filter(|_| std::env::args().nth(1).as_deref() == Some("l12"))
+    {
+        l12_memcg(&base);
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("l13") {
+        l13_noexec_sets();
+        return;
+    }
     let un = std::fs::read_to_string("/proc/sys/kernel/osrelease").unwrap_or_default();
     println!(
         "L0 kernel {}; vm.memfd_noexec={}",

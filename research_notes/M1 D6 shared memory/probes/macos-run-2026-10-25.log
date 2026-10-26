@@ -19,3 +19,22 @@ M5 after the creator deallocates its mapping and RW entry: existing shared map r
 M5 a new map of the RO entry: ok, reads 0x22/0x33
 M6 64 KiB: make RO entry+release 0.83 µs; map+unmap 1.03 µs; map+read every 16 KiB page+unmap 2.99 µs; regions +1
 M6 4096 KiB: make RO entry+release 0.81 µs; map+unmap 2.51 µs; map+read every 16 KiB page+unmap 90.19 µs; regions +1
+
+--- review round (25 Oct, 21:12): `d6-macos-probes cross` (parent and a posix_spawn child joined by the bootstrap special port; footprint(1) per pid)
+M9 before: parent 1.8 MiB child 1.7 MiB
+M9 child: mapped rw at 0x109384000 prot (3, 3)
+M9 child wrote every page of a 32 MiB RW entry the parent made (parent holds no mapping): parent 1.9 MiB child 33.7 MiB
+M9 parent mapped it and read every page: parent 33.9 MiB child 33.7 MiB
+M9 child: unmapped
+M9 child unmapped: parent 33.9 MiB child 1.7 MiB
+M8 before: parent (filler, 32 MiB written) 34.0 MiB child 1.7 MiB
+M8 child: mapped snap at 0x1098dc000 prot (1, 1)
+M8 child took a copy=1 snapshot and read every page: parent 34.0 MiB child 33.7 MiB
+M8 parent rewrote every page (3.66 ms; 1.8 µs per 16 KiB page): parent 34.0 MiB child 1.7 MiB
+M8 child: 0 of 2048 pages differ from 0x11
+M8 parent rewrote every page again (0.11 ms)
+M8 child: unmapped
+M8 child dropped its snapshot: parent 34.0 MiB child 1.7 MiB
+M10 hostile child: sub-entry perm READ|bit accepted for: [0x8:map-RW=0x11, 0x10:map-RW=0x11, 0x20:map-RW=0x11, 0x40:map-RW=0x11, 0x80:map-RW=0x11, 0x2000:map-RW=0x11, 0x4000:map-RW=0x11, 0x8000:map-RW=0x11, 0x10000:map-RW=OK-WROTE, 0x20000:map-RW=0x11, 0x40000:map-RW=0x11, 0x100000:map-RW=0x11, 0x800000:map-RW=0x11, 0x1000000:map-RW=0x11, 0x2000000:map-RW=0x11, 0x4000000:map-RW=0x11, 0x8000000:map-RW=0x11, 0x10000000:map-RW=0x11, 0x20000000:map-RW=0x11, 0x40000000:map-RW=0x11, 0x80000000:map-RW=0x11] | mach_vm_protect accepted: [max=0 prot=0x13->cur 3 max 3 wrote; max=1 prot=0x3->cur 1 max 3 no-write; max=1 prot=0x3->cur 1 max 3 no-write; max=1 prot=0x13->cur 1 max 3 no-write] | purgable_control kr=0 for: [c2/s0->0 c2/s1->1 c2/s2->2 c2/s3->3] | behavior_set kr=0 for: [0 1 2 3 4 5 6 9 10] | madvise ok for advice: [0 1 2 3 4 5 8 9] | receiver's own map now: 1 of 2048 pages differ from 0x5a
+M10 parent's data after: 0 of 2048 pages differ from 0x5a
+M10 child exited (status 0); its entry still maps: 0 of 2048 pages differ from 0x3c; kobject type of the name kobject kr=0x0 type=28 addr=0x0 | description kr=0x0 type=28 desc="VM-OBJECT(0xb19516d5, 32768KiB)"

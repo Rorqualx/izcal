@@ -5,6 +5,13 @@
 //! 3 = READ|WRITE, as D4's P33), so no MAP_MEM_* flag is used.
 #![allow(deprecated, clippy::all)]
 
+mod cross;
+#[path = "../../../../M1 D4 macOS IPC/probes/src/ffi.rs"]
+mod ffi;
+#[path = "../../../../M1 D4 macOS IPC/probes/src/mach.rs"]
+#[allow(dead_code)]
+mod mach;
+
 use libc::{c_char, mach_port_t};
 use std::time::Instant;
 
@@ -116,6 +123,12 @@ fn regions_count() -> usize {
 }
 
 fn main() {
+    let a: Vec<String> = std::env::args().collect();
+    match a.get(1).map(String::as_str) {
+        Some("child") => return cross::child_main(&a[2]),
+        Some("cross") => return cross::parent_main(),
+        _ => {}
+    }
     // The broker's side: memory, a RW entry and a RO entry from it.
     let mut src = 0u64;
     assert_eq!(unsafe { mach_vm_allocate(me(), &mut src, SZ, 1) }, 0);

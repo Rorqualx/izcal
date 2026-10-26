@@ -80,6 +80,157 @@ fn main() {
     if on("s7") {
         s7_counts();
     }
+    if on("s9") {
+        s9_dacl();
+    }
+    if on("s10") {
+        s10_charge();
+    }
+    if on("s11") {
+        s11_offer();
+    }
+}
+
+/// S9: a 0x6 handle the broker duplicates into a child whose AppContainer
+/// SID is not in the section's DACL (DACL = the broker's user GA only).
+fn s9_dacl() {
+    let mut c = start("izcal.d6probe.producer");
+    let sddl = format!("D:P(A;;GA;;;{})", user_sid());
+    let h = section(&sddl, 65536);
+    say("S9", format!("section SD {}", sddl_of(h)));
+    let ch = c.give(h, FILE_MAP_READ | FILE_MAP_WRITE, 0).unwrap();
+    says("S9", c.cmd(&format!("query {ch}")));
+    says("S9", c.cmd(&format!("map {ch} rw")));
+    says("S9", c.cmd("write 0 s9-child"));
+    let bv = unsafe { MapViewOfFile(h, FILE_MAP_READ, 0, 0, 0) };
+    let b = unsafe { std::slice::from_raw_parts(bv.Value as *const u8, 8) }.to_vec();
+    unsafe { UnmapViewOfFile(bv) };
+    say(
+        "S9",
+        format!("broker reads {:?}", String::from_utf8_lossy(&b)),
+    );
+    say(
+        "S9",
+        "the child tries to widen past 0x6 (DACL names only the broker):",
+    );
+    says("S9", c.cmd(&format!("widen {ch}")));
+    // A read-only handle in the same child cannot be widened to write.
+    let rh = c.give(h, FILE_MAP_READ, 0).unwrap();
+    say("S9", "a FILE_MAP_READ handle in that child:");
+    says("S9", c.cmd(&format!("widen {rh}")));
+    c.kill();
+}
+
+fn mem(p: H) -> String {
+    use windows_sys::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX,
+    };
+    let mut m: PROCESS_MEMORY_COUNTERS_EX = unsafe { std::mem::zeroed() };
+    m.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+    let ok = unsafe { GetProcessMemoryInfo(p, (&raw mut m).cast(), m.cb) };
+    let mut ms: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
+    ms.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+    unsafe { GlobalMemoryStatusEx(&mut ms) };
+    format!(
+        "ok={ok} PrivateUsage={} KiB WorkingSet={} KiB PagefileUsage={} KiB | system commit used={} MiB",
+        m.PrivateUsage >> 10,
+        m.WorkingSetSize >> 10,
+        m.PagefileUsage >> 10,
+        (ms.ullTotalPageFile - ms.ullAvailPageFile) >> 20
+    )
+}
+
+/// S10: who is charged for a 64 MiB SEC_COMMIT section: the creator, the
+/// mapper, the toucher, or only the system?
+fn s10_charge() {
+    let mut c = start("izcal.d6probe.consumer");
+    let me_ = unsafe { windows_sys::Win32::System::Threading::GetCurrentProcess() };
+    let size = 64u32 << 20;
+    say(
+        "S10",
+        format!("before: broker {} | child {}", mem(me_), mem(c.process)),
+    );
+    let sddl = format!("D:P(A;;GA;;;{})", user_sid());
+    let h = section(&sddl, size);
+    say(
+        "S10",
+        format!(
+            "broker created 64 MiB SEC_COMMIT: broker {} | child {}",
+            mem(me_),
+            mem(c.process)
+        ),
+    );
+    let ch = c.give(h, FILE_MAP_READ | FILE_MAP_WRITE, 0).unwrap();
+    says("S10", c.cmd(&format!("map {ch} rw")));
+    say(
+        "S10",
+        format!(
+            "child mapped: broker {} | child {}",
+            mem(me_),
+            mem(c.process)
+        ),
+    );
+    says("S10", c.cmd(&format!("fill {size}")));
+    say(
+        "S10",
+        format!(
+            "child wrote every page: broker {} | child {}",
+            mem(me_),
+            mem(c.process)
+        ),
+    );
+    says("S10", c.cmd("unmap"));
+    say(
+        "S10",
+        format!(
+            "child unmapped: broker {} | child {}",
+            mem(me_),
+            mem(c.process)
+        ),
+    );
+    unsafe { CloseHandle(h) };
+    say(
+        "S10",
+        format!(
+            "broker closed (child still has a handle): broker {} | child {}",
+            mem(me_),
+            mem(c.process)
+        ),
+    );
+    c.kill();
+    say("S10", format!("child exited: broker {}", mem(me_)));
+}
+
+/// S11: can a consumer with a read view offer or discard pages of a
+/// shared section, and does the producer's data change?
+fn s11_offer() {
+    let mut c = start("izcal.d6probe.consumer");
+    let sddl = format!("D:P(A;;GA;;;{})", user_sid());
+    let size = 1u32 << 20;
+    let h = section(&sddl, size);
+    let bv = unsafe { MapViewOfFile(h, FILE_MAP_WRITE, 0, 0, 0) };
+    let bp = bv.Value as *mut u8;
+    for i in (0..size as usize).step_by(4096) {
+        unsafe { *bp.add(i) = 0x5a };
+    }
+    let ch = c.give(h, FILE_MAP_READ, 0).unwrap();
+    says("S11", c.cmd(&format!("map {ch} r")));
+    says("S11", c.cmd(&format!("touch {size}")));
+    says("S11", c.cmd(&format!("offer {size}")));
+    let bad = (0..size as usize)
+        .step_by(4096)
+        .filter(|&i| unsafe { *bp.add(i) } != 0x5a)
+        .count();
+    say(
+        "S11",
+        format!(
+            "broker's view after the consumer's offer/discard: {bad} of {} pages changed",
+            size / 4096
+        ),
+    );
+    says("S11", c.cmd("read 0 1"));
+    unsafe { UnmapViewOfFile(bv) };
+    c.kill();
 }
 
 /// S7: can the broker see that a child still holds a view of a section,

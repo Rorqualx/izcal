@@ -153,6 +153,40 @@ fn run(p: &[&str], st: &mut St) -> Vec<String> {
                 o.push(format!("map {} OK {}", p[2], vq(v.Value)));
             }
         }
+        // offer/discard on the current view (S11).
+        "offer" => {
+            let len: usize = p[1].parse().unwrap();
+            let r = unsafe { OfferVirtualMemory(st.view.cast(), len, VmOfferPriorityNormal) };
+            o.push(format!("OfferVirtualMemory rc={r}"));
+            let r = unsafe { ReclaimVirtualMemory(st.view.cast(), len) };
+            o.push(format!("ReclaimVirtualMemory rc={r}"));
+            let r = unsafe { DiscardVirtualMemory(st.view.cast(), len) };
+            o.push(format!("DiscardVirtualMemory rc={r}"));
+            let mut old = 0u32;
+            let ok = unsafe { VirtualProtect(st.view.cast(), len, PAGE_NOACCESS, &mut old) };
+            o.push(format!(
+                "VirtualProtect(NOACCESS) ok={ok} err={}",
+                if ok == 0 { le() } else { 0 }
+            ));
+            if ok != 0 {
+                unsafe { VirtualProtect(st.view.cast(), len, old, &mut old) };
+            }
+        }
+        "touch" => {
+            let len: usize = p[1].parse().unwrap();
+            let mut x = 0u64;
+            for i in (0..len).step_by(4096) {
+                x = x.wrapping_add(unsafe { std::ptr::read_volatile(st.view.add(i)) } as u64);
+            }
+            o.push(format!("touched {} pages sum {x}", len / 4096));
+        }
+        "fill" => {
+            let len: usize = p[1].parse().unwrap();
+            for i in (0..len).step_by(4096) {
+                unsafe { std::ptr::write_volatile(st.view.add(i), 1) };
+            }
+            o.push(format!("wrote {} pages", len / 4096));
+        }
         "unmap" => {
             let ok = unsafe {
                 UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS {

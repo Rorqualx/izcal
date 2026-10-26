@@ -66,3 +66,51 @@ run exit=0
 [S7] child unmapped its view: (HandleCount, PointerCount) = Ok((2, 32762))
 [S7] pulled handle closed: (HandleCount, PointerCount) = Ok((1, 32760))
 run exit=0
+[S9] section SD O:BAG:S-1-5-21-<machine>-513D:P(A;;CCDCLCSWRPSDRCWDWO;;;S-1-5-21-<machine>-1001)
+[S9]   child: describe type=Section access=0x6
+[S9]   child: NtQuerySection(basic) status=0xc0000022 len=0 attrs=0x0 max_size=0
+[S9]   child: map READ size 0: VirtualQuery r=48 RegionSize=65536 Protect=0x2 AllocationProtect=0x2 Type=0x40000 State=0x1000
+[S9]   child: map rw OK VirtualQuery r=48 RegionSize=65536 Protect=0x4 AllocationProtect=0x4 Type=0x40000 State=0x1000
+[S9]   child: wrote "s9-child" at 0
+[S9] broker reads "s9-child"
+[S9] the child tries to widen past 0x6 (DACL names only the broker):
+[S9]   child: MapViewOfFile(WRITE) MAPPED
+[S9]   child: VirtualProtect(view, RW) ok=0 err=87
+[S9]   child: VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S9]   child: DuplicateHandle(self, FILE_MAP_WRITE) OK -> type=Section access=0x2
+[S9]   child: DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S9]   child: DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S9]   child: DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S9]   child: DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S9]   child: MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S9] a FILE_MAP_READ handle in that child:
+[S9]   child: MapViewOfFile(WRITE) FAILED err=5
+[S9]   child: VirtualProtect(view, RW) ok=0 err=87
+[S9]   child: VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S9]   child: DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S9]   child: DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S9]   child: DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S9]   child: DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S9]   child: DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S9]   child: MapViewOfFile(COPY) MAPPED (private copy-on-write)
+run exit=0
+[S10] before: broker ok=1 PrivateUsage=1020 KiB WorkingSet=6596 KiB PagefileUsage=1020 KiB | system commit used=11526 MiB | child ok=1 PrivateUsage=812 KiB WorkingSet=4608 KiB PagefileUsage=812 KiB | system commit used=11526 MiB
+[S10] broker created 64 MiB SEC_COMMIT: broker ok=1 PrivateUsage=1028 KiB WorkingSet=6796 KiB PagefileUsage=1028 KiB | system commit used=11590 MiB | child ok=1 PrivateUsage=812 KiB WorkingSet=4608 KiB PagefileUsage=812 KiB | system commit used=11590 MiB
+[S10]   child: map rw OK VirtualQuery r=48 RegionSize=67108864 Protect=0x4 AllocationProtect=0x4 Type=0x40000 State=0x1000
+[S10] child mapped: broker ok=1 PrivateUsage=1028 KiB WorkingSet=6804 KiB PagefileUsage=1028 KiB | system commit used=11590 MiB | child ok=1 PrivateUsage=940 KiB WorkingSet=4620 KiB PagefileUsage=940 KiB | system commit used=11590 MiB
+[S10]   child: wrote 16384 pages
+[S10] child wrote every page: broker ok=1 PrivateUsage=1028 KiB WorkingSet=6804 KiB PagefileUsage=1028 KiB | system commit used=11584 MiB | child ok=1 PrivateUsage=940 KiB WorkingSet=70156 KiB PagefileUsage=940 KiB | system commit used=11584 MiB
+[S10]   child: unmap ok=1
+[S10] child unmapped: broker ok=1 PrivateUsage=1028 KiB WorkingSet=6804 KiB PagefileUsage=1028 KiB | system commit used=11584 MiB | child ok=1 PrivateUsage=812 KiB WorkingSet=4628 KiB PagefileUsage=812 KiB | system commit used=11584 MiB
+[S10] broker closed (child still has a handle): broker ok=1 PrivateUsage=1028 KiB WorkingSet=6804 KiB PagefileUsage=1028 KiB | system commit used=11584 MiB | child ok=1 PrivateUsage=812 KiB WorkingSet=4628 KiB PagefileUsage=812 KiB | system commit used=11584 MiB
+[S10] child exited: broker ok=1 PrivateUsage=984 KiB WorkingSet=6808 KiB PagefileUsage=984 KiB | system commit used=11520 MiB
+run exit=0
+[S11]   child: map r OK VirtualQuery r=48 RegionSize=1048576 Protect=0x2 AllocationProtect=0x2 Type=0x40000 State=0x1000
+[S11]   child: touched 256 pages sum 23040
+[S11]   child: OfferVirtualMemory rc=87
+[S11]   child: ReclaimVirtualMemory rc=87
+[S11]   child: DiscardVirtualMemory rc=87
+[S11]   child: VirtualProtect(NOACCESS) ok=1 err=0
+[S11] broker's view after the consumer's offer/discard: 0 of 256 pages changed
+[S11]   child: read "Z" at 0
+run exit=0

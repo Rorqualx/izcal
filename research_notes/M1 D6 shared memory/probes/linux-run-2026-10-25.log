@@ -65,3 +65,18 @@ L7 producer exited (status 0); consumer still reads 0x2
 L8 consumer reading past a shrink (no SHRINK seal): signalled=true sig=7
 L10 64 KiB: create+size+seal+close 4.07 µs; map+unmap 2.77 µs; map+read every page+unmap 9.27 µs; /proc/self/maps lines +1
 L10 4096 KiB: create+size+seal+close 4.25 µs; map+unmap 3.06 µs; map+read every page+unmap 271.64 µs; /proc/self/maps lines +1
+--- review round (25 Oct, 21:10): `d6-linux-probes l13`
+L13 MFD_NOEXEC_SEAL|ALLOW_SEALING: initial seals 0x20 [EXEC]
+L13 add GROW|SHRINK: add=0 -> 0x26 [SHRINK|GROW|EXEC]
+L13 writer seals with a live RW map: add WRITE|SEAL: add=-1 errno 16 (Device or resource busy (os error 16))
+L13 after unmapping: add WRITE|SEAL: add=0 -> 0x2f [SEAL|SHRINK|GROW|WRITE|EXEC]
+L13 sealed NOEXEC region: mmap PROT_READ|PROT_EXEC shared: mmap ok
+L13 fchmod(0755) under the EXEC seal: fchmod=-1 errno 1 (Operation not permitted (os error 1))
+L13 raw SYS_fstat: rc=0 mode=0o100666 size=65536 nlink=0
+--- `systemd-run --user --scope -p Delegate=yes`, leaves ctl/A/B, memory enabled: `d6-linux-probes l12 <scope>`
+L12 created 32 MiB memfd in A: A=256 KiB B=0 KiB
+L12 a process in B mapped it and wrote every page: A=408 KiB B=33024 KiB
+L12 the creator in A then read every page (sum 8192): A=408 KiB B=32912 KiB
+L12 B unmapped: A=408 KiB B=33104 KiB
+L12 B's process exited: A=324 KiB B=32848 KiB
+L12 the creator closed and unmapped: A=260 KiB B=92 KiB
