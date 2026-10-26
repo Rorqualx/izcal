@@ -76,4 +76,4 @@ Whatever the probe shows goes into `windows_facts.md`. Then document the exact b
    - the dst hash `f06e8ea9…911b` on this branch.
 
 ## Ledger proofs (separate, finishing in this session)
-The three ledger Kani harnesses now run on a fixed-array model of the ledger, with a differential test that holds the model to the real ledger (`the_model_agrees_with_the_ledger`). The why is measured in `ledger.rs`'s `model` doc. They verify in the 13:22 hueyj slot (b-076556); this session commits them and updates the README's Kani table.
+The three ledger Kani harnesses now run on a fixed-array model of the ledger, with a differential test that holds the model to the real ledger (`the_model_agrees_with_the_ledger`). The why is measured in `ledger.rs`'s `model` doc. Verified on 26 Oct (16 s, 7 s and 12 s) and committed in 5db5040; README Kani table in b766f77. A whole-package run as CI runs it: 50 of 51 verified, and `ipc::unix::cmsg::proofs::a_step_keeps_the_invariant` hit the 15-minute limit (a timeout in Unix code D5 does not touch; not investigated).

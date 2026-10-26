@@ -82,8 +82,25 @@ The Kani harnesses for the transport's pure core (`ipc::win`), run on hueyj one 
 | `decide::proofs::decisions_are_sound_0` | verified, 1 of 1 cover | 355 s |
 | `decide::proofs::decisions_are_sound_1` | verified, 1 of 1 cover | 518 s |
 | `decide::proofs::decisions_are_sound_2` | verified, 1 of 1 cover | 240 s |
+| `frame::proofs::ctl_round_trips_24` | verified | 117 s |
+| `frame::proofs::ctl_round_trips_56` | verified | 332 s |
+| `frame::proofs::a_two_item_relay_decodes` | verified, 1 of 1 cover | 19 s |
+| `accept::proofs::accept_matches_its_spec` | verified, 1 of 1 cover | 2 s |
+| `ledger::proofs::relay_then_redeem_moves_one_end` | verified (over `model`) | 16 s |
+| `ledger::proofs::a_redeemed_ticket_frees_its_carriers_slot` | verified (over `model`) | 7 s |
+| `ledger::proofs::gone_then_sweep_reclaims` | verified (over `model`) | 12 s |
 
 A single `decide` harness with the message length and the descriptor count both symbolic did not finish in 30 minutes. It is split here the way the Unix one is (D1): one harness per descriptor count, plus one for the rules that come before the decoder. The descriptor harnesses need unwind 17, because the prover's `memcmp` loops over the 16-byte ticket.
+
+The rows from `ctl_round_trips_24` down were added after the design review (item 12). The 24- and 56-byte round trips cover the shortest records and a two-item record, and `accept_matches_its_spec` proves `accept` against an independent statement of its rules.
+
+**The ledger proofs run on a model of the ledger, not on the ledger.** Kani could not check the ledger itself, and this was measured on hueyj. CBMC unrolls each loop inside `BTreeMap` to the proof's full bound, because those loops' trip counts depend on node lengths held in memory. One `place` on a concrete key grew from 0.40 million steps at bound 6 to 2.46 million at bound 14, and did not finish at bound 18. Symbolic keys cost no more than concrete ones. A fixed-capacity map under the real ledger fixed `place`, but `relay`, `redeem` and `gone` still ran CBMC out of 10 GiB.
+
+So `ledger::model` follows the ledger's code over fixed arrays, over the earlier harnesses' domain: three processes, six channels and two tickets. The three properties are proved on the model. The test `the_model_agrees_with_the_ledger` holds the model to the real ledger: 3,000 random sequences of 60 operations, comparing every result and every observable value after each step; a deliberately broken model fails it at once. The model leaves out bindings, quotas (this domain never reaches them, and unit tests cover them) and relays of more than one end. That the real ledger matches the model is tested, not proved.
+
+**W3's ledger state is in the model too** (merged on m1/integration, 26 Oct). W3 gave the ledger old pipes queued for a receiver and owed by holders (parks), charged to the channel's creator, a `lost` mark, and releases in `gone`, `close_end` and `sweep`. These change the per-creator charge, which `gone_then_sweep_reclaims` observes, so the model now carries each channel's queued and owed pipes by key (at most `MAX_OLD_PIPES`), and the differential test adds `queue_old`, `expect_park`, `park`, `cancel_park` and `take_old` to its operations and compares `has_old`, the old-pipe count and the exact per-creator charge after every step. Every fourth sequence mostly queues and parks, so the 16-pipe limit is reached (over 100 refusals per run). Removing the model's uncharge on release, or its release on the creator's death, fails the test. Pipe aliases are not modelled: the model names channels by index. A new harness, `old_pipes_are_charged_and_released`, proves on the model that two old pipes are charged to the creator and released when the receiver closes or its holder or creator dies, and that after the creator's death the receiver must end.
+
+All 51 harnesses in `hg-substrate-os` were also run together, the way CI runs them (26 Oct, hueyj, 15 minutes per harness). 50 verified, and no cover went unreached. One Unix harness, `ipc::unix::cmsg::proofs::a_step_keeps_the_invariant`, hit the 15-minute limit. That is a timeout, not a counterexample, in code D5 does not touch.
 
 ## What Windows attests, and what it does not
 

@@ -881,6 +881,653 @@ impl Ledger {
     }
 }
 
+/// A fixed-size model of the ledger, for its Kani proofs (VER-1, D5 item
+/// 12).
+///
+/// Kani cannot check [`Ledger`] itself: CBMC unrolls each loop inside
+/// `BTreeMap`'s search, insertion and removal to the proof's full bound,
+/// because their trip counts depend on node lengths held in memory.
+/// Measured on hueyj: one `place` on a concrete key grew from 0.40 million
+/// steps at bound 6 to 2.46 million at bound 14 and did not finish
+/// symbolic execution at bound 18; a relay and redemption ran out of
+/// 10 GiB. Symbolic keys cost no more than concrete ones; the map's loops
+/// and the number of map calls do.
+///
+/// The model follows the ledger's code step by step over fixed arrays
+/// indexed by small numbers: [`PIPES`] channels (creators 0, 1 and 2,
+/// two ids each, the domain of the earlier harnesses), [`PROCS`]
+/// processes (0 the broker) and [`TICKETS`] tickets, each relay carrying
+/// one end. Every loop runs over a constant range, so CBMC unrolls it
+/// exactly. Quotas are left out: no sequence in this domain comes near
+/// them, and unit tests cover them on the ledger.
+///
+/// W3's state is modelled too: each channel's old pipes queued for its
+/// receiver and owed by holders (parks), by key, at most [`OLD`]
+/// (= [`super::MAX_OLD_PIPES`]), each charged to the channel's creator;
+/// the `lost` mark; and their release when the receiver ends, its holder
+/// or the creator dies, or the channel is swept. Aliases are not: the
+/// model names channels by index, and keys only serve `park`. The test
+/// `the_model_agrees_with_the_ledger` runs long random sequences of every
+/// operation here on both and compares results and every observable
+/// value after each step.
+#[cfg(any(test, kani))]
+mod model {
+    use super::End;
+
+    pub(super) const PIPES: usize = 6;
+    pub(super) const PROCS: usize = 3;
+    pub(super) const TICKETS: usize = 2;
+    /// The most old pipes a channel may have queued or owed (W3).
+    pub(super) const OLD: usize = super::MAX_OLD_PIPES;
+
+    /// Channel `i`'s creator.
+    pub(super) fn creator(i: usize) -> usize {
+        i / 2
+    }
+
+    /// Who holds an end, as [`super::Holder`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum H {
+        Proc(usize),
+        Ticket(usize),
+        Gone,
+    }
+
+    /// One relay: its carrier, relayer and the one end it carries.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) struct T {
+        pub(super) carrier: usize,
+        pub(super) from: usize,
+        pub(super) pipe: usize,
+        pub(super) end: End,
+    }
+
+    /// Why a redemption was refused, or (W3) an old pipe, as
+    /// [`super::LedgerError`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum E {
+        NoTicket,
+        WrongChannel,
+        NotHolder,
+        OldPipes,
+        NoPark,
+    }
+
+    /// A channel's old pipes (W3), as `super::Pipes`: `exists` while the
+    /// ledger has a `Pipes` entry for it.
+    #[derive(Debug, Clone, Copy)]
+    pub(super) struct Old {
+        exists: bool,
+        /// Keys queued for the receiver, oldest first.
+        queued: [u8; OLD],
+        nq: usize,
+        /// (holder, key) owed, in order.
+        parks: [(usize, u8); OLD],
+        np: usize,
+        lost: bool,
+    }
+
+    impl Old {
+        const NONE: Self = Self {
+            exists: false,
+            queued: [0; OLD],
+            nq: 0,
+            parks: [(0, 0); OLD],
+            np: 0,
+            lost: false,
+        };
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub(super) struct Model {
+        known: [bool; PIPES],
+        sender: [H; PIPES],
+        receiver: [H; PIPES],
+        tickets: [Option<T>; TICKETS],
+        outstanding: [usize; PROCS],
+        by_carrier: [usize; PIPES],
+        per_creator: [usize; PROCS],
+        old: [Old; PIPES],
+    }
+
+    impl Default for Model {
+        fn default() -> Self {
+            Self {
+                known: [false; PIPES],
+                sender: [H::Gone; PIPES],
+                receiver: [H::Gone; PIPES],
+                tickets: [None; TICKETS],
+                outstanding: [0; PROCS],
+                by_carrier: [0; PIPES],
+                per_creator: [0; PROCS],
+                old: [Old::NONE; PIPES],
+            }
+        }
+    }
+
+    fn at<X: Copy>(a: &[X], i: usize, or: X) -> X {
+        a.get(i).copied().unwrap_or(or)
+    }
+
+    fn set<X>(a: &mut [X], i: usize, v: X) {
+        if let Some(x) = a.get_mut(i) {
+            *x = v;
+        }
+    }
+
+    fn inc(a: &mut [usize], i: usize) {
+        if let Some(x) = a.get_mut(i) {
+            *x = x.saturating_add(1);
+        }
+    }
+
+    fn dec(a: &mut [usize], i: usize) {
+        if let Some(x) = a.get_mut(i) {
+            *x = x.saturating_sub(1);
+        }
+    }
+
+    impl Model {
+        /// The ends' holders, as `Ledger::entry`: an unseen channel's
+        /// ends are its creator's.
+        fn entry(&self, i: usize) -> (H, H) {
+            if at(&self.known, i, false) {
+                (at(&self.sender, i, H::Gone), at(&self.receiver, i, H::Gone))
+            } else {
+                (H::Proc(creator(i)), H::Proc(creator(i)))
+            }
+        }
+
+        /// As `Ledger::put`, without the quota.
+        fn put(&mut self, i: usize, (tx, rx): (H, H)) {
+            if !at(&self.known, i, false) {
+                let c = creator(i);
+                inc(&mut self.per_creator, c);
+                set(&mut self.known, i, true);
+            }
+            set(&mut self.sender, i, tx);
+            set(&mut self.receiver, i, rx);
+        }
+
+        fn with_end((tx, rx): (H, H), end: End, h: H) -> (H, H) {
+            match end {
+                End::Sender => (h, rx),
+                End::Receiver => (tx, h),
+            }
+        }
+
+        pub(super) fn place(&mut self, i: usize, end: End, to: usize) {
+            let e = Self::with_end(self.entry(i), end, H::Proc(to));
+            self.put(i, e);
+        }
+
+        /// As `Ledger::relay` of one end; the ledger replaces a ticket
+        /// already outstanding under the same value, and so does this.
+        pub(super) fn relay(&mut self, t: usize, held: T) {
+            let e = Self::with_end(self.entry(held.pipe), held.end, H::Ticket(t));
+            self.put(held.pipe, e);
+            inc(&mut self.outstanding, held.from);
+            inc(&mut self.by_carrier, held.carrier);
+            set(&mut self.tickets, t, Some(held));
+        }
+
+        fn release_counts(&mut self, held: T) {
+            dec(&mut self.outstanding, held.from);
+            dec(&mut self.by_carrier, held.carrier);
+        }
+
+        pub(super) fn redeem(&mut self, by: usize, t: usize, rx: usize) -> Result<T, E> {
+            let held = at(&self.tickets, t, None).ok_or(E::NoTicket)?;
+            if held.carrier != rx {
+                return Err(E::WrongChannel);
+            }
+            if self.entry(rx).1 != H::Proc(by) {
+                return Err(E::NotHolder);
+            }
+            set(&mut self.tickets, t, None);
+            self.release_counts(held);
+            let e = Self::with_end(self.entry(held.pipe), held.end, H::Proc(by));
+            self.put(held.pipe, e);
+            Ok(held)
+        }
+
+        /// As `Ledger::gone`; returns which tickets it released.
+        pub(super) fn gone(&mut self, p: usize) -> [bool; TICKETS] {
+            let mut dead = [false; TICKETS];
+            for (t, d) in dead.iter_mut().enumerate() {
+                if let Some(h) = at(&self.tickets, t, None) {
+                    let rx = self.entry(h.carrier).1;
+                    *d = rx == H::Gone || rx == H::Proc(p);
+                }
+            }
+            let lost = |h: H| match h {
+                H::Proc(q) => q == p,
+                H::Ticket(t) => at(&dead, t, false),
+                H::Gone => false,
+            };
+            // W3: old pipes go with the receiver's holder, and with the
+            // creator they are charged to (then marked lost).
+            let mut release = [None; PIPES];
+            for (i, r) in release.iter_mut().enumerate() {
+                if at(&self.known, i, false) {
+                    if lost(at(&self.sender, i, H::Gone)) {
+                        set(&mut self.sender, i, H::Gone);
+                    }
+                    if lost(at(&self.receiver, i, H::Gone)) {
+                        set(&mut self.receiver, i, H::Gone);
+                        *r = Some(false);
+                    } else if creator(i) == p {
+                        *r = Some(true);
+                    }
+                }
+            }
+            self.drop_parks_of(p);
+            for (i, r) in release.iter().enumerate() {
+                if let Some(lost_pipes) = *r {
+                    self.release_old(i, lost_pipes);
+                }
+            }
+            for (t, d) in dead.iter().enumerate() {
+                if *d && let Some(h) = at(&self.tickets, t, None) {
+                    set(&mut self.tickets, t, None);
+                    self.release_counts(h);
+                }
+            }
+            set(&mut self.outstanding, p, 0);
+            dead
+        }
+
+        pub(super) fn close_end(&mut self, i: usize, end: End, by: usize) {
+            if at(&self.known, i, false) {
+                let (tx, rx) = self.entry(i);
+                let slot = if end == End::Sender { tx } else { rx };
+                if slot == H::Proc(by) {
+                    let e = Self::with_end((tx, rx), end, H::Gone);
+                    self.put(i, e);
+                    if end == End::Receiver {
+                        self.release_old(i, false);
+                    }
+                }
+            }
+        }
+
+        /// As `Ledger::sweep`; returns which creators it emptied.
+        pub(super) fn sweep(&mut self) -> [bool; PROCS] {
+            let mut emptied = [false; PROCS];
+            for i in 0..PIPES {
+                if at(&self.known, i, false)
+                    && at(&self.sender, i, H::Proc(0)) == H::Gone
+                    && at(&self.receiver, i, H::Proc(0)) == H::Gone
+                {
+                    set(&mut self.known, i, false);
+                    // As `forget_pipes`.
+                    self.release_old(i, false);
+                    set(&mut self.old, i, Old::NONE);
+                    let c = creator(i);
+                    let n = at(&self.per_creator, c, 0);
+                    if n > 0 {
+                        set(&mut self.per_creator, c, n.saturating_sub(1));
+                        if n == 1 {
+                            set(&mut emptied, c, true);
+                        }
+                    }
+                }
+            }
+            emptied
+        }
+
+        // ---- W3: old pipes ----------------------------------------------
+
+        fn old_at(&self, i: usize) -> Old {
+            at(&self.old, i, Old::NONE)
+        }
+
+        fn uncharge(&mut self, c: usize) {
+            dec(&mut self.per_creator, c);
+        }
+
+        /// As `Ledger::old_pipe_room`, without the quota.
+        fn room(&self, i: usize) -> Result<(), E> {
+            let o = self.old_at(i);
+            if o.nq.saturating_add(o.np) >= OLD {
+                Err(E::OldPipes)
+            } else {
+                Ok(())
+            }
+        }
+
+        pub(super) fn queue_old(&mut self, i: usize, key: u8) -> Result<(), E> {
+            self.room(i)?;
+            inc(&mut self.per_creator, creator(i));
+            if let Some(o) = self.old.get_mut(i) {
+                o.exists = true;
+                set(&mut o.queued, o.nq, key);
+                o.nq = o.nq.saturating_add(1);
+            }
+            Ok(())
+        }
+
+        pub(super) fn expect_park(&mut self, i: usize, holder: usize, key: u8) -> Result<(), E> {
+            self.room(i)?;
+            inc(&mut self.per_creator, creator(i));
+            if let Some(o) = self.old.get_mut(i) {
+                o.exists = true;
+                set(&mut o.parks, o.np, (holder, key));
+                o.np = o.np.saturating_add(1);
+            }
+            Ok(())
+        }
+
+        /// Removes park `(holder, key)` of channel `i`, keeping the order.
+        fn unpark(&mut self, i: usize, holder: usize, key: u8) -> bool {
+            let Some(o) = self.old.get_mut(i) else {
+                return false;
+            };
+            let mut found = false;
+            for j in 0..OLD {
+                if !found && j < o.np && at(&o.parks, j, (0, 0)) == (holder, key) {
+                    found = true;
+                }
+                if found && j < o.np {
+                    let next = at(&o.parks, j.saturating_add(1), (0, 0));
+                    set(&mut o.parks, j, next);
+                }
+            }
+            if found {
+                o.np = o.np.saturating_sub(1);
+            }
+            found
+        }
+
+        /// As `Ledger::park`: the channel whose park it was.
+        pub(super) fn park(&mut self, holder: usize, key: u8) -> Result<usize, E> {
+            for i in 0..PIPES {
+                if self.old_at(i).exists && self.unpark(i, holder, key) {
+                    if let Some(o) = self.old.get_mut(i) {
+                        set(&mut o.queued, o.nq, key);
+                        o.nq = o.nq.saturating_add(1);
+                    }
+                    return Ok(i);
+                }
+            }
+            Err(E::NoPark)
+        }
+
+        pub(super) fn cancel_park(&mut self, i: usize, holder: usize, key: u8) {
+            if self.old_at(i).exists && self.unpark(i, holder, key) {
+                self.uncharge(creator(i));
+            }
+        }
+
+        /// As `Ledger::take_old`: `None` if some were lost.
+        pub(super) fn take_old(&mut self, i: usize) -> Option<([u8; OLD], usize)> {
+            let o = self.old_at(i);
+            if !o.exists {
+                return Some(([0; OLD], 0));
+            }
+            if o.lost {
+                return None;
+            }
+            for _ in 0..o.nq {
+                self.uncharge(creator(i));
+            }
+            if let Some(x) = self.old.get_mut(i) {
+                x.nq = 0;
+            }
+            Some((o.queued, o.nq))
+        }
+
+        fn release_old(&mut self, i: usize, lost: bool) {
+            let o = self.old_at(i);
+            if !o.exists {
+                return;
+            }
+            let n = o.nq.saturating_add(o.np);
+            for _ in 0..n {
+                self.uncharge(creator(i));
+            }
+            if let Some(x) = self.old.get_mut(i) {
+                if lost && n > 0 {
+                    x.lost = true;
+                }
+                x.nq = 0;
+                x.np = 0;
+            }
+        }
+
+        /// As `Ledger::drop_parks_of`: one pass per channel keeps the
+        /// other holders' parks in order.
+        fn drop_parks_of(&mut self, p: usize) {
+            for i in 0..PIPES {
+                let o = self.old_at(i);
+                let mut kept = [(0, 0); OLD];
+                let mut n: usize = 0;
+                let mut dropped: usize = 0;
+                for j in 0..OLD {
+                    let park = at(&o.parks, j, (0, 0));
+                    if j < o.np {
+                        if park.0 == p {
+                            dropped = dropped.saturating_add(1);
+                        } else {
+                            set(&mut kept, n, park);
+                            n = n.saturating_add(1);
+                        }
+                    }
+                }
+                if let Some(x) = self.old.get_mut(i) {
+                    x.parks = kept;
+                    x.np = n;
+                }
+                for _ in 0..dropped {
+                    self.uncharge(creator(i));
+                }
+            }
+        }
+
+        pub(super) fn has_old(&self, i: usize) -> bool {
+            let o = self.old_at(i);
+            o.exists && (o.nq > 0 || o.lost)
+        }
+
+        pub(super) fn old_pipes(&self, i: usize) -> usize {
+            let o = self.old_at(i);
+            o.nq.saturating_add(o.np)
+        }
+
+        pub(super) fn charged(&self, c: usize) -> usize {
+            at(&self.per_creator, c, 0)
+        }
+
+        /// As `Ledger::view`'s holder: `None` for an unseen channel,
+        /// `Some(None)` for an end in a ticket or gone.
+        pub(super) fn holder(&self, i: usize, end: End) -> Option<Option<usize>> {
+            if !at(&self.known, i, false) {
+                return None;
+            }
+            let (tx, rx) = self.entry(i);
+            match if end == End::Sender { tx } else { rx } {
+                H::Proc(p) => Some(Some(p)),
+                H::Ticket(_) | H::Gone => Some(None),
+            }
+        }
+
+        pub(super) fn ticket_free(&self, t: usize) -> bool {
+            at(&self.tickets, t, None).is_none()
+        }
+
+        pub(super) fn tickets_outstanding(&self) -> usize {
+            self.tickets.iter().filter(|t| t.is_some()).count()
+        }
+
+        pub(super) fn has_creator(&self, c: usize) -> bool {
+            at(&self.per_creator, c, 0) > 0
+        }
+
+        pub(super) fn by_carrier(&self, i: usize) -> usize {
+            at(&self.by_carrier, i, 0)
+        }
+
+        pub(super) fn outstanding(&self, p: usize) -> usize {
+            at(&self.outstanding, p, 0)
+        }
+    }
+}
+
+/// VER-1 for the broker's ledger (IPC-R1), over [`model`]: a relay and its
+/// redemption move an end from the relayer to the redeemer and leave the
+/// ticket counters empty, and `gone` plus `sweep` reclaim what a dead
+/// process held. The same three properties as before, over the same
+/// domain (three processes, six channels); see `model` for why the proofs
+/// run on the model and how it is held to the ledger.
+#[cfg(kani)]
+mod proofs {
+    use super::End;
+    use super::model::{E, Model, PIPES, PROCS, T, creator};
+
+    fn any_proc() -> usize {
+        kani::any_where(|&p: &usize| p < PROCS)
+    }
+
+    fn any_pipe() -> usize {
+        kani::any_where(|&i: &usize| i < PIPES)
+    }
+
+    fn any_end() -> End {
+        if kani::any() {
+            End::Sender
+        } else {
+            End::Receiver
+        }
+    }
+
+    /// A relay of one end then a redemption on its carrier moves the end
+    /// to the redeemer and leaves no ticket behind.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn relay_then_redeem_moves_one_end() {
+        let mut l = Model::default();
+        let carrier = any_pipe();
+        let moved = any_pipe();
+        let from = any_proc();
+        let by = any_proc();
+        let end = any_end();
+        // The redeemer holds the carrier's receiver.
+        l.place(carrier, End::Receiver, by);
+        kani::assume(moved != carrier);
+        l.relay(
+            0,
+            T {
+                carrier,
+                from,
+                pipe: moved,
+                end,
+            },
+        );
+        // While held under the ticket, the moved end has no live holder.
+        assert!(l.holder(moved, end) == Some(None));
+        assert!(!l.ticket_free(0));
+        match l.redeem(by, 0, carrier) {
+            Ok(held) => {
+                assert!(held.pipe == moved && held.end == end);
+                assert!(l.holder(moved, end) == Some(Some(by)));
+                assert!(l.ticket_free(0));
+                assert!(l.tickets_outstanding() == 0);
+                kani::cover!(end == End::Receiver, "a receiver end reaches the redeemer");
+                kani::cover!(end == End::Sender, "a sender end reaches the redeemer");
+            }
+            Err(e) => {
+                // Only a refused redemption keeps the ticket.
+                assert!(e != E::NoTicket);
+                assert!(!l.ticket_free(0));
+            }
+        }
+    }
+
+    /// A relay counts one ticket against its carrier, and redeeming a
+    /// fresh ledger's only ticket empties the per-carrier count, so the
+    /// carrier has room again.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn a_redeemed_ticket_frees_its_carriers_slot() {
+        let mut l = Model::default();
+        let carrier = any_pipe();
+        let by = any_proc();
+        l.place(carrier, End::Receiver, by);
+        let a = any_pipe();
+        kani::assume(a != carrier);
+        l.relay(
+            1,
+            T {
+                carrier,
+                from: by,
+                pipe: a,
+                end: End::Sender,
+            },
+        );
+        assert!(l.by_carrier(carrier) == 1);
+        assert!(l.redeem(by, 1, carrier).is_ok());
+        assert!(l.by_carrier(carrier) == 0);
+        assert!(l.outstanding(by) == 0);
+        kani::cover!(true, "the ticket is redeemed");
+    }
+
+    /// W3: an old pipe queued or owed is charged to the channel's
+    /// creator, and every one is released when the receiver's holder
+    /// closes it or dies, or when the creator dies; after the creator's
+    /// death the receiver must end (`take_old` is `None`).
+    #[kani::proof]
+    #[kani::unwind(18)]
+    fn old_pipes_are_charged_and_released() {
+        let mut l = Model::default();
+        let chan = any_pipe();
+        let holder = any_proc();
+        let c = creator(chan);
+        l.place(chan, End::Receiver, holder);
+        let before = l.charged(c);
+        assert!(l.queue_old(chan, 1).is_ok());
+        assert!(l.expect_park(chan, holder, 2).is_ok());
+        assert!(l.charged(c) == before + 2);
+        assert!(l.has_old(chan) && l.old_pipes(chan) == 2);
+        if kani::any() {
+            l.close_end(chan, End::Receiver, holder);
+            assert!(l.take_old(chan).is_some_and(|(_, n)| n == 0));
+            kani::cover!(true, "the receiver closes");
+        } else {
+            let dead = any_proc();
+            kani::assume(dead == holder || dead == c);
+            let _ = l.gone(dead);
+            if dead == c && holder != c {
+                assert!(l.take_old(chan).is_none());
+                kani::cover!(true, "the creator dies: the receiver must end");
+            }
+        }
+        assert!(l.charged(c) == before);
+        assert!(l.old_pipes(chan) == 0);
+    }
+
+    /// A process ending releases every ticket only it could redeem and,
+    /// after a sweep, forgets a channel whose ends are both gone.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn gone_then_sweep_reclaims() {
+        let mut l = Model::default();
+        let p = any_proc();
+        let chan = any_pipe();
+        l.place(chan, End::Sender, p);
+        l.place(chan, End::Receiver, p);
+        assert!(l.has_creator(creator(chan)));
+        let _ = l.gone(p);
+        let emptied = l.sweep();
+        assert!(l.holder(chan, End::Sender).is_none());
+        let c = creator(chan);
+        assert!(emptied.get(c).copied().unwrap_or(false) || l.has_creator(c));
+        kani::cover!(
+            emptied.get(c).copied().unwrap_or(false),
+            "the creator is left with no channels"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1200,6 +1847,206 @@ mod tests {
         let n = u64::try_from(i).unwrap_or(0).wrapping_add(1);
         t[..8].copy_from_slice(&n.to_le_bytes());
         t
+    }
+
+    /// The Kani proofs run on `model`; this holds the model to the
+    /// ledger. Random sequences of every operation the model has, over its
+    /// whole domain, give the same results on both, and after each step
+    /// the same holder for every end, the same tickets, per-creator
+    /// charges and per-carrier and per-process counts, and (W3) the same
+    /// old pipes owed and queued per channel.
+    #[test]
+    fn the_model_agrees_with_the_ledger() {
+        use super::model::{E, Model, OLD, PIPES, PROCS, T, TICKETS, creator};
+        let key = |i: usize| PipeKey {
+            creator: u32::try_from(creator(i)).unwrap(),
+            id: [u8::try_from(i % 2).unwrap(); 16],
+        };
+        let ticket = |t: usize| [u8::try_from(t).unwrap().wrapping_add(1); 16];
+        let proc = |p: usize| u32::try_from(p).unwrap();
+        let mut x: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = |n: usize| {
+            x ^= x.wrapping_shl(13);
+            x ^= x.wrapping_shr(7);
+            x ^= x.wrapping_shl(17);
+            usize::try_from(x % u64::try_from(n).unwrap()).unwrap()
+        };
+        // W3's old pipes: a fresh key for each, never a channel's.
+        let old_key = |k: u8| PipeKey {
+            creator: 0,
+            id: [
+                k, 0xee, 0xee, 0xee, 0xee, 0xee, 0xee, 0xee, 0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+        };
+        let mut ops = [0usize; 11];
+        let mut refused_old = 0usize;
+        for run in 0..3_000 {
+            let mut l = Ledger::default();
+            let mut m = Model::default();
+            let mut keys: u8 = 0;
+            // Every fourth sequence mostly queues and parks old pipes, so
+            // channels reach the old-pipe limit.
+            let heavy = run % 4 == 0;
+            // Parks made in this sequence: (channel, holder, key).
+            let mut parks: Vec<(usize, usize, u8)> = Vec::new();
+            for _ in 0..60 {
+                let end = if next(2) == 0 {
+                    End::Sender
+                } else {
+                    End::Receiver
+                };
+                let op = if heavy && next(3) != 0 {
+                    6 + next(2)
+                } else {
+                    next(11)
+                };
+                // W3 operations favour two channels, so their limit is
+                // reached too.
+                let w3_pipe = |r: usize, n: usize| if r == 0 { n % 2 } else { n };
+                ops[op] += 1;
+                match op {
+                    0 => {
+                        let (i, to) = (next(PIPES), next(PROCS));
+                        l.place(key(i), end, proc(to)).unwrap();
+                        m.place(i, end, to);
+                    }
+                    1 => {
+                        let (t, c, from, i) =
+                            (next(TICKETS), next(PIPES), next(PROCS), next(PIPES));
+                        let held = Held {
+                            carrier: key(c),
+                            from: proc(from),
+                            ends: vec![(key(i), end, WireKind::Sender)],
+                            regions: Vec::new(),
+                        };
+                        l.relay(ticket(t), held).unwrap();
+                        m.relay(
+                            t,
+                            T {
+                                carrier: c,
+                                from,
+                                pipe: i,
+                                end,
+                            },
+                        );
+                    }
+                    2 => {
+                        let (by, t, rx) = (next(PROCS), next(TICKETS), next(PIPES));
+                        let real = l.redeem(proc(by), &ticket(t), key(rx));
+                        let got = m.redeem(by, t, rx);
+                        match (real, got) {
+                            (Ok((held, _)), Ok(h)) => {
+                                assert_eq!(held.carrier, key(h.carrier));
+                                assert_eq!(held.from, proc(h.from));
+                                assert_eq!(held.ends, vec![(key(h.pipe), h.end, WireKind::Sender)]);
+                            }
+                            (Err(LedgerError::NoTicket), Err(E::NoTicket))
+                            | (Err(LedgerError::WrongChannel), Err(E::WrongChannel))
+                            | (Err(LedgerError::NotHolder), Err(E::NotHolder)) => {}
+                            (a, b) => panic!("redeem: ledger {a:?}, model {b:?}"),
+                        }
+                    }
+                    3 => {
+                        let p = next(PROCS);
+                        let mut real = l.gone(proc(p));
+                        real.sort_unstable();
+                        let dead = m.gone(p);
+                        let want: Vec<_> = (0..TICKETS).filter(|t| dead[*t]).map(ticket).collect();
+                        assert_eq!(real, want);
+                    }
+                    4 => {
+                        let mut real = l.sweep();
+                        real.sort_unstable();
+                        let emptied = m.sweep();
+                        let want: Vec<_> = (0..PROCS).filter(|c| emptied[*c]).map(proc).collect();
+                        assert_eq!(real, want);
+                    }
+                    5 => {
+                        let (i, by) = (next(PIPES), next(PROCS));
+                        l.close_end(key(i), end, proc(by));
+                        m.close_end(i, end, by);
+                    }
+                    6 | 7 => {
+                        let i = w3_pipe(next(2), next(PIPES));
+                        keys = keys.wrapping_add(1);
+                        let k = keys;
+                        let (real, got) = if op == 6 {
+                            (l.queue_old(key(i), old_key(k)), m.queue_old(i, k))
+                        } else {
+                            let h = next(PROCS);
+                            parks.push((i, h, k));
+                            (
+                                l.expect_park(key(i), proc(h), old_key(k)),
+                                m.expect_park(i, h, k),
+                            )
+                        };
+                        match (real, got) {
+                            (Ok(()), Ok(())) => {}
+                            (Err(LedgerError::OldPipes), Err(E::OldPipes)) => refused_old += 1,
+                            (a, b) => panic!("op {op}: ledger {a:?}, model {b:?}"),
+                        }
+                    }
+                    8 => {
+                        // A park made earlier (perhaps since released or
+                        // taken), or one never expected.
+                        let (h, k) = match parks.get(next(parks.len().saturating_add(1))) {
+                            Some(&(_, h, k)) => (h, k),
+                            None => (next(PROCS), keys.wrapping_add(1)),
+                        };
+                        let real = l.park(proc(h), old_key(k));
+                        match (real, m.park(h, k)) {
+                            (Ok(chan), Ok(i)) => assert_eq!(chan, key(i)),
+                            (Err(LedgerError::NoPark), Err(E::NoPark)) => {}
+                            (a, b) => panic!("park: ledger {a:?}, model {b:?}"),
+                        }
+                    }
+                    9 => {
+                        if let Some(&(i, h, k)) = parks.get(next(parks.len().max(1))) {
+                            l.cancel_park(key(i), proc(h), old_key(k));
+                            m.cancel_park(i, h, k);
+                        }
+                    }
+                    _ => {
+                        let i = w3_pipe(next(2), next(PIPES));
+                        let real = l.take_old(key(i));
+                        let got = m
+                            .take_old(i)
+                            .map(|(ks, n)| ks.iter().take(n).map(|k| old_key(*k)).collect());
+                        assert_eq!(real, got, "take_old {i}");
+                    }
+                }
+                // Released pipes are the broker's to close; not modelled.
+                let _ = l.take_released();
+                for i in 0..PIPES {
+                    for e in [End::Sender, End::Receiver] {
+                        let real = l
+                            .view(key(i), e)
+                            .map(|v| v.holder.map(|p| usize::try_from(p).unwrap()));
+                        assert_eq!(real, m.holder(i, e), "channel {i} {e:?}");
+                    }
+                    let real = l.by_carrier.get(&key(i)).copied().unwrap_or(0);
+                    assert_eq!(real, m.by_carrier(i));
+                }
+                for t in 0..TICKETS {
+                    assert_eq!(l.ticket_free(&ticket(t)), m.ticket_free(t));
+                }
+                assert_eq!(l.tickets_outstanding(), m.tickets_outstanding());
+                for i in 0..PIPES {
+                    assert_eq!(l.has_old(key(i)), m.has_old(i), "has_old {i}");
+                    assert_eq!(l.old_pipes(key(i)), m.old_pipes(i), "old_pipes {i}");
+                }
+                for p in 0..PROCS {
+                    assert_eq!(l.has_creator(proc(p)), m.has_creator(p));
+                    assert_eq!(l.charged(proc(p)), m.charged(p), "charged {p}");
+                    let real = l.outstanding.get(&proc(p)).copied().unwrap_or(0);
+                    assert_eq!(real, m.outstanding(p));
+                }
+            }
+        }
+        // Every operation ran many times, and the old-pipe limit was hit.
+        assert!(ops.iter().all(|n| *n > 10_000), "{ops:?}");
+        assert!(refused_old > 100, "OldPipes refusals: {refused_old}");
+        let _ = OLD;
     }
 
     #[test]
