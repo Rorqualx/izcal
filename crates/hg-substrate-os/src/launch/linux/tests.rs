@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use hg_launch_plan::{Kind, REQUEST_LEN, Reply, Request, Stage, Tier};
 
-use super::{BuildFiles, SpawnError, SpawnerLink, sys};
+use super::{BuildFiles, LinuxLauncher, SpawnError, SpawnerLink, sys};
 use crate::ipc::linux::launch_pair;
 use crate::ipc::linux::sys as ipc_sys;
 use crate::ipc::unix::cmsg;
@@ -272,4 +272,80 @@ fn the_spawner_reaps_and_exits_on_end_of_file_leaving_children() {
     assert_eq!(sys::poll_in(&[b.pidfd.as_fd()], 200).unwrap()[0], 0);
     drop(to_child);
     assert_ne!(sys::poll_in(&[b.pidfd.as_fd()], 10_000).unwrap()[0], 0);
+}
+
+fn launcher() -> LinuxLauncher {
+    let exec = std::sync::Arc::new(crate::executor::OsExecutor::new(2, 1).unwrap());
+    let ipc = std::sync::Arc::new(crate::ipc::linux::LinuxIpc::start(exec, None).unwrap());
+    LinuxLauncher::start(ipc, probe_files()).unwrap()
+}
+
+fn gone(pid: u32, within: Duration) -> bool {
+    let end = Instant::now() + within;
+    while Instant::now() < end {
+        if !Path::new(&format!("/proc/{pid}")).exists() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+/// The launcher conformance test (coordinator, 26 Oct): a child that never
+/// sends `ready` (the probe child sends none) is killed through its pidfd
+/// and reaped by the spawner well within the 5 s ready deadline. A peer
+/// the launcher did not start is left alone.
+#[test]
+fn a_child_that_never_sends_ready_is_killed_and_reaped() {
+    use hg_substrate::Launcher;
+    use hg_substrate::launch::{ChildKind, SandboxTier};
+    let l = launcher();
+    let c = l.launch(ChildKind::Renderer, 64).unwrap();
+    assert_eq!(c.sandbox, SandboxTier::LinuxRestrictedUserns);
+    let pidfd = l.pidfd_of(c.peer).unwrap();
+    // Unknown peers: another pid, and this pid with another generation.
+    l.kill(hg_substrate::ipc::OsPeer::new(
+        c.peer.pid(),
+        c.peer.generation() + 1,
+    ));
+    l.kill(hg_substrate::ipc::OsPeer::new(1, 0));
+    assert_eq!(
+        sys::poll_in(&[pidfd.as_fd()], 200).unwrap()[0],
+        0,
+        "still running"
+    );
+    let t = Instant::now();
+    l.kill(c.peer);
+    assert_ne!(
+        sys::poll_in(&[pidfd.as_fd()], 5_000).unwrap()[0],
+        0,
+        "killed"
+    );
+    assert!(gone(c.peer.pid(), Duration::from_secs(5)), "reaped");
+    eprintln!("killed and reaped in {:?}", t.elapsed());
+    assert!(t.elapsed() < Duration::from_secs(5));
+}
+
+/// E-R2: a spawner that dies is started again by the next launch; the
+/// launch in flight when it was found dead fails. Restart-required stops
+/// every launch (DU-3).
+#[test]
+fn a_dead_spawner_is_restarted_and_restart_required_stops_launches() {
+    use hg_substrate::Launcher;
+    use hg_substrate::launch::{ChildKind, LaunchError};
+    let l = launcher();
+    l.kill_spawner();
+    let first = l.launch(ChildKind::NetworkPartition, 64);
+    assert!(matches!(first, Err(LaunchError::Failed)), "{first:?}");
+    let c = l.launch(ChildKind::NetworkPartition, 64).unwrap();
+    l.kill(c.peer);
+    assert_eq!(
+        l.launch(ChildKind::Renderer, 8).err(),
+        Some(LaunchError::Unsupported)
+    );
+    l.restart_required();
+    assert_eq!(
+        l.launch(ChildKind::Renderer, 64).err(),
+        Some(LaunchError::RestartRequired)
+    );
 }

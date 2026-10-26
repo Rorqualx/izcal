@@ -58,6 +58,9 @@ pub enum StartError {
     /// The IPC transport could not start (its epoll instance, eventfd or
     /// IO thread).
     Ipc(std::io::Error),
+    /// The broker's launcher could not start: the build's executables, or
+    /// the Linux spawner.
+    Launch(std::io::Error),
 }
 
 impl std::fmt::Display for StartError {
@@ -66,6 +69,7 @@ impl std::fmt::Display for StartError {
             Self::Entropy => f.write_str("the OS random source failed"),
             Self::Thread(e) => write!(f, "a substrate thread could not start: {e}"),
             Self::Ipc(e) => write!(f, "the IPC transport could not start: {e}"),
+            Self::Launch(e) => write!(f, "the launcher could not start: {e}"),
         }
     }
 }
@@ -144,7 +148,72 @@ pub fn os_substrate_launched(
     start(threads, Some(link))
 }
 
-fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
+/// The broker's substrate: [`os_substrate`] plus its launcher (phase E),
+/// which starts children from the executables next to this one (the
+/// build directory, G251). On Linux the launcher starts the spawner now.
+///
+/// # Errors
+/// As [`os_substrate`], and [`StartError::Launch`] when the build's
+/// executables cannot be opened or the spawner does not start.
+pub fn os_broker_substrate(threads: Threads) -> Result<Substrate, StartError> {
+    let exe = std::env::current_exe().map_err(StartError::Launch)?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| StartError::Launch(std::io::Error::other("no build directory")))?;
+    os_broker_substrate_in(threads, dir)
+}
+
+/// [`os_broker_substrate`] with the children from `dir`.
+///
+/// # Errors
+/// As [`os_broker_substrate`].
+pub fn os_broker_substrate_in(
+    threads: Threads,
+    dir: &std::path::Path,
+) -> Result<Substrate, StartError> {
+    #[cfg(target_os = "linux")]
+    {
+        let files = launch::linux::BuildFiles::open(dir).map_err(StartError::Launch)?;
+        broker_with(threads, files)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = dir;
+        os_substrate(threads)
+    }
+}
+
+/// The Linux broker substrate with the launcher over `files`.
+#[cfg(target_os = "linux")]
+pub(crate) fn broker_with(
+    threads: Threads,
+    files: launch::linux::BuildFiles,
+) -> Result<Substrate, StartError> {
+    let (entropy, exec) = base(threads)?;
+    let ipc = Arc::new(match ipc::linux::LinuxIpc::start(Arc::clone(&exec), None) {
+        Ok(t) => t,
+        Err(ipc::linux::StartError::Os(e)) => return Err(StartError::Ipc(e)),
+        Err(ipc::linux::StartError::Bootstrap) => {
+            return Err(StartError::Ipc(std::io::Error::other(
+                "no launch descriptors expected",
+            )));
+        }
+    });
+    let launcher =
+        launch::linux::LinuxLauncher::start(Arc::clone(&ipc), files).map_err(StartError::Launch)?;
+    Ok(Substrate {
+        clock: Arc::new(clock::OsClock::new()),
+        entropy: Arc::new(entropy),
+        exec,
+        mem: Arc::new(memory::OsMemory::new()),
+        ipc,
+        os: None,
+        launcher: Some(Arc::new(launcher)),
+    })
+}
+
+/// The process hash key and the executor.
+fn base(threads: Threads) -> Result<(entropy::OsEntropy, Arc<executor::OsExecutor>), StartError> {
     let entropy = entropy::OsEntropy::new();
     if !hg_types::process_hash_key_is_set() {
         let mut key = [0u8; 16];
@@ -161,6 +230,11 @@ fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
         executor::OsExecutor::new(threads.general, threads.may_block)
             .map_err(StartError::Thread)?,
     );
+    Ok((entropy, exec))
+}
+
+fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
+    let (entropy, exec) = base(threads)?;
     let ipc = os_ipc(&exec, launch)?;
     Ok(Substrate {
         clock: Arc::new(clock::OsClock::new()),

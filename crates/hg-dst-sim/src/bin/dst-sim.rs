@@ -63,6 +63,7 @@ struct Args {
     du3: bool,
     flood: bool,
     netcrash: bool,
+    liar: bool,
 }
 
 fn parse() -> Option<Args> {
@@ -73,6 +74,7 @@ fn parse() -> Option<Args> {
         du3: false,
         flood: false,
         netcrash: false,
+        liar: false,
     };
     let mut seed = None;
     while let Some(k) = a.next() {
@@ -84,6 +86,7 @@ fn parse() -> Option<Args> {
                 "du3" => args.du3 = true,
                 "flood" => args.flood = true,
                 "netcrash" => args.netcrash = true,
+                "liar" => args.liar = true,
                 _ => return None,
             },
             _ => return None,
@@ -133,6 +136,7 @@ fn renderer_entry(
     progress: &Arc<hg_renderer::Progress>,
     du3: bool,
     flood: bool,
+    liar: bool,
 ) -> ChildEntry {
     let (k, p) = (Arc::clone(keep), Arc::clone(progress));
     let launches = Arc::new(AtomicU64::new(0));
@@ -181,7 +185,16 @@ fn renderer_entry(
                 &s,
                 RendererConfig {
                     rounds: if du3 { 0 } else { ROUNDS },
-                    sandbox: simulated(),
+                    // `liar`: a report naming a tier its launcher did not
+                    // apply (review M3).
+                    sandbox: if liar {
+                        SandboxReport {
+                            tier: SandboxTier::LinuxFull,
+                            missing: hg_ipc::BoundedVec::default(),
+                        }
+                    } else {
+                        simulated()
+                    },
                     progress: Arc::clone(&p),
                 },
             );
@@ -220,7 +233,7 @@ fn flood_asks(s: &Substrate, host: Arc<Remote<ProcessHost>>, n: u64) {
 fn main() -> ExitCode {
     let Some(args) = parse() else {
         eprintln!(
-            "usage: dst-sim --seed N [--crash-ppm N] [--scenario roundtrip|du3|flood|netcrash]"
+            "usage: dst-sim --seed N [--crash-ppm N] [--scenario roundtrip|du3|flood|netcrash|liar]"
         );
         return ExitCode::from(2);
     };
@@ -237,7 +250,7 @@ fn main() -> ExitCode {
         .with(ChildKind::NetworkPartition, net_entry(&keep, args.flood))
         .with(
             ChildKind::Renderer,
-            renderer_entry(&keep, &renderer, args.du3, args.flood),
+            renderer_entry(&keep, &renderer, args.du3, args.flood, args.liar),
         );
     let running: Arc<Mutex<Option<hg_browser::Running>>> = Arc::default();
     let (bp, run_slot) = (Arc::clone(&browser), Arc::clone(&running));
@@ -293,6 +306,7 @@ fn main() -> ExitCode {
     let answered = renderer.answered.load(Ordering::SeqCst);
     let refused = browser.refused_asks.load(Ordering::SeqCst);
     let max_pending = browser.max_pending.load(Ordering::SeqCst);
+    let sandbox_mismatches = browser.sandbox_mismatches.load(Ordering::SeqCst);
     // The browser and its children hold channels into the world: end them
     // before the world goes.
     running.lock().unwrap().take();
@@ -302,7 +316,14 @@ fn main() -> ExitCode {
     );
     assert!(relaunches <= 2 * u64::from(BUDGET), "relaunch budget");
     assert!(returned <= routed, "an answer without an ask");
-    if args.flood {
+    if args.liar {
+        // Review M3: the renderer's report names another tier than the
+        // launcher applied: it is killed, never relaunched for it, and no
+        // ask of it is routed.
+        assert_eq!(sandbox_mismatches, 1, "liar: one mismatch");
+        assert_eq!(relaunches, 0, "liar: no relaunch");
+        assert_eq!(answered, 0, "liar: no round trip");
+    } else if args.flood {
         // The 65th ask ends the renderer's channel; the queue never grew
         // past the cap, and a violating renderer is not relaunched.
         assert_eq!(refused, 1, "flood: one refusal ends the channel");
@@ -322,7 +343,7 @@ fn main() -> ExitCode {
         // network + first renderer + the replaced renderer; nothing after.
         assert_eq!(launches, 3, "DU-3: no launch after the mismatch");
     } else {
-        assert!(!halted && mismatches == 0);
+        assert!(!halted && mismatches == 0 && sandbox_mismatches == 0);
         if args.crash_ppm == 0 {
             assert_eq!(answered, ROUNDS, "every round completes without faults");
         }

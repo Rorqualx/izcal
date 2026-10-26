@@ -1636,7 +1636,6 @@ pub fn launch_pair() -> std::io::Result<((OwnedFd, OwnedFd), (OwnedFd, OwnedFd))
 }
 
 /// The parent side of [`launch_pair`], as this transport's ends.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) fn adopt_parent_ends(
     ipc: &LinuxIpc,
     from_child: OwnedFd,

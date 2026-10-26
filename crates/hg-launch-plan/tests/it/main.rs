@@ -170,3 +170,25 @@ fn tiers_are_ordered_weakest_first() {
     assert_eq!(Tier::RestrictedUserns.name(), "linux-restricted-userns");
     assert_eq!(REQUEST_LEN, 16);
 }
+
+/// E-R7 disposition: the token round-trips through its own executable
+/// only, and the tokens are distinct.
+#[test]
+fn tokens_name_one_kind_on_its_own_executable() {
+    use hg_launch_plan::{Exe, Kind};
+    let mut seen = std::collections::BTreeSet::new();
+    for k in Kind::ALL {
+        assert!(seen.insert(k.token()));
+        assert_eq!(Kind::from_token(k.exe(), k.token().as_bytes()), Some(k));
+        let other = if k.exe() == Exe::Renderer {
+            Exe::Net
+        } else {
+            Exe::Renderer
+        };
+        assert_eq!(Kind::from_token(other, k.token().as_bytes()), None);
+        let s = k.spec();
+        assert_eq!((s.kind(), s.exe(), s.token()), (k, k.exe(), k.token()));
+    }
+    assert_eq!(Kind::from_token(Exe::Net, b""), None);
+    assert_eq!(Kind::from_token(Exe::Net, b"izk2 "), None);
+}

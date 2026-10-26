@@ -9,6 +9,7 @@
 //! number of descriptors than the record declares (review minor);
 //! received descriptors are close-on-exec (`MSG_CMSG_CLOEXEC`).
 
+pub(crate) mod child;
 pub mod spawner;
 mod sys;
 #[cfg(test)]
@@ -369,4 +370,185 @@ fn c_name(s: &str) -> io::Result<CString> {
 
 fn errno_u32(e: i32) -> u32 {
     u32::try_from(e).unwrap_or(0)
+}
+
+/// The broker's launcher on Linux (E-R2 to E-R6): every child through the
+/// spawner, which it starts at its own start and again if it dies.
+pub struct LinuxLauncher {
+    ipc: std::sync::Arc<crate::ipc::linux::LinuxIpc>,
+    files: BuildFiles,
+    st: std::sync::Mutex<LauncherState>,
+    halted: std::sync::atomic::AtomicBool,
+}
+
+struct LauncherState {
+    link: Option<SpawnerLink>,
+    /// Each live child's pidfd, by the identity its launch returned.
+    children: std::collections::BTreeMap<hg_substrate::ipc::OsPeer, OwnedFd>,
+    /// The launch sequence number: the generation of every `OsPeer` this
+    /// launcher makes, never repeated (E-R6 revised after E24: a broker
+    /// label the kernel never attests, review M6).
+    launches: u64,
+}
+
+impl core::fmt::Debug for LinuxLauncher {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("LinuxLauncher").finish_non_exhaustive()
+    }
+}
+
+/// The session tier as the launch contract names it.
+const fn sandbox_tier(t: Tier) -> hg_substrate::launch::SandboxTier {
+    match t {
+        Tier::NoUserns => hg_substrate::launch::SandboxTier::LinuxNoUserns,
+        Tier::RestrictedUserns => hg_substrate::launch::SandboxTier::LinuxRestrictedUserns,
+        Tier::Full => hg_substrate::launch::SandboxTier::LinuxFull,
+    }
+}
+
+const fn plan_kind(k: hg_substrate::launch::ChildKind) -> Kind {
+    match k {
+        hg_substrate::launch::ChildKind::Renderer => Kind::Renderer,
+        hg_substrate::launch::ChildKind::NetworkSystem => Kind::NetworkSystem,
+        hg_substrate::launch::ChildKind::NetworkContainer => Kind::NetworkContainer,
+        hg_substrate::launch::ChildKind::NetworkPartition => Kind::NetworkPartition,
+    }
+}
+
+impl LinuxLauncher {
+    /// A launcher for `ipc`'s process, from `files`, with the spawner
+    /// started now.
+    ///
+    /// # Errors
+    /// The spawner could not start.
+    pub(crate) fn start(
+        ipc: std::sync::Arc<crate::ipc::linux::LinuxIpc>,
+        files: BuildFiles,
+    ) -> io::Result<Self> {
+        let link = SpawnerLink::start(&files)?;
+        Ok(Self {
+            ipc,
+            files,
+            st: std::sync::Mutex::new(LauncherState {
+                link: Some(link),
+                children: std::collections::BTreeMap::new(),
+                launches: 0,
+            }),
+            halted: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, LauncherState> {
+        self.st
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The session tier, if a spawner runs.
+    #[must_use]
+    pub fn tier(&self) -> Option<Tier> {
+        self.lock().link.as_ref().map(SpawnerLink::tier)
+    }
+
+    /// Kills the spawner (tests: its death and restart).
+    #[cfg(test)]
+    pub(crate) fn kill_spawner(&self) {
+        if let Some(l) = self.lock().link.as_ref() {
+            let _ = sys::pidfd_signal(l.pidfd(), libc::SIGKILL);
+            let _ = sys::wait_pidfd(l.pidfd());
+        }
+    }
+
+    /// The pidfd of a child this launcher started (tests).
+    #[cfg(test)]
+    pub(crate) fn pidfd_of(&self, peer: hg_substrate::ipc::OsPeer) -> Option<OwnedFd> {
+        self.lock()
+            .children
+            .get(&peer)
+            .and_then(|f| f.try_clone().ok())
+    }
+}
+
+impl LauncherState {
+    /// Drops the pidfds of children that have ended; reaps any that were
+    /// re-parented here because their spawner died.
+    fn sweep(&mut self) {
+        self.children.retain(|_p, fd| {
+            let ended = sys::poll_in(&[fd.as_fd()], 0)
+                .is_ok_and(|ev| ev.first().copied().unwrap_or(0) != 0);
+            if ended {
+                let _ = sys::try_reap(fd.as_fd());
+            }
+            !ended
+        });
+    }
+}
+
+impl hg_substrate::Launcher for LinuxLauncher {
+    fn launch(
+        &self,
+        kind: hg_substrate::launch::ChildKind,
+        capacity: u32,
+    ) -> Result<hg_substrate::launch::Launched, hg_substrate::launch::LaunchError> {
+        use hg_substrate::launch::LaunchError;
+        if self.halted.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(LaunchError::RestartRequired);
+        }
+        // Both ends' counters start at the bootstrap capacity.
+        if capacity != crate::ipc::linux::BOOTSTRAP_CAPACITY {
+            return Err(LaunchError::Unsupported);
+        }
+        let mut st = self.lock();
+        st.sweep();
+        if st.link.is_none() {
+            // The spawner died: start it again (E-R2), with the same
+            // descriptor discipline as the first time.
+            st.link = Some(SpawnerLink::start(&self.files).map_err(|_e| LaunchError::Failed)?);
+        }
+        let ((from_child, to_child), (up, down)) =
+            crate::ipc::linux::launch_pair().map_err(|_e| LaunchError::Failed)?;
+        let Some(link) = st.link.as_mut() else {
+            return Err(LaunchError::Failed);
+        };
+        let tier = link.tier();
+        let spawned = match link.spawn(plan_kind(kind), up, down) {
+            Ok(s) => s,
+            Err(SpawnError::BelowFloor) => return Err(LaunchError::BelowFloor),
+            Err(SpawnError::Spawner) => {
+                // In-flight spawns fail with it; the next launch restarts it.
+                st.link = None;
+                return Err(LaunchError::Failed);
+            }
+            Err(SpawnError::Failed { .. } | SpawnError::Mismatch) => {
+                return Err(LaunchError::Failed);
+            }
+        };
+        st.launches = st.launches.wrapping_add(1);
+        let peer = hg_substrate::ipc::OsPeer::new(spawned.outer_pid, st.launches);
+        let Some((from_child, to_child)) =
+            crate::ipc::linux::adopt_parent_ends(&self.ipc, from_child, to_child)
+        else {
+            let _ = sys::pidfd_signal(spawned.pidfd.as_fd(), libc::SIGKILL);
+            return Err(LaunchError::Failed);
+        };
+        st.children.insert(peer, spawned.pidfd);
+        Ok(hg_substrate::launch::Launched {
+            from_child,
+            to_child,
+            peer,
+            sandbox: sandbox_tier(tier),
+        })
+    }
+
+    fn kill(&self, peer: hg_substrate::ipc::OsPeer) {
+        // Only through the child's own pidfd: never another process that
+        // reused the pid. The spawner reaps it.
+        if let Some(fd) = self.lock().children.remove(&peer) {
+            let _ = sys::pidfd_signal(fd.as_fd(), libc::SIGKILL);
+        }
+    }
+
+    fn restart_required(&self) {
+        self.halted.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
 }

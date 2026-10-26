@@ -825,7 +825,8 @@ impl Waker {
 /// close-on-exec, so the child gets stdio plus exactly these. Returns the
 /// child's process ID. For the launcher (phase E) and the transport's
 /// cross-process tests.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
+/// Tests only: the launcher starts children through the spawner.
+#[cfg(test)]
 pub(crate) fn spawn_with_fds(
     program: &std::ffi::CStr,
     args: &[&std::ffi::CStr],
@@ -892,7 +893,7 @@ pub(crate) fn spawn_with_fds(
 
 /// Waits for child `pid` to end; returns its exit status or the signal
 /// that ended it (negative).
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
+#[cfg(test)]
 pub(crate) fn wait_child(pid: libc::pid_t) -> io::Result<i32> {
     let mut status: libc::c_int = 0;
     loop {

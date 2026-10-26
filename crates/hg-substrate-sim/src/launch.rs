@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use hg_substrate::ipc::OsPeer;
-use hg_substrate::launch::{ChildKind, LaunchError, Launched, Launcher};
+use hg_substrate::launch::{ChildKind, LaunchError, Launched, Launcher, SandboxTier};
 use hg_substrate::{Memory, Substrate};
 
 use crate::world::{ProcessId, Shared};
@@ -121,6 +121,7 @@ impl Launcher for SimLauncher {
             from_child,
             to_child,
             peer,
+            sandbox: SandboxTier::Simulated,
         })
     }
 

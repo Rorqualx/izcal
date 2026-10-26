@@ -61,6 +61,7 @@ fn browser(
                 from_child,
                 to_child,
                 peer,
+                ..
             }) = launcher.launch(ChildKind::Renderer, 8)
             else {
                 seen.lock().unwrap().events.push("launch failed".into());

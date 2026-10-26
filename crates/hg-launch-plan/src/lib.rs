@@ -148,6 +148,42 @@ impl Kind {
         }
     }
 
+    /// Everything a launch of this kind is derived from, in one place:
+    /// the executable, the sandbox floor and the argument token (E-R7
+    /// disposition, 26 Oct). The spawner and every launcher take all of
+    /// them from this one value, so no plan and token can disagree.
+    #[must_use]
+    pub const fn spec(self) -> Spec {
+        Spec {
+            kind: self,
+            exe: self.exe(),
+            floor: self.floor(),
+            token: self.token(),
+        }
+    }
+
+    /// The kind's argument token: the launched child's `argv[1]`, its only
+    /// argument (one executable serves the three network kinds, and the
+    /// child must name its kind in `ready` before `start` arrives).
+    #[must_use]
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Renderer => "izk1",
+            Self::NetworkSystem => "izk2",
+            Self::NetworkContainer => "izk3",
+            Self::NetworkPartition => "izk4",
+        }
+    }
+
+    /// The kind whose token is exactly `t`, if `exe` runs it: a network
+    /// token is refused by the renderer executable and the reverse.
+    #[must_use]
+    pub fn from_token(exe: Exe, t: &[u8]) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|k| k.token().as_bytes() == t && k.exe() == exe)
+    }
+
     /// The weakest tier this kind may run at: seccomp and Landlock are
     /// mandatory for every kind (review M2), which [`Tier::NoUserns`]
     /// already has. A spawner whose session tier is below a kind's floor
@@ -160,6 +196,45 @@ impl Kind {
             | Self::NetworkContainer
             | Self::NetworkPartition => Tier::NoUserns,
         }
+    }
+}
+
+/// One kind's launch, derived by [`Kind::spec`] and only there: its
+/// fields are private, so a spec pairing one kind's executable or plan
+/// with another kind's token cannot be built.
+///
+/// ```compile_fail
+/// use hg_launch_plan::{Exe, Kind, Spec, Tier};
+/// let _ = Spec { kind: Kind::Renderer, exe: Exe::Net, floor: Tier::NoUserns, token: "izk2" };
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spec {
+    kind: Kind,
+    exe: Exe,
+    floor: Tier,
+    token: &'static str,
+}
+
+impl Spec {
+    /// The kind.
+    #[must_use]
+    pub const fn kind(&self) -> Kind {
+        self.kind
+    }
+    /// The executable.
+    #[must_use]
+    pub const fn exe(&self) -> Exe {
+        self.exe
+    }
+    /// The sandbox floor.
+    #[must_use]
+    pub const fn floor(&self) -> Tier {
+        self.floor
+    }
+    /// The child's `argv[1]`.
+    #[must_use]
+    pub const fn token(&self) -> &'static str {
+        self.token
     }
 }
 
@@ -511,6 +586,37 @@ mod proofs {
             kind,
         };
         assert!(Request::decode(&r.encode()) == Ok(r));
+    }
+
+    /// E-R7 disposition: kind → token → kind round-trips through the
+    /// kind's own executable, never through the other one, and the tokens
+    /// are pairwise distinct.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn tokens_round_trip_and_are_distinct() {
+        let a: u8 = kani::any();
+        let b: u8 = kani::any();
+        kani::assume(usize::from(a) < Kind::ALL.len() && usize::from(b) < Kind::ALL.len());
+        let ka = Kind::ALL
+            .get(usize::from(a))
+            .copied()
+            .unwrap_or(Kind::Renderer);
+        let kb = Kind::ALL
+            .get(usize::from(b))
+            .copied()
+            .unwrap_or(Kind::Renderer);
+        assert!(Kind::from_token(ka.exe(), ka.token().as_bytes()) == Some(ka));
+        let other = if ka.exe() == Exe::Renderer {
+            Exe::Net
+        } else {
+            Exe::Renderer
+        };
+        assert!(Kind::from_token(other, ka.token().as_bytes()).is_none());
+        if ka != kb {
+            assert!(ka.token() != kb.token());
+        }
+        let s = ka.spec();
+        assert!(s.kind() == ka && s.exe() == ka.exe() && s.token() == ka.token());
     }
 
     /// The kind-to-executable map and the floors (review minor: the plan

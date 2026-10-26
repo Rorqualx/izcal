@@ -416,6 +416,8 @@ pub(crate) struct ChildPlan<'a> {
     pub(crate) exe: BorrowedFd<'a>,
     /// argv[0].
     pub(crate) name: &'a CStr,
+    /// argv[1]: the kind's token (`hg_launch_plan::Kind::token`).
+    pub(crate) token: &'a CStr,
     /// The failure pipe's write end.
     pub(crate) err: BorrowedFd<'a>,
     /// The Landlock ABI.
@@ -431,7 +433,8 @@ pub(crate) struct ChildPlan<'a> {
 /// # Errors
 /// `clone3`'s error.
 pub(crate) fn spawn_child(plan: &ChildPlan<'_>) -> io::Result<(u32, OwnedFd)> {
-    let argv: [*const libc::c_char; 2] = [plan.name.as_ptr(), core::ptr::null()];
+    let argv: [*const libc::c_char; 3] =
+        [plan.name.as_ptr(), plan.token.as_ptr(), core::ptr::null()];
     let envp: [*const libc::c_char; 1] = [core::ptr::null()];
     match clone3(plan.flags)? {
         Cloned::Parent(pid, fd) => Ok((pid, fd)),
@@ -472,7 +475,7 @@ fn place(from: RawFd, to: RawFd) -> Result<(), i32> {
 /// The child's steps; returns only on failure.
 fn child_steps(
     plan: &ChildPlan<'_>,
-    argv: &[*const libc::c_char; 2],
+    argv: &[*const libc::c_char; 3],
     envp: &[*const libc::c_char; 1],
 ) -> (ChildStage, i32) {
     let fail = |s: ChildStage| move |e: i32| (s, e);
@@ -602,6 +605,14 @@ const P_PIDFD: libc::idtype_t = 3;
 /// `None` if killed by a signal or not this process's child.
 pub(crate) fn wait_pidfd(pidfd: BorrowedFd<'_>) -> Option<i32> {
     wait_pidfd_flags(pidfd, libc::WEXITED)
+}
+
+/// As [`wait_pidfd`], never blocking: `None` also while it runs, and for
+/// a process that is not this one's child (the normal case: only the
+/// spawner reaps; the broker becomes the parent only of an orphan whose
+/// spawner died, review minor's subreaper).
+pub(crate) fn try_reap(pidfd: BorrowedFd<'_>) -> Option<i32> {
+    wait_pidfd_flags(pidfd, libc::WEXITED | libc::WNOHANG)
 }
 
 fn wait_pidfd_flags(pidfd: BorrowedFd<'_>, flags: libc::c_int) -> Option<i32> {

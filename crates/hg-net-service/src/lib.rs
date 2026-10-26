@@ -19,6 +19,7 @@ use hg_ipc_gen::process::{
     BuildId, ChildConfig, ExitReason, ProcessControl, ProcessControlHandler, ProcessError,
     ProcessHost, ProcessHostRemote, ProcessKind, SandboxReport,
 };
+use hg_substrate::launch::{ChildKind, SandboxReached};
 use hg_substrate::{Priority, Substrate};
 
 /// What the service has done, for its owner to watch.
@@ -41,10 +42,68 @@ pub struct NetConfig {
     pub progress: Arc<Progress>,
 }
 
+impl NetConfig {
+    /// The configuration of a launched network service (`hg-net-main`)
+    /// of `kind`, reporting what its sandbox probes found. `None` for the
+    /// renderer kind.
+    #[must_use]
+    pub fn launched(kind: ChildKind, sandbox: &SandboxReached) -> Option<Self> {
+        let kind = match kind {
+            ChildKind::Renderer => return None,
+            ChildKind::NetworkSystem => ProcessKind::NetworkSystem,
+            ChildKind::NetworkContainer => ProcessKind::NetworkContainer,
+            ChildKind::NetworkPartition => ProcessKind::NetworkPartition,
+        };
+        Some(Self {
+            kind,
+            sandbox: hg_ipc_gen::sandbox::wire_report(sandbox),
+            progress: Arc::default(),
+        })
+    }
+}
+
 /// A running service: keep it for as long as the process runs.
 #[derive(Debug)]
 pub struct Running {
     _serving: Serving,
+    ended: Arc<Ended>,
+}
+
+/// Set once the bootstrap channel has ended.
+#[derive(Debug, Default)]
+struct Ended {
+    done: std::sync::Mutex<bool>,
+    cv: std::sync::Condvar,
+}
+
+impl Ended {
+    fn set(&self) {
+        *self
+            .done
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+        self.cv.notify_all();
+    }
+}
+
+impl Running {
+    /// Blocks until the bootstrap channel ends (the browser closed it,
+    /// told this process to exit, or broke the protocol): then the
+    /// process has nothing left to do. For `main`.
+    pub fn wait(&self) {
+        let mut done = self
+            .ended
+            .done
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while !*done {
+            done = self
+                .ended
+                .cv
+                .wait(done)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+    }
 }
 
 struct Side {
@@ -148,13 +207,18 @@ pub fn run(s: &Substrate, config: NetConfig) -> Option<Running> {
         started: false,
     };
     let seq = s.exec.sequence("control", Priority::UserVisible);
+    let ended = Arc::new(Ended::default());
+    let on_end = Arc::clone(&ended);
     let serving = Endpoint::<ProcessControl>::from_receiver(&s.ipc, boot.from_parent)
         .serve_bound(
             seq,
             PeerBinding::new(PeerId::new(0, 0), boot.parent),
             move |m, from| m.dispatch(&mut side, from),
-            |_why| {},
+            move |_why| on_end.set(),
         )
         .ok()?;
-    Some(Running { _serving: serving })
+    Some(Running {
+        _serving: serving,
+        ended,
+    })
 }

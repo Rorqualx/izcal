@@ -61,3 +61,10 @@ fn a_flooding_renderer_is_cut_off_at_the_cap() {
 fn work_survives_a_network_relaunch() {
     all_pass_and_rerun(&sim(&["--scenario", "netcrash"]));
 }
+
+/// Review M3: a child whose sandbox report names another tier than its
+/// launcher applied is killed and not relaunched.
+#[test]
+fn a_child_reporting_another_sandbox_tier_is_killed() {
+    all_pass_and_rerun(&sim(&["--scenario", "liar"]));
+}

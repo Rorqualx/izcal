@@ -50,6 +50,55 @@ impl ChildKind {
     ];
 }
 
+/// The sandbox a child runs in, by OS (security scope 6.7; SEC-8). The
+/// same list as `process.hgidl`'s `SandboxTier`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SandboxTier {
+    /// Linux: seccomp and Landlock, no namespaces.
+    LinuxNoUserns,
+    /// Linux: seccomp, Landlock, user, PID and network namespaces, no
+    /// mount namespace (a non-reference configuration).
+    LinuxRestrictedUserns,
+    /// Linux: the security scope 6.7 row.
+    LinuxFull,
+    /// macOS: the deny-default SBPL profile.
+    MacosSbpl,
+    /// Windows: AppContainer, lockdown token and job (the M1 subset).
+    WindowsAppContainer,
+    /// Under the simulator: no OS sandbox exists.
+    Simulated,
+}
+
+/// A part of the 6.7 row a child did not reach. The same list as
+/// `process.hgidl`'s `SandboxFeature`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SandboxFeature {
+    /// No empty root (Linux).
+    EmptyRoot,
+    /// No user-namespace id map (Linux).
+    IdMap,
+    /// No mount namespace (Linux).
+    MountNamespace,
+    /// No Landlock UDP rules (Linux).
+    LandlockUdp,
+    /// No alternate desktop (Windows, M5).
+    AlternateDesktop,
+    /// No win32k lockdown (Windows, M5).
+    Win32kLockdown,
+    /// No code integrity guard (Windows, M5).
+    CodeIntegrityGuard,
+}
+
+/// What a child's own black-box probes found after lockdown (E-R5): a
+/// cross-check of what its launcher applied (design review M3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SandboxReached {
+    /// The tier the probes show.
+    pub tier: SandboxTier,
+    /// What the 6.7 row has that this tier lacks.
+    pub missing: Vec<SandboxFeature>,
+}
+
 /// A child that started.
 #[derive(Debug)]
 pub struct Launched {
@@ -59,6 +108,9 @@ pub struct Launched {
     pub to_child: ChannelSender,
     /// The child's identity, for [`crate::Ipc::listen_bound`].
     pub peer: OsPeer,
+    /// The sandbox tier the launcher applied (design review M3): the
+    /// child's own report must name the same tier, else it is killed.
+    pub sandbox: SandboxTier,
 }
 
 /// Why no child started.

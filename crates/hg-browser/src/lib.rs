@@ -27,8 +27,9 @@ use hg_ipc_gen::process::{
     BuildId, ChildConfig, ExitReason, ProcessControl, ProcessControlRemote, ProcessError,
     ProcessHost, ProcessHostHandler, ProcessKind, SandboxReport,
 };
-use hg_substrate::ipc::PeerAttest;
-use hg_substrate::launch::{ChildKind, LaunchError, Launcher};
+use hg_ipc_gen::sandbox::launch_tier;
+use hg_substrate::ipc::{OsPeer, PeerAttest};
+use hg_substrate::launch::{ChildKind, LaunchError, Launcher, SandboxTier};
 use hg_substrate::{Priority, SequenceHandle, Substrate, Task};
 
 /// Bootstrap channel capacity for each child.
@@ -57,6 +58,12 @@ pub struct Progress {
     pub refused_asks: AtomicU64,
     /// The most asks ever waiting at once.
     pub max_pending: AtomicU64,
+    /// Children killed because their sandbox report named another tier
+    /// than their launcher applied (design review M3).
+    pub sandbox_mismatches: AtomicU64,
+    /// FP-27's hook (E-R12): for each accepted `ready`, the kind and the
+    /// time from the launch request to it, on the substrate clock.
+    pub ready_times: Mutex<Vec<(ChildKind, hg_types::Duration)>>,
 }
 
 /// How the browser runs.
@@ -91,6 +98,12 @@ impl Running {
 /// One child the browser holds.
 struct Child {
     control: Remote<ProcessControl>,
+    /// Its identity, to kill it.
+    peer: OsPeer,
+    /// The sandbox tier its launcher applied (review M3).
+    sandbox: SandboxTier,
+    /// When the launch was requested (E-R12).
+    launched_at: hg_types::Instant,
     ready: bool,
     /// Set once serving started; the slot is filled before, so a `ready`
     /// on the browser's sequence always finds its child.
@@ -162,6 +175,7 @@ impl Inner {
         if self.lock().halted {
             return Err(LaunchError::RestartRequired);
         }
+        let launched_at = self.s.clock.monotonic();
         let launched = match self.launcher.launch(kind, CAPACITY) {
             Ok(l) => l,
             Err(e) => {
@@ -181,6 +195,9 @@ impl Inner {
         let peer_id = PeerId::new(if kind == ChildKind::Renderer { 1 } else { 2 }, 0);
         *Self::slot(&mut self.lock(), kind) = Some(Child {
             control,
+            peer: launched.peer,
+            sandbox: launched.sandbox,
+            launched_at,
             ready: false,
             serving: None,
         });
@@ -281,7 +298,7 @@ impl ProcessHostHandler for HostSide {
         _from: &CallerIdentity,
         kind: ProcessKind,
         build: BuildId,
-        _sandbox: SandboxReport,
+        sandbox: SandboxReport,
     ) -> Result<(), ProcessError> {
         if kind != wire_kind(self.kind) {
             return Err(ProcessError::Unsupported);
@@ -290,6 +307,20 @@ impl ProcessHostHandler for HostSide {
         let Some(child) = Inner::slot(&mut st, self.kind).as_mut() else {
             return Err(ProcessError::ShuttingDown);
         };
+        // Review M3: the child's own report is a cross-check of the tier
+        // its launcher applied; any other tier ends it, and it is not
+        // launched again for it (the handler error ends the channel as
+        // the child's fault).
+        if launch_tier(sandbox.tier) != child.sandbox {
+            let peer = child.peer;
+            drop(st);
+            self.inner.launcher.kill(peer);
+            self.inner
+                .progress
+                .sandbox_mismatches
+                .fetch_add(1, Ordering::SeqCst);
+            return Err(ProcessError::Unsupported);
+        }
         if build.id != hg_types::BUILD_ID {
             // DU-3: tell it why, then stop launching anything.
             let _ = child.control.exit(ExitReason::BuildMismatch {
@@ -310,6 +341,18 @@ impl ProcessHostHandler for HostSide {
             return Err(ProcessError::Unsupported);
         }
         child.ready = true;
+        let took = self
+            .inner
+            .s
+            .clock
+            .monotonic()
+            .saturating_duration_since(child.launched_at);
+        self.inner
+            .progress
+            .ready_times
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((self.kind, took));
         // A child gone before `start` reaches it is not at fault: its own
         // channel's closing ends it and drives the relaunch.
         let _ = child.control.start(config_for(self.kind));

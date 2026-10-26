@@ -20,7 +20,12 @@ use hg_ipc_gen::process::{
     BuildId, ChildConfig, ExitReason, ProcessControl, ProcessControlHandler, ProcessError,
     ProcessHost, ProcessHostRemote, ProcessKind, SandboxReport,
 };
+use hg_substrate::launch::SandboxReached;
 use hg_substrate::{Priority, Substrate};
+
+/// Round trips a launched renderer (`hg-renderer-main`) makes after
+/// `start`: the M1 exit's IPC round trip on the OS.
+pub const LAUNCHED_ROUNDS: u64 = 8;
 
 /// What the renderer has done, for its owner to watch (tests, DST and
 /// FP-27's timing hooks).
@@ -43,10 +48,61 @@ pub struct RendererConfig {
     pub progress: Arc<Progress>,
 }
 
+impl RendererConfig {
+    /// The configuration of a launched renderer (`hg-renderer-main`):
+    /// `rounds` round trips, reporting what its sandbox probes found.
+    #[must_use]
+    pub fn launched(rounds: u64, sandbox: &SandboxReached) -> Self {
+        Self {
+            rounds,
+            sandbox: hg_ipc_gen::sandbox::wire_report(sandbox),
+            progress: Arc::default(),
+        }
+    }
+}
+
 /// A running renderer: keep it for as long as the process runs.
 #[derive(Debug)]
 pub struct Running {
     _serving: Serving,
+    ended: Arc<Ended>,
+}
+
+/// Set once the bootstrap channel has ended.
+#[derive(Debug, Default)]
+struct Ended {
+    done: std::sync::Mutex<bool>,
+    cv: std::sync::Condvar,
+}
+
+impl Ended {
+    fn set(&self) {
+        *self
+            .done
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+        self.cv.notify_all();
+    }
+}
+
+impl Running {
+    /// Blocks until the bootstrap channel ends (the browser closed it,
+    /// told this process to exit, or broke the protocol): then the
+    /// process has nothing left to do. For `main`.
+    pub fn wait(&self) {
+        let mut done = self
+            .ended
+            .done
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while !*done {
+            done = self
+                .ended
+                .cv
+                .wait(done)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+    }
 }
 
 struct Side {
@@ -150,13 +206,18 @@ pub fn run(s: &Substrate, config: RendererConfig) -> Option<Running> {
         started: false,
     };
     let seq = s.exec.sequence("control", Priority::UserVisible);
+    let ended = Arc::new(Ended::default());
+    let on_end = Arc::clone(&ended);
     let serving = Endpoint::<ProcessControl>::from_receiver(&s.ipc, boot.from_parent)
         .serve_bound(
             seq,
             PeerBinding::new(PeerId::new(0, 0), boot.parent),
             move |m, from| m.dispatch(&mut side, from),
-            |_why| {},
+            move |_why| on_end.set(),
         )
         .ok()?;
-    Some(Running { _serving: serving })
+    Some(Running {
+        _serving: serving,
+        ended,
+    })
 }

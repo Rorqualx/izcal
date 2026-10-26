@@ -220,10 +220,13 @@ impl Spawner {
         let Ok([up, down]) = <[OwnedFd; 2]>::try_from(fds) else {
             return failed(id, Stage::Request, libc::EINVAL);
         };
-        if kind.floor() > self.tier {
+        // The plan, the executable and the token all come from this one
+        // value (E-R7 disposition).
+        let spec = kind.spec();
+        if spec.floor() > self.tier {
             return failed(id, Stage::Request, libc::EPERM);
         }
-        let exe = kind.exe();
+        let exe = spec.exe();
         let Some(exe_fd) = Exe::ALL
             .iter()
             .position(|&e| e == exe)
@@ -231,7 +234,10 @@ impl Spawner {
         else {
             return failed(id, Stage::Request, libc::ENOENT);
         };
-        let Ok(name) = std::ffi::CString::new(exe.file_name()) else {
+        let (Ok(name), Ok(token)) = (
+            std::ffi::CString::new(exe.file_name()),
+            std::ffi::CString::new(spec.token()),
+        ) else {
             return failed(id, Stage::Request, libc::EINVAL);
         };
         let Ok((err_r, err_w)) = sys::pipe() else {
@@ -244,6 +250,7 @@ impl Spawner {
             devnull: self.devnull.as_fd(),
             exe: exe_fd.as_fd(),
             name: &name,
+            token: &token,
             err: err_w.as_fd(),
             abi: self.abi,
             filter: launch_filter,

@@ -13,6 +13,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-browser-main"
+version = "0.0.0"
+dependencies = [
+ "hg-browser",
+ "hg-substrate-os",
+]
+
+[[package]]
 name = "hg-build-id"
 version = "0.0.0"
 dependencies = [
@@ -70,8 +78,27 @@ name = "hg-launch-plan"
 version = "0.0.0"
 
 [[package]]
+name = "hg-launch-tool"
+version = "0.0.0"
+dependencies = [
+ "hg-browser",
+ "hg-renderer",
+ "hg-substrate",
+ "hg-substrate-os",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-launch-wire"
 version = "0.0.0"
+
+[[package]]
+name = "hg-net-main"
+version = "0.0.0"
+dependencies = [
+ "hg-net-service",
+ "hg-substrate-os",
+]
 
 [[package]]
 name = "hg-net-service"
@@ -103,6 +130,14 @@ dependencies = [
  "hg-ipc-gen",
  "hg-substrate",
  "hg-types",
+]
+
+[[package]]
+name = "hg-renderer-main"
+version = "0.0.0"
+dependencies = [
+ "hg-renderer",
+ "hg-substrate-os",
 ]
 
 [[package]]
