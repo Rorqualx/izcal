@@ -530,8 +530,10 @@ impl Ledger {
         for k in gone {
             self.entries.remove(&k);
             self.forget_pipes(k);
+            // Reported once, when this channel's slot was its last.
+            let had = self.per_creator.contains_key(&k.creator);
             self.uncharge(k.creator);
-            if !self.per_creator.contains_key(&k.creator) && !emptied.contains(&k.creator) {
+            if had && !self.per_creator.contains_key(&k.creator) {
                 emptied.push(k.creator);
             }
         }
@@ -700,9 +702,12 @@ impl Ledger {
     }
 
     /// Hands `chan`'s queued old pipes to its receiver's holder, oldest
-    /// first, releasing them here. `None` if some were lost.
+    /// first, releasing them here (none for a channel that never moved).
+    /// `None` only if some were lost.
     pub(crate) fn take_old(&mut self, chan: PipeKey) -> Option<Vec<PipeKey>> {
-        let p = self.pipes.get_mut(&chan)?;
+        let Some(p) = self.pipes.get_mut(&chan) else {
+            return Some(Vec::new());
+        };
         if p.lost {
             return None;
         }
@@ -1282,6 +1287,7 @@ mod tests {
         assert!(!l.has_old(ch));
         assert_eq!(l.take_old(ch), Some(vec![]));
         assert_eq!(l.charged(A), 1, "only the channel itself");
+        assert_eq!(l.take_old(pipe(A, 7)), Some(vec![]), "never moved");
     }
 
     #[test]
