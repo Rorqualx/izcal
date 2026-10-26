@@ -768,6 +768,11 @@ fn child(case: &str) -> i32 {
             if sent.is_err() {
                 return 12;
             }
+            // The raw send moved the credit port's receive right away
+            // behind the transport's back: its end must not release that
+            // name. Under Enhanced Security, releasing a name the task no
+            // longer holds is fatal (EXC_GUARD INVALID_NAME, R13).
+            super::disarm(up.into_handle());
             let _ = next(&from_parent);
             0
         }
@@ -839,10 +844,7 @@ fn a_peer_s_own_credit_port_as_a_receiver_is_blamed_on_it() {
     let c = spawn(&r, "credit-as-receiver");
     expect_fault(&c.from_child, FaultKind::BadHandle, Some(c.peer.pid()));
     drop(c.to_child);
-    // Under Enhanced Security the system kills this child (SIGKILL,
-    // observed) after its message is out; either way the fault came.
-    let code = sys::wait_child(c.pid).unwrap();
-    assert!(code == 0 || code == 128 + libc::SIGKILL, "exit {code}");
+    assert_eq!(sys::wait_child(c.pid).unwrap(), 0);
 }
 
 /// A child whose audit token cannot be read is killed before it runs,

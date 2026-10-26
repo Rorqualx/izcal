@@ -151,7 +151,9 @@ pub(crate) fn deallocate(name: PortName) {
     if name == NAME_NULL || name == NAME_DEAD {
         return;
     }
-    // SAFETY: plain values; a name this process does not hold is refused.
+    // SAFETY: plain values. The caller must hold `name`: under Enhanced
+    // Security releasing a name the task does not hold is fatal
+    // (EXC_GUARD INVALID_NAME, R13), not just refused.
     let _ = unsafe { mach_port_deallocate(task(), name) };
 }
 
@@ -161,7 +163,9 @@ pub(crate) fn destroy_receive(name: PortName) {
     if name == NAME_NULL || name == NAME_DEAD {
         return;
     }
-    // SAFETY: plain values; a name without a receive right is refused.
+    // SAFETY: plain values. The caller must hold the receive right: under
+    // Enhanced Security releasing a name the task does not hold is fatal
+    // (EXC_GUARD INVALID_NAME, R13), not just refused.
     let _ = unsafe { mach_port_mod_refs(task(), name, RIGHT_RECEIVE, -1) };
 }
 
