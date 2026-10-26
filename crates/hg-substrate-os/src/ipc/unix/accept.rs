@@ -121,6 +121,20 @@ pub(crate) struct AcceptCtx<'a, H: Held> {
     /// the process that launched this one. `None` in the broker itself,
     /// which receives no writer (D6 review M1).
     pub(crate) broker_pid: Option<i32>,
+    /// The record arrived on the inherited bootstrap channel, which only
+    /// the broker can send on (design review M7, M8): a child in a PID
+    /// namespace reads the broker as pid 0, so this is how it knows a
+    /// writer or a bound sender came from the broker.
+    pub(crate) broker_channel: bool,
+}
+
+impl<H: Held> AcceptCtx<'_, H> {
+    /// Whether the record is the broker's: on the inherited channel, or
+    /// with the broker's attested pid.
+    const fn is_from_broker(&self) -> bool {
+        self.broker_channel
+            || matches!((self.cred_pid, self.broker_pid), (Some(c), Some(b)) if c == b && b > 0)
+    }
 }
 
 /// Why a descriptor was refused.
@@ -207,9 +221,7 @@ pub(crate) fn accept_region<H: Held>(
     if desc.sent & REGION_FILLER_TRUSTED != 0 {
         return Err(Refusal::Flags);
     }
-    if desc.kind == WireKind::RegionWriter
-        && !matches!((ctx.cred_pid, ctx.broker_pid), (Some(c), Some(b)) if c == b && b > 0)
-    {
+    if desc.kind == WireKind::RegionWriter && !ctx.is_from_broker() {
         return Err(Refusal::WriterNotFromBroker);
     }
     Ok(handle_kind(desc.kind))
@@ -247,9 +259,13 @@ pub(crate) fn accept<H: Held>(
     if ctx.held.already_held(facts.dev, facts.ino) {
         return Err(Refusal::AlreadyHeld);
     }
-    if claimed == WireKind::BoundSender
-        && !(facts.peercred_pid > 0 && ctx.cred_pid == Some(facts.peercred_pid))
-    {
+    // A bound sender only from its creator: its creator's attested pid,
+    // or on the inherited channel a creator outside this PID namespace
+    // (pid 0), which can only be the broker, since the broker sends only
+    // bound senders it made.
+    let by_creator = (facts.peercred_pid > 0 && ctx.cred_pid == Some(facts.peercred_pid))
+        || (ctx.broker_channel && facts.peercred_pid == 0);
+    if claimed == WireKind::BoundSender && !by_creator {
         return Err(Refusal::NotByCreator);
     }
     Ok(handle_kind(claimed))
@@ -328,11 +344,13 @@ pub(crate) mod proofs {
         let d = any_region_desc();
         let f = any_facts();
         let (cred_pid, broker_pid): (Option<i32>, Option<i32>) = (kani::any(), kani::any());
+        let broker_channel: bool = kani::any();
         let answer = |_dev: u64, _ino: u64| false;
         let ctx = AcceptCtx {
             cred_pid,
             held: &answer,
             broker_pid,
+            broker_channel,
         };
         let got = accept_region(&d, &f, &ctx);
         let seals = match d.kind {
@@ -340,7 +358,8 @@ pub(crate) mod proofs {
             WireKind::ReadOnlyRegion => f.seals & READ_ONLY_SEALS == READ_ONLY_SEALS,
             _ => f.seals & CONSUMER_SEALS == CONSUMER_SEALS,
         };
-        let from_broker = matches!((cred_pid, broker_pid), (Some(c), Some(b)) if c == b && b > 0);
+        let from_broker = broker_channel
+            || matches!((cred_pid, broker_pid), (Some(c), Some(b)) if c == b && b > 0);
         let spec = f.fd > 2
             && f.is_regular
             && f.seals >= 0
@@ -380,11 +399,13 @@ pub(crate) mod proofs {
         let f = any_facts();
         let cred_pid: Option<i32> = kani::any();
         let held: bool = kani::any();
+        let broker_channel: bool = kani::any();
         let answer = move |_dev: u64, _ino: u64| held;
         let ctx = AcceptCtx {
             cred_pid,
             held: &answer,
             broker_pid: kani::any(),
+            broker_channel,
         };
         let got = accept(claimed, &f, &ctx);
         let spec = f.fd > 2
@@ -394,7 +415,8 @@ pub(crate) mod proofs {
             && f.protocol == 0
             && !held
             && (claimed != WireKind::BoundSender
-                || (f.peercred_pid > 0 && cred_pid == Some(f.peercred_pid)));
+                || (f.peercred_pid > 0 && cred_pid == Some(f.peercred_pid))
+                || (broker_channel && f.peercred_pid == 0));
         kani::cover!(
             got.is_ok() && claimed == WireKind::BoundSender,
             "a bound sender is accepted"
@@ -547,10 +569,60 @@ mod tests {
             cred_pid: Some(BROKER),
             held: &none_held,
             broker_pid: None,
+            broker_channel: false,
         };
         assert_eq!(
             accept_region(&wd, &writer, &in_broker),
             Err(Refusal::WriterNotFromBroker)
+        );
+    }
+
+    /// Design review M7, M8: a child in a PID namespace reads the broker
+    /// as pid 0 (launch facts E12, E13). On its inherited bootstrap
+    /// channel, which only the broker can send on, a writer and a bound
+    /// sender made outside the namespace are the broker's; on any other
+    /// channel they are refused.
+    #[test]
+    fn the_inherited_channel_stands_for_the_broker() {
+        const NONE_HELD: fn(u64, u64) -> bool = none_held;
+        let mut writer = REGION;
+        writer.seals = WRITER_SEALS;
+        let wd = region(WireKind::RegionWriter, 0);
+        let mut bound = GOOD;
+        bound.peercred_pid = 0;
+        for broker_channel in [true, false] {
+            let c = AcceptCtx {
+                cred_pid: None,
+                held: &NONE_HELD,
+                broker_pid: None,
+                broker_channel,
+            };
+            let (w, b) = if broker_channel {
+                (
+                    Ok(HandleKind::RegionWriter),
+                    Ok(HandleKind::BoundChannelSender),
+                )
+            } else {
+                (
+                    Err(Refusal::WriterNotFromBroker),
+                    Err(Refusal::NotByCreator),
+                )
+            };
+            assert_eq!(accept_region(&wd, &writer, &c), w);
+            assert_eq!(accept(WireKind::BoundSender, &bound, &c), b);
+        }
+        // A creator this process can see is never excused by the channel.
+        let mut seen = GOOD;
+        seen.peercred_pid = 4242;
+        let c = AcceptCtx {
+            cred_pid: None,
+            held: &NONE_HELD,
+            broker_pid: None,
+            broker_channel: true,
+        };
+        assert_eq!(
+            accept(WireKind::BoundSender, &seen, &c),
+            Err(Refusal::NotByCreator)
         );
     }
 
@@ -568,6 +640,7 @@ mod tests {
             cred_pid,
             held: &NONE,
             broker_pid: Some(BROKER),
+            broker_channel: false,
         }
     }
 
@@ -621,6 +694,7 @@ mod tests {
             cred_pid: None,
             held: &ours,
             broker_pid: None,
+            broker_channel: false,
         };
         assert_eq!(
             accept(WireKind::Receiver, &GOOD, &held),

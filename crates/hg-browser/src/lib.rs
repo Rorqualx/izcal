@@ -27,6 +27,7 @@ use hg_ipc_gen::process::{
     BuildId, ChildConfig, ExitReason, ProcessControl, ProcessControlRemote, ProcessError,
     ProcessHost, ProcessHostHandler, ProcessKind, SandboxReport,
 };
+use hg_substrate::ipc::PeerAttest;
 use hg_substrate::launch::{ChildKind, LaunchError, Launcher};
 use hg_substrate::{Priority, SequenceHandle, Substrate, Task};
 
@@ -186,7 +187,7 @@ impl Inner {
         let served = Endpoint::<ProcessHost>::from_receiver(&self.s.ipc, launched.from_child)
             .serve_bound(
                 self.seq,
-                PeerBinding::new(peer_id, launched.peer),
+                PeerBinding::new(peer_id, PeerAttest::Os(launched.peer)),
                 move |m, from| m.dispatch(&mut side, from),
                 on_end,
             );

@@ -186,9 +186,11 @@ pub(crate) fn fd_facts(fd: BorrowedFd<'_>) -> io::Result<FdFacts> {
 }
 
 /// The creator of the socket pair `fd` belongs to (`SO_PEERCRED`): for a
-/// launch channel end, the broker that launched this process.
-pub(crate) fn creator_pid(fd: BorrowedFd<'_>) -> Option<i32> {
-    peer_pid(fd).ok().filter(|&p| p > 0)
+/// launch channel end, the broker that launched this process. 0 is an
+/// answer: the creator is outside this process's PID namespace (launch
+/// facts E13). `None` only when the query fails or gives a negative pid.
+pub(crate) fn creator_pid_seen(fd: BorrowedFd<'_>) -> Option<i32> {
+    peer_pid(fd).ok().filter(|&p| p >= 0)
 }
 
 // ---- shared memory (D6), from memfd_create(2), fcntl(2) "File

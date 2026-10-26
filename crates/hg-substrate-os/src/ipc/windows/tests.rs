@@ -2,6 +2,7 @@
 //! with children started (sandboxed, in their own AppContainers) by this
 //! test binary acting as their broker.
 
+use hg_substrate::ipc::PeerAttest;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -46,13 +47,13 @@ impl Rig {
     fn listen_bound(
         &self,
         rx: ChannelReceiver,
-        peer: OsPeer,
+        peer: impl Into<PeerAttest>,
     ) -> (Receiver<Ev>, hg_substrate::ipc::Listening) {
         let (tx, out) = sync_channel::<Ev>(4096);
         let seq = self.exec.sequence("test", Priority::UserVisible);
         let l = self
             .ipc
-            .listen_bound(rx, peer, seq, sink(tx))
+            .listen_bound(rx, peer.into(), seq, sink(tx))
             .expect("listen_bound");
         (out, l)
     }

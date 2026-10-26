@@ -119,12 +119,13 @@ use std::time::{Duration, Instant as StdInstant};
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, FaultKind, Flow,
     Handle, HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES,
-    MAX_MESSAGE_HANDLES, Mapping, MappingObject, OsPeer, ProducerRegion, ReadOnlyRegion,
-    RegionObject, RegionRefused, RegionWriter, Sink, Transfer,
+    MAX_MESSAGE_HANDLES, Mapping, MappingObject, OsPeer, PeerAttest, ProducerRegion,
+    ReadOnlyRegion, RegionObject, RegionRefused, RegionWriter, Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
 use crate::executor::OsExecutor;
+use crate::ipc::common::attest;
 use crate::ipc::common::codec::{
     CREDIT_LEN, HandleDesc, REGION_FILLER_TRUSTED, REGION_IMMUTABLE, WireKind, decode_credit,
     encode_credit, encode_data,
@@ -2392,6 +2393,9 @@ impl Drop for WinListening {
 /// The Windows transport of one process.
 pub(crate) struct WindowsIpc {
     inner: Arc<Inner>,
+    /// The bootstrap receiver's end ID once taken, and the launcher's
+    /// pid: the one receiver `PeerAttest::Inherited` binds (review M7).
+    boot_rx: Mutex<Option<(u64, u32)>>,
 }
 
 impl core::fmt::Debug for WindowsIpc {
@@ -2484,7 +2488,10 @@ impl WindowsIpc {
         })
         .map_err(StartError::Os)?;
         let _ = ready_rx.recv();
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            boot_rx: Mutex::new(None),
+        })
     }
 
     /// The end `h` names, if it is this transport's and held here.
@@ -3041,14 +3048,26 @@ impl Ipc for WindowsIpc {
     fn listen_bound(
         &self,
         from: ChannelReceiver,
-        peer: OsPeer,
+        peer: PeerAttest,
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
-        if peer.pid() == 0 {
+        let boot = *self.boot_rx.lock().unwrap_or_else(PoisonError::into_inner);
+        let is_boot = boot.is_some_and(|(id, _p)| self.held_end(from.handle()) == Some(id));
+        let pid = match attest::resolve(peer, is_boot) {
+            None => return Err(IpcError::Refused),
+            // The broker's link attests the launcher: the inherited binding
+            // checks it as well (no PID namespace on Windows).
+            Some(attest::Bound::Inherited) => match boot {
+                Some((_id, p)) => p,
+                None => return Err(IpcError::Refused),
+            },
+            Some(attest::Bound::Peer(p)) => p.pid(),
+        };
+        if pid == 0 {
             return Err(IpcError::Refused);
         }
-        self.start_listening(from, Some(peer.pid()), seq, sink)
+        self.start_listening(from, Some(pid), seq, sink)
     }
 
     fn bootstrap(&self) -> Option<Bootstrap> {
@@ -3084,10 +3103,13 @@ impl Ipc for WindowsIpc {
             ChannelSender::from_handle(self.handle(tx?, HandleKind::ChannelSender)).ok()?;
         let from_parent =
             ChannelReceiver::from_handle(self.handle(rx?, HandleKind::ChannelReceiver)).ok()?;
+        if let Some(id) = rx {
+            *self.boot_rx.lock().unwrap_or_else(PoisonError::into_inner) = Some((id, parent_pid));
+        }
         Some(Bootstrap {
             to_parent,
             from_parent,
-            parent: OsPeer::new(parent_pid, 0),
+            parent: PeerAttest::Os(OsPeer::new(parent_pid, 0)),
         })
     }
 }

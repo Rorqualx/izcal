@@ -96,6 +96,12 @@ pub(crate) struct Binding {
     /// pid it was bound to when it started listening. `None` for a free
     /// channel.
     pub(crate) peer: Option<i32>,
+    /// The process's own bootstrap receiver bound by inheritance
+    /// (`PeerAttest::Inherited`, design review M7): what arrives counts as
+    /// the broker's. Rule 5 still checks `peer` when the launcher is
+    /// visible; a child in a PID namespace reads it as pid 0, so there
+    /// `peer` is `None` and the channel alone attests.
+    pub(crate) inherited: bool,
     /// The broker's pid, the only sender of region writers; `None` in
     /// the broker itself (D6 review M1).
     pub(crate) broker: Option<i32>,
@@ -335,6 +341,7 @@ where
         cred_pid: pid,
         held,
         broker_pid: binding.broker,
+        broker_channel: binding.inherited,
     };
     let mut kinds = [HandleKind::ChannelReceiver; MAX_MESSAGE_HANDLES];
     for ((slot, d), f) in kinds.iter_mut().zip(descs).zip(rec.facts) {
@@ -466,6 +473,7 @@ mod proofs {
         };
         let binding = Binding {
             peer: kani::any(),
+            inherited: kani::any(),
             broker: kani::any(),
         };
         let capacity: u32 = kani::any_where(|&c: &u32| c <= 4);
@@ -505,6 +513,7 @@ mod proofs {
                     cred_pid: cred.map(|c| c.pid).filter(|&p| p > 0),
                     held: &held,
                     broker_pid: binding.broker,
+                    broker_channel: binding.inherited,
                 };
                 for i in 0..2 {
                     if i < count {
@@ -682,6 +691,7 @@ mod tests {
 
     const FREE: Binding = Binding {
         peer: None,
+        inherited: false,
         broker: None,
     };
 
@@ -893,6 +903,7 @@ mod tests {
         let mut c = Case::new(&[]);
         c.binding = Binding {
             peer: Some(PEER),
+            inherited: false,
             broker: None,
         };
         let (d, _) = c.run();
@@ -903,6 +914,7 @@ mod tests {
         let mut c = Case::new(&[WireKind::Sender]);
         c.binding = Binding {
             peer: Some(PEER + 1),
+            inherited: false,
             broker: None,
         };
         let (reason, sender, close) = c.violation();
@@ -915,9 +927,25 @@ mod tests {
         let mut c = Case::new(&[]);
         c.binding = Binding {
             peer: Some(PEER),
+            inherited: false,
             broker: None,
         };
         c.control = ParsedControl::from_parts(&[], &[], 0, None, Ok(()));
         assert_eq!(c.violation(), (Reason::NoCredentials, None, vec![]));
+    }
+
+    /// Design review M7: the inherited bootstrap receiver checks no pid;
+    /// its launcher reads as pid 0 from inside a PID namespace.
+    #[test]
+    fn an_inherited_receiver_takes_records_its_launcher_cannot_attest() {
+        let mut c = Case::new(&[]);
+        c.binding = Binding {
+            peer: None,
+            inherited: true,
+            broker: None,
+        };
+        c.control = ParsedControl::from_parts(&[], &[], 0, None, Ok(()));
+        let (d, _) = c.run();
+        assert!(matches!(d, Decision::Accept { .. }));
     }
 }

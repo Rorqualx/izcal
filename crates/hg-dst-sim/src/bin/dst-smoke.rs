@@ -390,7 +390,7 @@ mod ipc {
             let serving = Endpoint::<ProcessHost>::from_receiver(&s.ipc, from_renderer)
                 .serve_bound(
                     seq,
-                    PeerBinding::new(PeerId::new(1, 0), renderer_os),
+                    PeerBinding::new(PeerId::new(1, 0), renderer_os.into()),
                     move |m, from| m.dispatch(&mut side, from),
                     |_why| {},
                 )

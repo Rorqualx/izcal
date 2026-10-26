@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
     ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, Flow, Handle, HandleKind, Ipc,
-    IpcError, Listening, OsPeer, ReadOnlyRegion, RegionWriter, Sink, Transfer,
+    IpcError, Listening, PeerAttest, ReadOnlyRegion, RegionWriter, Sink, Transfer,
 };
 
 use crate::identity::{CallerIdentity, PeerBinding};
@@ -263,7 +263,7 @@ impl<T: Interface> Endpoint<T> {
 
     fn listen<E: Send + 'static>(
         self,
-        peer: Option<OsPeer>,
+        peer: Option<PeerAttest>,
         seq: SequenceHandle,
         mut handle: impl FnMut(T) -> Result<(), E> + Send + 'static,
         on_end: impl FnOnce(EndReason<E>) + Send + 'static,
