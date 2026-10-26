@@ -26,7 +26,7 @@
 //!   for it.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 
 use hg_ipc::{
     BoundedBytes, CallerIdentity, EndReason, Endpoint, PeerBinding, PeerId, Remote, Serving,
@@ -97,10 +97,41 @@ pub struct BrowserConfig {
     pub progress: Arc<Progress>,
 }
 
-/// A running browser: keep it for as long as the process runs.
+/// A running browser: keep it for as long as the process runs. When the
+/// last clone is dropped the browser ends: its children's channels close
+/// (so they end), nothing more is launched, and the launcher is released
+/// with the substrate.
 #[derive(Clone)]
 pub struct Running {
     inner: Arc<Inner>,
+    _owner: Arc<Owner>,
+}
+
+/// Ends the browser when the last [`Running`] goes.
+///
+/// `Inner` holds each child's serving, whose handlers hold `Arc<Inner>`:
+/// without this, that cycle kept the browser, its children and its
+/// launcher alive after every `Running` was dropped, so a Windows
+/// launcher never unregistered its AppContainer profiles (M1 phase G,
+/// measured: 7 references to `Inner` at drop, none released).
+struct Owner {
+    inner: Weak<Inner>,
+}
+
+impl Drop for Owner {
+    fn drop(&mut self) {
+        let Some(inner) = self.inner.upgrade() else {
+            return;
+        };
+        let children = {
+            let mut st = inner.lock();
+            st.closed = true;
+            [st.renderer.take(), st.network.take()]
+        };
+        // Dropping each child's serving and control closes its channels
+        // and releases the handlers' references to `Inner`.
+        drop(children);
+    }
 }
 
 impl std::fmt::Debug for Running {
@@ -171,6 +202,8 @@ struct State {
     next_work: u64,
     /// Restart-required: set once, never cleared (DU-3).
     halted: bool,
+    /// The last `Running` was dropped: nothing is launched again.
+    closed: bool,
 }
 
 impl State {
@@ -235,6 +268,9 @@ impl Inner {
             if st.halted {
                 return Err(LaunchError::RestartRequired);
             }
+            if st.closed {
+                return Err(LaunchError::Unsupported);
+            }
             st.next_serial = st.next_serial.saturating_add(1);
             st.next_serial
         };
@@ -288,10 +324,15 @@ impl Inner {
         drop(st);
         // E-R3: `ready` within the deadline, by the substrate's clock, or
         // the child is killed and the spawn is a failure.
-        let inner = Arc::clone(self);
+        // Weak: a pending deadline must not keep an ended browser alive.
+        let inner = Arc::downgrade(self);
         let _ = self.s.exec.post(
             self.seq,
-            Task::new(move || inner.deadline(kind, serial)),
+            Task::new(move || {
+                if let Some(inner) = inner.upgrade() {
+                    inner.deadline(kind, serial);
+                }
+            }),
             Some(READY_DEADLINE),
             Duration::ZERO,
         );
@@ -355,7 +396,7 @@ impl Inner {
     fn relaunch(self: &Arc<Self>, kind: ChildKind) {
         let go = {
             let mut st = self.lock();
-            let halted = st.halted;
+            let halted = st.halted || st.closed;
             let budget = if kind == ChildKind::Renderer {
                 &mut st.budget_renderer
             } else {
@@ -374,15 +415,20 @@ impl Inner {
         if !go {
             return;
         }
-        let inner = Arc::clone(self);
+        let inner = Arc::downgrade(self);
         let _ = self.s.exec.post(
             self.seq,
-            Task::new(move || match inner.launch(kind) {
-                Ok(()) => {
-                    inner.progress.relaunches.fetch_add(1, Ordering::SeqCst);
+            Task::new(move || {
+                let Some(inner) = inner.upgrade() else {
+                    return;
+                };
+                match inner.launch(kind) {
+                    Ok(()) => {
+                        inner.progress.relaunches.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Err(LaunchError::Failed) => inner.relaunch(kind),
+                    Err(_) => {}
                 }
-                Err(LaunchError::Failed) => inner.relaunch(kind),
-                Err(_) => {}
             }),
             None,
             Duration::ZERO,
@@ -625,5 +671,11 @@ pub fn run(s: &Substrate, config: BrowserConfig) -> Result<Running, LaunchError>
             Err(e) => return Err(e),
         }
     }
-    Ok(Running { inner })
+    let owner = Arc::new(Owner {
+        inner: Arc::downgrade(&inner),
+    });
+    Ok(Running {
+        inner,
+        _owner: owner,
+    })
 }
