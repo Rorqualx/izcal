@@ -196,6 +196,8 @@ pub(crate) struct Proc {
     pub(crate) committed: u64,
     /// Launched by another process ([`World::link`]): never the broker.
     pub(crate) launched: bool,
+    /// The kinds this process may launch: the broker's only.
+    pub(crate) children: Option<Arc<crate::launch::ChildTable>>,
 }
 
 /// Where a delayed task goes when it fires.
@@ -364,7 +366,7 @@ impl Wreckage {
 
 /// The simulated world.
 pub struct World {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
 }
 
 impl std::fmt::Debug for World {
@@ -432,7 +434,29 @@ impl World {
         restart: bool,
         entry: impl Fn(Substrate) + Send + Sync + 'static,
     ) -> ProcessId {
-        self.spawn_inner(name, backing, restart, Arc::new(entry), None)
+        self.spawn_inner(name, backing, restart, Arc::new(entry), None, None)
+    }
+
+    /// As [`World::spawn`], for a browser that launches children: its
+    /// substrate's `launcher` starts a process of each kind in `children`
+    /// (M1 phase E). Launched children are not restarted by the world;
+    /// relaunching after a crash is the browser's job.
+    pub fn spawn_launcher(
+        &self,
+        name: &'static str,
+        backing: Arc<dyn Memory>,
+        restart: bool,
+        entry: impl Fn(Substrate) + Send + Sync + 'static,
+        children: crate::launch::ChildTable,
+    ) -> ProcessId {
+        self.spawn_inner(
+            name,
+            backing,
+            restart,
+            Arc::new(entry),
+            None,
+            Some(Arc::new(children)),
+        )
     }
 
     /// As [`World::spawn`], for the broker: its substrate's `os` is the
@@ -446,16 +470,17 @@ impl World {
         entry: impl Fn(Substrate) + Send + Sync + 'static,
         script: crate::os::OsScript,
     ) -> ProcessId {
-        self.spawn_inner(name, backing, restart, Arc::new(entry), Some(script))
+        self.spawn_inner(name, backing, restart, Arc::new(entry), Some(script), None)
     }
 
-    fn spawn_inner(
+    pub(crate) fn spawn_inner(
         &self,
         name: &'static str,
         backing: Arc<dyn Memory>,
         restart: bool,
         entry: Entry,
         script: Option<crate::os::OsScript>,
+        children: Option<Arc<crate::launch::ChildTable>>,
     ) -> ProcessId {
         let mut st = self.shared.lock();
         let pid = ProcessId(u32::try_from(st.procs.len()).unwrap_or(u32::MAX));
@@ -474,6 +499,7 @@ impl World {
             launched: false,
             reserved: 0,
             committed: 0,
+            children,
         });
         self.start(&mut st, pid, 0);
         pid
@@ -497,12 +523,14 @@ impl World {
             posted: 1,
         }];
         let has_os = st.os.contains_key(&pid);
+        let children = p.children.clone();
         let substrate = crate::substrate_for(
             &self.shared,
             pid,
             generation,
             derive(&[seed, tag::PROCESS, u64::from(pid.0), u64::from(generation)]),
             has_os,
+            children,
         );
         let entry = Arc::clone(&p.entry);
         if let Some(main) = p.seqs.first_mut() {

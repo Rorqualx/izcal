@@ -170,6 +170,9 @@ fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
         // The production OS port is OI-M1's (M5): the broker's per-OS
         // modules. Until then no process has one.
         os: None,
+        // The broker's launcher is set by the broker's start-up (phase E);
+        // a plain substrate has none.
+        launcher: None,
     })
 }
 
