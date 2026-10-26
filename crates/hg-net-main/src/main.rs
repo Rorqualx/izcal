@@ -4,6 +4,14 @@
 //! disposition), locks the process down and probes it; then the network
 //! library runs until its bootstrap channel ends.
 
+// Windows: the GUI subsystem. A console-subsystem child started with
+// CREATE_NO_WINDOW still gets a windowless conhost.exe of its own (FP-M0
+// decision log, 23 October 2026): measured again in M1 phase G on
+// rig253, one conhost per child, 944 KiB private and 6.2 MB working set
+// each, and about 18 ms of FP-27's spawn-to-ready. The child writes
+// nothing to a console (its stdio is null), so it needs none.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 use std::process::ExitCode;
 
 use hg_net_service::NetConfig;

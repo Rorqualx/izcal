@@ -79,3 +79,23 @@ fn no_child_links_the_code_signing_frameworks() {
         }
     }
 }
+
+/// M1 phase G (FP-27 on Windows): the child executables are built for
+/// the GUI subsystem, so a launch starts no conhost.exe for them (FP-M0
+/// decision log, 23 October 2026; measured again in G: a console child
+/// got its own conhost, which cost about 18 ms of spawn-to-ready and
+/// 944 KiB private per child). The PE optional header's `Subsystem`
+/// field: 2 is the Windows GUI, 3 the console.
+#[cfg(windows)]
+#[test]
+fn the_children_are_built_for_the_gui_subsystem() {
+    let tool = Path::new(env!("CARGO_BIN_EXE_hg-launch-tool"));
+    let dir = tool.parent().unwrap();
+    for exe in ["hg-renderer-main.exe", "hg-net-main.exe"] {
+        let b = std::fs::read(dir.join(exe)).unwrap();
+        let pe = u32::from_le_bytes(b[0x3c..0x40].try_into().unwrap()) as usize;
+        assert_eq!(&b[pe..pe + 4], b"PE\0\0", "{exe}");
+        let subsystem = u16::from_le_bytes(b[pe + 24 + 68..pe + 24 + 70].try_into().unwrap());
+        assert_eq!(subsystem, 2, "{exe} is not a GUI-subsystem executable");
+    }
+}
