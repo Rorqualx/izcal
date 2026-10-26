@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use hg_substrate::launch::{ChildKind, LaunchError, Launched, Launcher};
 use hg_substrate::{Memory, Substrate};
 
-use crate::world::{ProcessId, Shared, World};
+use crate::world::{ProcessId, Shared};
 
 /// One launchable kind: its process name, its memory backing and its
 /// entry function.
@@ -77,11 +77,16 @@ impl Launcher for SimLauncher {
         let Some(child) = self.table.entries.get(&kind) else {
             return Err(LaunchError::Unsupported);
         };
-        let world = World {
-            shared: Arc::clone(&self.shared),
-        };
         let entry: crate::world::Entry = Arc::clone(&child.entry);
-        let pid = world.spawn_inner(child.name, (child.backing)(), false, entry, None, None);
+        let pid = crate::world::spawn_in(
+            &self.shared,
+            child.name,
+            (child.backing)(),
+            false,
+            entry,
+            None,
+            None,
+        );
         {
             let mut st = self.shared.lock();
             st.trace.record(format_args!(
@@ -89,12 +94,16 @@ impl Launcher for SimLauncher {
                 self.parent.0, pid.0
             ));
         }
-        // A child that cannot be linked or identified is ended at once:
-        // a failed launch leaves no process behind.
-        let (Some((from_child, to_child)), Some(peer)) =
-            (world.link(self.parent, pid, capacity), world.os_peer(pid))
+        // A child that cannot be linked is ended at once: a failed launch
+        // leaves no process behind.
+        let Some((from_child, to_child)) =
+            crate::ipc::link(&self.shared, self.parent, pid, capacity)
         else {
-            world.crash(pid);
+            crate::world::crash_in(&self.shared, pid);
+            return Err(LaunchError::Failed);
+        };
+        let Some(peer) = crate::world::os_peer_in(&self.shared, pid) else {
+            crate::world::crash_in(&self.shared, pid);
             return Err(LaunchError::Failed);
         };
         Ok(Launched {

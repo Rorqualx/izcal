@@ -473,7 +473,7 @@ impl World {
         self.spawn_inner(name, backing, restart, Arc::new(entry), Some(script), None)
     }
 
-    pub(crate) fn spawn_inner(
+    fn spawn_inner(
         &self,
         name: &'static str,
         backing: Arc<dyn Memory>,
@@ -482,76 +482,122 @@ impl World {
         script: Option<crate::os::OsScript>,
         children: Option<Arc<crate::launch::ChildTable>>,
     ) -> ProcessId {
-        let mut st = self.shared.lock();
-        let pid = ProcessId(u32::try_from(st.procs.len()).unwrap_or(u32::MAX));
-        if let Some(script) = script {
-            st.os.insert(pid, crate::os::OsModel::new(script));
-        }
-        st.procs.push(Proc {
+        spawn_in(
+            &self.shared,
             name,
-            generation: 0,
-            alive: false,
-            entry,
-            restart,
             backing,
-            seqs: Vec::new(),
-            regions: BTreeMap::new(),
-            launched: false,
-            reserved: 0,
-            committed: 0,
+            restart,
+            entry,
+            script,
             children,
-        });
-        self.start(&mut st, pid, 0);
-        pid
+        )
     }
 
     /// Brings incarnation `generation` of `pid` up and queues its entry.
     fn start(&self, st: &mut State, pid: ProcessId, generation: u32) {
-        let seed = st.config.seed;
-        let Some(p) = st
-            .procs
-            .get_mut(usize::try_from(pid.0).unwrap_or(usize::MAX))
-        else {
-            return;
-        };
-        p.generation = generation;
-        p.alive = true;
-        p.seqs = vec![Seq {
-            name: "main",
-            queue: VecDeque::new(),
-            delayed: 0,
-            posted: 1,
-        }];
-        let has_os = st.os.contains_key(&pid);
-        let children = p.children.clone();
-        let substrate = crate::substrate_for(
-            &self.shared,
-            pid,
-            generation,
-            derive(&[seed, tag::PROCESS, u64::from(pid.0), u64::from(generation)]),
-            has_os,
-            children,
-        );
-        let entry = Arc::clone(&p.entry);
-        if let Some(main) = p.seqs.first_mut() {
-            main.queue
-                .push_back((0, Task::new(move || entry(substrate))));
-        }
-        let name = p.name;
-        st.trace.record(format_args!("start {name}.{generation}"));
+        start_in(&self.shared, st, pid, generation);
     }
+}
 
+/// [`World::crash`]'s work, on the shared state.
+pub(crate) fn crash_in(shared: &Arc<Shared>, pid: ProcessId) -> bool {
+    let mut st = shared.lock();
+    let wreck = World::crash_locked(&mut st, pid);
+    drop(st);
+    let crashed = wreck.is_some();
+    if let Some(w) = wreck {
+        w.clear();
+    }
+    crashed
+}
+
+/// [`World::os_peer`]'s work, on the shared state.
+pub(crate) fn os_peer_in(
+    shared: &Arc<Shared>,
+    pid: ProcessId,
+) -> Option<hg_substrate::ipc::OsPeer> {
+    let st = shared.lock();
+    let p = st.procs.get(usize::try_from(pid.0).ok()?)?;
+    p.alive
+        .then(|| hg_substrate::ipc::OsPeer::new(pid.0, u64::from(p.generation)))
+}
+
+/// [`World::spawn`]'s work, on the shared state: what the simulated
+/// launcher calls from inside a running task (a temporary [`World`] would
+/// tear the run down when dropped).
+pub(crate) fn spawn_in(
+    shared: &Arc<Shared>,
+    name: &'static str,
+    backing: Arc<dyn Memory>,
+    restart: bool,
+    entry: Entry,
+    script: Option<crate::os::OsScript>,
+    children: Option<Arc<crate::launch::ChildTable>>,
+) -> ProcessId {
+    let mut st = shared.lock();
+    let pid = ProcessId(u32::try_from(st.procs.len()).unwrap_or(u32::MAX));
+    if let Some(script) = script {
+        st.os.insert(pid, crate::os::OsModel::new(script));
+    }
+    st.procs.push(Proc {
+        name,
+        generation: 0,
+        alive: false,
+        entry,
+        restart,
+        backing,
+        seqs: Vec::new(),
+        regions: BTreeMap::new(),
+        launched: false,
+        reserved: 0,
+        committed: 0,
+        children,
+    });
+    start_in(shared, &mut st, pid, 0);
+    pid
+}
+
+/// Brings incarnation `generation` of `pid` up and queues its entry.
+fn start_in(shared: &Arc<Shared>, st: &mut State, pid: ProcessId, generation: u32) {
+    let seed = st.config.seed;
+    let Some(p) = st
+        .procs
+        .get_mut(usize::try_from(pid.0).unwrap_or(usize::MAX))
+    else {
+        return;
+    };
+    p.generation = generation;
+    p.alive = true;
+    p.seqs = vec![Seq {
+        name: "main",
+        queue: VecDeque::new(),
+        delayed: 0,
+        posted: 1,
+    }];
+    let has_os = st.os.contains_key(&pid);
+    let children = p.children.clone();
+    let substrate = crate::substrate_for(
+        shared,
+        pid,
+        generation,
+        derive(&[seed, tag::PROCESS, u64::from(pid.0), u64::from(generation)]),
+        has_os,
+        children,
+    );
+    let entry = Arc::clone(&p.entry);
+    if let Some(main) = p.seqs.first_mut() {
+        main.queue
+            .push_back((0, Task::new(move || entry(substrate))));
+    }
+    let name = p.name;
+    st.trace.record(format_args!("start {name}.{generation}"));
+}
+
+impl World {
     /// Crashes `pid` now, as an injected fault would. Returns false if it
     /// was not running.
     pub fn crash(&self, pid: ProcessId) -> bool {
-        let mut st = self.shared.lock();
-        let wreck = Self::crash_locked(&mut st, pid);
-        drop(st);
-        let crashed = wreck.is_some();
-        if let Some(w) = wreck {
-            w.clear();
-        }
-        crashed
+        crash_in(&self.shared, pid)
     }
 
     fn crash_locked(st: &mut State, pid: ProcessId) -> Option<Wreckage> {
@@ -764,10 +810,7 @@ impl World {
     /// bound receiver is given ([`hg_substrate::ipc::Ipc::listen_bound`]),
     /// or `None` if no such process is running.
     pub fn os_peer(&self, pid: ProcessId) -> Option<hg_substrate::ipc::OsPeer> {
-        let st = self.shared.lock();
-        let p = st.procs.get(usize::try_from(pid.0).ok()?)?;
-        p.alive
-            .then(|| hg_substrate::ipc::OsPeer::new(pid.0, u64::from(p.generation)))
+        os_peer_in(&self.shared, pid)
     }
 
     /// Whether `pid` is running (not crashed and awaiting restart).
