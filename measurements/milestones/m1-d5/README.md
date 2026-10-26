@@ -102,14 +102,73 @@ Windows does not attest:
 - **the sender of each message.** A pipe does not report who wrote a message. Faults a receiver detects therefore carry no sender (`Fault::sender` is `None`). Identity rests on the broker's record of who holds the channel's single sender end instead.
 - **process generations.** Process IDs carry none, so `OsPeer` generation is 0, as on Linux.
 
-It also has one known limit, from probe W3 (D5 review item 6):
+It also has these limits:
 
-- **a compromised holder can keep reading an end it gives away.** A well-behaved process cancels an end's reads before it relays the end (the M9 move protocol). A compromised process need not: it can relay an end while a `ReadFile` is still pending on it. The broker's `DUPLICATE_CLOSE_SOURCE` pull does not cancel that read, which keeps completing with records meant for the new holder (W3), and the broker cannot cancel another process's read (W8b). `HandleCount == 1` does not detect it, since a pending read is not a handle. The reach is confined to channels the process already held.
+- **A former holder's pending reads (W3, the bound).** A process can relay an end while reads are still pending on it, and the broker can neither cancel them nor stop them taking records (probes W3, W8b, W13d). Since W3 (below), every move puts the channel on a new pipe before the end is pulled, and nothing is written to the old pipe after the switch. A former holder can take records written before the switch, any number, never one after; a whole record taken gives Violation(Sequence), a split one Malformed; both unattributed.
+- **Kernel memory pinned by pending reads (W13e, a residual).** Each pending read charges about 430 bytes of nonpaged pool to the process that posts it. Job memory limits don't bound pending-read nonpaged pool: under a 32 MB `ProcessMemoryLimit` or `JobMemoryLimit` a child still held 56.6 MB, and one process without a job held 262,144 reads, 113 MB. The job object documents no nonpaged-pool limit, and Izcal has no cap of its own. Any pipe end a sandboxed child holds allows this, not only a moved one.
 
-  Options considered, and their costs:
+The design review's item 6 had chosen to accept the first limit for M1 (option 3 of the three considered: splice every moved channel through the broker, a fresh pipe per holder, or accept and document). On 26 Oct the user chose a fresh pipe per move instead (option 2, with the broker keeping the old pipes), which W3 below builds.
 
-  1. **The broker splices every moved channel.** On a move, the broker makes a fresh pipe pair, keeps the old ends itself, and copies bytes between old and new for the channel's life. This removes the old holder from the data path, but the broker then proxies every message of every once-moved channel, forever: a large, permanent latency and CPU cost, and it abandons the direct-pipe design.
-  2. **A fresh pipe per holder (rebuild on move).** On a move, the broker re-establishes the channel on a new pipe, which both ends' holders must adopt, and migrates any buffered and in-flight data. A move becomes a two-sided channel rebuild needing the receiver holder's cooperation and careful data migration; complex, and still has a window during the rebuild.
-  3. **Accept the limit and document it (chosen for M1).** The exposure is a process stealing records on a channel it already belonged to, after it gives an end away — no worse in reach than what it could already read while it held the end, and reaching no channel it never held. Zero cost. The broker's other checks (one copy, the ledger, one container per child) are unaffected.
+## W3: a fresh pipe per move (26 Oct 2026)
 
-  The recommendation is option 3 for M1, revisited if a channel is ever moved between two mutually untrusting processes where the giver is assumed hostile.
+**What changed.** After every move, the moved end and its peer are on a new pipe the broker makes (with every channel's flags; children never choose them):
+
+1. The broker peeks the moving end (no close-source) and claims its channel (one relay per channel at a time).
+2. It switches the peer first: locally if the broker or a ticket holds it; in a child, by `RebindValue` or `RebindId`, waiting at most 5 s for `Rebound`.
+3. Only then does it pull the moving end, and checks with `CompareObjectHandles` that it is the object it peeked.
+4. A receiver reads each old pipe to its end before its current one, so records keep their order and their `seq`. A moving receiver's old pipe stays with the broker until the next holder listens (`TakeDrains`).
+5. Every data message ends with its own length, so a stale read that splits a record leaves a suffix the reader refuses.
+
+**Limits.**
+- At most 16† old pipes are queued or owed per channel. The move that would make the 17th is refused (code 19), and the channel ends in `Closed`.
+- A peer that does not answer a rebind within 5 s fails the move (code 20).
+- A pulled end that is not the object peeked is refused (code 21).
+- An end whose file object does synchronous I/O is refused at the peek (code 22, below).
+
+Old pipes count against the channel creator's quota, and are released when the receiver closes, when its holder or the creator dies, or when the channel is swept. († = set from first principles, not measured.)
+
+**The three causes of the first build's 12 failing Windows tests** (measured with temporary tracing on rig253, one test at a time; each fix has a test that fails without it):
+- A read on a pipe whose writer closed with nothing left in it fails as it starts (`ReadFileEx`, 109), not through a completion. A drain whose old sender had already closed was never dropped, so the receiver never read its current pipe. That caused 10 timeouts.
+- The relay queued its `Rebind` records but did not wake the IO thread, so a `Rebind` was written only after the 5 s deadline had refused the move.
+- A sender moving off a pipe the broker made at an earlier move lost its pipe's alias at the switch, and was refused as `Changed`. That caused the slow reader's 120 of 121.
+
+**No relay holds a channel across a query that can wait (review finding).** The kernel's queries on a synchronous file object wait behind a pending read (W8), and a child chooses its own pipes' flags. Every such query now runs at the peek, on the child's own worker, before the channel is claimed; a synchronous end is refused there. After the pull only the object peeked is queried again. Probe W14 (`windows_facts.md`, round 6) shows why that is safe:
+- a file object's mode cannot be changed (`NtSetInformationFile` returns 0xC000000D both ways);
+- an overlapped end's queries return in 31 µs even with a read pending.
+
+A pulled value that names another object is refused without any query.
+
+**The stale-read conformance tests on the pre-W3 transport.** The three tests were ported to a scratch copy of `3f4afb7` (the last pre-W3 commit, where all 33 Windows tests passed) and run on rig253:
+
+| Test | Pre-W3 (`3f4afb7`) | W3 |
+|---|---|---|
+| `an_old_holders_pending_read_gets_nothing_after_a_move` | **fails**: the stale read takes the first record sent after the move, and the new holder never receives it (no delivery in 20 s) | passes: the stale read ends with STATUS_PIPE_BROKEN, and the new holder gets the record |
+| `a_record_split_by_a_stale_read_is_refused` | **fails**: the forged suffix is delivered as a message (`forged`) | passes: `Malformed`, unattributed |
+| `a_record_taken_by_a_stale_read_shows_as_a_gap` | passes (the `seq` check predates W3) | passes: `Violation(Sequence)`, unattributed |
+
+### Measurements
+
+rig253 under an exclusive booking (b-99c04f), with `rig check` passing before every run (CPU 1 to 2%, `2026-10-26T13:25:20-06:00` to `13:26:04`). Release builds of `ipc/d5-w3` (`a68dfbc`, the measurement test included) and of `3f4afb7` with the same measurement tests ported, run alternately in the same window. Other sessions' light bookings were on the rig and its CPU stayed at 1 to 2%. The pre-W3 numbers are lower than the 33 µs and 104 µs above, which were measured on 25 Oct; today's runs are the comparison.
+
+| | Pre-W3 (`3f4afb7`) p50 | p99 | W3 p50 | p99 |
+|---|---|---|---|---|
+| Round trip, 64 B (10,000) | 37.9 to 38.3 µs | 90.5 to 103.3 µs | 38.3 to 38.5 µs | 96.4 to 100.9 µs |
+| Round trip with a receiver end each way (1,000) | 119.7 to 124.1 µs | 164.1 to 166.2 µs | 192.6 to 199.0 µs | 265.8 to 296.5 µs |
+| Sender to a child and back (2 moves), receiver in the broker (500) | 131.0 to 151.8 µs | 201.7 to 207.2 µs | 201.8 to 231.5 µs | 314.0 to 364.9 µs |
+| The same, receiver held by another child (500) | 150.0 to 175.8 µs | 224.7 to 246.1 µs | 316.4 to 357.8 µs | 475.0 to 546.7 µs |
+| Listen with one old pipe queued, until it arrives (`TakeDrains`, 500) | n/a | n/a | 94 to 124 µs | 151 to 185 µs |
+
+Two to four runs each. The plain round trip and 64 KiB throughput (3.2 to 4.3 GiB/s both before and after) did not change.
+
+**The cost of a move.**
+- **Peer in the broker:** about 35 µs per move at the median. That is half the 70 µs added to each two-move trip: a new pipe pair made and the peer switched in place.
+- **Peer in another child:** about 80 µs per move. The extra is a `Rebind` and its `Rebound`, a round trip over the holder's control link.
+- **Listen:** a receiver whose channel has an old pipe queued pays one `TakeDrains` round trip (94 to 124 µs at the median) before its first read. A receiver that never moved pays nothing.
+
+### End checks (W3)
+
+- **Clippy:** `clippy --workspace --all-targets -D warnings` passes for the Windows, Linux and macOS targets.
+- **Windows transport suite:** 38 tests, run 10 times in a row on rig253 (all passed every time, 5.1 s each). Most children run in their own AppContainer sandboxes.
+- **Workspace tests:** pass on rig253 and on hueyj.
+- **Deterministic simulation:** the 60 `dst-smoke --ipc` seeds (0 to 59) still hash to `f06e8ea9488ab8cae1eb4054119ae52ddbebb41da8940781a9c0f57fe449911b`.
+- **Kani, the frame harnesses** (on hueyj, one at a time): pending; recorded below when run.

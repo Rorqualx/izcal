@@ -30,8 +30,8 @@
 //! later pipe's key is an *alias* of it ([`Ledger::canonical`]). An alias
 //! is counted: it lives while the pipe is the channel's current one, an
 //! old pipe queued for the receiver, an old pipe a holder still owes the
-//! broker (a *park*), or the pipe of an end whose replacement waits in
-//! the broker. A receiver's old pipes wait in a per-channel FIFO until
+//! broker (a *park*), the pipe of an end whose replacement waits in
+//! the broker, or the pipe of an end in a relay not yet decided. A receiver's old pipes wait in a per-channel FIFO until
 //! its holder listens; at most [`MAX_OLD_PIPES`] are queued or owed at
 //! once. Each is charged to the channel's creator, like a channel, and
 //! all are released when the receiver ends, when the creator or the

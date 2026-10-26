@@ -60,22 +60,51 @@
 //! design review B3). `OsPeer` generations are 0: Windows process IDs
 //! carry none.
 //!
-//! **A compromised holder can keep reading an end it gives away.** The
-//! move protocol has the giving transport cancel the carried end's
-//! reads and wait for them to abort before the broker pulls it (M9,
-//! probe W3), which a well-behaved process does. A compromised process,
-//! though, drives its own transport: it can ask the broker to relay an
-//! end while it still has a `ReadFile` pending on that end. A pending
-//! read is not cancelled by the broker's `DUPLICATE_CLOSE_SOURCE` pull
-//! and keeps completing with messages the new holder should receive
-//! (probe W3), and the broker cannot cancel another process's read
-//! (probe W8b, `ERROR_NOT_FOUND`). `HandleCount == 1` does not catch
-//! this, because a pending read is not a handle. So a process that gives
-//! away an end of a channel it was already part of can keep stealing
-//! records sent on that channel afterwards. It is confined to channels
-//! that process already held; it reaches no other. This limit is
-//! accepted for M1 and recorded for the design review (D5 item 6); the
-//! m1-d5 measurement README lists the options considered.
+//! **A fresh pipe per move (W3).** A process can ask the broker to relay
+//! an end while it still has reads pending on it. The broker's
+//! `DUPLICATE_CLOSE_SOURCE` pull does not cancel them, the broker cannot
+//! cancel another process's reads (probes W8b, W13d), and pending reads
+//! on one end complete in the order they were issued, across processes
+//! (W10). So after every move the moved end and its peer are on a new
+//! pipe the broker makes, and nothing is written to the old pipe after
+//! the switch:
+//! - the broker peeks the moving end (no close-source), claims its
+//!   channel (one relay per channel at a time), and switches the peer
+//!   first: in the broker or in a ticket at once; with a child by
+//!   `RebindValue`/`RebindId`, waiting for its `Rebound` at most
+//!   [`REBIND_DEADLINE`]. Only then does it pull the moving end and
+//!   check, with `CompareObjectHandles`, that it is the object peeked;
+//! - a receiver reads each old pipe to its end (109) before its current
+//!   one, so records keep their order and `seq`. A moving receiver's old
+//!   pipe stays with the broker until its next holder listens and asks
+//!   for it (`TakeDrains`); a receiver already listening keeps its old
+//!   pipe as a local drain. At most 16† old pipes are queued or owed per
+//!   channel ([`crate::ipc::win::ledger::MAX_OLD_PIPES`]); the move that
+//!   would make the 17th is refused and the channel ends in `Closed`;
+//! - every data message ends with its own length (a trailer), so a stale
+//!   read that takes only the head of a record leaves a suffix the reader
+//!   refuses.
+//!
+//! The bound: a former holder's pending reads can take records written
+//! before the switch, any number, never one after; a whole record taken
+//! gives `Violation(Sequence)`, a split one `Malformed`; both
+//! unattributed (probe W13). († set from first principles, not
+//! measured.)
+//!
+//! **No relay holds a channel across a query that can wait.** The
+//! kernel's queries on a synchronous file object wait behind a pending
+//! read (W8), and a child chooses its own pipes' flags. Every query that
+//! can wait runs at the peek, on the child's own worker, before the
+//! channel is claimed, and an end whose file object does synchronous I/O
+//! is refused there (`Refusal::Synchronous`). After the pull only the
+//! object peeked is queried again: it is overlapped, its mode cannot be
+//! changed, and an overlapped end's queries return at once (W14). A
+//! pulled value that names another object is refused unqueried.
+//!
+//! **Kernel memory.** Each pending read pins about 430 bytes of nonpaged
+//! pool, and a job's memory limits do not bound it (W13e: 113 MB from
+//! one process). A sandboxed child can do this on any pipe end it holds;
+//! there is no Izcal-side cap (a residual, m1-d5 README).
 //!
 //! **`Closed` is eventual**, as on Linux: a write accepted while any
 //! handle to the reading end exists (one in flight in a ticket, or a
@@ -89,9 +118,12 @@
 //!
 //! **Threads.** Every process runs one transport thread, its IO thread.
 //! A broker also runs one worker per live child (M8), started when the
-//! child is launched and ended when the broker forgets it: a broker with
-//! *n* children runs *n* + 1 transport threads, each with the platform's
-//! default stack. Every one of them waits with no timeout when idle, so
+//! child is launched and ended when the broker forgets it, and one worker
+//! for its own relays, which may wait for a child's `Rebound` (W3): a
+//! broker with *n* children runs *n* + 2 transport threads, each with the
+//! platform's default stack. A relay that waits for a `Rebound` holds its
+//! channels' claims for at most [`REBIND_DEADLINE`]; the holder that is
+//! asked answers on its IO thread. Every one of them waits with no timeout when idle, so
 //! idle threads cost memory, not wakeups (FP-18). A child's worker
 //! handles its relays, redemptions, binds and unbinds one at a time, in
 //! the order the child sent them: the pulls and kernel queries run there,
