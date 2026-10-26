@@ -52,8 +52,13 @@ fn nonpaged() -> usize {
 /// the inherited server end, says how many are pending, waits for stdin to
 /// close, then reports each read from its OVERLAPPED status block (the
 /// handle may have been pulled from it by then).
-fn child(v: &str, n: usize, cap: usize) {
+fn child(v: &str, n: usize, cap: usize, wait_go: bool) {
     let h = hp(v.parse().unwrap());
+    if wait_go {
+        // In a job: the parent assigns it, then says go.
+        let mut line = String::new();
+        let _ = std::io::stdin().read_line(&mut line);
+    }
     let np0 = nonpaged();
     let mut ops: Vec<(Box<OVERLAPPED>, Vec<u8>)> = Vec::with_capacity(n);
     let mut fail = 0u32;
@@ -123,6 +128,31 @@ struct Holder {
 /// Starts the former holder with an inheritable duplicate of `server`, and
 /// waits until its reads are posted.
 fn spawn_holder(server: H, n: usize, cap: usize) -> (Holder, String) {
+    spawn_holder_in(server, n, cap, None)
+}
+
+/// A job with the given extended-limit flags and process/job memory
+/// limits (JOBOBJECT_EXTENDED_LIMIT_INFORMATION, class 9).
+fn job(flags: u32, process_mem: usize, job_mem: usize) -> H {
+    use windows_sys::Win32::System::JobObjects::*;
+    let j = unsafe { CreateJobObjectW(null(), null()) };
+    let mut l: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
+    l.BasicLimitInformation.LimitFlags = flags | JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    l.ProcessMemoryLimit = process_mem;
+    l.JobMemoryLimit = job_mem;
+    let ok = unsafe {
+        SetInformationJobObject(
+            j,
+            JobObjectExtendedLimitInformation,
+            &l as *const _ as *const core::ffi::c_void,
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        )
+    };
+    assert!(ok != 0, "SetInformationJobObject err={}", le());
+    j
+}
+
+fn spawn_holder_in(server: H, n: usize, cap: usize, in_job: Option<H>) -> (Holder, String) {
     let inh = dup(me(), server, me(), 0, DUPLICATE_SAME_ACCESS).unwrap();
     unsafe { SetHandleInformation(inh, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
     let mut c = Command::new(std::env::current_exe().unwrap())
@@ -131,12 +161,20 @@ fn spawn_holder(server: H, n: usize, cap: usize) -> (Holder, String) {
             &hv(inh).to_string(),
             &n.to_string(),
             &cap.to_string(),
+            if in_job.is_some() { "wait" } else { "go" },
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
     unsafe { CloseHandle(inh) };
+    if let Some(j) = in_job {
+        use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
+        let ok = unsafe { AssignProcessToJobObject(j, hp(c.as_raw_handle() as isize)) };
+        assert!(ok != 0, "AssignProcessToJobObject err={}", le());
+        c.stdin.as_mut().unwrap().write_all(b"go\n").unwrap();
+        c.stdin.as_mut().unwrap().flush().unwrap();
+    }
     let mut line = String::new();
     BufReader::new(c.stdout.as_mut().unwrap())
         .read_line(&mut line)
@@ -234,6 +272,27 @@ fn w13a(n: usize) {
     unsafe { CloseHandle(server) };
 }
 
+/// W13e: does a job's commit limit bound the pending reads? The repo's
+/// job sets only KILL_ON_JOB_CLOSE; the documented memory limits are
+/// ProcessMemoryLimit and JobMemoryLimit (committed memory).
+fn w13e(label: &str, flags: u32, pm: usize, jm: usize, n: usize) {
+    let (server, client, _) = make_pair(None, 65536, 65536).unwrap();
+    let j = job(flags, pm, jm);
+    let (h, posted) = spawn_holder_in(server, n, 64, Some(j));
+    let mut c = h.c;
+    let kill = unsafe { TerminateProcess(hp(c.as_raw_handle() as isize), 0) };
+    let _ = c.wait();
+    say(
+        "W13e",
+        format!("{label}: asked for {n} pending reads: {posted}; holder killed (ok={kill})"),
+    );
+    unsafe {
+        CloseHandle(j);
+        CloseHandle(client);
+        CloseHandle(server);
+    }
+}
+
 fn w13b(n: usize) {
     let (server, client, _) = make_pair(None, 65536, 65536).unwrap();
     let (h, posted) = spawn_holder(server, n, 64);
@@ -328,7 +387,40 @@ fn w13d() {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("child") {
-        child(&args[1], args[2].parse().unwrap(), args[3].parse().unwrap());
+        child(
+            &args[1],
+            args[2].parse().unwrap(),
+            args[3].parse().unwrap(),
+            args.get(4).map(String::as_str) == Some("wait"),
+        );
+        return;
+    }
+    if args.first().map(String::as_str) == Some("jobs") {
+        use windows_sys::Win32::System::JobObjects::*;
+        const MB: usize = 1 << 20;
+        w13e("job, no memory limit", 0, 0, 0, 131072);
+        w13e(
+            "job, ProcessMemoryLimit 32 MB",
+            JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+            32 * MB,
+            0,
+            131072,
+        );
+        w13e(
+            "job, JobMemoryLimit 32 MB",
+            JOB_OBJECT_LIMIT_JOB_MEMORY,
+            0,
+            32 * MB,
+            131072,
+        );
+        w13e(
+            "job, ProcessMemoryLimit 8 MB",
+            JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+            8 * MB,
+            0,
+            131072,
+        );
+        w13b(262144);
         return;
     }
     for n in [1usize, 8, 64, 1024] {

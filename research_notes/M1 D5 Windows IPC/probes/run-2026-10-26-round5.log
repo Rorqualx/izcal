@@ -25,3 +25,12 @@
 [W13d] 4 stale reads (posted 4 (stop: none), nonpaged quota 6128 -> 6320 bytes); 4 zero-length writes [Ok(0), Ok(0), Ok(0), Ok(0)], then 1..=2; new holder reads [1, 2] then err=109 len=0; child took ["0B", "0B", "0B", "0B"]; other status {}; still pending 0
 [W13d] 4 stale reads (posted 4 (stop: none), nonpaged quota 6128 -> 6320 bytes); CancelIoEx(pulled) ok=0 err=1168; CancelIoEx(own server handle) ok=0 err=1168; SetNamedPipeHandleState(nowait) ok=0 err=231; wrote 1..=6; new holder reads [5, 6] then err=109 len=0; child took ["1", "2", "3", "4"]; other status {}; still pending 0
 [W13d] 4 stale reads (posted 4 (stop: none), nonpaged quota 6128 -> 6320 bytes); 4 zero-length writes [Ok(0), Ok(0), Ok(0), Ok(0)], then 1..=2; new holder reads [1, 2] then err=109 len=0; child took ["0B", "0B", "0B", "0B"]; other status {}; still pending 0
+    Finished `release` profile [optimized] target(s) in 0.70s
+[W13e] job, no memory limit: asked for 131072 pending reads: posted 131072 (stop: none), nonpaged quota 6128 -> 69424144 bytes; holder killed (ok=1)
+[W13e] job, ProcessMemoryLimit 32 MB: asked for 131072 pending reads: posted 131072 (stop: none), nonpaged quota 6128 -> 56615632 bytes; holder killed (ok=1)
+[W13e] job, JobMemoryLimit 32 MB: asked for 131072 pending reads: posted 131072 (stop: none), nonpaged quota 6128 -> 56613792 bytes; holder killed (ok=1)
+memory allocation of 32 bytes failed
+memory allocation of 30 bytes failed
+skipping backtrace printing to avoid potential recursion
+[W13e] job, ProcessMemoryLimit 8 MB: asked for 131072 pending reads: ; holder killed (ok=0)
+[W13b] asked for 262144 pending reads: posted 262144 (stop: none), nonpaged quota 6128 -> 113234824 bytes; holder killed (ok=1)
