@@ -531,6 +531,16 @@ fn child(case: &str) -> i32 {
             drop(hs);
             0
         }
+        "keep" => {
+            // Keeps every handle it is given, unused, and acknowledges each.
+            let mut kept = Vec::new();
+            while let Ok(Ev::Msg(_, hs)) = from_parent.recv_timeout(WAIT) {
+                kept.extend(hs);
+                r.ipc.send(&up, b"kept".to_vec(), Vec::new()).unwrap();
+            }
+            drop(kept);
+            0
+        }
         "deaf-holder" => {
             // Takes an end and ignores every rebind; on "go" sends the end
             // back up.
@@ -1747,4 +1757,62 @@ fn a_synchronous_end_is_refused_at_the_peek() {
         refused,
         "the synchronous end was not refused at the peek: {all:?}"
     );
+}
+
+/// The cost of a move (W3): a sender end goes to a child and straight
+/// back (two moves), with its receiver held by the broker (each move
+/// switches the peer locally) or by another child (each move sends a
+/// `Rebind` and waits for its `Rebound`). Run by hand on the lab machine.
+#[test]
+#[ignore = "a measurement, run by hand on the lab machine"]
+fn measure_move() {
+    let r = rig();
+    let bounce = launch(&r, "bounce", false);
+    let keep = launch(&r, "keep", false);
+    let pct = |v: &mut Vec<u128>, q: usize| {
+        v.sort_unstable();
+        v[v.len() * q / 100] as f64 / 1000.0
+    };
+    // Warm up both children.
+    r.ipc.send(&bounce.to_child, vec![0], Vec::new()).unwrap();
+    let _ = expect_msg(&bounce.from_child);
+    r.ipc.send(&keep.to_child, vec![0], Vec::new()).unwrap();
+    let _ = expect_msg(&keep.from_child);
+    let mut local = Vec::with_capacity(500);
+    let mut remote = Vec::with_capacity(500);
+    let mut held = Vec::new();
+    for _ in 0..500 {
+        for remote_peer in [false, true] {
+            let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+            if remote_peer {
+                r.ipc
+                    .send(&keep.to_child, b"rx".to_vec(), vec![rx.into_handle()])
+                    .unwrap();
+                assert_eq!(expect_msg(&keep.from_child).0, b"kept");
+            } else {
+                held.push(rx);
+            }
+            let t = std::time::Instant::now();
+            r.ipc
+                .send(&bounce.to_child, b"tx".to_vec(), vec![tx.into_handle()])
+                .unwrap();
+            let (_b, hs) = expect_msg(&bounce.from_child);
+            let ns = t.elapsed().as_nanos();
+            assert_eq!(hs.len(), 1);
+            if remote_peer {
+                remote.push(ns);
+            } else {
+                local.push(ns);
+            }
+        }
+    }
+    println!(
+        "W3-MOVE sender there and back (2 moves): peer in the broker p50={:.1}us p99={:.1}us | peer in a child p50={:.1}us p99={:.1}us | over {}",
+        pct(&mut local, 50),
+        pct(&mut local, 99),
+        pct(&mut remote, 50),
+        pct(&mut remote, 99),
+        local.len()
+    );
+    drop(held);
 }
