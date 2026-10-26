@@ -89,10 +89,14 @@ impl Launcher for SimLauncher {
                 self.parent.0, pid.0
             ));
         }
-        let (from_child, to_child) = world
-            .link(self.parent, pid, capacity)
-            .ok_or(LaunchError::Failed)?;
-        let peer = world.os_peer(pid).ok_or(LaunchError::Failed)?;
+        // A child that cannot be linked or identified is ended at once:
+        // a failed launch leaves no process behind.
+        let (Some((from_child, to_child)), Some(peer)) =
+            (world.link(self.parent, pid, capacity), world.os_peer(pid))
+        else {
+            world.crash(pid);
+            return Err(LaunchError::Failed);
+        };
         Ok(Launched {
             from_child,
             to_child,
