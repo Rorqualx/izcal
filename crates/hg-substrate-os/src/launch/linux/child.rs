@@ -7,14 +7,16 @@ use hg_substrate::Substrate;
 use hg_substrate::launch::{SandboxFeature, SandboxReached, SandboxTier};
 
 use super::sys;
-use crate::launch::ChildError;
+use crate::launch::{ChildError, MainThread};
 use crate::{Threads, ipc, sandbox};
 
 /// Locks down, probes and starts. Runs first in `main`.
 ///
 /// # Errors
 /// [`ChildError`].
-pub(crate) fn start(threads: Threads) -> Result<(Substrate, SandboxReached), ChildError> {
+pub(crate) fn start(
+    threads: Threads,
+) -> Result<(Substrate, MainThread, SandboxReached), ChildError> {
     // The ends first: nothing else in this process has seen these numbers.
     let (fd_up, fd_down) = ipc::linux::BOOTSTRAP_FDS;
     let (Some(up), Some(down)) = (sys::take_inherited(fd_up), sys::take_inherited(fd_down)) else {
@@ -22,8 +24,8 @@ pub(crate) fn start(threads: Threads) -> Result<(Substrate, SandboxReached), Chi
     };
     sandbox::linux::apply_launched_profile().map_err(ChildError::Sandbox)?;
     let reached = probe()?;
-    let s = crate::os_substrate_launched(threads, up, down).map_err(ChildError::Start)?;
-    Ok((s, reached))
+    let (s, main) = crate::os_substrate_launched(threads, up, down).map_err(ChildError::Start)?;
+    Ok((s, main, reached))
 }
 
 /// What this process reached, by black-box probes (E-R5). Below the

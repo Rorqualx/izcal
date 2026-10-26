@@ -36,7 +36,7 @@ use hg_substrate::launch::{
 };
 
 use crate::ipc::windows::{LaunchSpec, Sandbox, WindowsIpc, sys as win};
-use crate::launch::ChildError;
+use crate::launch::{ChildError, MainThread};
 use crate::sandbox::windows as sb;
 use crate::{Threads, sandbox};
 
@@ -511,7 +511,9 @@ pub(crate) fn broker_with(
 ///
 /// # Errors
 /// [`ChildError`].
-pub(crate) fn child_start(threads: Threads) -> Result<(Substrate, SandboxReached), ChildError> {
+pub(crate) fn child_start(
+    threads: Threads,
+) -> Result<(Substrate, MainThread, SandboxReached), ChildError> {
     stamp!("entry");
     sandbox::windows::apply_empty_process_profile().map_err(ChildError::Sandbox)?;
     stamp!("untrusted");
@@ -524,12 +526,13 @@ pub(crate) fn child_start(threads: Threads) -> Result<(Substrate, SandboxReached
         .and_then(|v| win::adopt_pipe(v, false))
         .ok_or(ChildError::Arguments)?;
     stamp!("link");
-    let s = crate::os_substrate_launched(threads, link).map_err(ChildError::Start)?;
+    let (s, main) = crate::os_substrate_launched(threads, link).map_err(ChildError::Start)?;
     stamp!("substrate");
     #[cfg(feature = "measure-launch")]
     sys::timing::publish();
     Ok((
         s,
+        main,
         SandboxReached {
             tier: SandboxTier::WindowsAppContainer,
             // The M5 parts of the 6.7 row (E-Q3).

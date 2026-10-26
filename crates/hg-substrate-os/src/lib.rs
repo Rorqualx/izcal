@@ -27,16 +27,39 @@ use std::sync::Arc;
 
 use hg_substrate::{Entropy, Substrate};
 
-/// Worker counts for [`os_substrate`].
+/// Worker counts for [`os_substrate`] (the executor's threads; the IPC
+/// transport adds its one IO thread, D3, D4, D5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Threads {
-    /// Workers for the three ordinary priorities.
+    /// Workers for the three ordinary priorities, started with the
+    /// substrate. 0 only for a launched child: its `main` runs them
+    /// ([`launch::MainThread`]); elsewhere 0 is taken as 1.
     pub general: usize,
-    /// Workers for `MayBlock` sequences.
+    /// At most this many workers for `MayBlock` sequences (at least 1),
+    /// each started when needed and ended after 10 s† idle.
     pub may_block: usize,
 }
 
 impl Threads {
+    /// A launched child (a site process or a network service): `main`
+    /// runs its sequences and at most one `MayBlock` worker starts on
+    /// demand. With the IPC thread, an idle child has two threads, FP
+    /// 6.3's and FP-32's "idle empty site process" (the script thread,
+    /// here `main`, and the control thread, here `hg-ipc-io`).
+    pub const CHILD: Self = Self {
+        general: 0,
+        may_block: 1,
+    };
+
+    /// `self` for a process with no `main` running sequences.
+    #[must_use]
+    pub const fn started(self) -> Self {
+        Self {
+            general: if self.general == 0 { 1 } else { self.general },
+            may_block: self.may_block,
+        }
+    }
+
     /// One general worker per available core, at least 2 and at most 16†,
     /// and 2† `MayBlock` workers.
     pub fn for_this_machine() -> Self {
@@ -84,7 +107,7 @@ impl std::error::Error for StartError {}
 /// # Errors
 /// [`StartError`] if the OS random source or thread creation fails.
 pub fn os_substrate(threads: Threads) -> Result<Substrate, StartError> {
-    start(threads, Launch::default())
+    start(threads.started(), Launch::default()).map(|(s, _exec)| s)
 }
 
 /// The launch channels a process was started with, already checked.
@@ -114,8 +137,9 @@ pub fn os_substrate_launched(
     threads: Threads,
     up: std::os::fd::OwnedFd,
     down: std::os::fd::OwnedFd,
-) -> Result<Substrate, StartError> {
+) -> Result<(Substrate, launch::MainThread), StartError> {
     start(threads, ipc::linux::launch_ends(up, down).ok())
+        .map(|(s, exec)| (s, launch::MainThread::new(exec)))
 }
 
 /// [`os_substrate`] for a process its launcher started with launch
@@ -126,8 +150,10 @@ pub fn os_substrate_launched(
 /// # Errors
 /// As [`os_substrate`], and [`StartError::Ipc`] if no answer comes.
 #[cfg(target_os = "macos")]
-pub fn os_substrate_launched(threads: Threads) -> Result<Substrate, StartError> {
-    start(threads, true)
+pub fn os_substrate_launched(
+    threads: Threads,
+) -> Result<(Substrate, launch::MainThread), StartError> {
+    start(threads, true).map(|(s, exec)| (s, launch::MainThread::new(exec)))
 }
 
 /// [`os_substrate`] for a process its broker started. On Windows the
@@ -144,8 +170,8 @@ pub fn os_substrate_launched(threads: Threads) -> Result<Substrate, StartError> 
 pub fn os_substrate_launched(
     threads: Threads,
     link: std::os::windows::io::OwnedHandle,
-) -> Result<Substrate, StartError> {
-    start(threads, Some(link))
+) -> Result<(Substrate, launch::MainThread), StartError> {
+    start(threads, Some(link)).map(|(s, exec)| (s, launch::MainThread::new(exec)))
 }
 
 /// The broker's substrate: [`os_substrate`] plus its launcher (phase E),
@@ -171,6 +197,8 @@ pub fn os_broker_substrate_in(
     threads: Threads,
     dir: &std::path::Path,
 ) -> Result<Substrate, StartError> {
+    // The broker's main runs no sequences.
+    let threads = threads.started();
     #[cfg(target_os = "linux")]
     {
         let files = launch::linux::BuildFiles::open(dir).map_err(StartError::Launch)?;
@@ -249,10 +277,15 @@ pub(crate) fn base(
     Ok((entropy, exec))
 }
 
-fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
+/// The substrate, and its executor for a launched child's `main`.
+fn start(
+    threads: Threads,
+    launch: Launch,
+) -> Result<(Substrate, Arc<executor::OsExecutor>), StartError> {
     let (entropy, exec) = base(threads)?;
     let ipc = os_ipc(&exec, launch)?;
-    Ok(Substrate {
+    let main_exec = Arc::clone(&exec);
+    let s = Substrate {
         clock: Arc::new(clock::OsClock::new()),
         entropy: Arc::new(entropy),
         exec,
@@ -264,7 +297,8 @@ fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
         // The broker's launcher is set by the broker's start-up (phase E);
         // a plain substrate has none.
         launcher: None,
-    })
+    };
+    Ok((s, main_exec))
 }
 
 /// This OS's IPC transport.

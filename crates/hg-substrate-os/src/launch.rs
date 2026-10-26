@@ -12,6 +12,7 @@ pub(crate) mod test_bins;
 pub mod windows;
 
 use std::ffi::OsString;
+use std::sync::Arc;
 
 pub use hg_launch_plan::Exe;
 use hg_launch_plan::Kind;
@@ -25,6 +26,9 @@ use crate::{StartError, Threads};
 pub struct Child {
     /// The substrate, with the bootstrap channels.
     pub substrate: Substrate,
+    /// `main`, to run the substrate's sequences once the child's library
+    /// is serving ([`MainThread::run_until`]).
+    pub main: MainThread,
     /// The kind its launcher named (`argv[1]`, E-R7 disposition).
     pub kind: ChildKind,
     /// What the child's probes found after lockdown (E-R5).
@@ -37,6 +41,40 @@ impl core::fmt::Debug for Child {
             .field("kind", &self.kind)
             .field("sandbox", &self.sandbox)
             .finish_non_exhaustive()
+    }
+}
+
+/// The process's `main` as its executor's general worker (FP 6.3,
+/// FP-32): a launched child has no general worker thread, so its
+/// sequences run on `main`, which would otherwise park. With the IPC
+/// transport's IO thread that makes an idle child's two threads.
+pub struct MainThread {
+    exec: Arc<crate::executor::OsExecutor>,
+}
+
+impl MainThread {
+    pub(crate) fn new(exec: Arc<crate::executor::OsExecutor>) -> Self {
+        Self { exec }
+    }
+
+    /// Runs the substrate's sequences on this thread until `done` holds.
+    /// `done` is checked first and after each task, so it must become
+    /// true inside a task this executor runs, as a served endpoint's end
+    /// does (`hg_renderer::Running::ended`).
+    pub fn run_until(self, done: impl Fn() -> bool) {
+        self.exec.run_here(&done);
+    }
+
+    /// The executor's threads now, `main` not counted (CS-AS-3).
+    #[must_use]
+    pub fn executor_threads(&self) -> usize {
+        self.exec.thread_count()
+    }
+}
+
+impl core::fmt::Debug for MainThread {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MainThread").finish_non_exhaustive()
     }
 }
 
@@ -113,27 +151,30 @@ pub fn os_child_substrate(threads: Threads, exe: Exe) -> Result<Child, ChildErro
     let kind = kind_from_args(exe, std::env::args_os().skip(1))?;
     #[cfg(target_os = "linux")]
     {
-        let (substrate, sandbox) = linux::child::start(threads)?;
+        let (substrate, main, sandbox) = linux::child::start(threads)?;
         Ok(Child {
             substrate,
+            main,
             kind,
             sandbox,
         })
     }
     #[cfg(target_os = "macos")]
     {
-        let (substrate, sandbox) = macos::child_start(threads)?;
+        let (substrate, main, sandbox) = macos::child_start(threads)?;
         Ok(Child {
             substrate,
+            main,
             kind,
             sandbox,
         })
     }
     #[cfg(windows)]
     {
-        let (substrate, sandbox) = windows::child_start(threads)?;
+        let (substrate, main, sandbox) = windows::child_start(threads)?;
         Ok(Child {
             substrate,
+            main,
             kind,
             sandbox,
         })

@@ -86,6 +86,10 @@ pub struct Progress {
     /// its launcher applied, which its own report matched (review M3).
     /// Reported by name with every measurement (E-R5).
     pub sandbox_tiers: Mutex<Vec<(ChildKind, SandboxTier)>>,
+    /// The OS process id of every child that reported `ready`, as its
+    /// launcher saw it (outside any PID namespace), for samplers that
+    /// read a child's counters from outside (M1 phase G).
+    pub ready_pids: Mutex<Vec<(ChildKind, u32)>>,
 }
 
 /// How the browser runs.
@@ -564,6 +568,12 @@ impl ProcessHostHandler for HostSide {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push((self.kind, child.sandbox));
+        self.inner
+            .progress
+            .ready_pids
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((self.kind, child.peer.pid()));
         // A child gone before `start` reaches it is not at fault: its own
         // channel's closing ends it and drives the relaunch.
         let _ = child.control.start(config_for(self.kind));

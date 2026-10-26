@@ -17,9 +17,10 @@
 //!   measurement build; production builds have no stamps.
 //! - `hold SECS`: the renderer skeleton at rest, for M1 phase G's
 //!   samplers (FP-M0's method: the OS counters are read from outside, by
-//!   process). Runs `round-trip`, prints `hold: ready broker=<pid>`, then
-//!   keeps the browser and its children alive and idle for SECS seconds
-//!   with no wakeup of its own (one sleep), and exits.
+//!   process). Runs `round-trip`, prints `hold: ready broker=<pid>` and
+//!   `hold: children <Kind>=<pid> ...`, then keeps the browser and its
+//!   children alive and idle for SECS seconds with no wakeup of its own
+//!   (one sleep), and exits.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -93,6 +94,9 @@ fn hold(secs: Option<u64>) -> ExitCode {
     if let (true, Some(secs)) = (ok, secs) {
         println!("round-trip: ok {line}");
         println!("hold: ready broker={}", std::process::id());
+        let pids = p.ready_pids.lock().map(|t| t.clone()).unwrap_or_default();
+        let pids: Vec<String> = pids.iter().map(|(k, pid)| format!("{k:?}={pid}")).collect();
+        println!("hold: children {}", pids.join(" "));
         let _ = std::io::Write::flush(&mut std::io::stdout());
         std::thread::sleep(Duration::from_secs(secs));
         drop(running);

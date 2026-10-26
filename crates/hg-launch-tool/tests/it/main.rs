@@ -1,25 +1,79 @@
 //! The M1 exit test on this OS (launch design E-R3, phase E "done
 //! when"): the browser, renderer and network service, each its own
 //! process in its sandbox, make the round trip. Runs `hg-launch-tool
-//! round-trip` from the build directory, where `cargo test` also builds
-//! the mains (each main crate's own test makes Cargo build it).
+//! round-trip` from the build directory.
+//!
+//! The mains it launches are not dependencies of this package, so Cargo
+//! builds them only when their own packages' tests are selected; `cargo
+//! test -p hg-launch-tool` alone would run whatever older build sat in
+//! the directory (M1 phase G found this with the thread count). So the
+//! first test of a run builds them, in this tool's target directory,
+//! target and profile ([`build_dir`]).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
+
+/// The mains the tool launches (and the browser main beside them).
+const MAINS: [&str; 3] = ["hg-renderer-main", "hg-net-main", "hg-browser-main"];
+
+/// The tool's directory, `<target>/[<triple>/]<profile>`, with [`MAINS`]
+/// built there from this source, once per test process.
+fn build_dir() -> &'static Path {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let tool = Path::new(env!("CARGO_BIN_EXE_hg-launch-tool"));
+        let dir = tool.parent().unwrap().to_path_buf();
+        let profile = dir.file_name().unwrap().to_os_string();
+        let is_root = |d: &Path| d.join("CACHEDIR.TAG").is_file();
+        let above = dir.parent().unwrap();
+        let (root, triple) = if is_root(above) {
+            (above.to_path_buf(), None)
+        } else {
+            let root = above.parent().unwrap();
+            assert!(
+                is_root(root),
+                "{} is not in a target directory",
+                dir.display()
+            );
+            (
+                root.to_path_buf(),
+                Some(above.file_name().unwrap().to_os_string()),
+            )
+        };
+        let mut cmd = Command::new(env!("CARGO"));
+        cmd.arg("build").current_dir(env!("CARGO_MANIFEST_DIR"));
+        for m in MAINS {
+            cmd.args(["-p", m]);
+        }
+        // `dev` and `test` both build into `debug`.
+        if profile == "debug" {
+            cmd.args(["--profile", "dev"]);
+        } else {
+            cmd.arg("--profile").arg(&profile);
+        }
+        cmd.arg("--target-dir").arg(&root);
+        if let Some(t) = triple {
+            cmd.arg("--target").arg(t);
+        }
+        let out = cmd.output().unwrap();
+        assert!(
+            out.status.success(),
+            "building the mains failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        dir
+    })
+}
+
+/// The tool, with the mains it launches built beside it.
+fn tool() -> PathBuf {
+    build_dir().join(format!("hg-launch-tool{}", std::env::consts::EXE_SUFFIX))
+}
 
 #[test]
 fn the_round_trip_runs_in_the_os_sandboxes() {
-    let tool = Path::new(env!("CARGO_BIN_EXE_hg-launch-tool"));
-    let dir = tool.parent().unwrap();
-    for exe in ["hg-renderer-main", "hg-net-main", "hg-browser-main"] {
-        let p = dir.join(format!("{exe}{}", std::env::consts::EXE_SUFFIX));
-        assert!(
-            p.exists(),
-            "{} is not built: run the workspace's tests (cargo test --workspace) or build its binaries",
-            p.display()
-        );
-    }
-    let out = Command::new(tool).arg("round-trip").output().unwrap();
+    let out = Command::new(tool()).arg("round-trip").output().unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
     eprintln!("{stdout}{}", String::from_utf8_lossy(&out.stderr));
     assert!(out.status.success(), "{stdout}");
@@ -63,8 +117,7 @@ fn linked_dylibs(path: &Path) -> Vec<String> {
 #[cfg(target_os = "macos")]
 #[test]
 fn no_child_links_the_code_signing_frameworks() {
-    let tool = Path::new(env!("CARGO_BIN_EXE_hg-launch-tool"));
-    let dir = tool.parent().unwrap();
+    let dir = build_dir();
     for exe in ["hg-renderer-main", "hg-net-main"] {
         let libs = linked_dylibs(&dir.join(exe));
         assert!(
@@ -89,8 +142,7 @@ fn no_child_links_the_code_signing_frameworks() {
 #[cfg(windows)]
 #[test]
 fn the_children_are_built_for_the_gui_subsystem() {
-    let tool = Path::new(env!("CARGO_BIN_EXE_hg-launch-tool"));
-    let dir = tool.parent().unwrap();
+    let dir = build_dir();
     for exe in ["hg-renderer-main.exe", "hg-net-main.exe"] {
         let b = std::fs::read(dir.join(exe)).unwrap();
         let pe = u32::from_le_bytes(b[0x3c..0x40].try_into().unwrap()) as usize;
@@ -108,8 +160,7 @@ fn the_children_are_built_for_the_gui_subsystem() {
 #[cfg(windows)]
 #[test]
 fn a_broker_that_ends_leaves_no_profile() {
-    let tool = Path::new(env!("CARGO_BIN_EXE_hg-launch-tool"));
-    let child = Command::new(tool)
+    let child = Command::new(tool())
         .arg("round-trip")
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -130,4 +181,87 @@ fn a_broker_that_ends_leaves_no_profile() {
         .filter(|n| n.starts_with(&prefix))
         .collect();
     assert!(left.is_empty(), "left registered: {left:?}");
+}
+
+/// The OS threads of process `pid` now, read from outside: Linux
+/// `/proc/PID/status`, macOS `ps -M` (one line per thread), Windows
+/// `Get-Process` (FP-M0's counters, by process).
+fn os_threads(pid: u32) -> Option<usize> {
+    #[cfg(target_os = "linux")]
+    {
+        let s = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+        s.lines()
+            .find_map(|l| l.strip_prefix("Threads:"))
+            .and_then(|n| n.trim().parse().ok())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let out = Command::new("ps")
+            .args(["-M", "-p", &pid.to_string()])
+            .output()
+            .ok()?;
+        let lines = String::from_utf8_lossy(&out.stdout).lines().count();
+        lines.checked_sub(1).filter(|n| *n > 0)
+    }
+    #[cfg(windows)]
+    {
+        let out = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!("(Get-Process -Id {pid}).Threads.Count"),
+            ])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+    }
+}
+
+/// FP 6.3 and FP-32 (M1 phase G): an idle empty site process has two
+/// threads, and so does the network service beside it. Each launched
+/// child runs its sequences on `main` and its IPC on `hg-ipc-io`; a
+/// MayBlock worker and the timer thread start only when used (CS-AS-3:
+/// the substrate's count is the process's). Counted from outside, on
+/// each OS. On Windows the loader's own pool threads (FP-M0: three the
+/// process does not create) end by themselves within about 45 s, so the
+/// count is awaited for up to 90 s.
+#[test]
+fn an_idle_child_runs_two_threads() {
+    use std::io::BufRead as _;
+    let mut broker = Command::new(tool())
+        .args(["hold", "150"])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let out = std::io::BufReader::new(broker.stdout.take().unwrap());
+    let mut pids = Vec::new();
+    for line in out.lines() {
+        let line = line.unwrap();
+        eprintln!("{line}");
+        if let Some(rest) = line.strip_prefix("hold: children ") {
+            for kv in rest.split_whitespace() {
+                let (kind, pid) = kv.split_once('=').unwrap();
+                pids.push((kind.to_owned(), pid.parse::<u32>().unwrap()));
+            }
+            break;
+        }
+        assert!(!line.contains("FAIL"), "{line}");
+    }
+    assert_eq!(pids.len(), 2, "both children reported ready: {pids:?}");
+    let started = std::time::Instant::now();
+    let mut seen = Vec::new();
+    for (kind, pid) in &pids {
+        let mut n = os_threads(*pid);
+        while n != Some(2) && started.elapsed() < std::time::Duration::from_secs(90) {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            n = os_threads(*pid);
+        }
+        seen.push((kind.clone(), n));
+    }
+    let _ = broker.kill();
+    let _ = broker.wait();
+    eprintln!("threads after {:?}: {seen:?}", started.elapsed());
+    for (kind, n) in seen {
+        assert_eq!(n, Some(2), "{kind}");
+    }
 }

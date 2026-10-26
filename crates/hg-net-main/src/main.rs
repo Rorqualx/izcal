@@ -22,10 +22,10 @@ use hg_substrate_os::launch::{Exe, os_child_substrate};
 const EXIT_RUN: u8 = 70;
 
 fn main() -> ExitCode {
-    let threads = Threads {
-        general: 2,
-        may_block: 1,
-    };
+    // FP 6.3 and FP-32: `main` runs the sequences and the IPC transport
+    // its IO thread, two threads at rest; a MayBlock worker and the
+    // timer thread start only when used.
+    let threads = Threads::CHILD;
     let child = match os_child_substrate(threads, Exe::Net) {
         Ok(c) => c,
         Err(e) => return ExitCode::from(e.exit_code()),
@@ -36,6 +36,6 @@ fn main() -> ExitCode {
     let Some(running) = hg_net_service::run(&child.substrate, config) else {
         return ExitCode::from(EXIT_RUN);
     };
-    running.wait();
+    child.main.run_until(|| running.ended());
     ExitCode::SUCCESS
 }
