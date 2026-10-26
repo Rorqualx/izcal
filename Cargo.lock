@@ -48,6 +48,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-launch-plan"
+version = "0.0.0"
+
+[[package]]
 name = "hg-launch-wire"
 version = "0.0.0"
 
