@@ -147,8 +147,24 @@ pub(crate) enum Refusal {
     Duplicate,
     /// The relayer is over its ledger quota (tickets or channels).
     Quota,
-    /// The broker had no randomness to make a ticket.
+    /// The broker had no randomness to make a ticket, or no pipe for a
+    /// move (W3).
     NoTicket,
+    /// The moving end's channel already has its limit of old pipes queued
+    /// or owed (W3, `MAX_OLD_PIPES`): the channel ends in `Closed`.
+    OldPipes,
+    /// The moving end's peer could not be moved to the new pipe: its
+    /// holder did not answer the rebind in time, or could not be named
+    /// (W3).
+    Rebind,
+    /// The end pulled is not the one the broker peeked before it moved
+    /// the peer (W3).
+    Changed,
+    /// The end's file object does synchronous I/O: the kernel's queries
+    /// on it can wait without end (probe W8), so it is refused at the
+    /// peek, before its channel is claimed. Izcal's own pipes are all
+    /// overlapped.
+    Synchronous,
     /// A region the registry refuses (D6, `super::regions::relay_rule`).
     Region,
 }
@@ -175,7 +191,11 @@ impl Refusal {
             Self::Quota => 16,
             Self::NoTicket => 17,
             Self::NoWait => 18,
-            Self::Region => 19,
+            Self::OldPipes => 19,
+            Self::Rebind => 20,
+            Self::Changed => 21,
+            Self::Synchronous => 22,
+            Self::Region => 23,
         }
     }
 }
@@ -402,6 +422,55 @@ mod proofs {
                 None
             },
         }
+    }
+
+    /// An independent statement of what a relay may take, written as a
+    /// flat conjunction of the rules in plain terms rather than as
+    /// [`accept`]'s cascade, so a wrong check in `accept` shows up as a
+    /// disagreement. `accept` is then proved to accept a handle exactly
+    /// when this holds, and to return the stated channel and end.
+    fn should_accept(claimed: WireKind, f: &Facts, ctx: &Ctx) -> Option<(PipeKey, End)> {
+        let signed = i64::from_ne_bytes(f.raw.to_ne_bytes());
+        let value_ok = signed > 0 && f.raw % 4 == 0;
+        let end = end_for(claimed);
+        let pipe = f.pipe?;
+        let view = ctx.view.unwrap_or(View {
+            holder: Some(pipe.creator),
+            bound: false,
+            bound_receiver: false,
+        });
+        let kind_ok = match claimed {
+            WireKind::BoundSender => !view.bound && pipe.creator == ctx.relayer,
+            WireKind::Sender => !view.bound,
+            WireKind::Receiver => !view.bound && !view.bound_receiver,
+        };
+        let all = value_ok
+            && f.pulled
+            && f.is_pipe
+            && f.message
+            && f.read_message
+            && f.wait
+            && f.max_instances == 1
+            && f.server_end == (end == End::Receiver)
+            && f.handle_count == 1
+            && pipe != ctx.carrier
+            && view.holder == Some(ctx.relayer)
+            && kind_ok;
+        all.then_some((pipe, end))
+    }
+
+    /// `accept` agrees with [`should_accept`] in both directions, and
+    /// returns the same channel and end.
+    #[kani::proof]
+    fn accept_matches_its_spec() {
+        let claimed = any_kind();
+        let f = any_facts();
+        let ctx = any_ctx();
+        assert!(accept(claimed, &f, &ctx).ok() == should_accept(claimed, &f, &ctx));
+        kani::cover!(
+            should_accept(claimed, &f, &ctx).is_some(),
+            "the spec accepts some handle"
+        );
     }
 
     /// Exactly the stated handles pass: for any facts, claim and ledger
@@ -713,6 +782,10 @@ mod tests {
             Refusal::Quota,
             Refusal::NoTicket,
             Refusal::NoWait,
+            Refusal::OldPipes,
+            Refusal::Rebind,
+            Refusal::Changed,
+            Refusal::Synchronous,
             Refusal::Region,
         ];
         for (i, a) in all.iter().enumerate() {

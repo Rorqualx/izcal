@@ -1,0 +1,11 @@
+[W10] round 1: child read first, parent second; writes Ok(8) Ok(8); parent: ok len=8 first=2; child read: ok len=8 first=1 after 998 ms
+[W10] round 2: child read first, parent second; writes Ok(8) Ok(8); parent: ok len=8 first=2; child read: ok len=8 first=1 after 997 ms
+[W10] round 3: child read first, parent second; writes Ok(8) Ok(8); parent: ok len=8 first=2; child read: ok len=8 first=1 after 997 ms
+[W10] round 4: child read first, parent second; writes Ok(8) Ok(8); parent: ok len=8 first=2; child read: ok len=8 first=1 after 997 ms
+[W10] round 5: child read first, parent second; writes Ok(8) Ok(8); parent: ok len=8 first=2; child read: ok len=8 first=1 after 997 ms
+[W10b] child read pending, three records queued, writer closed; child read: ok len=8 first=1 after 696 ms; parent then reads: ["ok len=8 first=2", "ok len=8 first=3", "err=109 len=0"]
+[W10b] child read pending, three records queued, writer closed; child read: ok len=8 first=1 after 696 ms; parent then reads: ["ok len=8 first=2", "ok len=8 first=3", "err=109 len=0"]
+[W10b] child read pending, three records queued, writer closed; child read: ok len=8 first=1 after 695 ms; parent then reads: ["ok len=8 first=2", "ok len=8 first=3", "err=109 len=0"]
+[W11] child read pending on an empty pipe, writer closed at t0; child read: err=109 len=0 after 696 ms (child exited 2 ms after t0); a later read on the parent's handle: err=109 len=0
+[W11] child read pending on an empty pipe, writer closed at t0; child read: err=109 len=0 after 696 ms (child exited 4 ms after t0); a later read on the parent's handle: err=109 len=0
+[W11] child read pending on an empty pipe, writer closed at t0; child read: err=109 len=0 after 696 ms (child exited 4 ms after t0); a later read on the parent's handle: err=109 len=0
