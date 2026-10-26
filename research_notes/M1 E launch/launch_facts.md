@@ -104,3 +104,13 @@ Probe: `probes/linux/src/bin/er46.rs`, run as a static build on hueyj (same host
 **Implications:**
 - **E-R4:** under the AppArmor userns restriction, **no form of exec by handle works in a new mount namespace**: pre-opened file fd (E4), procfs reopen (E4b) and directory fd (E22). On those hosts the child gets no new mount namespace. That costs nothing, since E2 already showed it can't mount anything there.
 - **E-R6:** `SO_PEERCRED` identifies only the creator, so a pair's peer credentials identify neither side's later holder. Only `SCM_CREDENTIALS` identifies a sender, and only from outside the sender's PID namespace. The generation has to come from somewhere other than the pidfd inode.
+
+## 9. Round 3 (2026-10-26): the spawner built (`hg-spawner-main`)
+
+Measured with the real spawner and its probe child (`hg-launch-probe`) on hueyj, same host and settings, light booking b-2c6a07. Tests: `hg_substrate_os::launch::linux::tests`.
+
+| # | Finding | Evidence | Conf. |
+|---|---|---|---|
+| E25 | **Rust's start-up polls stdio.** A static Rust child exec'd under the launch filter (steady list plus `execveat`) died before `main`: `poll([0,1,2], 3, 0)` returned EPERM and std aborts on that error. The steady list gains `poll` with exactly three descriptors and no wait (aarch64: `ppoll` with three). `readlinkat("/proc/self/exe")` also gets EPERM at start, which std tolerates. | `strace -f` of the test, 26 Oct | High |
+| E26 | **A launched child's state** on the restricted tier: pid 1 in its namespace, descriptors exactly 0–4 (none close-on-exec), `NoNewPrivs` 1, seccomp mode 2, its own session with no controlling terminal (seen from outside in `/proc/<pid>/stat`), `open` and an `AF_INET` socket both EPERM. | `a_child_starts_sandboxed_with_exactly_its_two_ends` | High |
+| E27 | **The bootstrap ends are nonblocking** in the child (the transport's socketpairs are `SOCK_NONBLOCK`, a property of the shared open file description), so a child that `read`s them gets EAGAIN; only epoll may wait under the filter. The transport already waits with epoll; the probe child had to as well. | probe's `end rc=-1 errno=11` before the fix | High |

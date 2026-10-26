@@ -25,6 +25,7 @@ undocumented_unsafe_blocks = "deny"
 mod_module_files = "deny"
 
 [dependencies]
+hg-launch-plan = { path = "../hg-launch-plan" }
 hg-substrate = { path = "../hg-substrate" }
 hg-types = { path = "../hg-types" }
 libc = "0.2"
@@ -48,6 +49,10 @@ windows-sys = { version = "0.61", features = [
   "Wdk_Foundation",
 ] }
 
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
 [[bin]]
 name = "fp-m0-empty"
 path = "src/bin/fp-m0-empty.rs"
@@ -55,6 +60,15 @@ path = "src/bin/fp-m0-empty.rs"
 [[bin]]
 name = "fp-m0-probe"
 path = "src/bin/fp-m0-probe.rs"
+
+[[bin]]
+name = "hg-spawner-main"
+path = "src/bin/hg-spawner-main.rs"
+
+[[bin]]
+name = "hg-launch-probe"
+path = "src/bin/hg-launch-probe.rs"
+test = false
 
 [[bin]]
 name = "substrate-idle"

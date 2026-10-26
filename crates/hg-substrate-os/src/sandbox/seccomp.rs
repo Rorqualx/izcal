@@ -203,6 +203,15 @@ const NO_EXEC_ARGS: &[(u32, Cond)] = &[(
     },
 )];
 const SHUTDOWN_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(SHUT_WR))];
+/// `poll(fds, 3, 0)`: Rust's start-up check that descriptors 0 to 2 are
+/// open, which aborts the process on any error but a few (measured on
+/// hueyj, 26 Oct: under the launch filter without this rule a launched
+/// child died at start with `poll` = EPERM, before `main`). Three
+/// descriptors and no wait only: it can learn nothing it does not hold.
+const STDIO_POLL_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(3)), (2, Cond::Eq(0))];
+/// aarch64's `ppoll`, which the C library's `poll` calls: three
+/// descriptors (the timeout is a pointer a filter cannot read).
+const STDIO_PPOLL_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(3))];
 /// The `ioctl` commands std and the transports use, on a descriptor the
 /// process holds: `TCGETS` (`isatty`), `FIONBIO`, `FIONCLEX`, `FIOCLEX`.
 /// Everything else, `TIOCSTI` (0x5412, typing into a terminal) first,
@@ -290,6 +299,11 @@ pub const RULES_X86_64: &[Rule] = &[
         16,
         IOCTL_ARGS,
         "ioctl — std's fd queries, by command; never TIOCSTI (review M1)",
+    ),
+    allow_if(
+        7,
+        STDIO_POLL_ARGS,
+        "poll — Rust's start-up check of stdio: three descriptors, no wait",
     ),
     allow(24, "sched_yield"),
     allow(28, "madvise — the allocator"),
@@ -387,6 +401,11 @@ pub const RULES_AARCH64: &[Rule] = &[
     allow(57, "close"),
     allow(62, "lseek"),
     allow(63, "read"),
+    allow_if(
+        73,
+        STDIO_PPOLL_ARGS,
+        "ppoll — Rust's start-up check of stdio: three descriptors",
+    ),
     allow(64, "write"),
     allow(79, "newfstatat"),
     allow(80, "fstat — IPC handle acceptance"),
@@ -773,6 +792,30 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A launched child runs Rust's start-up under the launch filter, which
+    /// polls descriptors 0 to 2 once without waiting: allowed in exactly
+    /// that shape.
+    #[test]
+    fn stdio_poll_is_allowed_only_in_the_start_up_shape() {
+        let p = program(ARCH_X86_64, &steady_rules(ARCH_X86_64, 1)).unwrap();
+        let call = |n: u64, t: u64| Call {
+            arch: ARCH_X86_64,
+            nr: 7,
+            args: [0x1000, n, t, 0, 0, 0],
+        };
+        assert_eq!(run(&p, &call(3, 0)).unwrap(), RET_ALLOW);
+        assert_eq!(run(&p, &call(4, 0)).unwrap(), RET_DENY);
+        assert_eq!(run(&p, &call(3, 1000)).unwrap(), RET_DENY);
+        let p = program(ARCH_AARCH64, &steady_rules(ARCH_AARCH64, 1)).unwrap();
+        let call = |n: u64| Call {
+            arch: ARCH_AARCH64,
+            nr: 73,
+            args: [0x1000, n, 0x2000, 0, 8, 0],
+        };
+        assert_eq!(run(&p, &call(3)).unwrap(), RET_ALLOW);
+        assert_eq!(run(&p, &call(1)).unwrap(), RET_DENY);
     }
 
     /// Design review M1: `ioctl` only by command; `TIOCSTI` is denied.

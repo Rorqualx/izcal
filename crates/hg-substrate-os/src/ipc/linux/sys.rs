@@ -999,6 +999,41 @@ pub(crate) fn try_exec(fd: BorrowedFd<'_>, len: usize) -> (i32, i32) {
     (map, protect)
 }
 
+/// Sends one record with `control` as its raw ancillary data (tests
+/// only: control data no honest sender writes, such as more descriptors
+/// than a receiver's buffer holds).
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "SEC-4 (d): this is the IPC backend"
+)]
+pub(crate) fn send_with_control(fd: BorrowedFd<'_>, bytes: &[u8], control: &[u8]) -> SendOutcome {
+    #[repr(C, align(8))]
+    struct Big([u8; 1024]);
+    let mut buf = Big([0; 1024]);
+    let Some(dst) = buf.0.get_mut(..control.len()) else {
+        return SendOutcome::Failed(libc::EINVAL);
+    };
+    dst.copy_from_slice(control);
+    let mut iov = libc::iovec {
+        iov_base: bytes.as_ptr().cast_mut().cast(),
+        iov_len: bytes.len(),
+    };
+    // SAFETY: an all-zero msghdr is valid.
+    let mut msg: libc::msghdr = unsafe { core::mem::zeroed() };
+    msg.msg_iov = &raw mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = buf.0.as_mut_ptr().cast();
+    msg.msg_controllen = control.len();
+    // SAFETY: `msg` points at `iov` and `buf`, live across the call.
+    let rc = unsafe { libc::sendmsg(fd.as_raw_fd(), &raw const msg, libc::MSG_NOSIGNAL) };
+    if rc >= 0 {
+        SendOutcome::Sent
+    } else {
+        SendOutcome::Failed(last_errno())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::os::fd::AsFd;
