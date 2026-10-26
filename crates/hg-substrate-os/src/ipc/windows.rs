@@ -258,6 +258,15 @@ enum Role {
     },
 }
 
+/// What [`Inner::region_rollback`] undoes.
+#[derive(Default)]
+struct RegionUndo {
+    /// Sections whose state moved, with the state before.
+    states: Vec<(u64, RState)>,
+    /// Copies made.
+    copies: Vec<u64>,
+}
+
 /// A registered section, as the broker knows it (D6 review B1).
 struct RegEntry {
     size: u32,
@@ -816,16 +825,6 @@ impl Inner {
         if ids.windows(2).any(|w| w.first() == w.get(1)) {
             first_err.get_or_insert(Refusal::Duplicate);
         }
-        let grants = match first_err {
-            Some(_) => Vec::new(),
-            None => match Self::region_commit(b, &regions, &mut handles, &mut spare) {
-                Ok(g) => g,
-                Err(r) => {
-                    first_err = Some(r);
-                    Vec::new()
-                }
-            },
-        };
         let result = match first_err {
             Some(r) => Err(r),
             None => distinct(&keys).and_then(|()| {
@@ -835,17 +834,19 @@ impl Inner {
                         break t;
                     }
                 };
-                b.ledger
-                    .relay(
-                        ticket,
-                        Held {
-                            carrier,
-                            from,
-                            ends,
-                            regions: grants,
-                        },
-                    )
-                    .map_err(|_e| Refusal::Quota)?;
+                // The registry moves on last, and is put back if the
+                // ledger then refuses the relay.
+                let (grants, undo) = Self::region_commit(b, &regions, &mut handles, &mut spare)?;
+                let held = Held {
+                    carrier,
+                    from,
+                    ends,
+                    regions: grants,
+                };
+                if b.ledger.relay(ticket, held).is_err() {
+                    Self::region_rollback(b, undo);
+                    return Err(Refusal::Quota);
+                }
                 Ok(ticket)
             }),
         };
@@ -902,8 +903,9 @@ impl Inner {
         regions: &[(usize, u64, crate::ipc::win::regions::Outcome, WireKind, u32)],
         handles: &mut [OwnedHandle],
         spare: &mut Vec<OwnedHandle>,
-    ) -> Result<Vec<(usize, Grant)>, Refusal> {
+    ) -> Result<(Vec<(usize, Grant)>, RegionUndo), Refusal> {
         let mut grants = Vec::with_capacity(regions.len());
+        let mut undo = RegionUndo::default();
         for &(index, id, o, kind, len) in regions {
             let mut grant = Grant {
                 id,
@@ -912,7 +914,11 @@ impl Inner {
                 filler_trusted: o.filler_trusted,
             };
             if o.copy {
-                let (copy_id, h) = Self::copy_region(b, id).ok_or(Refusal::Quota)?;
+                let Some((copy_id, h)) = Self::copy_region(b, id) else {
+                    Self::region_rollback(b, undo);
+                    return Err(Refusal::Quota);
+                };
+                undo.copies.push(copy_id);
                 if let Some(slot) = handles.get_mut(index) {
                     spare.push(core::mem::replace(slot, h));
                 }
@@ -920,11 +926,28 @@ impl Inner {
                 grant.filler_trusted = false;
             }
             if let Some(e) = b.regions.get_mut(&id) {
+                undo.states.push((id, e.state));
                 e.state = o.next;
             }
             grants.push((index, grant));
         }
-        Ok(grants)
+        Ok((grants, undo))
+    }
+
+    /// Puts the registry back as it was before a relay that failed after
+    /// [`Inner::region_commit`]: the states restored, the copies forgotten
+    /// and refunded.
+    fn region_rollback(b: &mut Broker, undo: RegionUndo) {
+        for (id, state) in undo.states.into_iter().rev() {
+            if let Some(e) = b.regions.get_mut(&id) {
+                e.state = state;
+            }
+        }
+        for id in undo.copies {
+            if let Some(e) = b.regions.remove(&id) {
+                b.quota.refund(e.owner, u64::from(e.size));
+            }
+        }
     }
 
     /// Registers a new section made by the broker, charged to `owner`:

@@ -1294,3 +1294,50 @@ fn allocation_is_the_broker_s_within_quota() {
     r.ipc.release_owner(owner);
     assert!(r.ipc.allocate_region(4096, owner).is_ok());
 }
+
+/// A relay the ledger refuses after the registry moved on puts the
+/// registry back: states restored, copies forgotten and refunded.
+#[test]
+fn a_refused_relay_leaves_the_registry_as_it_was() {
+    use crate::ipc::win::regions::{Outcome, State};
+    let r = rig();
+    let owner = OsPeer::new(77, 0);
+    let w = r.ipc.allocate_region(4096, owner).unwrap();
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    let (&id, _) = b.regions.iter().next().unwrap();
+    b.regions.get_mut(&id).unwrap().state = State::WriterOut(Some(3));
+    let copy = Outcome {
+        next: State::SealedByChild,
+        filler_trusted: false,
+        copy: true,
+    };
+    let mut handles = vec![super::sys::create_section(4096).unwrap()];
+    let mut spare = Vec::new();
+    let (grants, undo) = super::Inner::region_commit(
+        b,
+        &[(
+            0,
+            id,
+            copy,
+            crate::ipc::common::codec::WireKind::ReadOnlyRegion,
+            4096,
+        )],
+        &mut handles,
+        &mut spare,
+    )
+    .unwrap();
+    assert_eq!(b.regions.len(), 2);
+    assert_ne!(grants[0].1.id, id);
+    assert_eq!(b.regions[&id].state, State::SealedByChild);
+    super::Inner::region_rollback(b, undo);
+    assert_eq!(b.regions.len(), 1);
+    assert_eq!(b.regions[&id].state, State::WriterOut(Some(3)));
+    // The copy's charge came back: the owner holds one region again.
+    for _ in 1..MAX_REGIONS_PER_OWNER {
+        assert!(b.quota.charge(owner, 4096));
+    }
+    assert!(!b.quota.charge(owner, 4096));
+    drop(st);
+    drop(w);
+}
