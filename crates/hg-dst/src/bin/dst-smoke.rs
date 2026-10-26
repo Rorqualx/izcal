@@ -81,6 +81,10 @@ fn parse() -> Option<Args> {
             _ => return None,
         }
     }
+    // `--regions` has no planted bug and is not `--ipc`.
+    if a.regions && (a.ipc || a.bug) {
+        return None;
+    }
     Some(a)
 }
 
