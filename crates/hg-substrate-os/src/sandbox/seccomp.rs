@@ -86,6 +86,10 @@ pub enum Cond {
     },
     /// One of the values.
     OneOf(&'static [u32]),
+    /// The whole 64-bit argument is 0: both of its words are checked, so
+    /// a pointer whose low word is 0 does not pass (a pointer's high word
+    /// is not truncated by the kernel, unlike an `int`'s).
+    Zero64,
 }
 
 /// One allowed syscall: its number, the conditions on its arguments (all
@@ -203,6 +207,12 @@ const NO_EXEC_ARGS: &[(u32, Cond)] = &[(
     },
 )];
 const SHUTDOWN_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(SHUT_WR))];
+/// `sendto` with no destination address: on a connected socket only.
+/// Defence in depth (faults worker's probe, 26 Oct): Landlock ABI 4 does
+/// not stop a datagram to a path-named Unix socket, and an address on an
+/// unconnected datagram socket would reach one. No child can hold such a
+/// socket today; this keeps it so if one ever arrives.
+const SENDTO_ARGS: &[(u32, Cond)] = &[(4, Cond::Zero64)];
 /// `poll(fds, 3, 0)`: Rust's start-up check that descriptors 0 to 2 are
 /// open, which aborts the process on any error but a few (measured on
 /// hueyj, 26 Oct: under the launch filter without this rule a launched
@@ -309,7 +319,11 @@ pub const RULES_X86_64: &[Rule] = &[
     allow(28, "madvise — the allocator"),
     allow(35, "nanosleep"),
     allow(39, "getpid"),
-    allow(44, "sendto — the IPC ready byte (std uses MSG_NOSIGNAL)"),
+    allow_if(
+        44,
+        SENDTO_ARGS,
+        "sendto — the IPC ready byte (std uses MSG_NOSIGNAL); never to an address",
+    ),
     allow_if(
         46,
         SENDMSG_ARGS,
@@ -433,7 +447,11 @@ pub const RULES_AARCH64: &[Rule] = &[
         SOCKETPAIR_ARGS,
         "socketpair — new IPC channels, Unix seqpacket only",
     ),
-    allow(206, "sendto — the IPC ready byte (std uses MSG_NOSIGNAL)"),
+    allow_if(
+        206,
+        SENDTO_ARGS,
+        "sendto — the IPC ready byte (std uses MSG_NOSIGNAL); never to an address",
+    ),
     allow_if(
         208,
         SETSOCKOPT_ARGS,
@@ -526,6 +544,29 @@ fn block(rule: &Rule) -> Result<Vec<Insn>, BuildError> {
                     jt: 0,
                     jf: 0,
                     k: value,
+                });
+            }
+            Cond::Zero64 => {
+                // The low word (loaded above), then the high word.
+                to_deny.push(b.len());
+                b.push(Insn {
+                    code: JEQ_K,
+                    jt: 0,
+                    jf: 0,
+                    k: 0,
+                });
+                b.push(Insn {
+                    code: LD_W_ABS,
+                    jt: 0,
+                    jf: 0,
+                    k: off + 4,
+                });
+                to_deny.push(b.len());
+                b.push(Insn {
+                    code: JEQ_K,
+                    jt: 0,
+                    jf: 0,
+                    k: 0,
                 });
             }
             Cond::OneOf(values) => {
@@ -724,6 +765,7 @@ pub fn expected(arch: u32, rules: &[Rule], call: &Call) -> u32 {
                 Cond::Eq(v) => a == v,
                 Cond::Masked { mask, value } => a & mask == value,
                 Cond::OneOf(vs) => vs.contains(&a),
+                Cond::Zero64 => raw == 0,
             }
         })
     };
@@ -816,6 +858,26 @@ mod tests {
         };
         assert_eq!(run(&p, &call(3)).unwrap(), RET_ALLOW);
         assert_eq!(run(&p, &call(1)).unwrap(), RET_DENY);
+    }
+
+    /// `sendto` only without an address: both words of the pointer are
+    /// checked, so neither half alone passes.
+    #[test]
+    fn sendto_never_takes_an_address() {
+        for (arch, nr) in [(ARCH_X86_64, 44), (ARCH_AARCH64, 206)] {
+            let rules = steady_rules(arch, 1);
+            let p = program(arch, &rules).unwrap();
+            let call = |addr: u64| Call {
+                arch,
+                nr,
+                args: [3, 0x1000, 1, 0x4000, addr, 16],
+            };
+            assert_eq!(run(&p, &call(0)).unwrap(), RET_ALLOW);
+            for addr in [0x7fff_0000_0000, 0x1000, 0x7fff_dead_beef] {
+                assert_eq!(run(&p, &call(addr)).unwrap(), RET_DENY, "{addr:#x}");
+                assert_eq!(expected(arch, &rules, &call(addr)), RET_DENY);
+            }
+        }
     }
 
     /// Design review M1: `ioctl` only by command; `TIOCSTI` is denied.
@@ -1049,9 +1111,60 @@ mod tests {
 #[cfg(kani)]
 mod proofs {
     use super::{
-        ARCH_AARCH64, ARCH_X86_64, Call, EXECVEAT_AARCH64, EXECVEAT_X86_64, RET_ALLOW, RET_DENY,
-        expected, launch_rules, steady_rules,
+        ARCH_AARCH64, ARCH_X86_64, CLONE_NEW_BITS, Call, EXECVEAT_AARCH64, EXECVEAT_X86_64,
+        RET_ALLOW, RET_DENY, expected, launch_rules, steady_rules,
     };
+
+    /// Harness 2 (E-R11, review M1): every kind runs one plan, the steady
+    /// list, and neither it nor its launch filter lets a child make a
+    /// socket, connect, bind, trace, load BPF, make or join a namespace,
+    /// fork, or send to an address, for any arguments.
+    #[kani::proof]
+    #[kani::unwind(70)]
+    fn no_plan_reaches_sockets_namespaces_or_addresses() {
+        let aarch64: bool = kani::any();
+        let arch = if aarch64 { ARCH_AARCH64 } else { ARCH_X86_64 };
+        // socket, connect, bind, ptrace, bpf, unshare, setns.
+        let denied: [u32; 7] = if aarch64 {
+            [198, 203, 200, 117, 280, 97, 268]
+        } else {
+            [41, 42, 49, 101, 321, 272, 308]
+        };
+        let (clone, sendto) = if aarch64 { (220, 206) } else { (56, 44) };
+        let steady = steady_rules(arch, kani::any());
+        let launch = launch_rules(arch, &steady);
+        let launching: bool = kani::any();
+        let rules = if launching { &launch } else { &steady };
+        let call = Call {
+            arch,
+            nr: kani::any(),
+            args: kani::any(),
+        };
+        let got = expected(arch, rules, &call);
+        if denied.contains(&call.nr) {
+            assert!(got == RET_DENY);
+        }
+        // clone3 passes its flags in memory: never allowed (ENOSYS).
+        if call.nr == 435 {
+            assert!(got != RET_ALLOW);
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the low word, as the kernel"
+        )]
+        let flags = call.args[0] as u32;
+        if call.nr == clone && got == RET_ALLOW {
+            assert!(flags & CLONE_NEW_BITS == 0);
+            assert!(flags & 0x1_0000 != 0, "a thread, never a process");
+        }
+        if call.nr == sendto && call.args[4] != 0 {
+            assert!(got == RET_DENY);
+        }
+        kani::cover!(
+            call.nr == sendto && got == RET_ALLOW,
+            "sendto without an address"
+        );
+    }
 
     /// Design review B1, for any call on either arch: launch ⊇ steady,
     /// and launch ∖ steady = {execveat}.
