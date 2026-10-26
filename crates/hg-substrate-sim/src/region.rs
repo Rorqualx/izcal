@@ -12,15 +12,19 @@
 //! The model follows the OS the world is configured as
 //! ([`crate::SimOs`], review M7), so a scenario that would fail on an OS
 //! fails here too:
-//! - Linux refuses a seal while any mapping of the writer is live
-//!   ([`IpcError::Busy`]; fact L1) and refuses to map a producer again
-//!   (L3); a read-only region is immutable.
+//! - Linux refuses a seal while any mapping of the writer is live, in any
+//!   process ([`IpcError::Busy`]; fact L1), and refuses to map a producer
+//!   again (L3); a read-only region is immutable.
+//! - macOS and Windows refuse a seal while the sealing process itself has
+//!   a live mapping of the region (`Busy`, as the backends do); a mapping
+//!   another process made earlier, or one a compromised process made
+//!   with the OS directly ([`crate::World::hide_mappings`]), is not seen.
 //! - On macOS a read-only region that crossed as `immutable` is mapped as a
-//!   snapshot (fact M4); any other is shared, and a writer mapping kept
-//!   across the seal still writes into it.
-//! - On Windows a sandboxed process's seal does not stop a mapping it
-//!   kept (fact S8); a region that crosses as `immutable` is copied into a
-//!   broker-filled one (review Q1).
+//!   snapshot (fact M4); any other is shared, and a writer mapping another
+//!   process kept across the seal still writes into it.
+//! - On Windows a sandboxed process's seal does not stop a mapping another
+//!   process kept, or a compromised filler hid (fact S8); a region that crosses as `immutable` is
+//!   copied into a broker-filled one (review Q1).
 //!
 //! Unordered writes are torn at byte granularity: `write_from` lands a
 //! seeded prefix at once and the rest later, at the writer's next release
@@ -30,7 +34,7 @@
 use core::any::Any;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use hg_substrate::ipc::{
@@ -75,6 +79,8 @@ struct Cell {
     /// Live mappings, and how many of them are writable.
     maps: u32,
     maps_rw: u32,
+    /// Who made each live mapping (one entry per mapping).
+    mapped_by: Vec<Owner>,
     /// The not yet visible tail of the last torn write: (offset, bytes).
     pending: Option<(usize, Vec<u8>)>,
 }
@@ -92,9 +98,20 @@ pub(crate) struct Regions {
     cells: BTreeMap<u64, Cell>,
     handles: BTreeMap<u64, HandleState>,
     next: u64,
+    /// Processes that map behind their backend's back
+    /// ([`crate::World::hide_mappings`]).
+    hidden: BTreeSet<ProcessId>,
     /// The stream torn writes draw from, apart from the scheduler's, so
     /// a run without regions draws exactly what it did before.
     rng: Xoshiro256StarStar,
+}
+
+/// Marks `pid` as mapping behind its backend's back (see
+/// [`crate::World::hide_mappings`]).
+pub(crate) fn hide_mappings(st: &mut State, pid: ProcessId) {
+    st.trace
+        .record(format_args!("region hide-mappings {}", pid.0));
+    st.regions.hidden.insert(pid);
 }
 
 impl Regions {
@@ -103,6 +120,7 @@ impl Regions {
             cells: BTreeMap::new(),
             handles: BTreeMap::new(),
             next: 0,
+            hidden: BTreeSet::new(),
             rng,
         }
     }
@@ -230,6 +248,7 @@ impl Regions {
                 refs: 1,
                 maps: 0,
                 maps_rw: 0,
+                mapped_by: Vec::new(),
                 pending: None,
             };
             let new = st.regions.id();
@@ -368,6 +387,8 @@ impl Drop for SimRegion {
 struct SimMapping {
     shared: Arc<Shared>,
     cell: u64,
+    /// The process that made it.
+    by: Owner,
     len: usize,
     writable: bool,
     /// A macOS snapshot: the bytes at map time.
@@ -509,6 +530,9 @@ impl Drop for SimMapping {
         if let Some(c) = st.regions.cells.get_mut(&self.cell) {
             Regions::flush(c);
             c.maps = c.maps.saturating_sub(1);
+            if let Some(i) = c.mapped_by.iter().position(|o| *o == self.by) {
+                c.mapped_by.swap_remove(i);
+            }
             if self.writable {
                 c.maps_rw = c.maps_rw.saturating_sub(1);
             }
@@ -595,6 +619,7 @@ impl SimIpc {
                 refs: 0,
                 maps: 0,
                 maps_rw: 0,
+                mapped_by: Vec::new(),
                 pending: None,
             },
         );
@@ -631,6 +656,7 @@ impl SimIpc {
         let snapshot = snap_wanted.then(|| c.bytes.clone());
         let len = c.bytes.len();
         c.maps = c.maps.saturating_add(1);
+        c.mapped_by.push(self.me());
         c.refs = c.refs.saturating_add(1);
         if writable {
             c.maps_rw = c.maps_rw.saturating_add(1);
@@ -644,6 +670,7 @@ impl SimIpc {
         Ok(Mapping::new(Box::new(SimMapping {
             shared: Arc::clone(&self.shared),
             cell,
+            by: self.me(),
             len,
             writable,
             snapshot,
@@ -668,10 +695,21 @@ impl SimIpc {
         let held = self.held_region(&st, w.handle());
         let error = match held {
             Some((_, cell, HandleKind::RegionWriter)) => {
-                let live = st.regions.cells.get(&cell).is_some_and(|c| c.maps > 0);
-                // Linux refuses F_SEAL_WRITE while a shared mapping exists
-                // (fact L1); the caller gets an error, not a violation.
-                (st.config.region_os == SimOs::Linux && live).then_some(IpcError::Busy)
+                let me = self.me();
+                let hidden = matches!(me, Owner::Proc(p, _) if st.regions.hidden.contains(&p));
+                let live = st.regions.cells.get(&cell).is_some_and(|c| {
+                    if st.config.region_os == SimOs::Linux {
+                        // F_SEAL_WRITE fails while any shared mapping
+                        // exists (fact L1).
+                        c.maps > 0
+                    } else {
+                        // The macOS and Windows backends see only this
+                        // process's own mappings, made through them.
+                        !hidden && c.mapped_by.contains(&me)
+                    }
+                });
+                // The caller gets an error, not a violation.
+                live.then_some(IpcError::Busy)
             }
             _ => Some(IpcError::Refused),
         };
@@ -718,6 +756,7 @@ impl SimIpc {
             // closes to new ones.
             c.maps = c.maps.saturating_add(1);
             c.maps_rw = c.maps_rw.saturating_add(1);
+            c.mapped_by.push(self.me());
             c.refs = c.refs.saturating_add(1);
         }
         let h = w.into_handle();
@@ -727,6 +766,7 @@ impl SimIpc {
         let mapping = Mapping::new(Box::new(SimMapping {
             shared: Arc::clone(&self.shared),
             cell,
+            by: self.me(),
             len,
             writable: true,
             snapshot: None,

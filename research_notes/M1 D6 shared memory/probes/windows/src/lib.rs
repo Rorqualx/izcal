@@ -446,6 +446,12 @@ pub struct Launch<'a> {
     pub mitigation: Option<[u64; 2]>,
     /// For P12: no handle list at all (inherit every inheritable handle).
     pub no_list: bool,
+    /// Without the sandbox: start it under a copy of this process's
+    /// token lowered to Low integrity (D6 review finding 5).
+    pub low: bool,
+    /// Without the sandbox: lowered to Medium integrity instead (below a
+    /// High broker).
+    pub medium: bool,
 }
 impl Default for Launch<'_> {
     fn default() -> Self {
@@ -456,6 +462,8 @@ impl Default for Launch<'_> {
             args: String::new(),
             mitigation: None,
             no_list: false,
+            low: false,
+            medium: false,
         }
     }
 }
@@ -589,10 +597,20 @@ pub fn launch(l: &Launch) -> Result<Child, String> {
     } else {
         None
     };
+    let low = if l.sandbox {
+        None
+    } else if l.low {
+        Some(il_token(WinLowLabelSid)?)
+    } else if l.medium {
+        Some(il_token(WinMediumLabelSid)?)
+    } else {
+        None
+    };
+    let tok: Option<HANDLE> = token.as_ref().map(|t| t.as_handle()).or(low);
     let rc = unsafe {
-        match &token {
+        match tok {
             Some(t) => CreateProcessAsUserW(
-                t.as_handle(),
+                t,
                 exe_w.as_ptr(),
                 cmd.as_mut_ptr(),
                 null(),
@@ -703,4 +721,66 @@ impl Child {
         unsafe { WaitForSingleObject(self.process, 5000) };
         self.state()
     }
+}
+
+/// Lowers a token to Low integrity (Learn: "SetTokenInformation",
+/// TokenIntegrityLevel; "CreateWellKnownSid", WinLowLabelSid).
+pub fn set_il(t: HANDLE, label_sid: WELL_KNOWN_SID_TYPE) -> Result<(), String> {
+    let mut sid = [0u8; SECURITY_MAX_SID_SIZE as usize];
+    let mut n = sid.len() as u32;
+    // SAFETY: the buffer is SECURITY_MAX_SID_SIZE bytes, as passed.
+    if unsafe { CreateWellKnownSid(label_sid, null_mut(), sid.as_mut_ptr() as PSID, &mut n) } == 0 {
+        return Err(format!("CreateWellKnownSid(Low) err={}", le()));
+    }
+    let label = TOKEN_MANDATORY_LABEL {
+        Label: SID_AND_ATTRIBUTES {
+            Sid: sid.as_mut_ptr() as PSID,
+            Attributes: 0x20, // SE_GROUP_INTEGRITY (Learn, "SID_AND_ATTRIBUTES")
+        },
+    };
+    // SAFETY: the label SID lives in `sid` for the call; the length covers both.
+    let ok = unsafe {
+        SetTokenInformation(
+            t,
+            TokenIntegrityLevel,
+            &label as *const _ as *const c_void,
+            size_of::<TOKEN_MANDATORY_LABEL>() as u32 + n,
+        )
+    };
+    if ok == 0 {
+        return Err(format!("SetTokenInformation(Low) err={}", le()));
+    }
+    Ok(())
+}
+
+/// A primary copy of this process's token at Low integrity (Learn:
+/// "Designing Applications to Run at a Low Integrity Level": duplicate
+/// the token, set TokenIntegrityLevel, CreateProcessAsUser).
+pub fn il_token(label: WELL_KNOWN_SID_TYPE) -> Result<HANDLE, String> {
+    let mut cur: HANDLE = null_mut();
+    let acc = TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT;
+    // SAFETY: the pseudo-handle; valid out-pointer.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), acc, &mut cur) } == 0 {
+        return Err(format!("OpenProcessToken err={}", le()));
+    }
+    let mut dup: HANDLE = null_mut();
+    // SAFETY: the token opened above with TOKEN_DUPLICATE; valid out-pointer.
+    let ok = unsafe {
+        DuplicateTokenEx(
+            cur,
+            0,
+            null(),
+            SecurityImpersonation,
+            TokenPrimary,
+            &mut dup,
+        )
+    };
+    let e = le();
+    // SAFETY: the token opened above.
+    unsafe { CloseHandle(cur) };
+    if ok == 0 {
+        return Err(format!("DuplicateTokenEx err={e}"));
+    }
+    set_il(dup, label)?;
+    Ok(dup)
 }

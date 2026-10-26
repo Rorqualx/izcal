@@ -821,6 +821,16 @@ impl World {
         crate::ipc::corrupt_next(&mut st, pid, kind);
     }
 
+    /// Makes `pid` a compromised process that maps regions with the OS
+    /// directly, behind its backend's back: on macOS and Windows its own
+    /// seal no longer sees those mappings and succeeds while one is live;
+    /// the Linux kernel still sees them (fact L1). The adversarial-filler
+    /// fault of the D6 review (M7).
+    pub fn hide_mappings(&self, pid: ProcessId) {
+        let mut st = self.shared.lock();
+        crate::region::hide_mappings(&mut st, pid);
+    }
+
     /// Virtual time now.
     pub fn now(&self) -> Instant {
         self.shared.lock().now

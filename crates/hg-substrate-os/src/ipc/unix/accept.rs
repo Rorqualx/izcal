@@ -353,19 +353,25 @@ pub(crate) mod proofs {
             broker_channel,
         };
         let got = accept_region(&d, &f, &ctx);
-        let seals = match d.kind {
-            WireKind::RegionWriter => f.seals == WRITER_SEALS,
-            WireKind::ReadOnlyRegion => f.seals & READ_ONLY_SEALS == READ_ONLY_SEALS,
-            _ => f.seals & CONSUMER_SEALS == CONSUMER_SEALS,
+        // The spec, written from fcntl(2)'s seal bits by position (SEAL 0,
+        // SHRINK 1, GROW 2, WRITE 3, FUTURE_WRITE 4, EXEC 5) and the
+        // design's table, not from the constants the code uses.
+        let bit = |n: u32| f.seals >= 0 && (f.seals >> n) & 1 == 1;
+        let base = bit(1) && bit(2) && bit(5);
+        let seals_ok = match d.kind {
+            // Exactly grow, shrink and exec: nothing else, no unknown bit.
+            WireKind::RegionWriter => base && !bit(0) && !bit(3) && !bit(4) && f.seals >> 6 == 0,
+            WireKind::ReadOnlyRegion => base && bit(3) && bit(0),
+            _ => base && bit(4) && bit(0),
         };
         let from_broker = broker_channel
-            || matches!((cred_pid, broker_pid), (Some(c), Some(b)) if c == b && b > 0);
-        let spec = f.fd > 2
+            || (cred_pid.is_some() && cred_pid == broker_pid && broker_pid > Some(0));
+        let size_ok = i128::from(f.size) == i128::from(d.capacity);
+        let spec = f.fd >= 3
             && f.is_regular
-            && f.seals >= 0
-            && seals
-            && i64::from(d.capacity) == f.size
-            && d.sent & REGION_FILLER_TRUSTED == 0
+            && seals_ok
+            && size_ok
+            && d.sent & 2 == 0
             && (d.kind != WireKind::RegionWriter || from_broker);
         assert!(got.is_ok() == spec);
         if let Ok(k) = got {

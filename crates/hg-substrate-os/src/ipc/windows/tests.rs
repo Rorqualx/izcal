@@ -3,6 +3,7 @@
 //! test binary acting as their broker.
 
 use hg_substrate::ipc::PeerAttest;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -394,7 +395,7 @@ fn child(case: &str) -> i32 {
             drop((tx, kept, senders));
             0
         }
-        "region-roundtrip" | "region-forge" => {
+        "region-roundtrip" | "region-forge" | "region-big" | "region-big-exit" => {
             region_child(case.trim_start_matches("sandboxed-"), &r, &up, &from_parent)
         }
         _ => 14,
@@ -1080,6 +1081,35 @@ fn region_child(case: &str, r: &Rig, up: &ChannelSender, from_parent: &Receiver<
             drop(p);
             0
         }
+        "region-big" | "region-big-exit" => {
+            // Fills each large writer from the broker, seals it and sends
+            // them all `immutable` in one record: the broker copies each
+            // (review Q1).
+            let mut out = Vec::new();
+            for (i, h) in hs.enumerate() {
+                let w = RegionWriter::from_handle(h).unwrap();
+                let m = r.ipc.map_region(w.handle()).unwrap();
+                let chunk: Vec<u8> = (0..1u32 << 20)
+                    .map(|j| u8::try_from((j + u32::try_from(i).unwrap()) % 251).unwrap())
+                    .collect();
+                for off in (0..w.len()).step_by(chunk.len()) {
+                    m.write_from(off, &chunk).unwrap();
+                }
+                drop(m);
+                let ro = r.ipc.seal_region(w).unwrap();
+                ro.want_immutable();
+                out.push(ro.into_handle());
+            }
+            r.ipc.send(up, b"big".to_vec(), out).unwrap();
+            if case == "region-big-exit" {
+                // Dies while the broker copies.
+                std::thread::sleep(Duration::from_secs(10));
+                std::process::exit(0);
+            }
+            // The broker's copies take a while: wait well past them.
+            let _ = from_parent.recv_timeout(Duration::from_secs(300));
+            0
+        }
         "region-forge" => {
             // A hostile transport: a region sent as what it is not, on a
             // channel to the parent. The broker refuses the relay, which
@@ -1171,6 +1201,82 @@ fn regions_cross_to_a_sandboxed_child_and_back() {
     // The producer is gone; the consumer's view still reads (fact S4).
     assert_eq!(cm.load_u32_acquire(0), Ok(42));
     r.ipc.release_owner(c.peer);
+}
+
+/// Any holder passes a consumer on, as on Linux and macOS (D6 review
+/// finding 4): a sandboxed child's consumer reaches the broker, which
+/// forwards it to a second sandboxed child, which sends it back. Neither
+/// relayer is the producer.
+#[test]
+fn any_holder_forwards_a_consumer() {
+    let r = rig();
+    let c = launch(&r, "region-roundtrip", true);
+    let ws: Vec<Handle> = (0..4)
+        .map(|_| r.ipc.allocate_region(4096, c.peer).unwrap().into_handle())
+        .collect();
+    r.ipc.send(&c.to_child, b"take".to_vec(), ws).unwrap();
+    let (_report, mut hs) = expect_msg(&c.from_child);
+    let cons = ConsumerRegion::from_handle(hs.pop().unwrap()).unwrap();
+    let b = launch(&r, "echo", true);
+    r.ipc
+        .send(&b.to_child, b"cons".to_vec(), vec![cons.into_handle()])
+        .unwrap();
+    let (m, mut hs) = expect_msg(&b.from_child);
+    assert_eq!(m, b"cons");
+    let back = ConsumerRegion::from_handle(hs.remove(0)).unwrap();
+    assert!(!back.immutable());
+    let bm = r.ipc.map_region(back.handle()).unwrap();
+    assert_eq!(bm.load_u32_acquire(0), Ok(42));
+    assert!(bm.write_from(0, b"x").is_err());
+    r.ipc
+        .send(&c.to_child, b"bye".to_vec(), Vec::new())
+        .unwrap();
+    assert_eq!(c.exit_code(), Some(0));
+    r.ipc.release_owner(c.peer);
+}
+
+/// D6 review finding 5 (fact S12): a child outside a container at this
+/// process's own integrity could open this process and duplicate its
+/// sections, so a region is never given to it; its channel ends still
+/// move.
+#[test]
+fn a_child_outside_a_container_gets_no_regions() {
+    let r = rig();
+    let c = launch(&r, "echo", false);
+    let w = r.ipc.allocate_region(4096, c.peer).unwrap();
+    let ro = r.ipc.seal_region(w).unwrap();
+    // The send is the broker's own and succeeds; the child's redemption
+    // is refused, its channel closes, and it never echoes the region
+    // (before the fix: `msg "ro" 1`).
+    r.ipc
+        .send(&c.to_child, b"ro".to_vec(), vec![ro.into_handle()])
+        .unwrap();
+    let seen = match next(&c.from_child) {
+        Ev::Msg(m, hs) => format!("msg {:?} {}", String::from_utf8_lossy(&m), hs.len()),
+        other => format!("{other:?}"),
+    };
+    assert_eq!(seen, "Closed");
+}
+
+/// Every section carries a no-write-up label at the broker's own
+/// integrity (D6 review finding 5, fact S12).
+#[test]
+fn sections_carry_the_brokers_integrity_label() {
+    let h = super::sys::create_section(4096).unwrap();
+    let sddl = super::sys::label_sddl(&h).unwrap();
+    let own = super::sys::own_integrity().unwrap();
+    let alias = match own {
+        0x1000 => "LW",
+        0x2000 => "ME",
+        0x3000 => "HI",
+        0x4000 => "SI",
+        _ => "",
+    };
+    assert!(
+        sddl.contains(&format!("(ML;;NW;;;{alias})"))
+            || sddl.contains(&format!("(ML;;NW;;;S-1-16-{own})")),
+        "{sddl}"
+    );
 }
 
 /// What a forged region relay from a sandboxed child gets: the child's
@@ -1315,6 +1421,19 @@ fn a_refused_relay_leaves_the_registry_as_it_was() {
     };
     let mut handles = vec![super::sys::create_section(4096).unwrap()];
     let mut spare = Vec::new();
+    // The copy, planned and made as a relay does (charged at planning).
+    let jobs = super::Inner::plan_copies(b, 3, core::iter::empty()).unwrap();
+    assert!(jobs.is_empty());
+    assert!(b.quota.charge(owner, 4096));
+    let master = super::sys::create_section(4096).unwrap();
+    let ro = super::sys::narrow(&master, 0x4).unwrap();
+    let mut prepared = vec![super::Prepared {
+        src: id,
+        len: 4096,
+        owner,
+        master,
+        ro,
+    }];
     let (grants, undo) = super::Inner::region_commit(
         b,
         &[(
@@ -1326,8 +1445,10 @@ fn a_refused_relay_leaves_the_registry_as_it_was() {
         )],
         &mut handles,
         &mut spare,
+        &mut prepared,
     )
     .unwrap();
+    assert!(prepared.is_empty());
     assert_eq!(b.regions.len(), 2);
     assert_ne!(grants[0].1.id, id);
     assert_eq!(b.regions[&id].state, State::SealedByChild);
@@ -1341,4 +1462,424 @@ fn a_refused_relay_leaves_the_registry_as_it_was() {
     assert!(!b.quota.charge(owner, 4096));
     drop(st);
     drop(w);
+}
+
+/// The longest a handle round trip through another child may take while
+/// a child's large `immutable` regions are copied (D5 review M8: no slow
+/// work under the broker's lock). Measured on rig253 (eight 64 MiB
+/// copies, about 20 s): with the copies under the lock the worst round
+/// trip was 16 to 19 s; with them off it, 19 to 22 ms (one run 109 ms).
+const STALL_BOUND: Duration = Duration::from_millis(STALL_BOUND_MS);
+const STALL_BOUND_MS: u64 = 500;
+
+/// While one child seals eight 64 MiB regions `immutable` (the broker
+/// copies each, review Q1), another child's relays and redeems (a
+/// receiver end sent to it and back) still finish within
+/// [`STALL_BOUND`].
+#[test]
+fn a_large_copy_stalls_no_other_child() {
+    const MIB64: usize = 64 << 20;
+    let r = rig();
+    let a = launch(&r, "region-big", true);
+    let b = launch(&r, "echo", true);
+    let ws: Vec<Handle> = (0..8)
+        .map(|_| r.ipc.allocate_region(MIB64, a.peer).unwrap().into_handle())
+        .collect();
+    r.ipc.send(&a.to_child, b"fill".to_vec(), ws).unwrap();
+    let mut times = Vec::new();
+    let started = std::time::Instant::now();
+    let big = loop {
+        match a.from_child.try_recv() {
+            Ok(Ev::Msg(m, hs)) => break (m, hs),
+            Ok(other) => panic!("{other:?}"),
+            Err(_) => {}
+        }
+        assert!(started.elapsed() < Duration::from_secs(120), "no regions");
+        let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+        let t = std::time::Instant::now();
+        r.ipc
+            .send(&b.to_child, b"h".to_vec(), vec![rx.into_handle()])
+            .unwrap();
+        let (_, back) = expect_msg(&b.from_child);
+        times.push(t.elapsed());
+        assert_eq!(back.len(), 1);
+    };
+    // A few more after the copies, so the window is covered.
+    for _ in 0..5 {
+        let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+        let t = std::time::Instant::now();
+        r.ipc
+            .send(&b.to_child, b"h".to_vec(), vec![rx.into_handle()])
+            .unwrap();
+        let _ = expect_msg(&b.from_child);
+        times.push(t.elapsed());
+    }
+    let (m, hs) = big;
+    assert_eq!(m, b"big");
+    assert_eq!(hs.len(), 8);
+    for (i, h) in hs.into_iter().enumerate() {
+        let ro = ReadOnlyRegion::from_handle(h).unwrap();
+        assert!(ro.immutable());
+        let mut x = [0u8; 1];
+        r.ipc
+            .map_region(ro.handle())
+            .unwrap()
+            .read_into(12_345, &mut x)
+            .unwrap();
+        assert_eq!(usize::from(x[0]), (12_345 + i) % 251);
+    }
+    times.sort_unstable();
+    let max = *times.last().unwrap();
+    let p50 = times[times.len() / 2];
+    println!(
+        "D6-STALL round trips={} p50={:.1}ms max={:.1}ms",
+        times.len(),
+        p50.as_secs_f64() * 1e3,
+        max.as_secs_f64() * 1e3
+    );
+    r.ipc
+        .send(&a.to_child, b"bye".to_vec(), Vec::new())
+        .unwrap();
+    assert!(max < STALL_BOUND, "a round trip took {max:?}");
+    r.ipc.release_owner(a.peer);
+}
+
+/// Marks the section behind `h` as sealed by a child (tests only: the
+/// state a child's seal leaves, without a child).
+fn mark_child_sealed(r: &Rig, h: &Handle) {
+    let s = section(r, h);
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    let id = super::Inner::region_id(b, &s).unwrap();
+    b.regions.get_mut(&id).unwrap().state = crate::ipc::win::regions::State::SealedByChild;
+}
+
+/// The broker's own send of a child-sealed region `immutable`: the copy
+/// is made off the lock on its own thread, the record waits for it, and
+/// the receiver gets the copy, attested immutable, with the contents.
+#[test]
+fn the_broker_copies_off_the_lock_for_its_own_sends() {
+    let r = rig();
+    let owner = OsPeer::new(77, 0);
+    let w = r.ipc.allocate_region(1 << 20, owner).unwrap();
+    let m = r.ipc.map_region(w.handle()).unwrap();
+    m.write_from(1000, b"copied").unwrap();
+    drop(m);
+    let ro = r.ipc.seal_region(w).unwrap();
+    mark_child_sealed(&r, ro.handle());
+    ro.want_immutable();
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let (out, _l) = r.listen(rx);
+    r.ipc
+        .send(&tx, b"c".to_vec(), vec![ro.into_handle()])
+        .unwrap();
+    let (_, mut hs) = expect_msg(&out);
+    let got = ReadOnlyRegion::from_handle(hs.remove(0)).unwrap();
+    assert!(got.immutable());
+    let mut b = [0u8; 6];
+    r.ipc
+        .map_region(got.handle())
+        .unwrap()
+        .read_into(1000, &mut b)
+        .unwrap();
+    assert_eq!(&b, b"copied");
+    // The original and its copy, both charged to the owner.
+    let st = r.ipc.inner.lock();
+    let br = st.broker.as_ref().unwrap();
+    assert_eq!(br.regions.values().filter(|e| e.owner == owner).count(), 2);
+}
+
+/// Planning charges each copy to the owner (its quota and the browser's
+/// cap); a plan that does not fit charges nothing; copies a relay does
+/// not use (refused, child dead, record given up) are refunded.
+#[test]
+fn copies_are_charged_when_planned_and_refunded_when_unused() {
+    let r = rig();
+    let owner = OsPeer::new(78, 0);
+    let ro = r
+        .ipc
+        .seal_region(r.ipc.allocate_region(4096, owner).unwrap())
+        .unwrap();
+    mark_child_sealed(&r, ro.handle());
+    let h = section(&r, ro.handle());
+    let facts = super::sys::section_facts(&h);
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    let item = || {
+        core::iter::once((
+            &*h,
+            crate::ipc::common::codec::WireKind::ReadOnlyRegion,
+            4096u32,
+            1u8,
+            facts,
+        ))
+    };
+    let jobs = super::Inner::plan_copies(b, super::BROKER, item()).unwrap();
+    assert_eq!(jobs.len(), 1);
+    // Charged: the owner holds two of its 256.
+    let (made, failed) = super::Inner::make_copies(jobs);
+    assert!(failed.is_empty());
+    let spare = super::Inner::release_prepared(b, made);
+    assert_eq!(spare.len(), 2);
+    // Refunded: 255 more fit, then none.
+    for _ in 1..MAX_REGIONS_PER_OWNER {
+        assert!(b.quota.charge(owner, 4096));
+    }
+    assert!(!b.quota.charge(owner, 4096));
+    // A full owner: the plan is refused and charges nothing.
+    assert!(matches!(
+        super::Inner::plan_copies(b, super::BROKER, item()),
+        Err(super::Plan::Quota)
+    ));
+    b.quota.release(owner);
+    drop(st);
+}
+
+/// A child that dies while the broker copies its regions (review Q1 off
+/// the lock): no other child waits on it, and the copies are not kept
+/// (their charges are refunded with the relay that asked for them).
+#[test]
+fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
+    const MIB64: usize = 64 << 20;
+    let r = rig();
+    let a = launch(&r, "region-big-exit", true);
+    let b = launch(&r, "echo", true);
+    let ws: Vec<Handle> = (0..8)
+        .map(|_| r.ipc.allocate_region(MIB64, a.peer).unwrap().into_handle())
+        .collect();
+    r.ipc.send(&a.to_child, b"fill".to_vec(), ws).unwrap();
+    let started = std::time::Instant::now();
+    let mut max = Duration::ZERO;
+    let mut n = 0u32;
+    while started.elapsed() < Duration::from_secs(45) {
+        let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+        let t = std::time::Instant::now();
+        r.ipc
+            .send(&b.to_child, b"h".to_vec(), vec![rx.into_handle()])
+            .unwrap();
+        let _ = expect_msg(&b.from_child);
+        max = max.max(t.elapsed());
+        n += 1;
+    }
+    println!(
+        "D6-STALL-EXIT round trips={n} max={:.1}ms",
+        max.as_secs_f64() * 1e3
+    );
+    assert_eq!(a.exit_code(), Some(0));
+    assert!(max < STALL_BOUND, "a round trip took {max:?}");
+    // Only the eight sections the broker allocated: no copy was kept.
+    let st = r.ipc.inner.lock();
+    let kept = st
+        .broker
+        .as_ref()
+        .unwrap()
+        .regions
+        .values()
+        .filter(|e| e.owner == a.peer)
+        .count();
+    assert_eq!(kept, 8);
+}
+
+/// Review finding 3: the broker's live mappings are the section's, so a
+/// writer that came back to the broker through a relay (a new table
+/// entry) still cannot be sealed while an earlier mapping writes.
+#[test]
+fn a_writer_relayed_back_cannot_be_sealed_while_mapped() {
+    let r = rig();
+    let w = r.ipc.allocate_region(4096, OsPeer::new(77, 0)).unwrap();
+    let m = r.ipc.map_region(w.handle()).unwrap();
+    let (tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let (out, _l) = r.listen(rx);
+    r.ipc
+        .send(&tx, b"w".to_vec(), vec![w.into_handle()])
+        .unwrap();
+    let (_, mut hs) = expect_msg(&out);
+    let back = RegionWriter::from_handle(hs.remove(0)).unwrap();
+    let refused = r.ipc.seal_region(back).unwrap_err();
+    assert_eq!(refused.error, IpcError::Busy);
+    let back = refused.into_writer().unwrap();
+    m.write_from(0, b"late").unwrap();
+    drop(m);
+    let ro = r.ipc.seal_region(back).unwrap();
+    assert!(ro.immutable());
+}
+
+/// Review finding 3: a seal or allocation whose handle cannot be made
+/// leaves the registry and the charges as they were.
+#[test]
+fn a_failed_handle_leaves_the_registry_as_it_was() {
+    let r = rig();
+    let owner = OsPeer::new(79, 0);
+    let count = |r: &Rig| {
+        let st = r.ipc.inner.lock();
+        st.broker
+            .as_ref()
+            .unwrap()
+            .regions
+            .values()
+            .filter(|e| e.owner == owner)
+            .count()
+    };
+    r.ipc
+        .inner
+        .fail_region_handle
+        .store(true, Ordering::Release);
+    assert!(r.ipc.allocate_region(4096, owner).is_err());
+    assert_eq!(count(&r), 0);
+    let w = r.ipc.allocate_region(4096, owner).unwrap();
+    r.ipc
+        .inner
+        .fail_region_handle
+        .store(true, Ordering::Release);
+    let w = r.ipc.seal_region(w).unwrap_err().into_writer().unwrap();
+    // Still a writer the broker holds: it seals, attested immutable.
+    let ro = r.ipc.seal_region(w).unwrap();
+    assert!(ro.immutable());
+    // One region charged: 255 more fit, then none.
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    for _ in 1..MAX_REGIONS_PER_OWNER {
+        assert!(b.quota.charge(owner, 4096));
+    }
+    assert!(!b.quota.charge(owner, 4096));
+}
+
+/// Review finding 1: relays of duplicated handles to one child-sealed
+/// section, each asking `immutable`, make one copy and one charge; every
+/// receiver gets that copy.
+#[test]
+fn duplicates_share_one_copy_and_one_charge() {
+    let r = rig();
+    let owner = OsPeer::new(80, 0);
+    let ro = r
+        .ipc
+        .seal_region(r.ipc.allocate_region(4096, owner).unwrap())
+        .unwrap();
+    mark_child_sealed(&r, ro.handle());
+    let s = section(&r, ro.handle());
+    let (tx, rx) = r.ipc.channel(16, Transfer::Free).unwrap();
+    let (out, _l) = r.listen(rx);
+    let mut got = Vec::new();
+    for _ in 0..5 {
+        let dup = super::sys::narrow(&s, 0x4).unwrap();
+        let h = {
+            let mut st = r.ipc.inner.lock();
+            r.ipc
+                .region_handle(&mut st, dup, HandleKind::ReadOnlyRegion, 4096, false)
+                .unwrap()
+        };
+        let dup = ReadOnlyRegion::from_handle(h).unwrap();
+        dup.want_immutable();
+        r.ipc
+            .send(&tx, b"d".to_vec(), vec![dup.into_handle()])
+            .unwrap();
+        let (_, mut hs) = expect_msg(&out);
+        got.push(ReadOnlyRegion::from_handle(hs.remove(0)).unwrap());
+    }
+    assert!(got.iter().all(ReadOnlyRegion::immutable));
+    let st = r.ipc.inner.lock();
+    let b = st.broker.as_ref().unwrap();
+    // The source and its one copy.
+    assert_eq!(b.regions.values().filter(|e| e.owner == owner).count(), 2);
+    drop(st);
+    // Two charges: 254 more fit, then none.
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    for _ in 2..MAX_REGIONS_PER_OWNER {
+        assert!(b.quota.charge(owner, 4096));
+    }
+    assert!(!b.quota.charge(owner, 4096));
+}
+
+/// A relay that needs a copy another relay is still making waits for it
+/// (planning says Wait, and charges nothing), then reuses it.
+#[test]
+fn a_copy_in_progress_is_waited_for_not_refused() {
+    let r = rig();
+    let owner = OsPeer::new(82, 0);
+    let ro = r
+        .ipc
+        .seal_region(r.ipc.allocate_region(4096, owner).unwrap())
+        .unwrap();
+    mark_child_sealed(&r, ro.handle());
+    let h = section(&r, ro.handle());
+    let facts = super::sys::section_facts(&h);
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    let item = || {
+        core::iter::once((
+            &*h,
+            crate::ipc::common::codec::WireKind::ReadOnlyRegion,
+            4096u32,
+            1u8,
+            facts,
+        ))
+    };
+    // The relayer does not matter to the copy plan (a region relay comes
+    // only from the broker or a child that may hold regions, finding 5;
+    // these registry tests have no such child), so both relays are the
+    // broker's: the wait is per section.
+    let first = super::Inner::plan_copies(b, super::BROKER, item()).unwrap();
+    assert_eq!(first.len(), 1);
+    assert!(matches!(
+        super::Inner::plan_copies(b, super::BROKER, item()),
+        Err(super::Plan::Wait)
+    ));
+    // Once the first relay's copy is registered, the second plans no
+    // copy of its own: it will reuse that one.
+    let (mut made, failed) = super::Inner::make_copies(first);
+    assert!(failed.is_empty());
+    let c = made.remove(0);
+    let src = c.src;
+    let (copy_id, _ro) = super::Inner::register_copy(b, c);
+    let e = b.regions.get_mut(&src).unwrap();
+    e.copy = Some(copy_id);
+    e.copying = false;
+    assert!(
+        super::Inner::plan_copies(b, super::BROKER, item())
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Review finding 2: a copy that cannot be made is refunded and leaves
+/// nothing registered (the source is not marked as being copied).
+#[test]
+fn a_failed_copy_is_refunded_and_not_registered() {
+    let r = rig();
+    let owner = OsPeer::new(81, 0);
+    let ro = r
+        .ipc
+        .seal_region(r.ipc.allocate_region(4096, owner).unwrap())
+        .unwrap();
+    mark_child_sealed(&r, ro.handle());
+    let h = section(&r, ro.handle());
+    let facts = super::sys::section_facts(&h);
+    let mut st = r.ipc.inner.lock();
+    let b = st.broker.as_mut().unwrap();
+    let item = core::iter::once((
+        &*h,
+        crate::ipc::common::codec::WireKind::ReadOnlyRegion,
+        4096u32,
+        1u8,
+        facts,
+    ));
+    let mut jobs = super::Inner::plan_copies(b, super::BROKER, item).unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert!(b.regions.values().any(|e| e.copying));
+    // A source handle that cannot be mapped for reading (write access
+    // only): the copy fails.
+    let other = super::sys::create_section(4096).unwrap();
+    jobs[0].from = super::sys::narrow(&other, 0x2).unwrap();
+    let (made, failed) = super::Inner::make_copies(jobs);
+    assert!(made.is_empty());
+    assert_eq!(failed.len(), 1);
+    super::Inner::release_jobs(b, failed);
+    assert_eq!(b.regions.values().filter(|e| e.owner == owner).count(), 1);
+    assert!(b.regions.values().all(|e| !e.copying && e.copy.is_none()));
+    // Refunded: the owner holds one region; 255 more fit, then none.
+    for _ in 1..MAX_REGIONS_PER_OWNER {
+        assert!(b.quota.charge(owner, 4096));
+    }
+    assert!(!b.quota.charge(owner, 4096));
 }

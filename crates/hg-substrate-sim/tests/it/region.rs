@@ -9,11 +9,12 @@ use hg_substrate::ipc::{
 };
 use hg_substrate::{Memory, Priority, Substrate};
 use hg_substrate_os::memory::OsMemory;
-use hg_substrate_sim::{Limits, RunEnd, SimConfig, SimOs, World};
+use hg_substrate_sim::{Limits, ProcessId, RunEnd, SimConfig, SimOs, World};
 use hg_types::Instant;
 
 /// The child as the simulator identifies it: spawned second.
 const OWNER: OsPeer = OsPeer::new(1, 0);
+const CHILD: ProcessId = ProcessId(1);
 
 const LIMITS: Limits = Limits {
     max_steps: 100_000,
@@ -188,6 +189,59 @@ fn linux_refuses_a_seal_while_a_mapping_is_live() {
     assert_eq!(*log.lock().unwrap(), ["Busy", "after unmap: true"]);
 }
 
+/// Every OS refuses a seal while the sealer itself maps the writer, as the
+/// backends do (D6 review finding 4). A mapping another process made
+/// before the writer moved is seen only by the Linux kernel (fact L1).
+#[test]
+fn a_seal_is_busy_while_the_sealer_maps() {
+    for os in [SimOs::Linux, SimOs::MacOs, SimOs::Windows] {
+        let log: Log = Arc::default();
+        let (l2, l4) = (Arc::clone(&log), Arc::clone(&log));
+        let held: Slot<Vec<Box<dyn std::any::Any + Send>>> = Arc::default();
+        let h2 = Arc::clone(&held);
+        let w = world(
+            os,
+            2,
+            move |s, _from, to| {
+                // Its own mapping: Busy on every OS.
+                let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
+                let m = s.ipc.map_region(wr.handle()).unwrap();
+                let refused = s.ipc.seal_region(wr).unwrap_err();
+                say(&l2, format!("own {:?}", refused.error));
+                // A mapping kept here while the child seals.
+                let wr = refused.into_writer().unwrap();
+                s.ipc
+                    .send(&to, b"w".to_vec(), vec![wr.into_handle()])
+                    .unwrap();
+                keep(&h2, m);
+                keep(&h2, to);
+            },
+            move |s| {
+                let boot = s.ipc.bootstrap().unwrap();
+                let l5 = Arc::clone(&l4);
+                let lis = on_message(&s, boot.from_parent, &l4, move |s, _b, mut hs| {
+                    let wr = RegionWriter::from_handle(hs.remove(0)).unwrap();
+                    let r = s.ipc.seal_region(wr).map(|_| ()).map_err(|r| r.error);
+                    say(&l5, format!("other's {r:?}"));
+                });
+                std::mem::forget(lis);
+            },
+        );
+        assert_eq!(w.run(LIMITS), RunEnd::Idle);
+        let other = if os == SimOs::Linux {
+            "Err(Busy)"
+        } else {
+            "Ok(())"
+        };
+        assert_eq!(
+            *log.lock().unwrap(),
+            ["own Busy".to_string(), format!("other's {other}")],
+            "{os:?}"
+        );
+        drop(held);
+    }
+}
+
 /// A writer from the broker is filled and sealed by the child, which sends
 /// the read-only region back; the child cannot pass the writer on.
 #[test]
@@ -280,6 +334,50 @@ fn only_the_broker_sends_a_writer() {
     assert_eq!(*log.lock().unwrap(), ["forward Some(Refused)", "closed"]);
 }
 
+/// Any holder passes a consumer on, on every OS, as the backends do (D6
+/// review finding 4): the child sends back the broker's consumer, and the
+/// broker reads through what came back.
+#[test]
+fn any_holder_forwards_a_consumer() {
+    for os in [SimOs::Linux, SimOs::MacOs, SimOs::Windows] {
+        let log: Log = Arc::default();
+        let held: Slot<Vec<Box<dyn std::any::Any + Send>>> = Arc::default();
+        let (l2, h2) = (Arc::clone(&log), Arc::clone(&held));
+        let w = world(
+            os,
+            5,
+            move |s, from, to| {
+                let wr = s.ipc.allocate_region(4096, OWNER).unwrap();
+                let p = s.ipc.share_region(wr).unwrap();
+                p.mapping().store_u64_release(8, 42).unwrap();
+                let c = s.ipc.consumer_of(&p).unwrap();
+                s.ipc
+                    .send(&to, b"c".to_vec(), vec![c.into_handle()])
+                    .unwrap();
+                let l3 = Arc::clone(&l2);
+                let lis = on_message(&s, from, &l2, move |s, _b, mut hs| {
+                    let c = ConsumerRegion::from_handle(hs.remove(0)).unwrap();
+                    let m = s.ipc.map_region(c.handle()).unwrap();
+                    say(&l3, format!("back {:?}", m.load_u64_acquire(8)));
+                });
+                keep(&h2, (p, lis, to));
+            },
+            |s| {
+                let boot = s.ipc.bootstrap().unwrap();
+                let to = boot.to_parent;
+                let lis = on_message(&s, boot.from_parent, &Arc::default(), move |s, _b, hs| {
+                    let r = s.ipc.send(&to, b"c".to_vec(), hs);
+                    assert!(r.is_ok(), "{r:?}");
+                });
+                std::mem::forget(lis);
+            },
+        );
+        assert_eq!(w.run(LIMITS), RunEnd::Idle);
+        assert_eq!(*log.lock().unwrap(), ["back Ok(42)"], "{os:?}");
+        drop(held);
+    }
+}
+
 /// A producer keeps writing; a consumer in another process sees the words
 /// it publishes with release stores. On Linux the producer cannot be
 /// mapped again.
@@ -352,9 +450,11 @@ fn a_producer_publishes_to_a_consumer() {
     );
 }
 
-/// The OS personalities of review M7: what a sandboxed filler that kept a
-/// writable mapping across its seal can still change after the receiver
-/// mapped the region, and what `immutable` buys on each OS.
+/// The OS personalities of review M7: what a compromised sandboxed filler
+/// that kept a writable mapping across its seal can still change after the
+/// receiver mapped the region, and what `immutable` buys on each OS. The
+/// filler maps behind its backend's back ([`World::hide_mappings`]), since
+/// every backend refuses an honest seal while the sealer maps.
 fn filler_keeps_writing(os: SimOs, want_immutable: bool) -> (bool, String) {
     type Kept = Arc<Mutex<Option<hg_substrate::ipc::Mapping>>>;
     let out: Slot<(bool, String)> = Arc::default();
@@ -441,6 +541,7 @@ fn filler_keeps_writing(os: SimOs, want_immutable: bool) -> (bool, String) {
             std::mem::forget(lis);
         },
     );
+    w.hide_mappings(CHILD);
     assert_eq!(w.run(LIMITS), RunEnd::Idle);
     let r = out.lock().unwrap().take().unwrap();
     drop(held);

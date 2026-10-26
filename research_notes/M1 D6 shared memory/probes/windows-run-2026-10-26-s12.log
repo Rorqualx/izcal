@@ -1,0 +1,211 @@
+[S12] --- DACL user GA (today): O:BAG:S-1-5-21-<machine>-513D:P(A;;CCDCLCSWRPSDRCWDWO;;;S-1-5-21-<machine>-1001)
+[S12] broker's own handle: type=Section access=0xf0007
+[S12] broker narrows to READ: OK type=Section access=0x4
+[S12] broker narrows to RW: OK type=Section access=0x6
+[S12] [appcontainer] hello pid=33536 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[S12] [appcontainer] widen a FILE_MAP_READ handle:
+[S12] [appcontainer]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [appcontainer]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [appcontainer]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [appcontainer]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [appcontainer]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [appcontainer] go around it through the broker's process:
+[S12] [appcontainer]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [appcontainer]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [appcontainer] broker reads "\0\0\0\0\0\0"
+[S12] [appcontainer] exited code=0x0
+[S12] [plain same-level] hello pid=15248 lowered=kept args=["--nosandbox", "--medium"] integrity=rid-0x3000 appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain same-level] widen a FILE_MAP_READ handle:
+[S12] [plain same-level]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain same-level]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain same-level]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain same-level]   DuplicateHandle(self, FILE_MAP_WRITE) OK -> type=Section access=0x2
+[S12] [plain same-level]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) OK -> type=Section access=0xf001f
+[S12] [plain same-level]   DuplicateHandle(self, SECTION_QUERY) OK -> type=Section access=0x1
+[S12] [plain same-level]   DuplicateHandle(self, SECTION_EXTEND_SIZE) OK -> type=Section access=0x10
+[S12] [plain same-level]   DuplicateHandle(self, WRITE_DAC) OK -> type=Section access=0x40000
+[S12] [plain same-level]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain same-level] go around it through the broker's process:
+[S12] [plain same-level]   OpenProcess(DUP_HANDLE) OK
+[S12] [plain same-level]   DuplicateHandle(broker's, RW) OK -> type=Section access=0x6
+[S12] [plain same-level]   MapViewOfFile(WRITE) MAPPED, wrote "stolen"
+[S12] [plain same-level]   OpenProcess(VM_WRITE) OK
+[S12] [plain same-level] broker reads "stolen"
+[S12] [plain same-level] running
+[S12] [plain medium (below a High broker)] hello pid=25868 lowered=kept args=["--nosandbox", "--medium"] integrity=medium appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain medium (below a High broker)] widen a FILE_MAP_READ handle:
+[S12] [plain medium (below a High broker)]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain medium (below a High broker)]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain medium (below a High broker)]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, FILE_MAP_WRITE) OK -> type=Section access=0x2
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) OK -> type=Section access=0xf001f
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, SECTION_QUERY) OK -> type=Section access=0x1
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, SECTION_EXTEND_SIZE) OK -> type=Section access=0x10
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, WRITE_DAC) OK -> type=Section access=0x40000
+[S12] [plain medium (below a High broker)]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain medium (below a High broker)] go around it through the broker's process:
+[S12] [plain medium (below a High broker)]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [plain medium (below a High broker)]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [plain medium (below a High broker)] broker reads "\0\0\0\0\0\0"
+[S12] [plain medium (below a High broker)] running
+[S12] [plain low] hello pid=28700 lowered=kept args=["--nosandbox", "--medium"] integrity=low appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain low] widen a FILE_MAP_READ handle:
+[S12] [plain low]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain low]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain low]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain low]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, SECTION_QUERY) OK -> type=Section access=0x1
+[S12] [plain low]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [plain low]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain low] go around it through the broker's process:
+[S12] [plain low]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [plain low]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [plain low] broker reads "\0\0\0\0\0\0"
+[S12] [plain low] running
+[S12] --- DACL owner RC only: O:BAG:S-1-5-21-<machine>-513D:P(A;;RC;;;OW)
+[S12] broker's own handle: type=Section access=0xb0007
+[S12] broker narrows to READ: OK type=Section access=0x4
+[S12] broker narrows to RW: OK type=Section access=0x6
+[S12] [appcontainer] hello pid=31184 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[S12] [appcontainer] widen a FILE_MAP_READ handle:
+[S12] [appcontainer]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [appcontainer]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [appcontainer]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [appcontainer]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [appcontainer]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [appcontainer] go around it through the broker's process:
+[S12] [appcontainer]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [appcontainer]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [appcontainer] broker reads "\0\0\0\0\0\0"
+[S12] [appcontainer] exited code=0x0
+[S12] [plain same-level] hello pid=25500 lowered=kept args=["--nosandbox", "--medium"] integrity=rid-0x3000 appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain same-level] widen a FILE_MAP_READ handle:
+[S12] [plain same-level]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain same-level]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain same-level]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain same-level]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [plain same-level]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [plain same-level]   DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S12] [plain same-level]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [plain same-level]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [plain same-level]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain same-level] go around it through the broker's process:
+[S12] [plain same-level]   OpenProcess(DUP_HANDLE) OK
+[S12] [plain same-level]   DuplicateHandle(broker's, RW) OK -> type=Section access=0x6
+[S12] [plain same-level]   MapViewOfFile(WRITE) MAPPED, wrote "stolen"
+[S12] [plain same-level]   OpenProcess(VM_WRITE) OK
+[S12] [plain same-level] broker reads "stolen"
+[S12] [plain same-level] running
+[S12] [plain medium (below a High broker)] hello pid=28356 lowered=kept args=["--nosandbox", "--medium"] integrity=medium appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain medium (below a High broker)] widen a FILE_MAP_READ handle:
+[S12] [plain medium (below a High broker)]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain medium (below a High broker)]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain medium (below a High broker)]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [plain medium (below a High broker)]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain medium (below a High broker)] go around it through the broker's process:
+[S12] [plain medium (below a High broker)]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [plain medium (below a High broker)]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [plain medium (below a High broker)] broker reads "\0\0\0\0\0\0"
+[S12] [plain medium (below a High broker)] running
+[S12] [plain low] hello pid=27456 lowered=kept args=["--nosandbox", "--medium"] integrity=low appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain low] widen a FILE_MAP_READ handle:
+[S12] [plain low]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain low]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain low]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain low]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [plain low]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain low] go around it through the broker's process:
+[S12] [plain low]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [plain low]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [plain low] broker reads "\0\0\0\0\0\0"
+[S12] [plain low] running
+[S12] --- DACL user GA + label NW at the broker's level: O:BAG:S-1-5-21-<machine>-513D:P(A;;CCDCLCSWRPSDRCWDWO;;;S-1-5-21-<machine>-1001)S:AI(ML;;NW;;;HI)
+[S12] broker's own handle: type=Section access=0xf0007
+[S12] broker narrows to READ: OK type=Section access=0x4
+[S12] broker narrows to RW: OK type=Section access=0x6
+[S12] [appcontainer] hello pid=19888 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[S12] [appcontainer] widen a FILE_MAP_READ handle:
+[S12] [appcontainer]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [appcontainer]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [appcontainer]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [appcontainer]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [appcontainer]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [appcontainer]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [appcontainer] go around it through the broker's process:
+[S12] [appcontainer]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [appcontainer]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [appcontainer] broker reads "\0\0\0\0\0\0"
+[S12] [appcontainer] exited code=0x0
+[S12] [plain same-level] hello pid=26960 lowered=kept args=["--nosandbox", "--medium"] integrity=rid-0x3000 appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain same-level] widen a FILE_MAP_READ handle:
+[S12] [plain same-level]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain same-level]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain same-level]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain same-level]   DuplicateHandle(self, FILE_MAP_WRITE) OK -> type=Section access=0x2
+[S12] [plain same-level]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) OK -> type=Section access=0xf001f
+[S12] [plain same-level]   DuplicateHandle(self, SECTION_QUERY) OK -> type=Section access=0x1
+[S12] [plain same-level]   DuplicateHandle(self, SECTION_EXTEND_SIZE) OK -> type=Section access=0x10
+[S12] [plain same-level]   DuplicateHandle(self, WRITE_DAC) OK -> type=Section access=0x40000
+[S12] [plain same-level]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain same-level] go around it through the broker's process:
+[S12] [plain same-level]   OpenProcess(DUP_HANDLE) OK
+[S12] [plain same-level]   DuplicateHandle(broker's, RW) OK -> type=Section access=0x6
+[S12] [plain same-level]   MapViewOfFile(WRITE) MAPPED, wrote "stolen"
+[S12] [plain same-level]   OpenProcess(VM_WRITE) OK
+[S12] [plain same-level] broker reads "stolen"
+[S12] [plain same-level] running
+[S12] [plain medium (below a High broker)] hello pid=22800 lowered=kept args=["--nosandbox", "--medium"] integrity=medium appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain medium (below a High broker)] widen a FILE_MAP_READ handle:
+[S12] [plain medium (below a High broker)]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain medium (below a High broker)]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain medium (below a High broker)]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, SECTION_QUERY) OK -> type=Section access=0x1
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [plain medium (below a High broker)]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [plain medium (below a High broker)]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain medium (below a High broker)] go around it through the broker's process:
+[S12] [plain medium (below a High broker)]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [plain medium (below a High broker)]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [plain medium (below a High broker)] broker reads "\0\0\0\0\0\0"
+[S12] [plain medium (below a High broker)] running
+[S12] [plain low] hello pid=32340 lowered=kept args=["--nosandbox", "--medium"] integrity=low appcontainer=no privileges=24 user-file-read=not-probed sam-read=failed-32 mitigations=job (not-applied:appcontainer,lockdown,untrusted,win32k,acg,cig,cet)
+[S12] [plain low] widen a FILE_MAP_READ handle:
+[S12] [plain low]   MapViewOfFile(WRITE) FAILED err=5
+[S12] [plain low]   VirtualProtect(view, RW) ok=0 err=87
+[S12] [plain low]   VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S12] [plain low]   DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, SECTION_QUERY) OK -> type=Section access=0x1
+[S12] [plain low]   DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S12] [plain low]   DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S12] [plain low]   MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S12] [plain low] go around it through the broker's process:
+[S12] [plain low]   OpenProcess(DUP_HANDLE) FAILED err=5
+[S12] [plain low]   OpenProcess(VM_WRITE) FAILED err=5
+[S12] [plain low] broker reads "\0\0\0\0\0\0"
+[S12] [plain low] running
+run exit=0
