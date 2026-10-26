@@ -523,6 +523,9 @@ pub(crate) struct Inner {
     /// Tests only: the next region handle cannot be made.
     #[cfg(test)]
     fail_region_handle: AtomicBool,
+    /// Tests only: the next copy thread fails to start.
+    #[cfg(test)]
+    fail_copy_spawn: AtomicBool,
 }
 
 impl Inner {
@@ -2475,9 +2478,13 @@ impl Inner {
             return true;
         }
         set(st, None, Some(token));
-        let charges: Vec<(OsPeer, u32)> = jobs.iter().map(|j| (j.owner, j.len)).collect();
+        // What to take back if the copy thread cannot start: each charge,
+        // and each source's in-progress mark (else every later relay
+        // needing that copy waits COPY_WAIT_MAX and is refused).
+        let planned: Vec<(u64, OsPeer, u32)> =
+            jobs.iter().map(|j| (j.src, j.owner, j.len)).collect();
         let inner = Arc::clone(self);
-        let spawned = crate::thread::spawn("hg-ipc-copy", move || {
+        let work = move || {
             let (made, failed) = Self::make_copies(jobs);
             let mut st = inner.lock();
             let waiting = matches!(
@@ -2511,14 +2518,26 @@ impl Inner {
             drop(st);
             drop(drop_later);
             inner.wake();
-        });
+        };
+        #[cfg(test)]
+        let spawned = if self.fail_copy_spawn.swap(false, Ordering::AcqRel) {
+            drop(work);
+            Err(std::io::Error::other("injected spawn failure"))
+        } else {
+            crate::thread::spawn("hg-ipc-copy", work)
+        };
+        #[cfg(not(test))]
+        let spawned = crate::thread::spawn("hg-ipc-copy", work);
         if spawned.is_err() {
             if let Some(b) = st.broker.as_mut() {
-                for (owner, len) in charges {
+                for (src, owner, len) in planned {
                     b.quota.refund(owner, u64::from(len));
+                    Self::not_copying(b, src);
                 }
             }
             Self::break_sender(st, id);
+            // Records waiting for these copies plan again.
+            self.wake();
         }
         later.push(Box::new(items));
         false
@@ -2968,6 +2987,8 @@ impl WindowsIpc {
             container,
             #[cfg(test)]
             fail_region_handle: AtomicBool::new(false),
+            #[cfg(test)]
+            fail_copy_spawn: AtomicBool::new(false),
         });
         let io = Arc::clone(&inner);
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
