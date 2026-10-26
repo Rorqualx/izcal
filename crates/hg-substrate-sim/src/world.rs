@@ -511,6 +511,26 @@ pub(crate) fn crash_in(shared: &Arc<Shared>, pid: ProcessId) -> bool {
     crashed
 }
 
+/// Crashes `pid` only if it is still incarnation `generation`: a kill
+/// aimed at an earlier incarnation never reaches a later one.
+pub(crate) fn crash_in_generation(shared: &Arc<Shared>, pid: ProcessId, generation: u64) -> bool {
+    let mut st = shared.lock();
+    let current = st
+        .procs
+        .get(usize::try_from(pid.0).unwrap_or(usize::MAX))
+        .is_some_and(|p| p.alive && u64::from(p.generation) == generation);
+    if !current {
+        return false;
+    }
+    let wreck = World::crash_locked(&mut st, pid);
+    drop(st);
+    let crashed = wreck.is_some();
+    if let Some(w) = wreck {
+        w.clear();
+    }
+    crashed
+}
+
 /// [`World::os_peer`]'s work, on the shared state.
 pub(crate) fn os_peer_in(
     shared: &Arc<Shared>,
