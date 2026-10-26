@@ -1428,6 +1428,36 @@ mod tests {
         assert_eq!(l.park(B, pipe(BROKER, 70)), Err(LedgerError::NoPark));
     }
 
+    /// A ticket's handle store has its regions at their own indices (D6),
+    /// so an end's slot skips them (W3's rebind swaps the slot in place).
+    #[test]
+    fn a_ticket_index_skips_the_regions() {
+        let mut l = ledger();
+        let (a, b) = (pipe(A, 1), pipe(A, 2));
+        let grant = super::super::regions::Grant {
+            id: 1,
+            kind: WireKind::ReadOnlyRegion,
+            len: 4096,
+            filler_trusted: false,
+        };
+        l.relay(
+            [9; 16],
+            Held {
+                carrier: pipe(BROKER, 9),
+                from: A,
+                ends: vec![
+                    (a, End::Sender, WireKind::Sender),
+                    (b, End::Receiver, WireKind::Receiver),
+                ],
+                regions: vec![(0, grant), (2, grant)],
+            },
+        )
+        .unwrap();
+        assert_eq!(l.ticket_index(&[9; 16], a, End::Sender), Some(1));
+        assert_eq!(l.ticket_index(&[9; 16], b, End::Receiver), Some(3));
+        assert_eq!(l.ticket_index(&[9; 16], a, End::Receiver), None);
+    }
+
     #[test]
     fn where_an_end_is() {
         let mut l = ledger();

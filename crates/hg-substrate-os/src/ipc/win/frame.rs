@@ -1169,7 +1169,7 @@ mod tests {
             carrier: 4,
             items: items(1),
         });
-        relay[37] = 1;
+        relay[38] = 1;
         assert_eq!(decode_ctl(&relay), Err(FrameError::Reserved));
         let sender = Items::from_slice(&[Item::end(8, WireKind::Sender)]).unwrap();
         let mut redeemed = encode_ctl(&Ctl::Redeemed {
@@ -1177,7 +1177,7 @@ mod tests {
             items: sender,
         });
         // Header 8, request 8, value 8, kind 1, length 4, flags 1.
-        redeemed[29] = 1;
+        redeemed[30] = 1;
         assert_eq!(decode_ctl(&redeemed), Err(FrameError::Reserved));
         let mut rebound = encode_ctl(&Ctl::Rebound {
             req: 1,
@@ -1191,7 +1191,7 @@ mod tests {
             req: 1,
             items: Items::from_slice(&[Item::end(8, WireKind::Receiver)]).unwrap(),
         });
-        drains[29] = 1;
+        drains[30] = 1;
         assert_eq!(decode_ctl(&drains), Err(FrameError::Reserved));
         // A Park with a count, a TakeDrains one byte short.
         let mut park = encode_ctl(&Ctl::Park { old: 8 });
