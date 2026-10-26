@@ -110,11 +110,72 @@ struct Spares {
     closed: AtomicBool,
     /// A refill thread is running.
     refilling: AtomicBool,
+    /// The latest refill thread, joined by [`Spares::close`] so that no
+    /// registration outlives the launcher.
+    worker: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 /// The number in the next profile's name: one counter for the process,
 /// so two launchers in one process never name the same profile.
 static NEXT_PROFILE: AtomicU64 = AtomicU64::new(0);
+
+/// The prefix of every profile a launcher registers. A name is
+/// `izcal.l.<pid>.<start>.<n>`: the broker process's id and creation time
+/// (`GetProcessTimes`) name the broker instance that owns it, and `n`
+/// counts its profiles. The pair tells a crashed broker's profiles apart
+/// from a live one's, even after the pid is reused.
+const PROFILE_PREFIX: &str = "izcal.l.";
+
+/// This process's creation time, as profile names carry it.
+fn own_start() -> Option<u64> {
+    static START: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
+    *START.get_or_init(|| sys::running_since(std::process::id()))
+}
+
+/// The owner (pid, creation time) a profile name of this scheme names.
+fn owner_of(name: &str) -> Option<(u32, u64)> {
+    let mut parts = name.strip_prefix(PROFILE_PREFIX)?.split('.');
+    let pid = parts.next()?.parse().ok()?;
+    let start = parts.next()?.parse().ok()?;
+    parts.next()?.parse::<u64>().ok()?;
+    parts.next().is_none().then_some((pid, start))
+}
+
+/// The folder Windows keeps for each registered AppContainer profile of
+/// this user, named for the profile (`%LOCALAPPDATA%\Packages\<name>`).
+fn profile_folders() -> Vec<String> {
+    let Some(base) = std::env::var_os("LOCALAPPDATA") else {
+        return Vec::new();
+    };
+    std::fs::read_dir(Path::new(&base).join("Packages"))
+        .map(|d| {
+            d.filter_map(Result::ok)
+                .filter_map(|e| e.file_name().into_string().ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Unregisters the profiles of broker instances that are gone: names of
+/// this scheme whose owner is no running process with that id and
+/// creation time (a crashed broker; its children ended with it, through
+/// their kill-on-close jobs). A live broker's profiles, this one's
+/// included, and every name outside the scheme are left alone. Returns
+/// the names removed.
+pub(crate) fn sweep_stale_profiles() -> Vec<String> {
+    let mut removed = Vec::new();
+    for name in profile_folders() {
+        let Some((pid, start)) = owner_of(&name) else {
+            continue;
+        };
+        if sys::running_since(pid) == Some(start) {
+            continue;
+        }
+        win::spawn::delete_container(&name);
+        removed.push(name);
+    }
+    removed
+}
 
 impl Spares {
     fn lock(&self) -> MutexGuard<'_, Vec<Spare>> {
@@ -128,7 +189,11 @@ impl Spares {
     /// again, empty, never handed out as it was.
     fn make(&self) -> Option<Spare> {
         let n = NEXT_PROFILE.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
-        Self::register_fresh(format!("izcal.{}.{n}", std::process::id()))
+        let start = own_start()?;
+        Self::register_fresh(format!(
+            "{PROFILE_PREFIX}{}.{start}.{n}",
+            std::process::id()
+        ))
     }
 
     /// Registers profile `name` new, removing one left under that name
@@ -195,8 +260,11 @@ impl Spares {
                 }
             }
         });
-        if started.is_err() {
-            self.refilling.store(false, Ordering::SeqCst);
+        match started {
+            Ok(h) => {
+                *self.worker.lock().unwrap_or_else(PoisonError::into_inner) = Some(h);
+            }
+            Err(_e) => self.refilling.store(false, Ordering::SeqCst),
         }
     }
 
@@ -208,6 +276,17 @@ impl Spares {
         drop(v);
         for s in left {
             win::spawn::delete_container(&s.name);
+        }
+        // A registration in flight finishes, sees `closed` and removes
+        // what it made; waiting for it keeps a process that exits next
+        // from leaving that profile behind (at most one registration).
+        let worker = self
+            .worker
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(h) = worker {
+            let _ = h.join();
         }
     }
 }
@@ -260,8 +339,11 @@ impl WinLauncher {
             ready: Mutex::new(Vec::new()),
             closed: AtomicBool::new(false),
             refilling: AtomicBool::new(false),
+            worker: Mutex::new(None),
         });
-        // At broker start, before any launch is requested.
+        // At broker start, before any launch is requested: first remove
+        // what crashed brokers left, then register this one's spares.
+        let _ = sweep_stale_profiles();
         spares.fill();
         Self {
             ipc,

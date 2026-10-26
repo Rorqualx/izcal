@@ -142,3 +142,33 @@ fn a_stale_profile_is_registered_again_empty() {
     assert!(!marker.exists(), "its old contents went with it");
     crate::ipc::windows::sys::spawn::delete_container(&s.name);
 }
+
+/// The start-up sweep removes only profiles of this launcher's naming
+/// scheme whose owning broker instance is gone, by pid and creation time:
+/// a pid now held by another process (reused) and a pid no process holds.
+/// A live instance's profiles (this process's), and every name outside
+/// the scheme, are left alone.
+#[test]
+fn the_sweep_removes_only_profiles_of_brokers_that_are_gone() {
+    let me = std::process::id();
+    let start = super::own_start().unwrap();
+    let reused = format!("izcal.l.{me}.{}.1", start + 1);
+    let no_process = format!("izcal.l.{}.1.1", u32::MAX - 1);
+    let live = format!("izcal.l.{me}.{start}.900001");
+    let other = format!("izcal.other-scheme.{me}");
+    let malformed = format!("izcal.l.{me}.x");
+    for n in [&reused, &no_process, &live, &other, &malformed] {
+        drop(crate::sandbox::windows::app_container(n, n).unwrap());
+        assert!(profile_folder(n).exists(), "{n} registered");
+    }
+    let _ = super::sweep_stale_profiles();
+    assert!(!profile_folder(&reused).exists(), "a reused pid's profile");
+    assert!(
+        !profile_folder(&no_process).exists(),
+        "a gone pid's profile"
+    );
+    for n in [&live, &other, &malformed] {
+        assert!(profile_folder(n).exists(), "{n} was left alone");
+        crate::ipc::windows::sys::spawn::delete_container(n);
+    }
+}

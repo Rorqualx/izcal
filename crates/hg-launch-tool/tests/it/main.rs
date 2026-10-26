@@ -99,3 +99,35 @@ fn the_children_are_built_for_the_gui_subsystem() {
         assert_eq!(subsystem, 2, "{exe} is not a GUI-subsystem executable");
     }
 }
+
+/// M1 phase G: a broker that ends normally unregisters every AppContainer
+/// profile it registered, its spares included. The browser and its
+/// children held each other (the serving handlers held the browser), so
+/// before the fix no launcher was ever dropped and every profile stayed.
+/// Profiles are named `izcal.l.<broker pid>.<start>.<n>`.
+#[cfg(windows)]
+#[test]
+fn a_broker_that_ends_leaves_no_profile() {
+    let tool = Path::new(env!("CARGO_BIN_EXE_hg-launch-tool"));
+    let child = Command::new(tool)
+        .arg("round-trip")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+    let out = child.wait_with_output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let packages = Path::new(&std::env::var_os("LOCALAPPDATA").unwrap()).join("Packages");
+    let prefix = format!("izcal.l.{pid}.");
+    let left: Vec<String> = std::fs::read_dir(packages)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.starts_with(&prefix))
+        .collect();
+    assert!(left.is_empty(), "left registered: {left:?}");
+}

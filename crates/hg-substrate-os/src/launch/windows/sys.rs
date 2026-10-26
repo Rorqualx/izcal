@@ -57,6 +57,45 @@ pub(crate) fn terminate_job(job: &crate::sandbox::windows::OwnedHandle) {
     let _ = unsafe { TerminateJobObject(job.as_handle(), 1) };
 }
 
+/// When process `pid` started (its creation time, in 100 ns units since
+/// 1601, `GetProcessTimes`), if it is running now. `None` when no process
+/// has that id, it has exited (`GetExitCodeProcess` is not
+/// `STILL_ACTIVE`), or it cannot be queried.
+pub(crate) fn running_since(pid: u32) -> Option<u64> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    // SAFETY: plain arguments; a null result is checked.
+    let h = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if h.is_null() {
+        return None;
+    }
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    let mut code = 0u32;
+    // SAFETY: a live process handle and four valid out-pointers.
+    let times = unsafe {
+        GetProcessTimes(
+            h,
+            &raw mut created,
+            &raw mut exited,
+            &raw mut kernel,
+            &raw mut user,
+        )
+    };
+    // SAFETY: a live process handle and a valid out-pointer.
+    let alive = unsafe { GetExitCodeProcess(h, &raw mut code) } != 0
+        && i32::try_from(code).is_ok_and(|c| c == STILL_ACTIVE);
+    // SAFETY: the handle opened above, closed once.
+    unsafe { CloseHandle(h) };
+    (times != 0 && alive)
+        .then(|| (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
+}
+
 /// Keeps `AsRawHandle` in use for the held handles' type.
 #[expect(dead_code, reason = "documents the held handle's raw form")]
 fn raw(h: &OwnedHandle) -> *mut core::ffi::c_void {
