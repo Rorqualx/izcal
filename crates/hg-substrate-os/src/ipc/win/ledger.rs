@@ -497,6 +497,400 @@ impl Ledger {
     }
 }
 
+/// A fixed-size model of the ledger, for its Kani proofs (VER-1, D5 item
+/// 12).
+///
+/// Kani cannot check [`Ledger`] itself: CBMC unrolls each loop inside
+/// `BTreeMap`'s search, insertion and removal to the proof's full bound,
+/// because their trip counts depend on node lengths held in memory.
+/// Measured on hueyj: one `place` on a concrete key grew from 0.40 million
+/// steps at bound 6 to 2.46 million at bound 14 and did not finish
+/// symbolic execution at bound 18; a relay and redemption ran out of
+/// 10 GiB. Symbolic keys cost no more than concrete ones; the map's loops
+/// and the number of map calls do.
+///
+/// The model follows the ledger's code step by step over fixed arrays
+/// indexed by small numbers: [`PIPES`] channels (creators 0, 1 and 2,
+/// two ids each, the domain of the earlier harnesses), [`PROCS`]
+/// processes (0 the broker) and [`TICKETS`] tickets, each relay carrying
+/// one end. Every loop runs over a constant range, so CBMC unrolls it
+/// exactly. Quotas are left out: no sequence in this domain comes near
+/// them, and unit tests cover them on the ledger. The test
+/// `the_model_agrees_with_the_ledger` runs long random sequences of every
+/// operation here on both and compares results and every observable
+/// value after each step.
+#[cfg(any(test, kani))]
+mod model {
+    use super::End;
+
+    pub(super) const PIPES: usize = 6;
+    pub(super) const PROCS: usize = 3;
+    pub(super) const TICKETS: usize = 2;
+
+    /// Channel `i`'s creator.
+    pub(super) fn creator(i: usize) -> usize {
+        i / 2
+    }
+
+    /// Who holds an end, as [`super::Holder`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum H {
+        Proc(usize),
+        Ticket(usize),
+        Gone,
+    }
+
+    /// One relay: its carrier, relayer and the one end it carries.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) struct T {
+        pub(super) carrier: usize,
+        pub(super) from: usize,
+        pub(super) pipe: usize,
+        pub(super) end: End,
+    }
+
+    /// Why a redemption was refused, as [`super::LedgerError`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum E {
+        NoTicket,
+        WrongChannel,
+        NotHolder,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub(super) struct Model {
+        known: [bool; PIPES],
+        sender: [H; PIPES],
+        receiver: [H; PIPES],
+        tickets: [Option<T>; TICKETS],
+        outstanding: [usize; PROCS],
+        by_carrier: [usize; PIPES],
+        per_creator: [usize; PROCS],
+    }
+
+    impl Default for Model {
+        fn default() -> Self {
+            Self {
+                known: [false; PIPES],
+                sender: [H::Gone; PIPES],
+                receiver: [H::Gone; PIPES],
+                tickets: [None; TICKETS],
+                outstanding: [0; PROCS],
+                by_carrier: [0; PIPES],
+                per_creator: [0; PROCS],
+            }
+        }
+    }
+
+    fn at<X: Copy>(a: &[X], i: usize, or: X) -> X {
+        a.get(i).copied().unwrap_or(or)
+    }
+
+    fn set<X>(a: &mut [X], i: usize, v: X) {
+        if let Some(x) = a.get_mut(i) {
+            *x = v;
+        }
+    }
+
+    fn inc(a: &mut [usize], i: usize) {
+        if let Some(x) = a.get_mut(i) {
+            *x = x.saturating_add(1);
+        }
+    }
+
+    fn dec(a: &mut [usize], i: usize) {
+        if let Some(x) = a.get_mut(i) {
+            *x = x.saturating_sub(1);
+        }
+    }
+
+    impl Model {
+        /// The ends' holders, as `Ledger::entry`: an unseen channel's
+        /// ends are its creator's.
+        fn entry(&self, i: usize) -> (H, H) {
+            if at(&self.known, i, false) {
+                (at(&self.sender, i, H::Gone), at(&self.receiver, i, H::Gone))
+            } else {
+                (H::Proc(creator(i)), H::Proc(creator(i)))
+            }
+        }
+
+        /// As `Ledger::put`, without the quota.
+        fn put(&mut self, i: usize, (tx, rx): (H, H)) {
+            if !at(&self.known, i, false) {
+                let c = creator(i);
+                inc(&mut self.per_creator, c);
+                set(&mut self.known, i, true);
+            }
+            set(&mut self.sender, i, tx);
+            set(&mut self.receiver, i, rx);
+        }
+
+        fn with_end((tx, rx): (H, H), end: End, h: H) -> (H, H) {
+            match end {
+                End::Sender => (h, rx),
+                End::Receiver => (tx, h),
+            }
+        }
+
+        pub(super) fn place(&mut self, i: usize, end: End, to: usize) {
+            let e = Self::with_end(self.entry(i), end, H::Proc(to));
+            self.put(i, e);
+        }
+
+        /// As `Ledger::relay` of one end; the ledger replaces a ticket
+        /// already outstanding under the same value, and so does this.
+        pub(super) fn relay(&mut self, t: usize, held: T) {
+            let e = Self::with_end(self.entry(held.pipe), held.end, H::Ticket(t));
+            self.put(held.pipe, e);
+            inc(&mut self.outstanding, held.from);
+            inc(&mut self.by_carrier, held.carrier);
+            set(&mut self.tickets, t, Some(held));
+        }
+
+        fn release_counts(&mut self, held: T) {
+            dec(&mut self.outstanding, held.from);
+            dec(&mut self.by_carrier, held.carrier);
+        }
+
+        pub(super) fn redeem(&mut self, by: usize, t: usize, rx: usize) -> Result<T, E> {
+            let held = at(&self.tickets, t, None).ok_or(E::NoTicket)?;
+            if held.carrier != rx {
+                return Err(E::WrongChannel);
+            }
+            if self.entry(rx).1 != H::Proc(by) {
+                return Err(E::NotHolder);
+            }
+            set(&mut self.tickets, t, None);
+            self.release_counts(held);
+            let e = Self::with_end(self.entry(held.pipe), held.end, H::Proc(by));
+            self.put(held.pipe, e);
+            Ok(held)
+        }
+
+        /// As `Ledger::gone`; returns which tickets it released.
+        pub(super) fn gone(&mut self, p: usize) -> [bool; TICKETS] {
+            let mut dead = [false; TICKETS];
+            for (t, d) in dead.iter_mut().enumerate() {
+                if let Some(h) = at(&self.tickets, t, None) {
+                    let rx = self.entry(h.carrier).1;
+                    *d = rx == H::Gone || rx == H::Proc(p);
+                }
+            }
+            let lost = |h: H| match h {
+                H::Proc(q) => q == p,
+                H::Ticket(t) => at(&dead, t, false),
+                H::Gone => false,
+            };
+            for i in 0..PIPES {
+                if at(&self.known, i, false) {
+                    if lost(at(&self.sender, i, H::Gone)) {
+                        set(&mut self.sender, i, H::Gone);
+                    }
+                    if lost(at(&self.receiver, i, H::Gone)) {
+                        set(&mut self.receiver, i, H::Gone);
+                    }
+                }
+            }
+            for (t, d) in dead.iter().enumerate() {
+                if *d && let Some(h) = at(&self.tickets, t, None) {
+                    set(&mut self.tickets, t, None);
+                    self.release_counts(h);
+                }
+            }
+            set(&mut self.outstanding, p, 0);
+            dead
+        }
+
+        pub(super) fn close_end(&mut self, i: usize, end: End, by: usize) {
+            if at(&self.known, i, false) {
+                let (tx, rx) = self.entry(i);
+                let slot = if end == End::Sender { tx } else { rx };
+                if slot == H::Proc(by) {
+                    let e = Self::with_end((tx, rx), end, H::Gone);
+                    self.put(i, e);
+                }
+            }
+        }
+
+        /// As `Ledger::sweep`; returns which creators it emptied.
+        pub(super) fn sweep(&mut self) -> [bool; PROCS] {
+            let mut emptied = [false; PROCS];
+            for i in 0..PIPES {
+                if at(&self.known, i, false)
+                    && at(&self.sender, i, H::Proc(0)) == H::Gone
+                    && at(&self.receiver, i, H::Proc(0)) == H::Gone
+                {
+                    set(&mut self.known, i, false);
+                    let c = creator(i);
+                    let n = at(&self.per_creator, c, 0);
+                    if n > 0 {
+                        set(&mut self.per_creator, c, n.saturating_sub(1));
+                        if n == 1 {
+                            set(&mut emptied, c, true);
+                        }
+                    }
+                }
+            }
+            emptied
+        }
+
+        /// As `Ledger::view`'s holder: `None` for an unseen channel,
+        /// `Some(None)` for an end in a ticket or gone.
+        pub(super) fn holder(&self, i: usize, end: End) -> Option<Option<usize>> {
+            if !at(&self.known, i, false) {
+                return None;
+            }
+            let (tx, rx) = self.entry(i);
+            match if end == End::Sender { tx } else { rx } {
+                H::Proc(p) => Some(Some(p)),
+                H::Ticket(_) | H::Gone => Some(None),
+            }
+        }
+
+        pub(super) fn ticket_free(&self, t: usize) -> bool {
+            at(&self.tickets, t, None).is_none()
+        }
+
+        pub(super) fn tickets_outstanding(&self) -> usize {
+            self.tickets.iter().filter(|t| t.is_some()).count()
+        }
+
+        pub(super) fn has_creator(&self, c: usize) -> bool {
+            at(&self.per_creator, c, 0) > 0
+        }
+
+        pub(super) fn by_carrier(&self, i: usize) -> usize {
+            at(&self.by_carrier, i, 0)
+        }
+
+        pub(super) fn outstanding(&self, p: usize) -> usize {
+            at(&self.outstanding, p, 0)
+        }
+    }
+}
+
+/// VER-1 for the broker's ledger (IPC-R1), over [`model`]: a relay and its
+/// redemption move an end from the relayer to the redeemer and leave the
+/// ticket counters empty, and `gone` plus `sweep` reclaim what a dead
+/// process held. The same three properties as before, over the same
+/// domain (three processes, six channels); see `model` for why the proofs
+/// run on the model and how it is held to the ledger.
+#[cfg(kani)]
+mod proofs {
+    use super::End;
+    use super::model::{E, Model, PIPES, PROCS, T, creator};
+
+    fn any_proc() -> usize {
+        kani::any_where(|&p: &usize| p < PROCS)
+    }
+
+    fn any_pipe() -> usize {
+        kani::any_where(|&i: &usize| i < PIPES)
+    }
+
+    fn any_end() -> End {
+        if kani::any() {
+            End::Sender
+        } else {
+            End::Receiver
+        }
+    }
+
+    /// A relay of one end then a redemption on its carrier moves the end
+    /// to the redeemer and leaves no ticket behind.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn relay_then_redeem_moves_one_end() {
+        let mut l = Model::default();
+        let carrier = any_pipe();
+        let moved = any_pipe();
+        let from = any_proc();
+        let by = any_proc();
+        let end = any_end();
+        // The redeemer holds the carrier's receiver.
+        l.place(carrier, End::Receiver, by);
+        kani::assume(moved != carrier);
+        l.relay(
+            0,
+            T {
+                carrier,
+                from,
+                pipe: moved,
+                end,
+            },
+        );
+        // While held under the ticket, the moved end has no live holder.
+        assert!(l.holder(moved, end) == Some(None));
+        assert!(!l.ticket_free(0));
+        match l.redeem(by, 0, carrier) {
+            Ok(held) => {
+                assert!(held.pipe == moved && held.end == end);
+                assert!(l.holder(moved, end) == Some(Some(by)));
+                assert!(l.ticket_free(0));
+                assert!(l.tickets_outstanding() == 0);
+                kani::cover!(end == End::Receiver, "a receiver end reaches the redeemer");
+                kani::cover!(end == End::Sender, "a sender end reaches the redeemer");
+            }
+            Err(e) => {
+                // Only a refused redemption keeps the ticket.
+                assert!(e != E::NoTicket);
+                assert!(!l.ticket_free(0));
+            }
+        }
+    }
+
+    /// A relay counts one ticket against its carrier, and redeeming a
+    /// fresh ledger's only ticket empties the per-carrier count, so the
+    /// carrier has room again.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn a_redeemed_ticket_frees_its_carriers_slot() {
+        let mut l = Model::default();
+        let carrier = any_pipe();
+        let by = any_proc();
+        l.place(carrier, End::Receiver, by);
+        let a = any_pipe();
+        kani::assume(a != carrier);
+        l.relay(
+            1,
+            T {
+                carrier,
+                from: by,
+                pipe: a,
+                end: End::Sender,
+            },
+        );
+        assert!(l.by_carrier(carrier) == 1);
+        assert!(l.redeem(by, 1, carrier).is_ok());
+        assert!(l.by_carrier(carrier) == 0);
+        assert!(l.outstanding(by) == 0);
+        kani::cover!(true, "the ticket is redeemed");
+    }
+
+    /// A process ending releases every ticket only it could redeem and,
+    /// after a sweep, forgets a channel whose ends are both gone.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn gone_then_sweep_reclaims() {
+        let mut l = Model::default();
+        let p = any_proc();
+        let chan = any_pipe();
+        l.place(chan, End::Sender, p);
+        l.place(chan, End::Receiver, p);
+        assert!(l.has_creator(creator(chan)));
+        let _ = l.gone(p);
+        let emptied = l.sweep();
+        assert!(l.holder(chan, End::Sender).is_none());
+        let c = creator(chan);
+        assert!(emptied.get(c).copied().unwrap_or(false) || l.has_creator(c));
+        kani::cover!(
+            emptied.get(c).copied().unwrap_or(false),
+            "the creator is left with no channels"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -805,6 +1199,126 @@ mod tests {
         let n = u64::try_from(i).unwrap_or(0).wrapping_add(1);
         t[..8].copy_from_slice(&n.to_le_bytes());
         t
+    }
+
+    /// The Kani proofs run on `model`; this holds the model to the
+    /// ledger. Random sequences of every operation the model has, over its
+    /// whole domain, give the same results on both, and after each step
+    /// the same holder for every end, the same tickets, creators and
+    /// per-carrier and per-process counts.
+    #[test]
+    fn the_model_agrees_with_the_ledger() {
+        use super::model::{E, Model, PIPES, PROCS, T, TICKETS, creator};
+        let key = |i: usize| PipeKey {
+            creator: u32::try_from(creator(i)).unwrap(),
+            id: [u8::try_from(i % 2).unwrap(); 16],
+        };
+        let ticket = |t: usize| [u8::try_from(t).unwrap().wrapping_add(1); 16];
+        let proc = |p: usize| u32::try_from(p).unwrap();
+        let mut x: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = |n: usize| {
+            x ^= x.wrapping_shl(13);
+            x ^= x.wrapping_shr(7);
+            x ^= x.wrapping_shl(17);
+            usize::try_from(x % u64::try_from(n).unwrap()).unwrap()
+        };
+        let mut ops = [0usize; 6];
+        for _ in 0..3_000 {
+            let mut l = Ledger::default();
+            let mut m = Model::default();
+            for _ in 0..40 {
+                let end = if next(2) == 0 {
+                    End::Sender
+                } else {
+                    End::Receiver
+                };
+                let op = next(6);
+                ops[op] += 1;
+                match op {
+                    0 => {
+                        let (i, to) = (next(PIPES), next(PROCS));
+                        l.place(key(i), end, proc(to)).unwrap();
+                        m.place(i, end, to);
+                    }
+                    1 => {
+                        let (t, c, from, i) =
+                            (next(TICKETS), next(PIPES), next(PROCS), next(PIPES));
+                        let held = Held {
+                            carrier: key(c),
+                            from: proc(from),
+                            ends: vec![(key(i), end, WireKind::Sender)],
+                        };
+                        l.relay(ticket(t), held).unwrap();
+                        m.relay(
+                            t,
+                            T {
+                                carrier: c,
+                                from,
+                                pipe: i,
+                                end,
+                            },
+                        );
+                    }
+                    2 => {
+                        let (by, t, rx) = (next(PROCS), next(TICKETS), next(PIPES));
+                        let real = l.redeem(proc(by), &ticket(t), key(rx));
+                        let got = m.redeem(by, t, rx);
+                        match (real, got) {
+                            (Ok((held, _)), Ok(h)) => {
+                                assert_eq!(held.carrier, key(h.carrier));
+                                assert_eq!(held.from, proc(h.from));
+                                assert_eq!(held.ends, vec![(key(h.pipe), h.end, WireKind::Sender)]);
+                            }
+                            (Err(LedgerError::NoTicket), Err(E::NoTicket))
+                            | (Err(LedgerError::WrongChannel), Err(E::WrongChannel))
+                            | (Err(LedgerError::NotHolder), Err(E::NotHolder)) => {}
+                            (a, b) => panic!("redeem: ledger {a:?}, model {b:?}"),
+                        }
+                    }
+                    3 => {
+                        let p = next(PROCS);
+                        let mut real = l.gone(proc(p));
+                        real.sort_unstable();
+                        let dead = m.gone(p);
+                        let want: Vec<_> = (0..TICKETS).filter(|t| dead[*t]).map(ticket).collect();
+                        assert_eq!(real, want);
+                    }
+                    4 => {
+                        let mut real = l.sweep();
+                        real.sort_unstable();
+                        let emptied = m.sweep();
+                        let want: Vec<_> = (0..PROCS).filter(|c| emptied[*c]).map(proc).collect();
+                        assert_eq!(real, want);
+                    }
+                    _ => {
+                        let (i, by) = (next(PIPES), next(PROCS));
+                        l.close_end(key(i), end, proc(by));
+                        m.close_end(i, end, by);
+                    }
+                }
+                for i in 0..PIPES {
+                    for e in [End::Sender, End::Receiver] {
+                        let real = l
+                            .view(key(i), e)
+                            .map(|v| v.holder.map(|p| usize::try_from(p).unwrap()));
+                        assert_eq!(real, m.holder(i, e), "channel {i} {e:?}");
+                    }
+                    let real = l.by_carrier.get(&key(i)).copied().unwrap_or(0);
+                    assert_eq!(real, m.by_carrier(i));
+                }
+                for t in 0..TICKETS {
+                    assert_eq!(l.ticket_free(&ticket(t)), m.ticket_free(t));
+                }
+                assert_eq!(l.tickets_outstanding(), m.tickets_outstanding());
+                for p in 0..PROCS {
+                    assert_eq!(l.has_creator(proc(p)), m.has_creator(p));
+                    let real = l.outstanding.get(&proc(p)).copied().unwrap_or(0);
+                    assert_eq!(real, m.outstanding(p));
+                }
+            }
+        }
+        // Every operation ran many times.
+        assert!(ops.iter().all(|n| *n > 10_000), "{ops:?}");
     }
 
     #[test]
