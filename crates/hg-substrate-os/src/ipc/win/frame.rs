@@ -561,8 +561,28 @@ mod proofs {
         ctl_round_trip::<40>();
     }
 
-    /// A one-item `Relay` (40 bytes) is reachable, so the harness above
-    /// is not vacuous for items.
+    // Every valid control record's length is covered: 24
+    // (BindBroken, Unbind), 32 (Hello, RelayOk, RelayRefused,
+    // RedeemRefused, Bind, a zero-item Relay or Redeemed), 40 (Redeem,
+    // a one-item Relay or Redeemed), and 56 (a two-item Relay), the
+    // multi-item case. No other length decodes (the decoder checks the
+    // exact tail), which these harnesses prove by accepting only inputs
+    // that re-encode to their own length.
+    #[kani::proof]
+    #[kani::unwind(26)]
+    fn ctl_round_trips_24() {
+        ctl_round_trip::<24>();
+    }
+
+    #[kani::proof]
+    #[kani::unwind(58)]
+    fn ctl_round_trips_56() {
+        ctl_round_trip::<56>();
+    }
+
+    /// A one-item `Relay` (40 bytes) and a two-item `Relay` (56 bytes)
+    /// are reachable, so the length harnesses are not vacuous for items
+    /// or for multi-item records.
     #[kani::proof]
     #[kani::unwind(42)]
     fn a_relay_decodes() {
@@ -570,6 +590,17 @@ mod proofs {
         let r = decode_ctl(&input);
         kani::cover!(matches!(r, Ok(Ctl::Relay { .. })), "a relay with one item");
         kani::cover!(matches!(r, Ok(Ctl::Redeem { .. })), "a redeem");
+    }
+
+    #[kani::proof]
+    #[kani::unwind(58)]
+    fn a_two_item_relay_decodes() {
+        let input: [u8; 56] = kani::any();
+        let r = decode_ctl(&input);
+        kani::cover!(
+            matches!(r, Ok(Ctl::Relay { items, .. }) if items.as_slice().len() == 2),
+            "a relay carrying two items"
+        );
     }
 
     /// Data messages: the split never panics and keeps every byte.

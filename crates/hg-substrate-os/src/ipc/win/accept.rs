@@ -386,6 +386,55 @@ mod proofs {
         }
     }
 
+    /// An independent statement of what a relay may take, written as a
+    /// flat conjunction of the rules in plain terms rather than as
+    /// [`accept`]'s cascade, so a wrong check in `accept` shows up as a
+    /// disagreement. `accept` is then proved to accept a handle exactly
+    /// when this holds, and to return the stated channel and end.
+    fn should_accept(claimed: WireKind, f: &Facts, ctx: &Ctx) -> Option<(PipeKey, End)> {
+        let signed = i64::from_ne_bytes(f.raw.to_ne_bytes());
+        let value_ok = signed > 0 && f.raw % 4 == 0;
+        let end = end_for(claimed);
+        let pipe = f.pipe?;
+        let view = ctx.view.unwrap_or(View {
+            holder: Some(pipe.creator),
+            bound: false,
+            bound_receiver: false,
+        });
+        let kind_ok = match claimed {
+            WireKind::BoundSender => !view.bound && pipe.creator == ctx.relayer,
+            WireKind::Sender => !view.bound,
+            WireKind::Receiver => !view.bound && !view.bound_receiver,
+        };
+        let all = value_ok
+            && f.pulled
+            && f.is_pipe
+            && f.message
+            && f.read_message
+            && f.wait
+            && f.max_instances == 1
+            && f.server_end == (end == End::Receiver)
+            && f.handle_count == 1
+            && pipe != ctx.carrier
+            && view.holder == Some(ctx.relayer)
+            && kind_ok;
+        all.then_some((pipe, end))
+    }
+
+    /// `accept` agrees with [`should_accept`] in both directions, and
+    /// returns the same channel and end.
+    #[kani::proof]
+    fn accept_matches_its_spec() {
+        let claimed = any_kind();
+        let f = any_facts();
+        let ctx = any_ctx();
+        assert!(accept(claimed, &f, &ctx).ok() == should_accept(claimed, &f, &ctx));
+        kani::cover!(
+            should_accept(claimed, &f, &ctx).is_some(),
+            "the spec accepts some handle"
+        );
+    }
+
     /// Exactly the stated handles pass: for any facts, claim and ledger
     /// view, an accepted handle is a positive, untagged value naming a
     /// one-instance message pipe of the claimed end, which no one else
