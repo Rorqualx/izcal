@@ -203,6 +203,65 @@ const NO_EXEC_ARGS: &[(u32, Cond)] = &[(
     },
 )];
 const SHUTDOWN_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(SHUT_WR))];
+/// The `ioctl` commands std and the transports use, on a descriptor the
+/// process holds: `TCGETS` (`isatty`), `FIONBIO`, `FIONCLEX`, `FIOCLEX`.
+/// Everything else, `TIOCSTI` (0x5412, typing into a terminal) first,
+/// is denied (design review M1).
+const IOCTL_CMDS: &[u32] = &[0x5401, 0x5421, 0x5450, 0x5451];
+/// `TIOCSTI`: queues input on a terminal. Never allowed.
+pub const TIOCSTI: u32 = 0x5412;
+const IOCTL_ARGS: &[(u32, Cond)] = &[(1, Cond::OneOf(IOCTL_CMDS))];
+
+/// `tgkill` on x86_64 and aarch64.
+const TGKILL_X86_64: u32 = 234;
+const TGKILL_AARCH64: u32 = 131;
+/// `execveat` on x86_64 and aarch64.
+pub const EXECVEAT_X86_64: u32 = 322;
+/// `execveat` on aarch64.
+pub const EXECVEAT_AARCH64: u32 = 281;
+
+/// The steady-state allowlist of a process whose thread-group id is
+/// `own_tgid`: the arch's table plus `tgkill` limited to the process's
+/// own threads (design review M2: no signalling another process, which a
+/// child without a PID namespace could otherwise do). Built once, at the
+/// process's own lockdown, so the one argument slice it makes is leaked
+/// once per process.
+#[must_use]
+pub fn steady_rules(arch: u32, own_tgid: u32) -> Vec<Rule> {
+    let (table, tgkill) = match arch {
+        ARCH_AARCH64 => (RULES_AARCH64, TGKILL_AARCH64),
+        _ => (RULES_X86_64, TGKILL_X86_64),
+    };
+    let args: &'static [(u32, Cond)] = Box::leak(Box::new([(0, Cond::Eq(own_tgid))]));
+    let mut v = table.to_vec();
+    v.push(Rule {
+        nr: tgkill,
+        args,
+        action: RET_ALLOW,
+        reason: "tgkill — this process's own threads only (review M2)",
+    });
+    v
+}
+
+/// The launch filter of a kind: its steady-state list plus `execveat`,
+/// and nothing else (design review B1). Seccomp filters stack, so a
+/// child that installs this before its exec keeps it for life: it must
+/// allow everything the steady list does. After exec the process adds the
+/// steady list, which takes `execveat` away.
+#[must_use]
+pub fn launch_rules(arch: u32, steady: &[Rule]) -> Vec<Rule> {
+    let execveat = if arch == ARCH_AARCH64 {
+        EXECVEAT_AARCH64
+    } else {
+        EXECVEAT_X86_64
+    };
+    let mut v = steady.to_vec();
+    v.push(allow(
+        execveat,
+        "execveat — the launch exec only; the steady filter removes it (review B1)",
+    ));
+    v
+}
 
 /// The x86_64 table: the empty process's needs, then the IPC
 /// transport's (M1 phase D3), each with its reason.
@@ -227,7 +286,11 @@ pub const RULES_X86_64: &[Rule] = &[
     allow(13, "rt_sigaction — thread setup"),
     allow(14, "rt_sigprocmask — thread setup"),
     allow(15, "rt_sigreturn — signal return"),
-    allow(16, "ioctl — std's fd queries"),
+    allow_if(
+        16,
+        IOCTL_ARGS,
+        "ioctl — std's fd queries, by command; never TIOCSTI (review M1)",
+    ),
     allow(24, "sched_yield"),
     allow(28, "madvise — the allocator"),
     allow(35, "nanosleep"),
@@ -288,7 +351,6 @@ pub const RULES_X86_64: &[Rule] = &[
     allow(230, "clock_nanosleep — std::thread::sleep"),
     allow(231, "exit_group"),
     allow(233, "epoll_ctl — the IPC IO thread's interest list"),
-    allow(234, "tgkill — thread signalling"),
     allow(262, "newfstatat — std's fd queries"),
     allow(273, "set_robust_list — glibc thread teardown"),
     allow(281, "epoll_pwait — the IPC IO thread's wait"),
@@ -321,7 +383,7 @@ pub const RULES_AARCH64: &[Rule] = &[
         ADD_SEALS_ARGS,
         "fcntl — sealing an IPC region (write or future-write, and seal)",
     ),
-    allow(29, "ioctl"),
+    allow_if(29, IOCTL_ARGS, "ioctl — by command; never TIOCSTI"),
     allow(57, "close"),
     allow(62, "lseek"),
     allow(63, "read"),
@@ -338,7 +400,6 @@ pub const RULES_AARCH64: &[Rule] = &[
     allow(115, "clock_nanosleep"),
     allow(123, "sched_getaffinity"),
     allow(124, "sched_yield"),
-    allow(131, "tgkill"),
     allow(132, "sigaltstack"),
     allow(134, "rt_sigaction"),
     allow(135, "rt_sigprocmask"),
@@ -678,6 +739,77 @@ mod tests {
         }
     }
 
+    /// Design review B1: for every call, the launch filter allows what the
+    /// steady filter allows, and the only thing it adds is `execveat`.
+    #[test]
+    fn launch_is_steady_plus_execveat_only() {
+        for (arch, exec) in [
+            (ARCH_X86_64, EXECVEAT_X86_64),
+            (ARCH_AARCH64, EXECVEAT_AARCH64),
+        ] {
+            for pid in [1, 4_194_303] {
+                let steady = steady_rules(arch, pid);
+                let launch = launch_rules(arch, &steady);
+                let steady_p = program(arch, &steady).unwrap();
+                let launch_p = program(arch, &launch).unwrap();
+                for nr in 0..500 {
+                    for a in [0u64, 1, 0x5401, 0x5412, u64::from(pid), 0x4, 0x8 | 0x1] {
+                        let call = Call {
+                            arch,
+                            nr,
+                            args: [a, a, a, a, a, a],
+                        };
+                        let st = run(&steady_p, &call).unwrap();
+                        let la = run(&launch_p, &call).unwrap();
+                        assert_eq!(st, expected(arch, &steady, &call));
+                        assert_eq!(la, expected(arch, &launch, &call));
+                        if nr == exec {
+                            assert_eq!(st, RET_DENY, "steady never execs");
+                            assert_eq!(la, RET_ALLOW);
+                        } else {
+                            assert_eq!(st, la, "nr {nr} arg {a:#x}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Design review M1: `ioctl` only by command; `TIOCSTI` is denied.
+    #[test]
+    fn ioctl_is_allowed_by_command_and_never_tiocsti() {
+        for (arch, nr) in [(ARCH_X86_64, 16), (ARCH_AARCH64, 29)] {
+            let rules = steady_rules(arch, 1);
+            let p = program(arch, &rules).unwrap();
+            let call = |cmd: u64| Call {
+                arch,
+                nr,
+                args: [3, cmd, 0, 0, 0, 0],
+            };
+            assert_eq!(run(&p, &call(u64::from(TIOCSTI))).unwrap(), RET_DENY);
+            assert_eq!(run(&p, &call(0x5401)).unwrap(), RET_ALLOW, "TCGETS");
+            assert_eq!(run(&p, &call(0x5451)).unwrap(), RET_ALLOW, "FIOCLEX");
+            assert_eq!(run(&p, &call(0x8912)).unwrap(), RET_DENY, "SIOCGIFCONF");
+        }
+    }
+
+    /// Design review M2: `tgkill` reaches only the process's own threads.
+    #[test]
+    fn tgkill_reaches_only_the_own_process() {
+        for (arch, nr) in [(ARCH_X86_64, 234), (ARCH_AARCH64, 131)] {
+            let rules = steady_rules(arch, 4242);
+            let p = program(arch, &rules).unwrap();
+            let call = |tgid: u64| Call {
+                arch,
+                nr,
+                args: [tgid, 4243, 6, 0, 0, 0],
+            };
+            assert_eq!(run(&p, &call(4242)).unwrap(), RET_ALLOW);
+            assert_eq!(run(&p, &call(1)).unwrap(), RET_DENY);
+            assert_eq!(run(&p, &call(4241)).unwrap(), RET_DENY);
+        }
+    }
+
     /// Every rule's own number with interesting argument values, plus
     /// unlisted numbers and the other arch: the program agrees with the
     /// table on all of them.
@@ -868,5 +1000,44 @@ mod tests {
             let prog = program(arch, rules).unwrap();
             assert!(prog.len() <= MAX_INSNS);
         }
+    }
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::{
+        ARCH_AARCH64, ARCH_X86_64, Call, EXECVEAT_AARCH64, EXECVEAT_X86_64, RET_ALLOW, RET_DENY,
+        expected, launch_rules, steady_rules,
+    };
+
+    /// Design review B1, for any call on either arch: launch ⊇ steady,
+    /// and launch ∖ steady = {execveat}.
+    #[kani::proof]
+    #[kani::unwind(70)]
+    fn launch_adds_exactly_execveat() {
+        let aarch64: bool = kani::any();
+        let (arch, exec) = if aarch64 {
+            (ARCH_AARCH64, EXECVEAT_AARCH64)
+        } else {
+            (ARCH_X86_64, EXECVEAT_X86_64)
+        };
+        let steady = steady_rules(arch, kani::any());
+        let launch = launch_rules(arch, &steady);
+        let call = Call {
+            arch: kani::any(),
+            nr: kani::any(),
+            args: kani::any(),
+        };
+        let st = expected(arch, &steady, &call);
+        let la = expected(arch, &launch, &call);
+        if call.nr == exec {
+            assert!(st == RET_DENY);
+        } else {
+            assert!(st == la);
+        }
+        kani::cover!(
+            la == RET_ALLOW && st == RET_DENY,
+            "execveat is the launch-only call"
+        );
     }
 }

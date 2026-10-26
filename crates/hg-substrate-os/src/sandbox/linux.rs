@@ -14,7 +14,7 @@
 //! seccomp FFI.
 #![expect(unsafe_code, reason = "G5: sandbox::linux (seccomp BPF)")]
 
-use super::seccomp::{ARCH_AARCH64, ARCH_X86_64, Insn, RULES_AARCH64, RULES_X86_64, program};
+use super::seccomp::{ARCH_AARCH64, ARCH_X86_64, Insn, program, steady_rules};
 
 /// The program header, matching the kernel's `sock_fprog`.
 #[repr(C)]
@@ -31,12 +31,14 @@ const SECCOMP_FILTER_FLAG_TSYNC: libc::c_ulong = 1;
 /// precondition), then the filter on every thread. Returns the error on
 /// failure.
 pub fn apply_empty_process_profile() -> Result<(), String> {
-    let (arch, rules) = if cfg!(target_arch = "x86_64") {
-        (ARCH_X86_64, RULES_X86_64)
+    let arch = if cfg!(target_arch = "x86_64") {
+        ARCH_X86_64
     } else {
-        (ARCH_AARCH64, RULES_AARCH64)
+        ARCH_AARCH64
     };
-    let filter = program(arch, rules).map_err(|e| format!("seccomp program: {e:?}"))?;
+    let own = std::process::id();
+    let rules = steady_rules(arch, own);
+    let filter = program(arch, &rules).map_err(|e| format!("seccomp program: {e:?}"))?;
     let len = u16::try_from(filter.len()).map_err(|_e| "seccomp program too long".to_string())?;
     // SAFETY: prctl with PR_SET_NO_NEW_PRIVS takes no pointers.
     let rc = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
