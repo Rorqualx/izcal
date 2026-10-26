@@ -538,6 +538,7 @@ fn verify_process_host_ready_round_trip_0() {
     let decoded = ProcessHost::decode_ready(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((kind, build)) = decoded {
+        const { assert!(12 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         0u16.encode(&mut w);
         ProcessHost::encode_ready(&mut w, &kind, &build);
@@ -606,6 +607,7 @@ fn verify_process_host_pong_round_trip_0() {
     let decoded = ProcessHost::decode_pong(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((nonce,)) = decoded {
+        const { assert!(8 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         ProcessHost::encode_pong(&mut w, &nonce);
@@ -951,6 +953,7 @@ fn verify_process_control_ping_round_trip_0() {
     let decoded = ProcessControl::decode_ping(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((nonce,)) = decoded {
+        const { assert!(8 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         0u16.encode(&mut w);
         ProcessControl::encode_ping(&mut w, &nonce);
@@ -1027,6 +1030,7 @@ fn verify_process_control_exit_round_trip_0() {
     let decoded = ProcessControl::decode_exit(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((reason,)) = decoded {
+        const { assert!(4 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         ProcessControl::encode_exit(&mut w, &reason);
@@ -1064,6 +1068,7 @@ fn verify_process_control_exit_round_trip_1() {
     let decoded = ProcessControl::decode_exit(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((reason,)) = decoded {
+        const { assert!(12 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         ProcessControl::encode_exit(&mut w, &reason);
@@ -1109,6 +1114,7 @@ fn verify_process_control_exit_round_trip_2() {
     let decoded = ProcessControl::decode_exit(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((reason,)) = decoded {
+        const { assert!(8 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         ProcessControl::encode_exit(&mut w, &reason);
