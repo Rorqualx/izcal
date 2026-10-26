@@ -3301,10 +3301,10 @@ impl crate::sample::Sample for OsInput {
 
 /// VER-1 for `os.OsInput.launch` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 18 to 59486); loops unwound 8194 times.
+/// 64 bytes (its encodings are 18 to 59486); loops unwound 64 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(8194)]
+#[kani::unwind(64)]
 fn verify_os_input_launch_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -3433,10 +3433,10 @@ fn verify_os_input_default_status_round_trip() {
 
 /// VER-1 for `os.OsInput.settings` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 42 to 2746); loops unwound 66 times.
+/// 64 bytes (its encodings are 42 to 2746); loops unwound 64 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(66)]
+#[kani::unwind(64)]
 fn verify_os_input_settings_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -3477,10 +3477,10 @@ fn verify_os_input_locale_validates() {
 
 /// VER-1 for `os.OsInput.time_zone` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 7 to 79); loops unwound 66 times.
+/// 64 bytes (its encodings are 7 to 79); loops unwound 64 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(66)]
+#[kani::unwind(64)]
 fn verify_os_input_time_zone_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -3495,10 +3495,10 @@ fn verify_os_input_time_zone_validates() {
 /// VER-1 for `os.OsInput.time_zone` (IPC-R5, IPC-R6): decoding
 /// never panics, and every accepted input re-encodes to the same
 /// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 7
-/// to 79); loops unwound 66 times.
+/// to 79); loops unwound 24 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(66)]
+#[kani::unwind(24)]
 fn verify_os_input_time_zone_round_trip() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
@@ -4790,10 +4790,10 @@ fn verify_os_command_ask_round_trip() {
 
 /// VER-1 for `os.OsCommand.register` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 27 to 10355); loops unwound 8194 times.
+/// 64 bytes (its encodings are 27 to 10355); loops unwound 64 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(8194)]
+#[kani::unwind(64)]
 fn verify_os_command_register_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -4808,10 +4808,10 @@ fn verify_os_command_register_validates() {
 /// VER-1 for `os.OsCommand.register` (IPC-R5, IPC-R6): decoding
 /// never panics, and every accepted input re-encodes to the same
 /// bytes. Bounds: messages of 2 to 27 bytes (its encodings are 27
-/// to 10355); loops unwound 8194 times.
+/// to 10355); loops unwound 27 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(8194)]
+#[kani::unwind(27)]
 fn verify_os_command_register_round_trip() {
     let bytes: [u8; 25] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 25);
@@ -4909,10 +4909,10 @@ fn verify_os_command_register_round_trip() {
 
 /// VER-1 for `os.OsCommand.hold` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 19 to 275); loops unwound 258 times.
+/// 64 bytes (its encodings are 19 to 275); loops unwound 64 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(258)]
+#[kani::unwind(64)]
 fn verify_os_command_hold_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -4927,10 +4927,10 @@ fn verify_os_command_hold_validates() {
 /// VER-1 for `os.OsCommand.hold` (IPC-R5, IPC-R6): decoding
 /// never panics, and every accepted input re-encodes to the same
 /// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 19
-/// to 275); loops unwound 258 times.
+/// to 275); loops unwound 24 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(258)]
+#[kani::unwind(24)]
 fn verify_os_command_hold_round_trip() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
@@ -5019,10 +5019,10 @@ fn verify_os_command_hold_round_trip() {
 
 /// VER-1 for `os.OsCommand.post` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 18 to 5138); loops unwound 4098 times.
+/// 64 bytes (its encodings are 18 to 5138); loops unwound 64 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(4098)]
+#[kani::unwind(64)]
 fn verify_os_command_post_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -5037,10 +5037,10 @@ fn verify_os_command_post_validates() {
 /// VER-1 for `os.OsCommand.post` (IPC-R5, IPC-R6): decoding
 /// never panics, and every accepted input re-encodes to the same
 /// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 18
-/// to 5138); loops unwound 4098 times.
+/// to 5138); loops unwound 24 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(4098)]
+#[kani::unwind(24)]
 fn verify_os_command_post_round_trip() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);
@@ -5129,10 +5129,10 @@ fn verify_os_command_post_round_trip() {
 
 /// VER-1 for `os.OsCommand.launch` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 64 bytes (its encodings are 10 to 8202); loops unwound 8194 times.
+/// 64 bytes (its encodings are 10 to 8202); loops unwound 64 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(8194)]
+#[kani::unwind(64)]
 fn verify_os_command_launch_validates() {
     let bytes: [u8; 62] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 62);
@@ -5147,10 +5147,10 @@ fn verify_os_command_launch_validates() {
 /// VER-1 for `os.OsCommand.launch` (IPC-R5, IPC-R6): decoding
 /// never panics, and every accepted input re-encodes to the same
 /// bytes. Bounds: messages of 2 to 24 bytes (its encodings are 10
-/// to 8202); loops unwound 8194 times.
+/// to 8202); loops unwound 24 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(8194)]
+#[kani::unwind(24)]
 fn verify_os_command_launch_round_trip() {
     let bytes: [u8; 22] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| n <= 22);

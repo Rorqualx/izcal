@@ -928,6 +928,19 @@ fn snake_of(pascal: &str) -> String {
     s
 }
 
+/// The unwind bound for a harness over bodies of at most `body` bytes
+/// whose types loop at most `max_loop` times. A loop over a string's
+/// bytes or a vec's elements runs no more times than the body has bytes
+/// (each byte or element is at least one byte of input), so a
+/// `string<8192>` in a 22-byte body unwinds 24 times, not 8,194: CBMC
+/// unrolls a loop with a symbolic count as many times as the bound
+/// allows, and 8,194 copies of a decode loop did not finish in 72
+/// minutes. Kani checks unwinding assertions, so a loop that could run
+/// longer (elements of no bytes) fails the proof rather than passing it.
+fn unwind_bound(max_loop: u128, body: u128) -> u128 {
+    max_loop.min(body) + 2
+}
+
 /// Writes the validator harness for one message: on every body of up to
 /// `KANI_VALIDATE_BYTES` bytes, validating never panics, overflows or
 /// reads out of bounds (VER-1's three properties). The validator
@@ -944,7 +957,7 @@ fn validator_harness(
     let size = facts.size;
     let k = KANI_VALIDATE_BYTES.max(size.min).min(size.max);
     let body = k.saturating_sub(2);
-    let unwind = facts.max_loop + 2;
+    let unwind = unwind_bound(facts.max_loop, body);
     let _ = writeln!(
         o.s,
         "/// VER-1 for `{protocol}.{iface}.{name}` (IPC-R5): validating never\n\
@@ -1006,10 +1019,9 @@ fn kani(o: &mut Out, protocol: &str, iface: &str, messages: &[Case], checked: &C
         // The harness feeds the body only; the ordinal is the dispatcher's.
         let k = KANI_INPUT_BYTES.max(size.min).min(size.max);
         let body = k.saturating_sub(2);
-        // Every loop runs at most `max_loop` times (bounded types), and
-        // the comparison below is unrolled here rather than looped, so
-        // nothing needs an unwind bound set by the input length.
-        let unwind = facts.max_loop + 2;
+        // The comparison below is unrolled here rather than looped; every
+        // other loop is bounded as `unwind_bound` says.
+        let unwind = unwind_bound(facts.max_loop, body);
         let [o0, o1] = u16::try_from(ordinal).unwrap_or(u16::MAX).to_le_bytes();
         let _ = writeln!(
             o.s,
