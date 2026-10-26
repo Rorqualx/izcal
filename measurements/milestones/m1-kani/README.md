@@ -36,8 +36,49 @@ bytes 4.2 GiB.
 | Round trip, `OsInput.power` | Symbolic length: every offset after the first variable field symbolic. Decode alone: 4 s; decode and encode: 57 s, 2.6 GiB; with the byte comparison: out of memory, at a fixed 14-byte length too | Split by layout: option presence, union case, string length and vec count fixed, contents free | One layout: 6.8 s, 30,356 steps; 5 of 6 layouts pass |
 | Validator, two strings (`OsCommand.launch`, `post`) | Each string's UTF-8 check on a symbolic-length slice costs about 1.1 M steps and 4.2 GiB (one `string<8192>`, 62 bytes: 158 s); two in one formula exceed 10 GiB | Not changed (see below) | Open |
 
-A byte-at-a-time UTF-8 check (experiment only, not committed) took the
-`OsCommand.launch` validator from out of memory (2.5 M steps) to a pass
-in 181 s at 1.7 GiB (463 k steps), and `validate_agrees_with_core` still
-passes with it (12 s). It changes `hg-ipc`'s inventoried UTF-8 code, so
-it waits for a decision.
+## The byte-at-a-time UTF-8 check (commit 11dcf0f)
+
+`hg-ipc`'s validator now reads one byte per step. Measured with it:
+`OsCommand.launch` and `post` validators pass (they ran out of memory
+before); `validate_agrees_with_core` 12 s and the new six-byte proof
+30 s; `hg-ipc` 9 of 9 and `hg-ipc-gen` 41 of 41 pass.
+
+Throughput, `measure_validate_throughput` (release, 1 MiB inputs, three
+runs, hueyj under a light booking at load 1.9 to 4), side by side with
+the previous algorithm:
+
+| Input | By byte (now) | By sequence (before) |
+|---|---|---|
+| ASCII | 900–1,010 MiB/s | 1,158–1,355 MiB/s |
+| Mixed (Latin, euro, emoji) | 917–1,056 MiB/s | 854–1,009 MiB/s |
+| CJK | 784–907 MiB/s | 562–658 MiB/s |
+
+## The register round trip
+
+Every layout of `OsCommand.register` runs out of memory, though all its
+structural bytes are fixed (only the 8-byte id is free). Measured piece
+by piece, each a separate harness on the fixed 25-byte layout:
+
+| Harness | Steps | Time |
+|---|---|---|
+| Decode only | 52,175 | 4 s |
+| Decode and encode, length only | 566,024 | 73 s |
+| Decode, encode and compare bytes | 577,341 | out of memory |
+| An empty `string<512>`, round trip | 201,771 | 13 s |
+| `RegistrationKind::NotificationIdentity` (no payload), round trip | 238,953 | 18 s |
+| `u64`, `Option<u64>` (none), `RegistrationOwner::Browser` | 7–10 k | under 1 s |
+
+Encoding, not decoding, is the cost: an encoder reads back a value the
+decoder built on the heap, and CBMC does not carry the fixed layout
+through it. An empty string's encoder costs 200 k steps (its length and
+pointer come from the decoded `String`), and the union's encoder costs
+as much although the case is fixed, because every case's encoder (three
+strings for `Launcher`) is in the formula. Register has two strings and
+that union, so its encoders alone are 566 k steps, and the byte
+comparison on top runs out of memory. (That the union's cost comes from
+its other cases' encoders is an inference from the step counts, not
+measured case by case.) `default_status` layouts 1, 2 and 4 also run
+out of memory; they hold a decoded `Vec` of two-enum structs (no
+strings), and were not measured piece by piece. `power` layout 0 (no call id, the `State` case: four
+enums, no heap values) runs out of memory too, at 426 k steps; its cause
+is not measured yet.
