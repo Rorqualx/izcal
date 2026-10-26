@@ -178,6 +178,11 @@ const MAX_CHILD_REQUESTS: usize = 1024;
 /// with no lock held.
 const COPY_WAIT_POLL: Duration = Duration::from_millis(10);
 
+/// The longest a relay waits for another relay's copy before it is
+/// refused. A copy is registered as soon as it is made, so this bounds
+/// the copy itself: eight 64 MiB copies took about 20 s on rig253.
+const COPY_WAIT_MAX: Duration = Duration::from_secs(300);
+
 /// One item for a listener.
 enum Item {
     Message(Vec<u8>, Vec<Handle>),
@@ -1178,9 +1183,6 @@ impl Inner {
             let from_h = sys::duplicate(&e.master).ok();
             let charged = from_h.is_some() && b.quota.charge(owner, u64::from(size));
             let (true, Some(from_h)) = (charged, from_h) else {
-                if charged {
-                    b.quota.refund(owner, u64::from(size));
-                }
                 Self::release_jobs(b, jobs);
                 return Err(Plan::Quota);
             };
@@ -1253,6 +1255,29 @@ impl Inner {
         if let Some(e) = b.regions.get_mut(&src) {
             e.copying = false;
         }
+    }
+
+    /// Registers copies just made as their sources' one copy (charged
+    /// when planned), and clears the in-progress marks; a copy whose
+    /// source is gone (its owner released) is refunded. Returns the
+    /// handles to drop outside the lock: each relay gets its own
+    /// read-only handle from the copy when it is decided.
+    fn register_made(b: &mut Broker, made: Vec<Prepared>) -> Vec<OwnedHandle> {
+        let mut out = Vec::with_capacity(made.len());
+        for c in made {
+            if b.regions.contains_key(&c.src) {
+                let src = c.src;
+                let (copy_id, ro) = Self::register_copy(b, c);
+                if let Some(e) = b.regions.get_mut(&src) {
+                    e.copy = Some(copy_id);
+                    e.copying = false;
+                }
+                out.push(ro);
+            } else {
+                out.extend(Self::release_prepared(b, vec![c]));
+            }
+        }
+        out
     }
 
     /// Refunds and drops copies a relay did not use: it was refused, its
@@ -1436,6 +1461,7 @@ impl Inner {
                 // held (D5 review M8), then used by the decision.
                 // A copy another relay is making is waited for here, on
                 // this child's worker, then reused.
+                let deadline = StdInstant::now().checked_add(COPY_WAIT_MAX);
                 let plan = loop {
                     let p = {
                         let mut st = self.lock();
@@ -1448,6 +1474,11 @@ impl Inner {
                     };
                     if !matches!(p, Err(Plan::Wait)) {
                         break p;
+                    }
+                    // A copy that takes longer than this refuses the relay
+                    // rather than pin this worker.
+                    if deadline.is_none_or(|d| StdInstant::now() >= d) {
+                        break Err(Plan::Quota);
                     }
                     std::thread::sleep(COPY_WAIT_POLL);
                 };
@@ -1465,6 +1496,12 @@ impl Inner {
                     Some(b) if b.children.contains_key(&proc) => {
                         let copies_ok = failed.is_empty();
                         Self::release_jobs(b, failed);
+                        // Registered now, so the in-progress mark lasts no
+                        // longer than the copy; the decision reuses them.
+                        later.push(Box::new(Self::register_made(
+                            b,
+                            core::mem::take(&mut prepared),
+                        )));
                         let (res, spare) = match planned {
                             Ok(()) if copies_ok => {
                                 Self::relay_decide(b, proc, &carrier_raw, pulled, &mut prepared)
@@ -2438,13 +2475,16 @@ impl Inner {
             );
             let mut drop_later = Vec::new();
             if waiting && failed.is_empty() {
+                if let Some(b) = st.broker.as_mut() {
+                    drop_later = Self::register_made(b, made);
+                }
                 if let Some(End {
                     role: Role::Sender { outbox, .. },
                     ..
                 }) = st.ends.get_mut(&id)
                     && let Some(Out::Carry(c)) = outbox.front_mut()
                 {
-                    c.prepared = Some(made);
+                    c.prepared = Some(Vec::new());
                     c.copying = None;
                 }
             } else {
