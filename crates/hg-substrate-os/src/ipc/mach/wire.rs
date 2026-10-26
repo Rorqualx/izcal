@@ -99,6 +99,10 @@ pub(crate) const DESC_PORT: u8 = 0;
 pub(crate) const DESC_OOL: u8 = 1;
 /// Descriptor type: an out-of-line array of port rights (P31).
 pub(crate) const DESC_OOL_PORTS: u8 = 2;
+/// Descriptor type: out-of-line memory a sender marked volatile. The
+/// kernel accepts and delivers it in the 16-byte out-of-line shape (R11);
+/// it is read and released as out-of-line memory.
+pub(crate) const DESC_OOL_VOLATILE: u8 = 3;
 
 /// Right index for `mach_port_*` calls: a send right (P7).
 pub(crate) const RIGHT_SEND: u32 = 0;
@@ -346,9 +350,14 @@ pub(crate) fn desc_at(buf: &[u8], at: usize, end: usize) -> Result<(Desc, usize)
     };
     let third = w(8)?.to_le_bytes();
     let ty = third[3];
+    // Every type the kernel delivers is known: it refuses any other at
+    // send (types 4 to 6 in both shapes, R11). An unknown type's length
+    // is unknown, so the walk cannot go past it; if the kernel ever
+    // delivered one, the rights and regions in that descriptor and after
+    // it would not be released (the message is refused either way).
     let len = match ty {
         DESC_PORT => PORT_DESC_LEN,
-        DESC_OOL | DESC_OOL_PORTS => OOL_DESC_LEN,
+        DESC_OOL | DESC_OOL_PORTS | DESC_OOL_VOLATILE => OOL_DESC_LEN,
         _ => return Err(WireError::UnknownDescriptor),
     };
     let next = at.checked_add(len).ok_or(WireError::Truncated)?;
@@ -360,7 +369,7 @@ pub(crate) fn desc_at(buf: &[u8], at: usize, end: usize) -> Result<(Desc, usize)
             name: w(0)?,
             disposition: third[2],
         },
-        DESC_OOL => Desc::Ool {
+        DESC_OOL | DESC_OOL_VOLATILE => Desc::Ool {
             address: u64::from(w(0)?) | (u64::from(w(4)?) << 32),
             size: w(12)?,
         },
@@ -840,6 +849,37 @@ mod tests {
                 Desc::OolPorts {
                     address: 0,
                     count: 3,
+                    disposition: PORT_SEND
+                }
+            ]
+        );
+    }
+    /// The volatile out-of-line type the kernel delivers (R11) reads as
+    /// out-of-line memory, so the walk goes past it and releases it.
+    #[test]
+    fn volatile_out_of_line_memory_is_read_like_out_of_line_memory() {
+        let mut out = vec![0u8; 24 + 4 + 16 + 12];
+        out[0..4].copy_from_slice(&BITS_COMPLEX.to_le_bytes());
+        let size = u32::try_from(out.len()).unwrap();
+        out[4..8].copy_from_slice(&size.to_le_bytes());
+        out[24..28].copy_from_slice(&2u32.to_le_bytes());
+        out[28..32].copy_from_slice(&0x3000u32.to_le_bytes());
+        out[36..40].copy_from_slice(&(u32::from(DESC_OOL_VOLATILE) << 24).to_le_bytes());
+        out[40..44].copy_from_slice(&4096u32.to_le_bytes());
+        // Then a port right, which the walk must still reach.
+        out[44..48].copy_from_slice(&0x707u32.to_le_bytes());
+        out[52..56].copy_from_slice(&(u32::from(PORT_SEND) << 16).to_le_bytes());
+        let l = layout(&out).unwrap();
+        assert_eq!(l.walk, Ok(()));
+        assert_eq!(
+            descs(&out, &l).collect::<Vec<_>>(),
+            vec![
+                Desc::Ool {
+                    address: 0x3000,
+                    size: 4096
+                },
+                Desc::Port {
+                    name: 0x707,
                     disposition: PORT_SEND
                 }
             ]
