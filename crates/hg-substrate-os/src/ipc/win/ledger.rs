@@ -1507,8 +1507,9 @@ mod proofs {
 
     /// A process ending releases every ticket only it could redeem and,
     /// after a sweep, forgets a channel whose ends are both gone.
+    // Unwind 18: `gone` runs the old-pipe loops over `model::OLD` (16).
     #[kani::proof]
-    #[kani::unwind(8)]
+    #[kani::unwind(18)]
     fn gone_then_sweep_reclaims() {
         let mut l = Model::default();
         let p = any_proc();

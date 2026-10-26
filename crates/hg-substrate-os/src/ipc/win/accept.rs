@@ -443,6 +443,9 @@ mod proofs {
             WireKind::BoundSender => !view.bound && pipe.creator == ctx.relayer,
             WireKind::Sender => !view.bound,
             WireKind::Receiver => !view.bound && !view.bound_receiver,
+            // A region is never a pipe end (D6): the broker's registry
+            // decides regions, never `accept`.
+            WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => false,
         };
         let all = value_ok
             && f.pulled
