@@ -110,6 +110,13 @@ fn a_child_starts_sandboxed_with_exactly_its_two_ends() {
         "session id is its own pid"
     );
     assert_eq!(fields[4], "0", "no controlling terminal");
+    // No signal blocked: the spawner's SIGCHLD mask is not inherited.
+    let status = std::fs::read_to_string(format!("/proc/{}/status", c.outer_pid)).unwrap();
+    let blocked = status
+        .lines()
+        .find_map(|l| l.strip_prefix("SigBlk:"))
+        .unwrap();
+    assert_eq!(blocked.trim(), "0000000000000000");
     // No file, no socket outside IPC.
     assert_eq!(report_field(&report, "open"), libc::EPERM.to_string());
     assert_eq!(report_field(&report, "inet"), libc::EPERM.to_string());

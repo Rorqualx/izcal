@@ -481,6 +481,18 @@ fn child_steps(
     // (launch facts E9). The failure pipe and the executable are among
     // them: both close at exec.
     let r = (|| {
+        // Every signal unblocked: the spawner blocks SIGCHLD for its
+        // signalfd, and a child inherits no mask it did not ask for.
+        // SAFETY: an all-zero sigset is valid storage for sigemptyset.
+        let mut empty: libc::sigset_t = unsafe { core::mem::zeroed() };
+        // SAFETY: initialises the live set.
+        unsafe { libc::sigemptyset(&raw mut empty) };
+        // SAFETY: a live set; the old mask is not wanted.
+        if unsafe { libc::sigprocmask(libc::SIG_SETMASK, &raw const empty, core::ptr::null_mut()) }
+            != 0
+        {
+            return Err(last_errno());
+        }
         // The executable's handle may sit at 3 or 4 in the spawner, so it
         // moves above them as well.
         let exe = dup_high(plan.exe.as_raw_fd())?;
