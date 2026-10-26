@@ -640,12 +640,26 @@ fn verify_process_host_pong_round_trip() {
     }
 }
 
+/// For [`verify_process_host_unknown_ordinal`]: a message validator that
+/// may accept or refuse anything.
+#[cfg(kani)]
+fn kani_any_process_host_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {
+    if kani::any() {
+        Ok(())
+    } else {
+        Err(BadMessage::Truncated)
+    }
+}
+
 /// VER-1 for `process.ProcessHost`: an ordinal no message has is
 /// refused by the validator, which `decode_exact` runs first,
-/// whatever follows it (bounds: 2 to 4 bytes).
+/// whatever follows it (bounds: 2 to 4 bytes). The message
+/// validators are stubbed: none may run.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(6)]
+#[kani::stub(ProcessHost::validate_ready, kani_any_process_host_validation)]
+#[kani::stub(ProcessHost::validate_pong, kani_any_process_host_validation)]
 fn verify_process_host_unknown_ordinal() {
     let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 2);
     let tail: [u8; 2] = kani::any();
@@ -1055,12 +1069,26 @@ fn verify_process_control_exit_round_trip() {
     }
 }
 
+/// For [`verify_process_control_unknown_ordinal`]: a message validator that
+/// may accept or refuse anything.
+#[cfg(kani)]
+fn kani_any_process_control_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {
+    if kani::any() {
+        Ok(())
+    } else {
+        Err(BadMessage::Truncated)
+    }
+}
+
 /// VER-1 for `process.ProcessControl`: an ordinal no message has is
 /// refused by the validator, which `decode_exact` runs first,
-/// whatever follows it (bounds: 2 to 4 bytes).
+/// whatever follows it (bounds: 2 to 4 bytes). The message
+/// validators are stubbed: none may run.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(6)]
+#[kani::stub(ProcessControl::validate_ping, kani_any_process_control_validation)]
+#[kani::stub(ProcessControl::validate_exit, kani_any_process_control_validation)]
 fn verify_process_control_unknown_ordinal() {
     let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 2);
     let tail: [u8; 2] = kani::any();

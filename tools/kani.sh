@@ -14,7 +14,9 @@ status=0
 for pkg in hg-ipc hg-ipc-gen hg-substrate-os; do
   echo "== cargo kani -p $pkg"
   # pipefail: the pipeline fails if cargo kani does.
-  if ! cargo kani -p "$pkg" "$@" 2>&1 | grep -v "aborting path" >>"$log"; then
+  # -Z stubbing: the generated unknown-ordinal harnesses stub each
+  # message's validator (see hg-ipc-codegen's emit.rs).
+  if ! cargo kani -p "$pkg" -Z stubbing "$@" 2>&1 | grep -v "aborting path" >>"$log"; then
     status=1
   fi
 done

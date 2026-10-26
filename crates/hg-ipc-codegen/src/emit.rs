@@ -1068,15 +1068,39 @@ fn kani(o: &mut Out, protocol: &str, iface: &str, messages: &[Case], checked: &C
     }
     if messages.len() <= usize::from(u16::MAX) {
         let count = messages.len();
+        // Each message's validator is replaced by one that may return
+        // anything: the dispatcher alone decides this property, and with
+        // the real validators in place the solver explores every one of
+        // them on paths the ordinal rules out (OsInput's timed out at 15
+        // minutes; stubbed, it takes under a second). The stubs allow
+        // every result the real validators can give, so the assertion
+        // holds for the real code: it holds only if no message's
+        // validator runs. Needs `-Z stubbing`.
+        let _ = writeln!(
+            o.s,
+            "/// For [`verify_{snake}_unknown_ordinal`]: a message validator that\n\
+             /// may accept or refuse anything.\n\
+             #[cfg(kani)]\n\
+             fn kani_any_{snake}_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {{\n\
+             if kani::any() {{ Ok(()) }} else {{ Err(BadMessage::Truncated) }}\n\
+             }}\n"
+        );
         let _ = writeln!(
             o.s,
             "/// VER-1 for `{protocol}.{iface}`: an ordinal no message has is\n\
              /// refused by the validator, which `decode_exact` runs first,\n\
-             /// whatever follows it (bounds: 2 to 4 bytes)."
+             /// whatever follows it (bounds: 2 to 4 bytes). The message\n\
+             /// validators are stubbed: none may run."
         );
         o.line("#[cfg(kani)]");
         o.line("#[kani::proof]");
         o.line("#[kani::unwind(6)]");
+        for m in messages {
+            let body_fn = snake_of(&pascal_of(&m.id.name));
+            o.line(&format!(
+                "#[kani::stub({iface}::validate_{body_fn}, kani_any_{snake}_validation)]"
+            ));
+        }
         o.line(&format!("fn verify_{snake}_unknown_ordinal() {{"));
         o.line(&format!(
             "let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= {count});"

@@ -977,12 +977,27 @@ fn verify_strict_shapes_validates() {
 // are beyond the solver. Its parsing is proved by the validator
 // harness above, its round trip by the property tests.
 
+/// For [`verify_strict_unknown_ordinal`]: a message validator that
+/// may accept or refuse anything.
+#[cfg(kani)]
+fn kani_any_strict_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {
+    if kani::any() {
+        Ok(())
+    } else {
+        Err(BadMessage::Truncated)
+    }
+}
+
 /// VER-1 for `sample.Strict`: an ordinal no message has is
 /// refused by the validator, which `decode_exact` runs first,
-/// whatever follows it (bounds: 2 to 4 bytes).
+/// whatever follows it (bounds: 2 to 4 bytes). The message
+/// validators are stubbed: none may run.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(6)]
+#[kani::stub(Strict::validate_nothing, kani_any_strict_validation)]
+#[kani::stub(Strict::validate_scalars, kani_any_strict_validation)]
+#[kani::stub(Strict::validate_shapes, kani_any_strict_validation)]
 fn verify_strict_unknown_ordinal() {
     let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 3);
     let tail: [u8; 2] = kani::any();
@@ -1357,12 +1372,26 @@ fn verify_loose_maybe_event_round_trip() {
     }
 }
 
+/// For [`verify_loose_unknown_ordinal`]: a message validator that
+/// may accept or refuse anything.
+#[cfg(kani)]
+fn kani_any_loose_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {
+    if kani::any() {
+        Ok(())
+    } else {
+        Err(BadMessage::Truncated)
+    }
+}
+
 /// VER-1 for `sample.Loose`: an ordinal no message has is
 /// refused by the validator, which `decode_exact` runs first,
-/// whatever follows it (bounds: 2 to 4 bytes).
+/// whatever follows it (bounds: 2 to 4 bytes). The message
+/// validators are stubbed: none may run.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(6)]
+#[kani::stub(Loose::validate_tick, kani_any_loose_validation)]
+#[kani::stub(Loose::validate_maybe_event, kani_any_loose_validation)]
 fn verify_loose_unknown_ordinal() {
     let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 2);
     let tail: [u8; 2] = kani::any();
@@ -1705,12 +1734,26 @@ fn verify_handles_hand_over_round_trip() {
     }
 }
 
+/// For [`verify_handles_unknown_ordinal`]: a message validator that
+/// may accept or refuse anything.
+#[cfg(kani)]
+fn kani_any_handles_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {
+    if kani::any() {
+        Ok(())
+    } else {
+        Err(BadMessage::Truncated)
+    }
+}
+
 /// VER-1 for `sample.Handles`: an ordinal no message has is
 /// refused by the validator, which `decode_exact` runs first,
-/// whatever follows it (bounds: 2 to 4 bytes).
+/// whatever follows it (bounds: 2 to 4 bytes). The message
+/// validators are stubbed: none may run.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(6)]
+#[kani::stub(Handles::validate_connect, kani_any_handles_validation)]
+#[kani::stub(Handles::validate_hand_over, kani_any_handles_validation)]
 fn verify_handles_unknown_ordinal() {
     let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 2);
     let tail: [u8; 2] = kani::any();

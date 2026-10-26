@@ -3900,12 +3900,32 @@ fn verify_os_input_power_round_trip() {
     }
 }
 
+/// For [`verify_os_input_unknown_ordinal`]: a message validator that
+/// may accept or refuse anything.
+#[cfg(kani)]
+fn kani_any_os_input_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {
+    if kani::any() {
+        Ok(())
+    } else {
+        Err(BadMessage::Truncated)
+    }
+}
+
 /// VER-1 for `os.OsInput`: an ordinal no message has is
 /// refused by the validator, which `decode_exact` runs first,
-/// whatever follows it (bounds: 2 to 4 bytes).
+/// whatever follows it (bounds: 2 to 4 bytes). The message
+/// validators are stubbed: none may run.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(6)]
+#[kani::stub(OsInput::validate_launch, kani_any_os_input_validation)]
+#[kani::stub(OsInput::validate_default_status, kani_any_os_input_validation)]
+#[kani::stub(OsInput::validate_settings, kani_any_os_input_validation)]
+#[kani::stub(OsInput::validate_locale, kani_any_os_input_validation)]
+#[kani::stub(OsInput::validate_time_zone, kani_any_os_input_validation)]
+#[kani::stub(OsInput::validate_hardware, kani_any_os_input_validation)]
+#[kani::stub(OsInput::validate_displays, kani_any_os_input_validation)]
+#[kani::stub(OsInput::validate_power, kani_any_os_input_validation)]
 fn verify_os_input_unknown_ordinal() {
     let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 8);
     let tail: [u8; 2] = kani::any();
@@ -5317,12 +5337,31 @@ fn verify_os_command_reply_round_trip() {
     }
 }
 
+/// For [`verify_os_command_unknown_ordinal`]: a message validator that
+/// may accept or refuse anything.
+#[cfg(kani)]
+fn kani_any_os_command_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {
+    if kani::any() {
+        Ok(())
+    } else {
+        Err(BadMessage::Truncated)
+    }
+}
+
 /// VER-1 for `os.OsCommand`: an ordinal no message has is
 /// refused by the validator, which `decode_exact` runs first,
-/// whatever follows it (bounds: 2 to 4 bytes).
+/// whatever follows it (bounds: 2 to 4 bytes). The message
+/// validators are stubbed: none may run.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(6)]
+#[kani::stub(OsCommand::validate_query, kani_any_os_command_validation)]
+#[kani::stub(OsCommand::validate_ask, kani_any_os_command_validation)]
+#[kani::stub(OsCommand::validate_register, kani_any_os_command_validation)]
+#[kani::stub(OsCommand::validate_hold, kani_any_os_command_validation)]
+#[kani::stub(OsCommand::validate_post, kani_any_os_command_validation)]
+#[kani::stub(OsCommand::validate_launch, kani_any_os_command_validation)]
+#[kani::stub(OsCommand::validate_reply, kani_any_os_command_validation)]
 fn verify_os_command_unknown_ordinal() {
     let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 7);
     let tail: [u8; 2] = kani::any();
