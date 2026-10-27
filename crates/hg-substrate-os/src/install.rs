@@ -88,6 +88,27 @@ fn sync_dir(dir: &Path) {
     }
 }
 
+/// A locked lock file. Dropping it unlocks the file and then closes it.
+///
+/// Closing alone would not release the lock at once: the lock belongs
+/// to the open file, which a child process this process is starting
+/// at that moment also refers to, from its creation until its exec
+/// closes the close-on-exec descriptor (flock(2): "file descriptors
+/// duplicated through dup(2) or fork(2) ... multiple references to a
+/// single lock"; the standard library's `File::try_lock`: released when
+/// the file "along with any other file descriptors/handles duplicated
+/// or inherited from it" is closed, or by `unlock`). Measured on macOS
+/// with another thread spawning children: about 3% of releases by close
+/// left the lock held for a moment; none with `unlock` first.
+struct HeldLock(File);
+
+impl Drop for HeldLock {
+    fn drop(&mut self) {
+        // Nothing to do on failure: the close that follows releases it.
+        let _ = self.0.unlock();
+    }
+}
+
 /// An open install file.
 struct OsInstalledFile(Mutex<File>);
 
@@ -205,7 +226,7 @@ impl InstallDevice for OsInstallDevice {
             LockMode::Exclusive => f.try_lock(),
         };
         match taken {
-            Ok(()) => Ok(InstallLock::new(Box::new(f))),
+            Ok(()) => Ok(InstallLock::new(Box::new(HeldLock(f)))),
             Err(std::fs::TryLockError::WouldBlock) => Err(InstallError::WouldBlock),
             Err(std::fs::TryLockError::Error(e)) => Err(map(&e)),
         }
@@ -304,6 +325,50 @@ mod tests {
             Some(InstallError::WouldBlock)
         );
         drop(x);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A dropped lock is free at once, even while this process starts
+    /// children: each child refers to the open lock file from its
+    /// creation until its exec (see [`HeldLock`]). Before the explicit
+    /// unlock, 1,400 to 3,100 of about 100,000 cycles measured blocked.
+    #[test]
+    fn a_dropped_lock_is_free_while_children_start() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (d, root) = device("spawning");
+        let lock = p("build.lock");
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let spawner = {
+            let stop = std::sync::Arc::clone(&stop);
+            std::thread::spawn(move || {
+                let exe = std::env::current_exe().unwrap();
+                let mut spawned = 0_u32;
+                while !stop.load(Ordering::Relaxed) {
+                    // The test binary, listing nothing: a quick child on
+                    // every OS.
+                    std::process::Command::new(&exe)
+                        .args(["--list", "--exact", "no such test"])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status()
+                        .unwrap();
+                    spawned += 1;
+                }
+                spawned
+            })
+        };
+        let mut blocked = 0_u32;
+        for _ in 0..2_000 {
+            let s1 = d.lock(&lock, LockMode::Shared);
+            let s2 = d.lock(&lock, LockMode::Shared);
+            blocked += u32::from(s1.is_err()) + u32::from(s2.is_err());
+            drop((s1, s2));
+            blocked += u32::from(d.lock(&lock, LockMode::Exclusive).is_err());
+        }
+        stop.store(true, Ordering::Relaxed);
+        let spawned = spawner.join().unwrap();
+        assert!(spawned > 0, "no child started during the cycles");
+        assert_eq!(blocked, 0, "{blocked} takes blocked, {spawned} children");
         std::fs::remove_dir_all(root).unwrap();
     }
 }
