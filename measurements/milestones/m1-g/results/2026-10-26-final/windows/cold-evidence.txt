@@ -1,0 +1,77 @@
+2026-10-26T17:53:25-06:00 run 1: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T16:01:28.5000000-07:00; rebooting
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+2026-10-26T18:04:18-06:00 run 1 (first attempt): rebooted at 17:53:45, but the ssh session carrying shutdown hung with the dead connection; loop stopped before any measurement, restarted with ssh keepalives
+2026-10-26T18:04:24-06:00 run 1: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T16:53:45.5000000-07:00; rebooting
+2026-10-26T18:14:45-06:00 run 1 (second attempt): rebooted at 18:04:43; the loop's ssh liveness check ran `true`, which cmd.exe lacks, so it never saw the host return; stopped before any measurement, fixed (`exit 0`), restarted
+2026-10-26T18:14:55-06:00 observation, not data: a test of the measure command over ssh, ~11 min after the 18:04:43 boot, first execution since it: Renderer 9.274 ms, NetworkPartition 10.537 ms (no rig check line before it)
+2026-10-26T18:14:58-06:00 run 1: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:04:43.5000000-07:00; rebooting
+2026-10-26T18:15:42-06:00 run 1: ssh back after 38 s, booted 2026-10-26T17:15:13.5000000-07:00; settling 120 s
+2026-10-26T18:17:44-06:00 run 1: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:17:44-06:00
+2026-10-26T18:17:45-06:00 run 1: 1	NetworkPartition	10.756 1	Renderer	8.867 
+2026-10-26T18:17:47-06:00 run 2: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:15:13.5000000-07:00; rebooting
+2026-10-26T18:18:30-06:00 run 2: ssh back after 38 s, booted 2026-10-26T17:18:01.5000000-07:00; settling 120 s
+2026-10-26T18:20:32-06:00 run 2: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:20:32-06:00
+2026-10-26T18:20:33-06:00 run 2: 1	NetworkPartition	10.409 1	Renderer	8.101 
+2026-10-26T18:20:35-06:00 run 3: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:18:01.5000000-07:00; rebooting
+2026-10-26T18:21:18-06:00 run 3: ssh back after 38 s, booted 2026-10-26T17:20:49.5000000-07:00; settling 120 s
+2026-10-26T18:23:20-06:00 run 3: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:23:20-06:00
+2026-10-26T18:23:21-06:00 run 3: 1	NetworkPartition	9.806 1	Renderer	8.798 
+2026-10-26T18:23:23-06:00 run 4: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:20:49.5000000-07:00; rebooting
+2026-10-26T18:24:06-06:00 run 4: ssh back after 38 s, booted 2026-10-26T17:23:37.5000000-07:00; settling 120 s
+2026-10-26T18:26:08-06:00 run 4: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:26:08-06:00
+2026-10-26T18:26:08-06:00 run 4: 1	NetworkPartition	9.805 1	Renderer	8.439 
+2026-10-26T18:26:10-06:00 run 5: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:23:37.5000000-07:00; rebooting
+2026-10-26T18:26:53-06:00 run 5: ssh back after 38 s, booted 2026-10-26T17:26:25.5000000-07:00; settling 120 s
+2026-10-26T18:28:56-06:00 run 5: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 3% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:28:56-06:00
+2026-10-26T18:28:56-06:00 run 5: 1	NetworkPartition	9.608 1	Renderer	9.587 
+2026-10-26T18:28:58-06:00 run 6: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:26:25.5000000-07:00; rebooting
+2026-10-26T18:29:41-06:00 run 6: ssh back after 37 s, booted 2026-10-26T17:29:13.5000000-07:00; settling 120 s
+2026-10-26T18:31:44-06:00 run 6: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:31:44-06:00
+2026-10-26T18:31:44-06:00 run 6: 1	NetworkPartition	9.980 1	Renderer	8.434 
+2026-10-26T18:31:46-06:00 run 7: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:29:13.5000000-07:00; rebooting
+2026-10-26T18:32:29-06:00 run 7: ssh back after 37 s, booted 2026-10-26T17:32:00.5000000-07:00; settling 120 s
+2026-10-26T18:34:32-06:00 run 7: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:34:32-06:00
+2026-10-26T18:34:32-06:00 run 7: 1	NetworkPartition	9.616 1	Renderer	8.704 
+2026-10-26T18:34:34-06:00 run 8: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:32:00.5000000-07:00; rebooting
+2026-10-26T18:35:17-06:00 run 8: ssh back after 37 s, booted 2026-10-26T17:34:48.5000000-07:00; settling 120 s
+2026-10-26T18:37:20-06:00 run 8: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:37:20-06:00
+2026-10-26T18:37:20-06:00 run 8: 1	NetworkPartition	9.579 1	Renderer	7.918 
+2026-10-26T18:37:22-06:00 run 9: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:34:48.5000000-07:00; rebooting
+2026-10-26T18:38:05-06:00 run 9: ssh back after 38 s, booted 2026-10-26T17:37:36.5000000-07:00; settling 120 s
+2026-10-26T18:40:07-06:00 run 9: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 0% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:40:07-06:00
+2026-10-26T18:40:08-06:00 run 9: 1	NetworkPartition	10.303 1	Renderer	8.421 
+2026-10-26T18:40:10-06:00 run 10: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:37:36.5000000-07:00; rebooting
+2026-10-26T18:40:53-06:00 run 10: ssh back after 38 s, booted 2026-10-26T17:40:24.5000000-07:00; settling 120 s
+2026-10-26T18:42:55-06:00 run 10: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:42:55-06:00
+2026-10-26T18:42:56-06:00 run 10: 1	NetworkPartition	9.923 1	Renderer	8.950 
+2026-10-26T18:42:58-06:00 run 11: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:40:24.5000000-07:00; rebooting
+2026-10-26T18:43:41-06:00 run 11: ssh back after 38 s, booted 2026-10-26T17:43:12.5000000-07:00; settling 120 s
+2026-10-26T18:45:43-06:00 run 11: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 0% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:45:43-06:00
+2026-10-26T18:45:44-06:00 run 11: 1	NetworkPartition	10.111 1	Renderer	8.721 
+2026-10-26T18:45:46-06:00 run 12: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:43:12.5000000-07:00; rebooting
+2026-10-26T18:46:30-06:00 run 12: ssh back after 38 s, booted 2026-10-26T17:46:01.5000000-07:00; settling 120 s
+2026-10-26T18:48:32-06:00 run 12: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:48:32-06:00
+2026-10-26T18:48:32-06:00 run 12: 1	NetworkPartition	9.929 1	Renderer	8.977 
+2026-10-26T18:48:34-06:00 run 13: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:46:01.5000000-07:00; rebooting
+2026-10-26T18:49:17-06:00 run 13: ssh back after 37 s, booted 2026-10-26T17:48:48.5000000-07:00; settling 120 s
+2026-10-26T18:51:20-06:00 run 13: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 2% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:51:20-06:00
+2026-10-26T18:51:20-06:00 run 13: 1	NetworkPartition	10.633 1	Renderer	8.901 
+2026-10-26T18:51:22-06:00 run 14: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:48:48.5000000-07:00; rebooting
+2026-10-26T18:52:05-06:00 run 14: ssh back after 38 s, booted 2026-10-26T17:51:36.5000000-07:00; settling 120 s
+2026-10-26T18:54:08-06:00 run 14: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:54:08-06:00
+2026-10-26T18:54:08-06:00 run 14: 1	NetworkPartition	9.840 1	Renderer	9.127 
+2026-10-26T18:54:10-06:00 run 15: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:51:36.5000000-07:00; rebooting
+2026-10-26T18:54:54-06:00 run 15: ssh back after 38 s, booted 2026-10-26T17:54:25.5000000-07:00; settling 120 s
+2026-10-26T18:56:56-06:00 run 15: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 0% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:56:56-06:00
+2026-10-26T18:56:56-06:00 run 15: 1	NetworkPartition	9.977 1	Renderer	9.489 
+2026-10-26T18:56:59-06:00 run 16: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:54:25.5000000-07:00; rebooting
+2026-10-26T18:57:42-06:00 run 16: ssh back after 38 s, booted 2026-10-26T17:57:13.5000000-07:00; settling 120 s
+2026-10-26T18:59:44-06:00 run 16: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: free q0 | 2026-10-26T18:59:44-06:00
+2026-10-26T18:59:44-06:00 run 16: 1	NetworkPartition	10.493 1	Renderer	8.270 
+2026-10-26T18:59:46-06:00 run 17: gate reachable=True lock=free queue_live=0 games=0; booted 2026-10-26T17:57:13.5000000-07:00; rebooting
+2026-10-26T19:00:29-06:00 run 17: ssh back after 38 s, booted 2026-10-26T18:00:01.5000000-07:00; settling 120 s
+2026-10-26T19:07:27-06:00 run 17: rig check FAIL: rig253 kind=exclusive session=m1-substrate | unreachable | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: ? | 2026-10-26T19:07:15-06:00 | reason: unreachable: cannot measure load (ssh: connect to host 192.168.50.253 port 22: Operation timed out)
+2026-10-26T19:07:27-06:00 run 17: no OK check; stopping
+2026-10-26T19:28:02-06:00 rig253 unreachable since run 17's settle period (ssh answered at 19:00:29, booted 18:00:01 Pacific; no ping or ssh from 19:01; ARP incomplete at 19:27). Not diagnosable remotely; the series stops at 16 of 20 runs. Booking b-30476e is kept until 20:53 in case the host returns.

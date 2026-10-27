@@ -22,4 +22,5 @@ for f in sys.argv[1:]:
         tag=int(r[4].split('=')[1]) if r[4].startswith('tag=') and r[4]!='tag=' else int(r[5])
         share=int([x for x in r if x.startswith('share=')][0].split('=')[1]); prot=[x for x in r if x.startswith('prot=')][0].split('=')[1]
         c[cls(r[1],int(r[2]),tag,share,prot,first)]+=1
-    print(f.split('/')[-1], sum(c.values()), dict(sorted(c.items(), key=lambda x:-x[1])))
+    shared=c['dyld shared region (submaps and their private data)']+c['shared-region guard reservations']
+    print(f.split('/')[-1], sum(c.values()), 'own=%d' % (sum(c.values())-shared), dict(sorted(c.items(), key=lambda x:-x[1])))

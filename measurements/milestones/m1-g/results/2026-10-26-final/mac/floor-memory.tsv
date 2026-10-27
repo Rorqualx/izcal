@@ -1,0 +1,6 @@
+run	kind	pid	settled_kb	peak_kb	wakeups_per_s	pkg_idle_per_s	regions
+1	floor	63315	4096	4096	2.033	0.400	73
+2	floor	63705	4032	4032	2.033	0.517	73
+3	floor	64105	4096	4096	2.033	0.333	75
+4	floor	64506	4096	4096	2.033	0.500	75
+5	floor	64908	4096	4096	2.033	0.400	75

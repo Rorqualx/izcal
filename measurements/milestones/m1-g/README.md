@@ -2,6 +2,184 @@
 
 Measured 26 October 2026 on the Mac and rig253; hueyj's rows are taken in its exclusive window from 20:37 (below). This is the M1 plan's phase G: the launched renderer skeleton (`hg-renderer-main`, started by the browser library through each OS's full launch path and sandbox) at rest after its round trips, on three OSes under exclusive bookings. The network partition service (`hg-net-main`) is measured beside it, the same way.
 
+The final per-OS table, with the owner's decided readings, is the first section below; the sections after it are the day's record, in order.
+
+## Final results (26 October, evening): the decided readings, children at two threads
+
+Taken at `a4cc675` (`m1/integration`, release builds), after the thread change below, under exclusive bookings with a `rig check` OK line before every timing run. Each row is judged against the readings the owner decided on 26 October:
+- **FP-2** is FP 6.3's measured floor plus Izcal's own line items, not 8.2's flat 4 MiB (amendment A, below).
+- **Mappings** count only what the process creates; on macOS the dyld shared region's entries are excluded (amendment B).
+- **Windows FP-27 cold** is cold after reboot: 20 reboots, all under one exclusive booking.
+
+Raw data and evidence lines are in `results/2026-10-26-final/{mac,windows}/`.
+
+### The renderer skeleton, per OS
+
+| Target (DC-16) | macOS (`MacosSbpl`) | Windows (`WindowsAppContainer`, `windows-m1`) | Linux (`linux-restricted-userns`) |
+|---|---|---|---|
+| Threads at idle (FP-32: 2) | **2** (`ps -M`) | **2** (after the loader's three pool threads leave, ≤ 45 s) | **2** (`/proc`, tests) |
+| Charged memory, settled, median of 5 | **4,080 KiB** (4,016, 4,080, 4,080, 4,080, 4,080) | **836 KiB** (896, 836, 828, 824, 848) | pending (hueyj window from 22:37) |
+| Measured floor (FP-M0's empty process, same method) | 4,096 KiB (4,096, 4,032, 4,096, 4,096, 4,096), re-measured in the same window | 792 KiB (FP-M0 decision log, AppContainer) | pending (hueyj window from 22:37) |
+| FP-2 ceiling: floor + 3,072 KiB of line items | 7,168 KiB | 3,864 KiB | pending (hueyj window from 22:37) |
+| Izcal over the floor, by line item | −16 KiB in total. By `footprint` category against the floor process in the same window: Malloc Small +96 (allocator and IPC; it holds the D4 IO thread's 80 KiB receive buffer), Stack −16, Untagged −16, activity tracing −16, page tables ±0 (288 both). Each is under its item (allocator 256, IPC 256, stacks 256, page tables and VM 512) | +44 KiB in total, under any one item | pending (hueyj window from 22:37) |
+| **FP-2 (decided reading)** | **PASS** (also under the flat 4,096) | **PASS** | pending (hueyj window from 22:37) |
+| Idle wakeups, 60 s (FP-18 ≤ 1/s whole browser) | **0.000/s** (5 of 5; package idle 0.000/s) | **0.000/s** context switches (5 of 5) | pending (hueyj window from 22:37) |
+| **FP-18** | **PASS** | **PASS** | pending (hueyj window from 22:37) |
+| Mappings, process-created (FP 6.20.6 ≤ 64†) | **34** (67 entries, less the dyld shared region's 31 entries and its 2 guards; 5 of 5 at 67) | **41** allocations (VADs; all counted, 5 of 5; 131–138 regions) | pending (hueyj window from 22:37) |
+| **Mappings (decided reading)** | **PASS** | **PASS** | pending (hueyj window from 22:37) |
+| FP-27 warm, median of 20 (≤ 15 ms†) | **4.934 ms** (4.313–5.515) | **5.443 ms** (4.784–8.448) | pending (hueyj window from 22:37) |
+| **FP-27 warm** | **PASS** | **PASS** | pending (hueyj window from 22:37) |
+| FP-27 cold after reboot, median of 20 (≤ 15 ms†) | not measured: no decision asks for a macOS reboot run; the fresh-directory fallback (25.7 ms, first execution of a new file) stands as recorded above | **8.759 ms**, median of 16 runs (7.918–9.587); whatever the 4 missing runs read, the median of 20 lies in 8.572–8.884 ms | owner's run (`m1-e/fp27-cold.sh`, page cache dropped) |
+| **FP-27 cold** | open (no reboot run) | **PASS** (16 of 20 runs; the verdict cannot change) | owner's run |
+
+The network partition service, beside it:
+- **macOS:** 4,144 KiB (4,048, 4,112, 4,144, 4,144, 4,192), 0 wakeups, 34–37 process-created entries, 5.007 ms warm.
+- **Windows:** 836 KiB (880, 836, 836, 824, 828), 0 switches, 41 allocations, 5.910 ms warm, 9.953 ms cold (median of 16, 9.579–10.756).
+- **Linux:** pending (hueyj window from 22:37).
+
+Its own target (NW-35: a partition service ≤ 2 MiB† at idle) is not judged in G. macOS is over it for the same sandbox floor as FP-2's, which is for the networking owner.
+
+**What moved since the afternoon.**
+- **macOS** dropped from 4,176 KiB to 4,080: four fewer threads (16 KiB of stack each, measured earlier) and the activity-tracing page. The entries dropped from 83 to 67: four entries for each of the four threads gone.
+- **Windows** dropped from 1,036 KiB to 836: about 40 KiB of commit per thread, as measured earlier. Allocations dropped from 45 to 41.
+
+**Evidence.**
+- **macOS:** booking b-52bab4.
+  - Floor: `rig check OK: local … load 0.27/cpu … 2026-10-26T17:26:13-06:00`.
+  - Memory: `… 0.28/cpu … 17:31:30`.
+  - Regions and `footprint`: `… 0.33/cpu … 17:37:55`.
+  - Warm spawn: `… 0.30/cpu … 17:39:54`.
+- **rig253:** booking b-d511b3.
+  - Memory: `rig check OK: rig253 … CPU% 1% … 2026-10-26T17:41:15-06:00`.
+  - Warm spawn: `… CPU% 0% … 17:53:13`.
+
+  A first memory attempt at 17:40:31 failed to start the tool: the build path has a space, and the harness was given it unquoted. It made no measurement.
+- **Cold:** booking b-30476e (3 h, all 20 reboots). One OK line per run, in `windows/cold-evidence.txt`.
+
+### Windows FP-27 cold, by reboot
+
+`harness/g-cold-reboot-windows.sh`, run on the Mac inside booking b-30476e. Each run:
+1. **The game-run lock.** staticR's per-host lock on rig253 must be free, with no live queue ticket and no `*_rt64` game running. It is read by `rig check --json --fresh`, which reads the same `mm-run.lock` that `bin/windows/game_run_lock.py` takes. While the lock is held the script waits and never reboots. It was free before all 20.
+2. **The reboot.** `shutdown /r /t 0` over ssh needed no prompt and no elevation. The script waits for ssh to go down and come back, and checks that Windows' `LastBootUpTime` changed.
+3. **A fixed settle period of 120 s** after ssh answers, so the boot's own service start-up is over and nothing of Izcal's has run.
+4. A `rig check` OK line.
+5. One `hg-launch-tool measure-spawn 1`: one broker launching both kinds, the first execution of each binary since the boot.
+
+**Result: 16 of the 20 runs.**
+- Renderer: **8.759 ms** median (7.918–9.587).
+- Network partition: **9.953 ms** (9.579–10.756).
+- Boot to ssh took 37–38 s every time.
+
+**rig253 went off the network during run 17.** After its boot, ssh answered at 19:00:29. From the first `rig check` at the end of the settle period it answered nothing: no ssh, no ping, and ARP incomplete at 19:27. It did not return within 15 minutes. That cannot be diagnosed from here; it may be asleep or powered off. So the series stopped at 16, with booking b-30476e kept until 20:53 in case the host came back.
+
+**The verdict does not depend on the missing runs.** All 16 renderer runs are ≤ 9.587 ms, so at least 16 of any 20 are below 15 ms. The median of 20 therefore lies between the known 6th–7th and 10th–11th values: 8.572–8.884 ms (network 9.881–10.046 ms).
+
+**Against the afternoon's fresh-directory fallback (74.7 ms).** That fallback measured a newly written file's first execution, 69 ms of it inside `CreateProcess`. A reboot does not bring that cost back. Files already executed before the boot start in about 8.8 ms, against 5.4 ms warm.
+
+**Process notes.**
+- Two first attempts rebooted rig253, at 17:53:45 and 18:04:43, but measured nothing.
+  - In the first, the ssh session carrying `shutdown` hung on the dead connection; keepalives fixed it.
+  - In the second, the script's liveness check ran `true`, which cmd.exe does not have, so the script never saw the host return; it now runs `exit 0`.
+- Both stops are in the evidence file.
+- One test of the measure command over ssh, about 11 minutes after the 18:04 boot, read 9.3/10.5 ms. It had no check line before it and is recorded as an observation only.
+
+### The three `launch::windows` test failures (fixed, `cb7caec`)
+
+**Cause, measured.** `a_child_that_never_sends_ready_is_killed`, `each_launch_takes_a_fresh_profile_made_ahead` and `the_build_cannot_be_replaced_while_held` all fail at `tests.rs:24`, the `hg-launch-probe.exe` lookup.
+- Cargo builds a package's `[[bin]]` targets for `cargo test` only when an integration test or bench of it is selected. `tests/it` existed for that alone, and the "lib suite" (`--lib`) does not select it.
+- rig253's m1int tree has a lib test binary and no `hg-launch-probe.exe` anywhere.
+- **Reproduced** in a fresh target directory with `cargo test -p hg-substrate-os --lib launch::windows`: the same three fail at line 24, alone as in the suite. With all targets selected, the same directory passes 5/5.
+- **No shared state.** Profile names carry the process's pid and creation time, and the held build sits in a per-pid temp directory.
+- **Not the profile commits.** macOS has the same lookup and fails the same way (2/2 under `--lib` at HEAD).
+
+**Fix.** The lib tests build the spawner and probe themselves, once per process. They run `cargo build` into their own target directory, target and profile, with their features. Cargo holds no build lock while tests run (checked). This also ends any reliance on a stale probe.
+
+**Pinned by** `the_lib_tests_build_the_binaries_they_run` and the layout test. Results:
+- macOS 5/5 and Windows 8/8 under `--lib` in fresh target directories.
+- Lib suites 225 (rig253) and 208 (hueyj).
+
+`hg-launch-tool`'s integration tests had the same hazard: the mains they launch are not their dependencies. `cargo test -p hg-launch-tool` ran a stale renderer, which made the first negative control below meaningless. They now build the mains first, the same way.
+
+### Threads: the children now run two (`a4cc675`)
+
+FP 6.3 and FP-32 say an idle empty site process has two threads: one that runs its sequences and the control thread. Workers are created on demand and exit after 10 s† idle.
+- **Children.**
+  - `Threads::CHILD` gives a child no general worker. `main` runs the sequences (`MainThread::run_until(|| running.ended())`) instead of parking.
+  - `hg-ipc-io` stays, with every D3/D4/D5 receive-side check on it.
+  - The bootstrap channel's end is set inside its delivery task, which runs on `main`, so `main` sees it after that task.
+- **On-demand threads.**
+  - `MayBlock` workers and the timer thread start with their first task and end after `IDLE_EXIT` (10 s†) idle. The end is one timed wait, armed when the thread goes idle: one wakeup after activity, never periodic (FP-18).
+  - A `MayBlock` worker stays while a delayed `MayBlock` task is pending, and the timer thread while any timer is pending.
+  - A post whose thread cannot start, with none of its kind alive, gets `PostError::NoThread` and queues nothing.
+- **Brokers** keep their pools, with at least one general worker.
+- **Fork/join** phases run on scoped threads that exist only during the phase, sized min(cores − 1, 4) for a child (FP 6.3). FP 6.3's 10 s linger between phases is not built. Keeping a pool across phases would run borrowed closures on threads that outlive the call, which needs `unsafe` lifetime erasure or a `'static` `PhasePool` contract. No M1 child runs a phase, so it is left for the first phase user (M2 style and layout), and recorded here.
+- **CS-AS-3.** The substrate still owns every thread. `OsExecutor::thread_count()` is the live count, so "the process's thread count after start-up is the substrate's" holds: at rest, `main` plus `hg-ipc-io` plus the executor's live threads, which is 0 in a child.
+- **Sandboxes.** The Linux seccomp lists already allow thread `clone`, `exit`, `munmap`, `madvise` and `futex`, so an on-demand thread can start and end in a child. macOS's and Windows' limits are per process.
+- **Tested.**
+  - The executor: on-demand start and idle end, a delayed `MayBlock` task past the idle period, and `main` as the only general worker.
+  - `an_idle_child_runs_two_threads`, counted from outside on each OS: 2 and 2 on macOS, on Linux (restricted tier) and on Windows (at 30 s).
+  - Negative control (macOS): with the old `Threads {2, 1}` and a parked `main`, it reads 4 and fails. The original code, which also had eager may-block and timer threads, had 6.
+
+**The thread inventory, updated.** At rest a child has two threads:
+- `main`, which runs its sequences;
+- `hg-ipc-io`.
+
+On demand, and ending after 10 s† idle:
+- `hg-may-block-<n>` (at most one in a child);
+- `hg-timers`.
+
+During a fork/join phase only: scoped phase threads.
+
+The broker keeps its general workers plus its broker-only threads: `hg-ipc-own`, `hg-ipc-child` per child, `hg-ipc-copy` and `hg-profile-spares`.
+
+### Deterministic simulation: canonical hashes
+
+The recipe is that of m1-d5: seeds 0–59, stdout and stderr together, SHA-256. The thread change does not touch the simulator's executor, and all 25 values are **identical before and after it** (`e9c0173` against `a4cc675`, macOS).
+
+| Run | Hash |
+|---|---|
+| `dst-smoke --ipc` | `10996dfeec1ca7d40351ffec698e0bf225635ed56b82ac2672193408bac1961b` |
+| `dst-smoke --regions --region-os {linux,macos,windows}` | `8829775be17386b1a84d801c13e8236ce1d2bc6f0a64775977a15a7ac051130a` (all three) |
+| `dst-sim --scenario roundtrip --os {linux,macos,windows}` | `0dfa3feedb3bea65a5f18e56cc0ed00d329ce12d5ca9677b8cac6793ddc15756` |
+| `… du3 …` | `3c367a0d9bdee2d91ae058901cd29949a4ae23f3e70678a73e37e1c769287f7a` |
+| `… flood …` | `da7cdf6aee3668c383cb7c855e93413bd08085980b3b33eecc35fd8b8ee90fb0` |
+| `… netcrash …` | `b5d866ba688a02b1f3b81716af3e6eda59c268c43b515982f95c60125d6312b5` |
+| `… faults …` | `ad384c458097fba50fb294285b738db6998dda70a47b5f05ddc41abafbb5e91d` |
+| `… relaunch …` | `a705ca8cecd510ae2cb79003ec4f3fcc9f3a529cf577a6739a2a1155a230da1c` |
+| `… liar …` | `5e1d52ca484c660b8bdba1fe982fbfddab7482d51be685b0c9e74a66c565c2de` |
+
+Each `dst-sim` scenario has the same value on all three OS models.
+
+**Why `--ipc` is no longer m1-d5's `f06e8ea9…911b`.** Bisected by archive builds of each commit. It holds through D6's tip (`a87d434`) and the W3 branch (`c72e197`), and moves at `df7fc67` (E-R7: `ready` carries the `SandboxReport`). That commit's message records the cause on seed 0: steps, time and crashes are equal; the traced `ready` record is 8 bytes longer. The profile-leak fix (`9bbddc8`) moved the `dst-sim` traces, as its message says (children's channels now close at shutdown). The values above are the canonical ones from `a4cc675` on.
+
+## Spec amendment drafts (proposed, not applied)
+
+Both follow the owner's decisions of 26 October 2026. The footprint spec is not edited here.
+
+### A. FP-2: the threshold is the measured floor plus Izcal's line items (Sections 8.2 and 8.3)
+
+**Why.** Section 6.3 sets FP-2's ship blocker as "that measured floor plus Izcal's own line items (everything above except the margin), recorded in the decision log item by item, never as a lump". Section 8.2's row and FP-2's row in 8.3 still state a flat ≤ 4 MiB†, which predates FP-M0. On macOS the measured floor alone is 4,096 KiB: the sandbox's profile compilation leaves about 2.8 MB dirty in every sandboxed process (Root causes, miss 1). So the two readings disagree there, and the owner chose 6.3's.
+
+**Section 8.2, the row "Empty site process (process part + first agent), Full and Jitless", becomes:**
+
+> | Empty site process (process part + first agent), Full and Jitless | ≤ measured floor + 3 MiB† of line items | same | same | FP-2 |
+
+**Below the table, a new note:**
+
+> **FP-2's threshold (owner decision, 26 October 2026).** On each OS and device class, FP-2 is the **measured floor plus Izcal's own line items**. The floor is FP-M0's empty process on Izcal's substrate under the full sandbox (Section 6.3), measured with Section 6.2's metric and recorded in the FP-M0 decision log. The line items are Section 6.3's, except the margin: 3 MiB† in total. Each item is compared with its own budget and recorded item by item, never as a lump. The 4 MiB† total of Section 6.3's table is the first-principles estimate made before FP-M0, and it is not a threshold on its own. A floor is measured again, never assumed, when the OS release, the sandbox profile or the device class changes.
+
+**FP-2's row in 8.3: the "Target" and "If missed" cells become:**
+
+> | **FP-2** | **Empty site process** | ≤ the FP-M0 measured floor plus Izcal's line items of Section 6.3 (the margin excluded), charged, on macOS, Linux and Windows, Full and Jitless; each line item reported against its own budget each release | Lab; plus the FP-M0 probe before engine code exists | Ship blocker for Stage 1 exit if over the floor plus the line items, or if any line item is over its own budget without a decision-log entry |
+
+### B. Mappings on macOS count only what the process creates (Section 6.20.6)
+
+**Why.** On macOS, a process's top-level VM map entries include 33 that belong to the dyld shared region: its submaps, their private copy-on-write data and two guard reservations. These are the same in every process, and they are present before any of the process's own code runs (Root causes, miss 2). Counted, they put ≤ 64† out of reach for any macOS process that has threads. The owner decided to count only the mappings the process itself creates.
+
+**Section 6.20.6, after "Untouched reservations cost VM metadata (a VMA on Linux, a VAD on Windows) …", add:**
+
+> **What counts (owner decision, 26 October 2026).** The ≤ 64† count is of the mappings the process itself creates: its executable image, heap and allocator reservations, thread stacks with their guards and signal stacks, IPC buffers and shared regions. On macOS it is the process's top-level VM map entries minus the dyld shared region's: the shared-cache submaps, their private copy-on-write data and the shared region's guard reservations. Those are the same in every process and are created before any of the process's code runs. They are reported beside the count, never in it. On Linux the unit is a VMA and on Windows an allocation (one VAD). Both are counted in full, kernel-provided entries included, unless a later measurement shows an entry of the same kind on those OSes.
+
 ## Setup
 
 | | |
@@ -137,7 +315,7 @@ Each miss was taken apart by measurement on the machine that showed it, under ex
 
 **G's leftovers removed.** Listed first (`windows/old-scheme-profiles-deleted.txt`, `harness/g-old-profiles-windows.ps1`): 160 profiles of the launcher's first scheme, `izcal.izk<k>.<pid>.<n>`, each deleted only because no process holds its pid now (the script would also accept a pid whose holder started after the profile's folder was created). All 160 unregistered. Kept, as another session's or another scheme's: 23 to 25 `izcal.d5test.*` (the D6 owner's tests were creating and removing them during the cleanup), 3 `izcal.d6probe.*`, `izcal.fp-m0.empty`. This session's own 514 experiment leftovers were removed earlier.
 
-## Follow-up: six threads where the spec says two
+## Follow-up: six threads where the spec says two (since fixed: the children run two, see the final section)
 
 **Every thread in an idle renderer child** (macOS by `sample` and per-region `vmmap`; Windows by `GetThreadDescription`; Linux from the code only, as hueyj was not used):
 
@@ -188,8 +366,9 @@ hueyj is booked exclusive for the session from 20:37 (b-fe3c27), after the sessi
 
 1. **Linux cold FP-27:** in the hueyj exclusive window, on the Mac: `measurements/milestones/m1-e/fp27-cold.sh 20`. It checks the booking, then drops the page cache before each run (the only sudo) and logs to `m1-g/fp27-cold-<date>.log`.
 2. **AppArmor full tier (E-Q1, approved):** install and probe as `research_notes/M1 E launch/apparmor/README.md` says (root for the install only), then remove the profile. Its attach paths name `~/izcal-m1e2`'s spawner builds; G's Linux rows run from `~/izcal-m1int-g`, so they stay on the restricted tier, reported by name, until the profile names the tree measured.
-3. **Decisions the results ask for** (the evidence is in "Root causes" above):
-   - **FP-2 on macOS:** the renderer is 4,176 KiB, FP-M0's floor (4,096 KiB, unchanged) plus 80 KiB of Izcal line items. Section 6.3's rule (floor plus itemised line items) or Section 8.2's flat 4 MiB? Meeting 4 MiB flat needs the sandbox's 2.8 MB gone, which was only measured by applying the profile before an `exec`, and that widens the profile for the renderer's life.
-   - **Mappings on macOS:** 53 of the 83 entries are the OS's (33 the dyld shared region), so ≤ 64 is out of reach under the top-level count. Do the shared region's entries count, or is the macOS figure set from the measured floor?
-   - **FP-27 cold on Windows:** warm now passes (5.4 ms). The fresh-directory fallback's 69 ms is a new file's first execution, not the launch. Measure cold by reboot on rig253, or accept the fallback as it is?
-   - **Threads:** the renderer runs 6 threads at idle where FP 6.3 and FP-32 say two; each costs about 16 KiB and 4 map entries on macOS.
+3. **Decided 26 October** (FP-2 by 6.3's floor plus line items; macOS mappings process-created only; Windows cold by reboot; children at FP-32's two threads): applied in the final section above. The two spec amendments are drafted above, for the owner to apply.
+4. **Open, for the owner:**
+   - **Windows cold:** 16 of 20 reboot runs. rig253 dropped off the network during run 17 (see the final section), and needs a look at the console. The verdict does not depend on the 4 missing runs; they can be run under a new exclusive booking with `harness/g-cold-reboot-windows.sh 4 120 …` to complete the set.
+   - **macOS cold:** no decision asks for a reboot run on the Mac. The fresh-directory fallback (25.7 ms) is the only cold figure there.
+   - **FP 6.3's 10 s linger for fork/join workers:** not built (see "Threads" above). It needs `unsafe` or a `'static` `PhasePool` contract; M2's first phase user is the natural point.
+   - **NW-35:** the partition service is 4,144 KiB on macOS against its ≤ 2 MiB† idle line, for the same sandbox floor. It is not judged in G and is for the networking owner.
