@@ -210,3 +210,23 @@ Two to four runs each. The plain round trip and 64 KiB throughput (3.2 to 4.3 Gi
   - **The fix** (`2fa3a02`): under `cfg(kani)` the encoder writes into a fixed `MAX_CTL_LEN` buffer with the same append semantics, as hg-ipc's wire `Writer` does, and writes reserved zeros as fixed slices instead of an iterator. That cut `_40` to 1,348,309 steps, and all six lengths now verify in under two minutes each.
 
   The unit test `the_kani_buffer_appends_as_a_vec` checks that the buffer gives the same bytes as a `Vec` on the same random puts, and a put past its capacity fails an assertion.
+
+## The `decide` harnesses on integration (27 Oct 2026)
+
+`decisions_are_sound_0`, `_1` and `_2` failed on `m1/integration` (at `46111ce` and `ac2d594`; they verified at `55bc624`, the `ipc/d5-w3` tip). Kani listed two unwinding assertions, at `decide.rs:142` and `:275` under unwind 17, but no check failed ("0 of 439 failed"). **This was not an unwinding failure.** Every check had status `ERROR`, not `FAILURE`, and CBMC printed "Solver ran out of memory during propositional reduction". Measured on hueyj (booking b-b1b6d2), Kani 0.68.0, one run at a time, `prlimit --as=10737418240`:
+
+| Build | Steps | Variables / clauses | Peak RSS | Result |
+|---|---|---|---|---|
+| `55bc624` (`ipc/d5-w3`) | 243,310 | 4.89 M / 23.0 M | 9.24 GB | verified, 72 s |
+| `ac2d594` (integration) | 259,497 | 5.77 M / 27.3 M | 9.30 GB | out of memory, 44 s |
+| fix, `_0` | 80,319 | 2.90 M / 13.6 M | 3.10 GB | verified, 1 of 1 cover, 33 s |
+| fix, `_1` | 85,139 | 2.92 M / 13.7 M | 5.22 GB | verified, 1 of 1 cover, 91 s |
+| fix, `_2` | 88,526 | 2.93 M / 13.7 M | 5.23 GB | verified, 1 of 1 cover, 102 s |
+| fix, `_undecodable` (new) | 9,136 | 0.01 M / 0.01 M | 0.43 GB | verified, 1 of 1 cover, 1 s |
+| fix, `_early` | 17,347 | 0.05 M / 0.09 M | 0.43 GB | verified, 1 of 1 cover, 1 s |
+
+**The cause.** The harness chose the decoder's result with `kani::any()`: `Ok(view)` with `ND` descriptors, or `Err`. CBMC merges the two into one value, so on the accept path the view's descriptor count is no longer the constant `ND`. Both descriptor loops (`decide_with`'s, at line 142, and the harness's own) were therefore unrolled to `MAX_MESSAGE_HANDLES` (16) iterations for every `ND`, 0 included. The CBMC log shows this at `55bc624` as well: 16 unrollings of each loop, plus the check at iteration 17. The loop bound did not change. Unwind 17 was already the real bound (16 handles plus one), and the unwinding assertions hold. What changed is the cost of each iteration. D6 added the region kinds: a third arm in `counters`, six wire kinds in `any_desc` with an `assume` for regions, and the region checks in the codec. Over 32 unrolled iterations that took the formula from 23.0 M to 27.3 M clauses, and the run went over the 10 GiB cap. At `55bc624` it had already peaked at 9.24 GB.
+
+**The fix** (harness only; `decide` is unchanged). The decoder's outcome is a const parameter, `decisions_are_sound::<ND, DECODES>`. `_0`, `_1` and `_2` take the `Ok` view, so `decide_with`'s loop unrolls exactly `ND` times (CBMC log: 0, 1 and 2). The new `decisions_are_sound_undecodable` takes the `Err` and asserts a violation that changes nothing. Together the four cover the same inputs as the three before, with the same assertions. The harness's own loop over the accepted view still unrolls 16 times, because `Decision` merges `Accept` with `Violation`; at 5.2 GB peak this leaves room under the cap.
+
+**All 24 `ipc::win` harnesses** were re-run after the fix, one at a time under the same limits, and all verify with every cover satisfied. Times: `accept` (3) under 2 s; `frame` (11) 3 to 129 s, `ctl_round_trips_56` the longest, at 6.7 GB peak; `ledger` (4) 22 to 127 s, `old_pipes_are_charged_and_released` peaking at 6.3 GB; `regions::the_registry_follows_its_state_machine` 1 s with 4 of 4 covers; `decide` (5) as in the table above.
