@@ -11,7 +11,7 @@ Today on hueyj (Ubuntu 24.04, `kernel.apparmor_restrict_unprivileged_userns=1`):
 With the profile installed:
 - The spawner still behaves as unconfined, and it gains one right: `userns`.
 - Its children keep their capabilities **inside their own new user namespace**, so they can mount, `pivot_root` and write their id maps there. They gain nothing outside it.
-- No other binary on the host changes. The profile attaches by exact path to two files, the debug and release builds of `hg-spawner-main` in the scratch build `/home/joe/izcal-m1e2`, and to nothing else.
+- No other binary on the host changes. The profile attaches by exact path to two files, the debug and release builds of `hg-spawner-main` in the scratch build `/home/joe/izcal-m1int-g` (the `m1/integration` tree that G measures), and to nothing else.
 
 ## Test host only, and removed after the measurement
 
@@ -45,7 +45,7 @@ sudo rm /etc/apparmor.d/izcal-spawner
 
 ## What gets measured after install (no root needed)
 
-Run as user `joe`, under a `rig` booking. The probe is `probes/linux/src/bin/ftier.rs` (`ftier`). Because the profile attaches by path, the probe binary is copied to `~/izcal-m1e2/target/debug/hg-spawner-main` for the run, then that file is **deleted** so Cargo rebuilds the real spawner (Cargo rebuilds a missing output; it would not notice a replaced one).
+Run as user `joe`, under a `rig` booking. The probe is `probes/linux/src/bin/ftier.rs` (`ftier`). Because the profile attaches by path, the probe binary is copied to `~/izcal-m1int-g/target/debug/hg-spawner-main` for the run, then that file is **deleted** so Cargo rebuilds the real spawner (Cargo rebuilds a missing output; it would not notice a replaced one).
 1. The spawner's start-up test reports that mounts work in the child's user namespace, and logs that the full tier is available but not claimed.
 2. A full-tier probe in the child: `CLONE_NEWNS`, make the tree private, mount a tmpfs, `pivot_root` into it with the old root detached, then `execveat` of the pre-opened executable descriptor across it.
 3. If (2) fails: bind-mount the executable into the empty root, exec it by its new path, and check that its `st_dev`/`st_ino` equal the pre-opened descriptor's before exec.
