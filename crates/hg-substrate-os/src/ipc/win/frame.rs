@@ -401,31 +401,99 @@ impl Ctl {
     }
 }
 
-/// Appends little-endian fields to a record.
-struct Out(Vec<u8>);
+/// Under Kani, the control-record writer's buffer: [`MAX_CTL_LEN`] bytes
+/// with the same append semantics as a `Vec` (`Out` uses it instead of
+/// one). CBMC's cost for `Vec` growth was the measured bottleneck: the
+/// 40-byte round-trip harness took 3.26 M symex steps and ran out of
+/// memory at 10 GiB with the `Vec` (measurements/milestones/m1-d5, W3
+/// Kani). A put past the capacity fails an assertion; it never
+/// truncates. `the_kani_buffer_appends_as_a_vec` runs both on the same
+/// puts in every test build.
+#[cfg(any(kani, test))]
+struct FixedBuf {
+    bytes: [u8; MAX_CTL_LEN],
+    len: usize,
+}
+
+#[cfg(any(kani, test))]
+impl FixedBuf {
+    const fn new() -> Self {
+        Self {
+            bytes: [0; MAX_CTL_LEN],
+            len: 0,
+        }
+    }
+
+    /// Appends `src`; past the capacity, an assertion fails.
+    fn put(&mut self, src: &[u8]) {
+        let end = self.len.checked_add(src.len());
+        let dst = end.and_then(|e| self.bytes.get_mut(self.len..e));
+        assert!(dst.is_some(), "the Kani writer's buffer is full");
+        if let (Some(dst), Some(e)) = (dst, end) {
+            dst.copy_from_slice(src);
+            self.len = e;
+        }
+    }
+
+    fn into_vec(self) -> Vec<u8> {
+        self.bytes
+            .get(..self.len)
+            .map(<[u8]>::to_vec)
+            .unwrap_or_default()
+    }
+}
+
+/// Appends little-endian fields to a record: to a `Vec`, or under Kani
+/// to a [`FixedBuf`].
+struct Out {
+    #[cfg(not(kani))]
+    buf: Vec<u8>,
+    #[cfg(kani)]
+    buf: FixedBuf,
+}
 
 impl Out {
+    fn new() -> Self {
+        Self {
+            #[cfg(not(kani))]
+            buf: Vec::with_capacity(MAX_CTL_LEN),
+            #[cfg(kani)]
+            buf: FixedBuf::new(),
+        }
+    }
+    fn put(&mut self, v: &[u8]) {
+        #[cfg(not(kani))]
+        self.buf.extend_from_slice(v);
+        #[cfg(kani)]
+        self.buf.put(v);
+    }
+    fn into_vec(self) -> Vec<u8> {
+        #[cfg(not(kani))]
+        return self.buf;
+        #[cfg(kani)]
+        return self.buf.into_vec();
+    }
     fn u8(&mut self, v: u8) {
-        self.0.push(v);
+        self.put(&[v]);
     }
     fn u32(&mut self, v: u32) {
-        self.0.extend_from_slice(&v.to_le_bytes());
+        self.put(&v.to_le_bytes());
     }
     fn u64(&mut self, v: u64) {
-        self.0.extend_from_slice(&v.to_le_bytes());
+        self.put(&v.to_le_bytes());
     }
     fn bytes(&mut self, v: &[u8]) {
-        self.0.extend_from_slice(v);
+        self.put(v);
     }
-    fn zeros(&mut self, n: usize) {
-        self.0.extend(core::iter::repeat_n(0, n));
+    fn zeros<const N: usize>(&mut self) {
+        self.put(&[0; N]);
     }
     fn items(&mut self, items: &Items) {
         for it in items.as_slice() {
             self.u64(it.value);
             self.u8(it.kind.to_byte());
             self.u8(u8::from(it.drains));
-            self.zeros(6);
+            self.zeros::<6>();
         }
     }
 }
@@ -452,7 +520,7 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
         | Ctl::TakeDrains { .. }
         | Ctl::DrainsRefused { .. } => 0,
     };
-    let mut o = Out(Vec::with_capacity(MAX_CTL_LEN));
+    let mut o = Out::new();
     o.u32(CTL_MAGIC);
     o.u8(CTL_VERSION);
     o.u8(c.kind());
@@ -486,7 +554,7 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
         Ctl::RelayRefused { req, reason } | Ctl::RedeemRefused { req, reason } => {
             o.u64(*req);
             o.u8(*reason);
-            o.zeros(7);
+            o.zeros::<7>();
         }
         Ctl::Redeem { req, ticket, rx } => {
             o.u64(*req);
@@ -510,17 +578,17 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
         }
         Ctl::Unbind { rx_id } => {
             o.u64(*rx_id);
-            o.zeros(8);
+            o.zeros::<8>();
         }
         Ctl::Closed { end } => {
             o.u64(*end);
-            o.zeros(8);
+            o.zeros::<8>();
         }
         Ctl::RebindValue { req, end, new } => {
             o.u64(*req);
             o.u64(*end);
             o.u64(*new);
-            o.zeros(8);
+            o.zeros::<8>();
         }
         Ctl::RebindId { req, id, new } => {
             o.u64(*req);
@@ -538,11 +606,11 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
                 (true, false) => 1,
                 (true, true) => 2,
             });
-            o.zeros(7);
+            o.zeros::<7>();
         }
         Ctl::Park { old } => {
             o.u64(*old);
-            o.zeros(8);
+            o.zeros::<8>();
         }
         Ctl::TakeDrains { req, rx } => {
             o.u64(*req);
@@ -554,10 +622,10 @@ pub(crate) fn encode_ctl(c: &Ctl) -> Vec<u8> {
         }
         Ctl::DrainsRefused { req } => {
             o.u64(*req);
-            o.zeros(8);
+            o.zeros::<8>();
         }
     }
-    o.0
+    o.into_vec()
 }
 
 /// Reads little-endian fields from a record, front to back.
@@ -936,6 +1004,42 @@ mod proofs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Kani writer's buffer appends exactly as the `Vec` the real
+    /// writer uses: the same puts (random lengths and bytes, up to the
+    /// capacity) give the same bytes.
+    #[test]
+    fn the_kani_buffer_appends_as_a_vec() {
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = |m: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % m
+        };
+        for _ in 0..500 {
+            let (mut real, mut model) = (Vec::new(), FixedBuf::new());
+            loop {
+                let room = MAX_CTL_LEN.saturating_sub(real.len());
+                let n = usize::try_from(next(17)).unwrap().min(room);
+                let chunk: Vec<u8> = (0..n).map(|_| u8::try_from(next(256)).unwrap()).collect();
+                real.extend_from_slice(&chunk);
+                model.put(&chunk);
+                if real.len() == MAX_CTL_LEN || next(16) == 0 {
+                    break;
+                }
+            }
+            assert_eq!(model.into_vec(), real);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "the Kani writer's buffer is full")]
+    fn the_kani_buffer_refuses_a_put_past_its_capacity() {
+        let mut model = FixedBuf::new();
+        model.put(&[0; MAX_CTL_LEN]);
+        model.put(&[0]);
+    }
 
     fn items(n: usize) -> Items {
         let v: Vec<Item> = (1..=n)
