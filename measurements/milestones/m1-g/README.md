@@ -11,31 +11,31 @@ Taken at `a4cc675` (`m1/integration`, release builds), after the thread change b
 - **Mappings** count only what the process creates; on macOS the dyld shared region's entries are excluded (amendment B).
 - **Windows FP-27 cold** is cold after reboot: 20 reboots, all under one exclusive booking.
 
-Raw data and evidence lines are in `results/2026-10-26-final/{mac,windows}/`.
+Raw data and evidence lines are in `results/2026-10-26-final/{mac,windows,linux}/`. The Linux rows were taken on 27 October, 01:48–02:00, in booking b-dcccd3. The original b-dc8bf9 was released at 22:23 by another holder of the session's name and was booked again for the same window.
 
 ### The renderer skeleton, per OS
 
 | Target (DC-16) | macOS (`MacosSbpl`) | Windows (`WindowsAppContainer`, `windows-m1`) | Linux (`linux-restricted-userns`) |
 |---|---|---|---|
-| Threads at idle (FP-32: 2) | **2** (`ps -M`) | **2** (after the loader's three pool threads leave, ≤ 45 s) | **2** (`/proc`, tests) |
-| Charged memory, settled, median of 5 | **4,080 KiB** (4,016, 4,080, 4,080, 4,080, 4,080) | **836 KiB** (896, 836, 828, 824, 848) | pending (hueyj window from 22:37) |
-| Measured floor (FP-M0's empty process, same method) | 4,096 KiB (4,096, 4,032, 4,096, 4,096, 4,096), re-measured in the same window | 792 KiB (FP-M0 decision log, AppContainer) | pending (hueyj window from 22:37) |
-| FP-2 ceiling: floor + 3,072 KiB of line items | 7,168 KiB | 3,864 KiB | pending (hueyj window from 22:37) |
-| Izcal over the floor, by line item | −16 KiB in total. By `footprint` category against the floor process in the same window: Malloc Small +96 (allocator and IPC; it holds the D4 IO thread's 80 KiB receive buffer), Stack −16, Untagged −16, activity tracing −16, page tables ±0 (288 both). Each is under its item (allocator 256, IPC 256, stacks 256, page tables and VM 512) | +44 KiB in total, under any one item | pending (hueyj window from 22:37) |
-| **FP-2 (decided reading)** | **PASS** (also under the flat 4,096) | **PASS** | pending (hueyj window from 22:37) |
-| Idle wakeups, 60 s (FP-18 ≤ 1/s whole browser) | **0.000/s** (5 of 5; package idle 0.000/s) | **0.000/s** context switches (5 of 5) | pending (hueyj window from 22:37) |
-| **FP-18** | **PASS** | **PASS** | pending (hueyj window from 22:37) |
-| Mappings, process-created (FP 6.20.6 ≤ 64†) | **34** (67 entries, less the dyld shared region's 31 entries and its 2 guards; 5 of 5 at 67) | **41** allocations (VADs; all counted, 5 of 5; 131–138 regions) | pending (hueyj window from 22:37) |
-| **Mappings (decided reading)** | **PASS** | **PASS** | pending (hueyj window from 22:37) |
-| FP-27 warm, median of 20 (≤ 15 ms†) | **4.934 ms** (4.313–5.515) | **5.443 ms** (4.784–8.448) | pending (hueyj window from 22:37) |
-| **FP-27 warm** | **PASS** | **PASS** | pending (hueyj window from 22:37) |
+| Threads at idle (FP-32: 2) | **2** (`ps -M`) | **2** (after the loader's three pool threads leave, ≤ 45 s) | **2** (`main`, `hg-ipc-io`; `/proc/PID/task/*/comm`) |
+| Charged memory, settled, median of 5 | **4,080 KiB** (4,016, 4,080, 4,080, 4,080, 4,080) | **836 KiB** (896, 836, 828, 824, 848) | **172 KiB** (172, 172, 172, 172, 176) |
+| Measured floor (FP-M0's empty process, same method) | 4,096 KiB (4,096, 4,032, 4,096, 4,096, 4,096), re-measured in the same window | 792 KiB (FP-M0 decision log, AppContainer) | 148 KiB (148, 144, 148, 152, 148), FP-M0's empty process (`46d1e6f`, its Linux leg) re-measured in the same window with FP 6.2's `RssAnon + VmSwap`; FP-M0's recorded 2,148 KB was VmRSS, which counts file-backed pages |
+| FP-2 ceiling: floor + 3,072 KiB of line items | 7,168 KiB | 3,864 KiB | 3,220 KiB |
+| Izcal over the floor, by line item | −16 KiB in total. By `footprint` category against the floor process in the same window: Malloc Small +96 (allocator and IPC; it holds the D4 IO thread's 80 KiB receive buffer), Stack −16, Untagged −16, activity tracing −16, page tables ±0 (288 both). Each is under its item (allocator 256, IPC 256, stacks 256, page tables and VM 512) | +44 KiB in total, under any one item | +24 KiB in total, under any one item |
+| **FP-2 (decided reading)** | **PASS** (also under the flat 4,096) | **PASS** | **PASS** (also under the flat 4,096) |
+| Idle wakeups, 60 s (FP-18 ≤ 1/s whole browser) | **0.000/s** (5 of 5; package idle 0.000/s) | **0.000/s** context switches (5 of 5) | **0.000/s** voluntary + involuntary switches (5 of 5) |
+| **FP-18** | **PASS** | **PASS** | **PASS** |
+| Mappings, process-created (FP 6.20.6 ≤ 64†) | **34** (67 entries, less the dyld shared region's 31 entries and its 2 guards; 5 of 5 at 67) | **41** allocations (VADs; all counted, 5 of 5; 131–138 regions) | **18** VMAs (5 of 5), all counted; 3 of them kernel-provided (`[vvar]`, `[vsyscall]`, `[vdso]`) |
+| **Mappings (decided reading)** | **PASS** | **PASS** | **PASS** |
+| FP-27 warm, median of 20 (≤ 15 ms†) | **4.934 ms** (4.313–5.515) | **5.443 ms** (4.784–8.448) | **1.744 ms** (1.665–9.044), through the spawner |
+| **FP-27 warm** | **PASS** | **PASS** | **PASS** |
 | FP-27 cold after reboot (FP-27 asks for a median of 20; ≤ 15 ms†) | not measured: no decision asks for a macOS reboot run; the fresh-directory fallback (25.7 ms, first execution of a new file) stands as recorded above | **16/20 runs: median 8.759 ms** (7.918–9.587). Runs 17–20 were not run: rig253 went offline after run 17's reboot (last answer 19:00:29, unreachable from 19:02) | owner's run (`m1-e/fp27-cold.sh`, page cache dropped) |
 | **FP-27 cold** | open (no reboot run) | **PASS** on 16/20 (no value of the 4 not run could change it) | owner's run |
 
 The network partition service, beside it:
 - **macOS:** 4,144 KiB (4,048, 4,112, 4,144, 4,144, 4,192), 0 wakeups, 34–37 process-created entries, 5.007 ms warm.
 - **Windows:** 836 KiB (880, 836, 836, 824, 828), 0 switches, 41 allocations, 5.910 ms warm, 9.953 ms cold (16/20 runs, median; 9.579–10.756).
-- **Linux:** pending (hueyj window from 22:37).
+- **Linux:** 172 KiB (176, 172, 172, 172, 172), 0 switches, 18 VMAs, 1.793 ms warm.
 
 Its own target (NW-35: a partition service ≤ 2 MiB† at idle) is not judged in G. macOS is over it for the same sandbox floor as FP-2's, which is for the networking owner.
 
@@ -55,6 +55,17 @@ Its own target (NW-35: a partition service ≤ 2 MiB† at idle) is not judged i
 
   A first memory attempt at 17:40:31 failed to start the tool: the build path has a space, and the harness was given it unquoted. It made no measurement.
 - **Cold:** booking b-30476e (3 h, all 20 reboots). One OK line per run, in `windows/cold-evidence.txt`.
+- **hueyj:** booking b-dcccd3.
+  - Floor: `rig check OK: hueyj … load 0.18/cpu … 2026-10-27T01:48:11-06:00`.
+  - Memory: `… 0.06/cpu … 01:53:22`.
+  - Warm spawn: `… 0.10/cpu … 01:59:46`.
+
+**`m1-e/fp27-cold.sh` after these changes.**
+- `~/izcal-m1int-g` on hueyj is updated to `cc5a6d1`'s tree and its release binaries are built.
+- Its remote loop ran end to end with a stub `sudo` that drops nothing (2 runs, the same TSV). That dry run is not data.
+- Its Mac side passes `bash -n` and shellcheck.
+
+It is ready for the owner's 20 cold runs in an exclusive window.
 
 ### Windows FP-27 cold, by reboot
 
@@ -358,9 +369,9 @@ Every timing run began with `rig check --kind exclusive --session m1-substrate`;
 
 **Process note.** At 15:14 a 12-minute heavy booking on hueyj was refused (it overlapped the session's own Kani booking b-33275b from 15:27 with its grace). The release build of `m1/integration` on hueyj and one 6-second `hold` (to see the children's process names for the Linux sampler) ran anyway, without a booking. Neither was a timing run, and nothing measured here comes from it.
 
-## Linux (hueyj), pending
+## Linux (hueyj), done in the final section
 
-hueyj is booked exclusive for the session from 20:37 (b-fe3c27), after the session's Kani bookings. In that window: `g-run-linux.sh` (memory, wakeups, VMAs, 5 runs), `g-spawn.sh warm` (FP-27 warm, 20 runs, through the spawner), each after `rig check`; then the owner's cold runs (below). The tree is `~/izcal-m1int-g` on hueyj (`m1/integration`, release binaries built).
+(Original plan, kept for the record.) hueyj is booked exclusive for the session from 20:37 (b-fe3c27), after the session's Kani bookings. In that window: `g-run-linux.sh` (memory, wakeups, VMAs, 5 runs), `g-spawn.sh warm` (FP-27 warm, 20 runs, through the spawner), each after `rig check`; then the owner's cold runs (below). The tree is `~/izcal-m1int-g` on hueyj (`m1/integration`, release binaries built).
 
 ## For the owner
 
