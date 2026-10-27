@@ -1157,25 +1157,13 @@ fn part_round_trip(o: &mut Out, checked: &Checked, t: &Type) {
         o.line("}");
         o.line("");
     };
-    // A union of cases that each end in their only variable piece: one
-    // harness per case, its tag fixed (the cases' strings would otherwise
-    // all be in one formula: `HandlerTarget`, three strings, ran out of
-    // memory at 678 k steps).
-    if let Some(cases) = crate::shape::tail_union_cases(checked, t) {
-        for tag in 0..cases {
-            let _ = writeln!(
-                o.s,
-                "/// VER-1 part `{ty}`, case {tag}: every accepted input of at most\n\
-                 /// {body} bytes re-encodes to the same bytes."
-            );
-            let fixed: Vec<(u128, u8)> = (0u128..)
-                .zip(u32::try_from(tag).unwrap_or(u32::MAX).to_le_bytes())
-                .collect();
-            tail_harness(o, &format!("round_trip_case_{tag}"), &fixed, 4);
-        }
-        return;
-    }
-    let shapes = if crate::shape::tail_variable(checked, t) {
+    // A union with two or more variable cases is proved per layout: with
+    // one symbolic length, fixing the tag did not keep CBMC from exploring
+    // every case (HandlerTarget, three strings: 678 k steps and out of
+    // memory either way).
+    let shapes = if crate::shape::tail_variable(checked, t)
+        && crate::shape::tail_union_cases(checked, t).is_none()
+    {
         None
     } else {
         crate::shape::shapes(checked, &[t], body)
@@ -1397,9 +1385,10 @@ fn kani(o: &mut Out, protocol: &str, iface: &str, messages: &[Case], checked: &C
             unwind,
         };
         let split = crate::shape::split_of(&format!("{protocol}.{iface}.{name}"));
-        let mut part_types = Vec::new();
+        let (mut part_types, mut part_round_trips) = (Vec::new(), Vec::new());
         if split.is_some() {
-            crate::shape::parts(checked, &types, &mut part_types);
+            crate::shape::parts(checked, &types, true, &mut part_types);
+            crate::shape::parts(checked, &types, false, &mut part_round_trips);
         }
         if split.is_some_and(|s| s.validate) {
             let _ = writeln!(
@@ -1429,7 +1418,7 @@ fn kani(o: &mut Out, protocol: &str, iface: &str, messages: &[Case], checked: &C
                 "// `{protocol}.{iface}.{name}`'s decoding and round trip are also proved\n\
                  // by parts (see `hg-ipc-codegen`'s `shape` module).\n"
             );
-            for t in &part_types {
+            for t in &part_round_trips {
                 part_round_trip(o, checked, t);
             }
         }
