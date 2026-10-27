@@ -29,12 +29,12 @@ Raw data and evidence lines are in `results/2026-10-26-final/{mac,windows}/`.
 | **Mappings (decided reading)** | **PASS** | **PASS** | pending (hueyj window from 22:37) |
 | FP-27 warm, median of 20 (≤ 15 ms†) | **4.934 ms** (4.313–5.515) | **5.443 ms** (4.784–8.448) | pending (hueyj window from 22:37) |
 | **FP-27 warm** | **PASS** | **PASS** | pending (hueyj window from 22:37) |
-| FP-27 cold after reboot, median of 20 (≤ 15 ms†) | not measured: no decision asks for a macOS reboot run; the fresh-directory fallback (25.7 ms, first execution of a new file) stands as recorded above | **8.759 ms**, median of 16 runs (7.918–9.587); whatever the 4 missing runs read, the median of 20 lies in 8.572–8.884 ms | owner's run (`m1-e/fp27-cold.sh`, page cache dropped) |
-| **FP-27 cold** | open (no reboot run) | **PASS** (16 of 20 runs; the verdict cannot change) | owner's run |
+| FP-27 cold after reboot (FP-27 asks for a median of 20; ≤ 15 ms†) | not measured: no decision asks for a macOS reboot run; the fresh-directory fallback (25.7 ms, first execution of a new file) stands as recorded above | **16/20 runs: median 8.759 ms** (7.918–9.587). Runs 17–20 were not run: rig253 went offline after run 17's reboot (last answer 19:00:29, unreachable from 19:02) | owner's run (`m1-e/fp27-cold.sh`, page cache dropped) |
+| **FP-27 cold** | open (no reboot run) | **PASS** on 16/20 (no value of the 4 not run could change it) | owner's run |
 
 The network partition service, beside it:
 - **macOS:** 4,144 KiB (4,048, 4,112, 4,144, 4,144, 4,192), 0 wakeups, 34–37 process-created entries, 5.007 ms warm.
-- **Windows:** 836 KiB (880, 836, 836, 824, 828), 0 switches, 41 allocations, 5.910 ms warm, 9.953 ms cold (median of 16, 9.579–10.756).
+- **Windows:** 836 KiB (880, 836, 836, 824, 828), 0 switches, 41 allocations, 5.910 ms warm, 9.953 ms cold (16/20 runs, median; 9.579–10.756).
 - **Linux:** pending (hueyj window from 22:37).
 
 Its own target (NW-35: a partition service ≤ 2 MiB† at idle) is not judged in G. macOS is over it for the same sandbox floor as FP-2's, which is for the networking owner.
@@ -65,14 +65,14 @@ Its own target (NW-35: a partition service ≤ 2 MiB† at idle) is not judged i
 4. A `rig check` OK line.
 5. One `hg-launch-tool measure-spawn 1`: one broker launching both kinds, the first execution of each binary since the boot.
 
-**Result: 16 of the 20 runs.**
+**Result: 16/20 runs. Runs 17–20 were not run.**
 - Renderer: **8.759 ms** median (7.918–9.587).
 - Network partition: **9.953 ms** (9.579–10.756).
 - Boot to ssh took 37–38 s every time.
 
-**rig253 went off the network during run 17.** After its boot, ssh answered at 19:00:29. From the first `rig check` at the end of the settle period it answered nothing: no ssh, no ping, and ARP incomplete at 19:27. It did not return within 15 minutes. That cannot be diagnosed from here; it may be asleep or powered off. So the series stopped at 16, with booking b-30476e kept until 20:53 in case the host came back.
+**rig253 went off the network during run 17.** After its boot, ssh answered at 19:00:29. From the first `rig check` at the end of the settle period it answered nothing: no ssh, no ping, and ARP incomplete at 19:27. It did not return within 15 minutes. That cannot be diagnosed from here; it may be asleep or powered off. The series stopped at 16. Nothing more was done on rig253: no retries and no wake-on-LAN. Booking b-30476e was released, and its console is for the owner to look at.
 
-**The verdict does not depend on the missing runs.** All 16 renderer runs are ≤ 9.587 ms, so at least 16 of any 20 are below 15 ms. The median of 20 therefore lies between the known 6th–7th and 10th–11th values: 8.572–8.884 ms (network 9.881–10.046 ms).
+**The verdict does not depend on the 4 runs not run.** All 16 renderer runs are ≤ 9.587 ms, so at least 16 of any 20 are below 15 ms. The median of 20 therefore lies between the known 6th–7th and 10th–11th values: 8.572–8.884 ms (network 9.881–10.046 ms).
 
 **Against the afternoon's fresh-directory fallback (74.7 ms).** That fallback measured a newly written file's first execution, 69 ms of it inside `CreateProcess`. A reboot does not bring that cost back. Files already executed before the boot start in about 8.8 ms, against 5.4 ms warm.
 
@@ -368,7 +368,7 @@ hueyj is booked exclusive for the session from 20:37 (b-fe3c27), after the sessi
 2. **AppArmor full tier (E-Q1, approved):** install and probe as `research_notes/M1 E launch/apparmor/README.md` says (root for the install only), then remove the profile. Its attach paths name `~/izcal-m1e2`'s spawner builds; G's Linux rows run from `~/izcal-m1int-g`, so they stay on the restricted tier, reported by name, until the profile names the tree measured.
 3. **Decided 26 October** (FP-2 by 6.3's floor plus line items; macOS mappings process-created only; Windows cold by reboot; children at FP-32's two threads): applied in the final section above. The two spec amendments are drafted above, for the owner to apply.
 4. **Open, for the owner:**
-   - **Windows cold:** 16 of 20 reboot runs. rig253 dropped off the network during run 17 (see the final section), and needs a look at the console. The verdict does not depend on the 4 missing runs; they can be run under a new exclusive booking with `harness/g-cold-reboot-windows.sh 4 120 …` to complete the set.
+   - **Windows cold:** 16 of 20 reboot runs. rig253 dropped off the network during run 17 (see the final section), and needs a look at the console. The verdict does not depend on the 4 missing runs; runs 17–20 were not run. Once the rig is back, they can be run under a new exclusive booking with `harness/g-cold-reboot-windows.sh 4 120 …`, if the owner wants a full 20.
    - **macOS cold:** no decision asks for a reboot run on the Mac. The fresh-directory fallback (25.7 ms) is the only cold figure there.
    - **FP 6.3's 10 s linger for fork/join workers:** not built (see "Threads" above). It needs `unsafe` or a `'static` `PhasePool` contract; M2's first phase user is the natural point.
    - **NW-35:** the partition service is 4,144 KiB on macOS against its ≤ 2 MiB† idle line, for the same sandbox floor. It is not judged in G and is for the networking owner.

@@ -75,3 +75,4 @@
 2026-10-26T19:07:27-06:00 run 17: rig check FAIL: rig253 kind=exclusive session=m1-substrate | unreachable | bookings: b-30476e exclusive cpu by m1-substrate until 20:53 | game lock: ? | 2026-10-26T19:07:15-06:00 | reason: unreachable: cannot measure load (ssh: connect to host 192.168.50.253 port 22: Operation timed out)
 2026-10-26T19:07:27-06:00 run 17: no OK check; stopping
 2026-10-26T19:28:02-06:00 rig253 unreachable since run 17's settle period (ssh answered at 19:00:29, booted 18:00:01 Pacific; no ping or ssh from 19:01; ARP incomplete at 19:27). Not diagnosable remotely; the series stops at 16 of 20 runs. Booking b-30476e is kept until 20:53 in case the host returns.
+2026-10-26T19:29:36-06:00 series ended at 16/20; runs 17-20 not run; booking b-30476e released; no further action on rig253 (coordinator)
