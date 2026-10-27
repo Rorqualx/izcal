@@ -171,20 +171,25 @@ Two to four runs each. The plain round trip and 64 KiB throughput (3.2 to 4.3 Gi
 - **Windows transport suite:** 38 tests, run 10 times in a row on rig253 (all passed every time, 5.1 s each). Most children run in their own AppContainer sandboxes.
 - **Workspace tests:** pass on rig253 and on hueyj.
 - **Deterministic simulation:** the 60 `dst-smoke --ipc` seeds (0 to 59) still hash to `f06e8ea9488ab8cae1eb4054119ae52ddbebb41da8940781a9c0f57fe449911b`.
-- **Kani, the frame harnesses** (hueyj, booking b-4f21cf, one at a time when no other cbmc ran, `prlimit --as=10737418240`, 15-minute limit each, tree at `a68dfbc`): 8 of 11 verify; 3 do not fit in memory.
+- **Kani, the frame harnesses:** all 11 verify. Run on hueyj (booking b-d8ea54, 27 Oct 03:54 to 04:07) at `2fa3a02`, one at a time when no other cbmc ran, `prlimit --as=10737418240`, 15-minute limit each, each on its own attributes. Steps are CBMC's symex steps.
 
-| Harness | Result | Time |
-|---|---|---|
-| `ctl_round_trips_16` | verified | 110 s |
-| `ctl_round_trips_24` | verified | 198 s |
-| `ctl_round_trips_32` | verified | 321 s |
-| `ctl_round_trips_40` | **not verified: the solver ran out of memory** (CBMC status 6) | 311 s |
-| `ctl_round_trips_48` | **not verified: out of memory** | 371 s |
-| `ctl_round_trips_56` | **not verified: out of memory** | 434 s |
-| `a_relay_decodes` | verified, covers satisfied | 40 s |
-| `a_two_item_relay_decodes` | verified, cover satisfied | 45 s |
-| `the_w3_records_decode` | verified, covers satisfied | 49 s |
-| `data_split_checks_the_trailer` | verified | 6 s |
-| `a_message_round_trips_and_no_suffix_is_accepted` | verified | 56 s |
+| Harness | Result | Steps | Variables / clauses | Time |
+|---|---|---|---|---|
+| `ctl_round_trips_16` | verified | 823,638 | 2.74 M / 8.03 M | 66 s |
+| `ctl_round_trips_24` | verified | 1,098,522 | 2.90 M / 8.38 M | 74 s |
+| `ctl_round_trips_32` | verified | 1,250,159 | 3.01 M / 8.55 M | 87 s |
+| `ctl_round_trips_40` | verified | 1,348,309 | 3.09 M / 8.77 M | 101 s |
+| `ctl_round_trips_48` | verified | 1,425,248 | 3.20 M / 8.98 M | 98 s |
+| `ctl_round_trips_56` | verified | 1,477,906 | 3.28 M / 9.21 M | 106 s |
+| `a_relay_decodes` | verified, 3 of 3 covers | 808,132 | 0.38 M / 0.53 M | 36 s |
+| `a_two_item_relay_decodes` | verified, 1 of 1 cover | 933,689 | 0.69 M / 1.12 M | 40 s |
+| `the_w3_records_decode` | verified, 2 of 2 covers | 942,755 | 1.09 M / 2.64 M | 49 s |
+| `data_split_checks_the_trailer` | verified | 19,944 | 0.08 M / 0.33 M | 3 s |
+| `a_message_round_trips_and_no_suffix_is_accepted` | verified | 56,102 | 3.52 M / 14.59 M | 61 s |
 
-  No counterexample was found: the three ran out of memory before the solver ran. Under the same limit, `ctl_round_trips_40` at `3f4afb7` (before W3) verifies in 180 s, so W3's frame changes grew the problem past 10 GiB. Splitting each length in two by the kind byte (the kinds that carry items, and the rest) did not help: all six parts also ran out of memory. Control records of 40 bytes and more (`Redeem`, `RebindValue`, `RebindId`, and `Relay`, `Redeemed` and `Drains` with items) therefore have no round-trip proof on this branch yet. The unit tests and the `*_decodes` covers still exercise them.
+  **Why the W3 build first ran out of memory, and the fix.** At `a68dfbc`, `ctl_round_trips_40`, `_48` and `_56` ran out of memory under the same limit, before solving (no counterexample). CBMC's statistics locate the cause in the encoder's `Vec` growth:
+  - **Before W3** (`3f4afb7`): `ctl_round_trips_40` took 1,882,726 steps (5.49 M variables, 14.1 M clauses) and verified in 173 s.
+  - **W3** (`a68dfbc`): it took 3,261,034 steps and ran out of memory. The encoder appended every field into a growing `Vec`, across W3's added record kinds.
+  - **The fix** (`2fa3a02`): under `cfg(kani)` the encoder writes into a fixed `MAX_CTL_LEN` buffer with the same append semantics, as hg-ipc's wire `Writer` does, and writes reserved zeros as fixed slices instead of an iterator. That cut `_40` to 1,348,309 steps, and all six lengths now verify in under two minutes each.
+
+  The unit test `the_kani_buffer_appends_as_a_vec` checks that the buffer gives the same bytes as a `Vec` on the same random puts, and a put past its capacity fails an assertion.
