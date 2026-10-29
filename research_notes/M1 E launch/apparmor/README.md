@@ -50,4 +50,4 @@ Run as user `joe`, under a `rig` booking. The probe is `probes/linux/src/bin/fti
 2. A full-tier probe in the child: `CLONE_NEWNS`, make the tree private, mount a tmpfs, `pivot_root` into it with the old root detached, then `execveat` of the pre-opened executable descriptor across it.
 3. If (2) fails: bind-mount the executable into the empty root, exec it by its new path, and check that its `st_dev`/`st_ino` equal the pre-opened descriptor's before exec.
 
-Results go to `launch_facts.md` as new rows. Until they exist, the full tier stays unclaimed.
+Results are in `launch_facts.md` §11 (E38–E42, 29 Oct): every step works. The full tier stays unclaimed until it is built.
