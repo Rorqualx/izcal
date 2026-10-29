@@ -1,0 +1,9 @@
+# fp27-cold 2026-10-29T16:28:59-06:00 N=20 host=hueyj
+# rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.03/cpu (0.23 / 8 cpus) | bookings: none | game lock: free q0 | 2026-10-29T16:28:59-06:00
+run	kind	spawn_to_ready_ms
+# fp27-cold 2026-10-29T16:29:26-06:00 N=20 host=hueyj
+# rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.02/cpu (0.15 / 8 cpus) | bookings: none | game lock: free q0 | 2026-10-29T16:29:26-06:00
+run	kind	spawn_to_ready_ms
+# The two attempts above (16:28 and 16:29) ran no runs: sudo's prompt was held back by
+# the old script's pipe through tr and never shown, so sudo timed out (hueyj auth log:
+# "conversation failed" at 16:29:07 and 16:34:40). The script was fixed after them.
