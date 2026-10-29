@@ -29,13 +29,13 @@ Raw data and evidence lines are in `results/2026-10-26-final/{mac,windows,linux}
 | **Mappings (decided reading)** | **PASS** | **PASS** | **PASS** |
 | FP-27 warm, median of 20 (≤ 15 ms†) | **4.934 ms** (4.313–5.515) | **5.443 ms** (4.784–8.448) | **1.744 ms** (1.665–9.044), through the spawner |
 | **FP-27 warm** | **PASS** | **PASS** | **PASS** |
-| FP-27 cold after reboot (FP-27 asks for a median of 20; ≤ 15 ms†) | not measured: no decision asks for a macOS reboot run; the fresh-directory fallback (25.7 ms, first execution of a new file) stands as recorded above | **16/20 runs: median 8.759 ms** (7.918–9.587). Runs 17–20 were not run: rig253 went offline after run 17's reboot (last answer 19:00:29, unreachable from 19:02) | owner's run (`m1-e/fp27-cold.sh`, page cache dropped) |
-| **FP-27 cold** | open (no reboot run) | **PASS** on 16/20 (no value of the 4 not run could change it) | owner's run |
+| FP-27 cold after reboot (FP-27 asks for a median of 20; ≤ 15 ms†) | not measured: no decision asks for a macOS reboot run; the fresh-directory fallback (25.7 ms, first execution of a new file) stands as recorded above | **16/20 runs: median 8.759 ms** (7.918–9.587). Runs 17–20 were not run: rig253 went offline after run 17's reboot (last answer 19:00:29, unreachable from 19:02) | **10.851 ms** (10.266–16.243), 20 of 20, page cache dropped before each run (E-Q6, not a reboot), through the spawner; owner's run of `m1-e/fp27-cold.sh` on 29 Oct |
+| **FP-27 cold** | open (no reboot run) | **PASS** on 16/20 (no value of the 4 not run could change it) | **PASS** |
 
 The network partition service, beside it:
 - **macOS:** 4,144 KiB (4,048, 4,112, 4,144, 4,144, 4,192), 0 wakeups, 34–37 process-created entries, 5.007 ms warm.
 - **Windows:** 836 KiB (880, 836, 836, 824, 828), 0 switches, 41 allocations, 5.910 ms warm, 9.953 ms cold (16/20 runs, median; 9.579–10.756).
-- **Linux:** 172 KiB (176, 172, 172, 172, 172), 0 switches, 18 VMAs, 1.793 ms warm.
+- **Linux:** 172 KiB (176, 172, 172, 172, 172), 0 switches, 18 VMAs, 1.793 ms warm, 10.842 ms cold (20/20, median; 10.098–16.483).
 
 Its own target (NW-35: a partition service ≤ 2 MiB† at idle) is not judged in G. macOS is over it for the same sandbox floor as FP-2's, which is for the networking owner.
 
@@ -59,6 +59,7 @@ Its own target (NW-35: a partition service ≤ 2 MiB† at idle) is not judged i
   - Floor: `rig check OK: hueyj … load 0.18/cpu … 2026-10-27T01:48:11-06:00`.
   - Memory: `… 0.06/cpu … 01:53:22`.
   - Warm spawn: `… 0.10/cpu … 01:59:46`.
+- **Linux cold:** booking b-88b3b4, `rig check OK: hueyj kind=exclusive … load 0.27/cpu (2.19 / 8 cpus) … 2026-10-29T17:07:57-06:00`. The log is `fp27-cold-2026-10-29.log`. Two earlier attempts that day (16:28, 16:29) made no runs: the old script's pipe hid sudo's prompt, fixed in `9286ee0`. The run came after the AppArmor test profile was removed, so it matches the warm rows' conditions. The two highest values of both kinds fall in the same runs, 1 and 16 (about 15–16 ms); every other run is 10.1–12.2 ms.
 
 **`m1-e/fp27-cold.sh` after these changes.**
 - `~/izcal-m1int-g` on hueyj is updated to `cc5a6d1`'s tree and its release binaries are built.
@@ -375,8 +376,8 @@ Every timing run began with `rig check --kind exclusive --session m1-substrate`;
 
 ## For the owner
 
-1. **Linux cold FP-27:** in the hueyj exclusive window, on the Mac: `measurements/milestones/m1-e/fp27-cold.sh 20`. It checks the booking, then drops the page cache before each run (the only sudo) and logs to `m1-g/fp27-cold-<date>.log`.
-2. **AppArmor full tier (E-Q1, approved):** install and probe as `research_notes/M1 E launch/apparmor/README.md` says (root for the install only), then remove the profile. Its attach paths name `~/izcal-m1int-g`'s spawner builds, the tree G's Linux rows and `fp27-cold.sh` run from (changed from `~/izcal-m1e2` before install). Until it is installed and probed, the rows stay on the restricted tier, reported by name.
+1. **Linux cold FP-27:** done 29 Oct (owner's run, 20 of 20, PASS; see the table and evidence above).
+2. **AppArmor full tier (E-Q1, approved):** done 29 Oct. The owner installed the profile, the probe ran (launch facts E38–E42: every full-tier step works from the spawner's path), and the owner removed it before the cold run. The full tier is not built, so every Linux row is on `linux-restricted-userns`.
 3. **Decided 26 October** (FP-2 by 6.3's floor plus line items; macOS mappings process-created only; Windows cold by reboot; children at FP-32's two threads): applied in the final section above. The two spec amendments are drafted above, for the owner to apply.
 4. **Open, for the owner:**
    - **Windows cold:** 16 of 20 reboot runs. rig253 dropped off the network during run 17 (see the final section), and needs a look at the console. The verdict does not depend on the 4 missing runs; runs 17–20 were not run. Once the rig is back, they can be run under a new exclusive booking with `harness/g-cold-reboot-windows.sh 4 120 …`, if the owner wants a full 20.
