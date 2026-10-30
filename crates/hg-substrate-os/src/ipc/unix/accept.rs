@@ -26,7 +26,7 @@
 
 use hg_substrate::ipc::{HandleKind, MAX_MESSAGE_HANDLES};
 
-use super::codec::WireKind;
+use crate::ipc::common::codec::WireKind;
 
 /// `AF_UNIX`, the Unix-domain address family (unix(7)).
 pub(crate) const AF_UNIX: i32 = 1;

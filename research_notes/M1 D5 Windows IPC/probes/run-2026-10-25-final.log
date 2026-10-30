@@ -1,0 +1,374 @@
+[env] broker token: integrity=medium appcontainer=no privileges=1 user-file-read=not-probed sam-read=denied mitigations=lockdown+job (not-applied:appcontainer,untrusted,win32k,acg,cig,cet)
+[env] broker pid=28156 user=S-1-5-21-<machine>-1001 session=0
+[child] pid=33080 boot (main reached)
+[child] pid=33080 hello pid=33080 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P1-4]   child: pid=33080 session=0 ac-sid=S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744 ac-path=AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744
+[P1-4]   child: GetCurrentProcess=-1 GetCurrentThread=-2
+[P1-4]   child: value -8: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -7: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -6: GetTokenInformation ok=0 err=122 token-type=1 impersonation-level=0 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -5: GetTokenInformation ok=0 err=1008 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -4: GetTokenInformation ok=0 err=122 token-type=1 impersonation-level=0 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -3: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P1-4]   child: value -2: GetTokenInformation ok=0 err=6 ntq=Thread
+[P1-4]   child: value -1: GetTokenInformation ok=0 err=6 ntq=Process
+[P1-4] P1/P2 child CreateNamedPipeW(\\.\pipe\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-plain) [INBOUND|OVERLAPPED|FIRST_INSTANCE, MESSAGE|READMODE_MESSAGE|REJECT_REMOTE, 1,0,0,0,NULL]
+[P1-4]   child: CreateNamedPipeW FAILED err=5
+[P1-4] P1/P2 child CreateNamedPipeW(\\.\pipe\LOCAL\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local) [INBOUND|OVERLAPPED|FIRST_INSTANCE, MESSAGE|READMODE_MESSAGE|REJECT_REMOTE, 1,0,0,0,NULL]
+[P1-4]   child: CreateNamedPipeW OK h=156 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local sd=O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;S-1-5-21-<machine>-1001)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0)
+[P1-4] P1/P2 child CreateNamedPipeW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full) [INBOUND|OVERLAPPED|FIRST_INSTANCE, MESSAGE|READMODE_MESSAGE|REJECT_REMOTE, 1,0,0,0,NULL]
+[P1-4]   child: CreateNamedPipeW OK h=160 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full sd=O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;S-1-5-21-<machine>-1001)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0)
+[P1-4] P3 same child CreateFileW(\\.\pipe\LOCAL\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local, GENERIC_WRITE)
+[P1-4]   child: CreateFileW OK h=304 type=File access=0x120196
+[P1-4] P3 same child CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full, GENERIC_WRITE)
+[P1-4]   child: CreateFileW OK h=200 type=File access=0x120196
+[P1-4] P3 child CreateNamedPipeW(\\.\pipe\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-plain-sd0) with SD D:(A;;GA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;GA;;;RC)(A;;GA;;;OW)
+[P1-4]   child: CreateNamedPipeW FAILED err=5
+[P1-4] P3 child CreateNamedPipeW(\\.\pipe\LOCAL\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local-sd1) with SD D:(A;;GA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;GA;;;RC)(A;;GA;;;OW)
+[P1-4]   child: CreateNamedPipeW OK h=204 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local-sd1 sd=O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;RC)(A;;FA;;;OW)S:(ML;;NW;;;S-1-16-0)
+[P1-4]   child: CreateFileW OK h=308 type=File access=0x120196
+[P1-4] P3 child CreateNamedPipeW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full-sd2) with SD D:(A;;GA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;GA;;;RC)(A;;GA;;;OW)
+[P1-4]   child: CreateNamedPipeW OK h=312 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full-sd2 sd=O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;RC)(A;;FA;;;OW)S:(ML;;NW;;;S-1-16-0)
+[P1-4]   child: CreateFileW OK h=316 type=File access=0x120196
+[child] pid=31388 boot (main reached)
+[child] pid=31388 hello pid=31388 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P1-4] P4 broker GetSecurityInfo on child's \\.\pipe\LOCAL\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local: O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;S-1-5-21-<machine>-1001)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0) [type=File access=0x20000]
+[P1-4] P4 broker CreateFileW(\\.\pipe\LOCAL\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local, GENERIC_WRITE): FAILED err=2
+[P1-4] P4 broker CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local, GENERIC_WRITE): FAILED err=231
+[P1-4] P4 child B (other AppContainer) CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-local)
+[P1-4]   child: CreateFileW FAILED err=5
+[P1-4] P4 broker GetSecurityInfo on child's \\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full: O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;S-1-5-21-<machine>-1001)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0) [type=File access=0x20000]
+[P1-4] P4 broker CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full, GENERIC_WRITE): FAILED err=231
+[P1-4] P4 broker CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full, GENERIC_WRITE): FAILED err=231
+[P1-4] P4 child B (other AppContainer) CreateFileW(\\.\pipe\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-6aa976e53e35dd6d110bdca4fd6f6d9b-full)
+[P1-4]   child: CreateFileW FAILED err=5
+[P1-4]   child: CreateNamedPipeW OK h=320 filename=\Sessions\0\AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744\izcal-d5-2ca002cc6bf68484e75928343aa41632-free sd=O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)(A;;FA;;;S-1-5-21-<machine>-1001)(A;;FR;;;WD)(A;;FR;;;AN)S:(ML;;NW;;;S-1-16-0)
+[P1-4] P4 broker CreateFileW(unconnected child pipe, 0x40000000): OK type=File access=0x120196
+[P1-4] P4 child B CreateFileW(unconnected child-A pipe, 0x40000000):
+[P1-4]   child: CreateFileW FAILED err=5
+[P1-4] P4 child B CreateFileW(unconnected child-A pipe, 0x100002):
+[P1-4]   child: CreateFileW FAILED err=5
+[child] pid=10952 boot (main reached)
+[child] pid=10952 hello pid=10952 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P5] NULL SD: broker pipe SD = O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-5-21-<machine>-1001)(A;;FR;;;WD)(A;;FR;;;AN)
+[P5] NULL SD: child CreateFileW(access 0x40000000)
+[P5]   child: CreateFileW FAILED err=5
+[P5] NULL SD: child CreateFileW(access 0x100002)
+[P5]   child: CreateFileW FAILED err=5
+[P5] NULL SD: child CreateFileW(access 0x100001)
+[P5]   child: CreateFileW FAILED err=5
+[P5] NULL SD: second CreateNamedPipeW same name (FIRST_INSTANCE): FAILED err=231
+[P5] explicit DACL user-only: broker pipe SD = O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:P(A;;FA;;;S-1-5-21-<machine>-1001)
+[P5] explicit DACL user-only: child CreateFileW(access 0x40000000)
+[P5]   child: CreateFileW FAILED err=5
+[P5] explicit DACL user-only: child CreateFileW(access 0x100002)
+[P5]   child: CreateFileW FAILED err=5
+[P5] explicit DACL user-only: child CreateFileW(access 0x100001)
+[P5]   child: CreateFileW FAILED err=5
+[P5] explicit DACL user-only: second CreateNamedPipeW same name (FIRST_INSTANCE): FAILED err=231
+[P5] DACL user + AC SID, no label: broker pipe SD = O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:P(A;;FA;;;S-1-5-21-<machine>-1001)(A;;0x12019f;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)
+[P5] DACL user + AC SID, no label: child CreateFileW(access 0x40000000)
+[P5]   child: CreateFileW OK h=192 type=File access=0x120196
+[P5] DACL user + AC SID, no label: child CreateFileW(access 0x100002)
+[P5]   child: CreateFileW FAILED err=231
+[P5] DACL user + AC SID, no label: child CreateFileW(access 0x100001)
+[P5]   child: CreateFileW FAILED err=231
+[P5] DACL user + AC SID, no label: second CreateNamedPipeW same name (FIRST_INSTANCE): FAILED err=231
+[P5] DACL user + AC SID, label Untrusted NW: broker pipe SD = O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:P(A;;FA;;;S-1-5-21-<machine>-1001)(A;;0x12019f;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)S:AI(ML;;NW;;;S-1-16-0)
+[P5] DACL user + AC SID, label Untrusted NW: child CreateFileW(access 0x40000000)
+[P5]   child: CreateFileW OK h=196 type=File access=0x120196
+[P5] DACL user + AC SID, label Untrusted NW: child CreateFileW(access 0x100002)
+[P5]   child: CreateFileW FAILED err=231
+[P5] DACL user + AC SID, label Untrusted NW: child CreateFileW(access 0x100001)
+[P5]   child: CreateFileW FAILED err=231
+[P5] DACL user + AC SID, label Untrusted NW: second CreateNamedPipeW same name (FIRST_INSTANCE): FAILED err=231
+[P5] existing pipe (max 2, no FIRST_INSTANCE) ok=true; then CreateNamedPipeW with FIRST_INSTANCE: FAILED err=5
+[P5]   and a second instance without FIRST_INSTANCE: SUCCEEDED
+[PAIR] broker pair \\.\pipe\izcal-d5-c11ced10070c2fd315332e2280f30a46: server type=File access=0x1a019f | client type=File access=0x100183 | SD O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:P(A;;FA;;;S-1-5-21-<machine>-1001)
+[PAIR] server GetNamedPipeInfo flags=0xd out=65536 in=65536 max=1; client GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1
+[PAIR] second client CreateFileW: FAILED err=231
+[PAIR] P21 DuplicateHandle into SUSPENDED sandboxed child: receiver(server)=Ok(4) sender(client)=Ok(8)
+[PAIR]   child: boot (main reached)
+[PAIR]   child: hello pid=9972 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[PAIR]   child: type=File access=0x100001
+[PAIR]   child: type=File access=0x100002
+[PAIR]   child: write 0: Ok(100)
+[PAIR]   child: write 1: Ok(100)
+[PAIR]   child: write 2: Ok(100)
+[PAIR]   child: ok len=100 first=0
+[PAIR]   child: ok len=100 first=1
+[PAIR]   child: ok len=100 first=2
+[PAIR]   child: err=258 len=0
+[P6-7] bufs=0 msg=1B: client GetNamedPipeInfo flags=0xc out=0 in=0 max=1; writes completed immediately before the first pend: 0 msgs / 0 B; first non-immediate: ERROR_IO_PENDING
+[P6-7]   read back 1/1 intact in order []; pended write completion after reads: Ok(1)
+[P6-7] bufs=0 msg=4096B: client GetNamedPipeInfo flags=0xc out=0 in=0 max=1; writes completed immediately before the first pend: 0 msgs / 0 B; first non-immediate: ERROR_IO_PENDING
+[P6-7]   read back 1/1 intact in order []; pended write completion after reads: Ok(4096)
+[P6-7] bufs=0 msg=65600B: client GetNamedPipeInfo flags=0xc out=0 in=0 max=1; writes completed immediately before the first pend: 0 msgs / 0 B; first non-immediate: ERROR_IO_PENDING
+[P6-7]   read back 1/1 intact in order []; pended write completion after reads: Ok(65600)
+[P6-7] bufs=4096 msg=1B: client GetNamedPipeInfo flags=0xc out=4096 in=4096 max=1; writes completed immediately before the first pend: 4096 msgs / 4096 B; first non-immediate: ERROR_IO_PENDING
+[P6-7]   read back 4097/4097 intact in order []; pended write completion after reads: Ok(1)
+[P6-7] bufs=4096 msg=4096B: client GetNamedPipeInfo flags=0xc out=4096 in=4096 max=1; writes completed immediately before the first pend: 1 msgs / 4096 B; first non-immediate: ERROR_IO_PENDING
+[P6-7]   read back 2/2 intact in order []; pended write completion after reads: Ok(4096)
+[P6-7] bufs=4096 msg=65600B: client GetNamedPipeInfo flags=0xc out=4096 in=4096 max=1; writes completed immediately before the first pend: 0 msgs / 0 B; first non-immediate: ERROR_IO_PENDING
+[P6-7]   read back 1/1 intact in order []; pended write completion after reads: Ok(65600)
+[P6-7] bufs=65536 msg=1B: client GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1; writes completed immediately before the first pend: none msgs / 20000 B; first non-immediate: err=0
+[P6-7]   read back 20000/20000 intact in order []; pended write completion after reads: Ok(1)
+[P6-7] bufs=65536 msg=4096B: client GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1; writes completed immediately before the first pend: 16 msgs / 65536 B; first non-immediate: ERROR_IO_PENDING
+[P6-7]   read back 17/17 intact in order []; pended write completion after reads: Ok(4096)
+[P6-7] bufs=65536 msg=65600B: client GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1; writes completed immediately before the first pend: 0 msgs / 0 B; first non-immediate: ERROR_IO_PENDING
+[P6-7]   read back 1/1 intact in order []; pended write completion after reads: Ok(65600)
+[P8] 64KiB+1 message into 64KiB read: first err=234 len=65536 ; second read ok len=1 first=7 ; write Ok(65537)
+[P8] 0-byte message: write Ok(0) read ok len=0 first=-1
+[P8] P8b 1048576 B single message: write immediate=false err=997; read ok len=1048576 first=9; write completion Ok(1048576)
+[P8] P8b 16777216 B single message: write immediate=false err=997; read ok len=16777216 first=9; write completion Ok(16777216)
+[P8] P8b 67108864 B single message: write immediate=false err=997; read ok len=67108864 first=9; write completion Ok(67108864)
+[P9] writer=client, reader=server: 3 queued then CloseHandle(writer); reader sees: ["ok len=10 first=0", "ok len=11 first=1", "ok len=12 first=2", "err=109 len=0"]
+[P9] writer=client, reader=server:   reader-side write after peer close: Err(232)
+[P9] writer=server, reader=client: 3 queued then CloseHandle(writer); reader sees: ["ok len=10 first=0", "ok len=11 first=1", "ok len=12 first=2", "err=109 len=0"]
+[P9] writer=server, reader=client:   reader-side write after peer close: Err(232)
+[P9]   child: write 0: Ok(10)
+[P9]   child: write 1: Ok(10)
+[P9]   child: write 2: Ok(10)
+[P9] writer in child, child killed by closing its job (exited code=0x0); reader sees: ["ok len=10 first=0", "ok len=10 first=1", "ok len=10 first=2", "err=109 len=0"]
+[P10] reader=server closed, writer=client: next write Err(232), again Err(232); read on writer end err=109 len=0
+[P10] reader=client closed, writer=server: next write Err(232), again Err(232); read on writer end err=109 len=0
+[P10] filled: write #16 returned err=997
+[P10] pending write state just before the reader closes: Err(258)
+[P10] pending write after reader CloseHandle completes with: Ok(4096)
+[P10] next write after that: Err(232)
+[P11] broker closed its writer, child still holds a copy; read on server: err=258 len=0
+[P11]   child: CloseHandle ok=1 err=0
+[P11] after the child closed its copy; read on server: err=109 len=0
+[P12] inheritable pipe end value 80708 in broker; plain CreateProcess(bInheritHandles=TRUE, no list) child checks it:
+[P12]   child: value 80708: GetHandleInformation ok=1 err=0 flags=1 filetype=3 type=File access=0x100183
+[P12] same, but the child is created with a HANDLE_LIST that omits it:
+[P12]   child: value 80708: GetHandleInformation ok=0 err=6 flags=0 filetype=0 type=ntstatus=0xc0000008 access=?(status 0xc0000008)
+[child] pid=26788 boot (main reached)
+[child] pid=26788 hello pid=26788 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[child] pid=24832 boot (main reached)
+[child] pid=24832 hello pid=24832 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P13] broker pid=28156 childA pid=26788 childB pid=24832
+[P13] (a) broker-opened client: ClientPid=28156 (ok=1 err=0) ServerPid=28156 (ok=1) ClientSession=0 (ok=1)
+[P13]   child: write 0: Ok(5)
+[P13] (a) after move into A and A wrote: ClientPid=28156 (ok=1 err=0) ServerPid=28156 (ok=1) ClientSession=0 (ok=1)
+[P13]   child: write 0: Ok(5)
+[P13] (a) after move A->B and B wrote: ClientPid=28156 (ok=1 err=0) ServerPid=28156 (ok=1) ClientSession=0 (ok=1)
+[P13]   child: CreateFileW OK h=196 type=File access=0x100082
+[P13] (b) A opened by name: ClientPid=26788 (ok=1 err=0) ServerPid=28156 (ok=1) ClientSession=0 (ok=1)
+[P13]   child: write 0: Err(258)
+[P13] (b) after move A->B and B wrote: ClientPid=26788 (ok=1 err=0) ServerPid=28156 (ok=1) ClientSession=0 (ok=1)
+[P13] (b) after A exited: ClientPid=26788 (ok=1 err=0) ServerPid=28156 (ok=1) ClientSession=0 (ok=1)
+[child] pid=4428 boot (main reached)
+[child] pid=4428 hello pid=4428 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P14]   child: pid=4428 session=0 ac-sid=S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744 ac-path=AppContainerNamedObjects\S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744
+[P14]   child: GetCurrentProcess=-1 GetCurrentThread=-2
+[P14]   child: value -8: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P14]   child: value -7: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P14]   child: value -6: GetTokenInformation ok=0 err=122 token-type=1 impersonation-level=0 ntq=ntstatus=0xc0000008
+[P14]   child: value -5: GetTokenInformation ok=0 err=1008 ntq=ntstatus=0xc0000008
+[P14]   child: value -4: GetTokenInformation ok=0 err=122 token-type=1 impersonation-level=0 ntq=ntstatus=0xc0000008
+[P14]   child: value -3: GetTokenInformation ok=0 err=6 ntq=ntstatus=0xc0000008
+[P14]   child: value -2: GetTokenInformation ok=0 err=6 ntq=Thread
+[P14]   child: value -1: GetTokenInformation ok=0 err=6 ntq=Process
+[P14] broker pid=28156 tid=28272; child pid=4428 main tid=23464
+[P14] DuplicateHandle(child, 0) FAILED err=6
+[P14] DuplicateHandle(child, -1) OK -> type=Process access=0x1fffff GetProcessId=4428
+[P14] DuplicateHandle(child, -2) OK -> type=Thread access=0x1fffff GetThreadId=28272 owner-pid=28156
+[P14] DuplicateHandle(child, -3) FAILED err=6
+[P14] DuplicateHandle(child, -4) FAILED err=6
+[P14] DuplicateHandle(child, -5) FAILED err=6
+[P14] DuplicateHandle(child, -6) FAILED err=6
+[P14] DuplicateHandle(child, -7) FAILED err=6
+[P14] DuplicateHandle(child, -8) FAILED err=6
+[P14] DuplicateHandle(child, -9) FAILED err=6
+[P14] DuplicateHandle(child, 4) OK -> type=Event access=0x1f0003
+[P14] DuplicateHandle(child, 8) OK -> type=Event access=0x1f0003
+[P14] DuplicateHandle(child, 2147483647) FAILED err=6
+[P16] NtQueryObject(pipe server, class 0): status=0xc0000004 ReturnLength=0 first words=0x0 0x0
+[P16] NtQueryObject(pipe server, class 1): status=0x0 ReturnLength=136 first words=0x780076 0x1339d724570
+[P16] NtQueryObject(pipe server, class 2): status=0x0 ReturnLength=120 first words=0xa0008 0x1339d7225a8
+[P16] NtQueryObject(pipe server, class 3): status=0xc0000004 ReturnLength=9784 first words=0x49 0xa0008
+[P16] pipe server: type=File access=0x1a019f GetFileType=3 GetNamedPipeInfo flags=0xd out=65536 in=65536 max=1
+[P16] pipe client: type=File access=0x100183 GetFileType=3 GetNamedPipeInfo flags=0xc out=65536 in=65536 max=1
+[P16] anon read: type=File access=0x120189 GetFileType=3 GetNamedPipeInfo flags=0x1 out=4096 in=4096 max=1
+[P16] anon write: type=File access=0x120196 GetFileType=3 GetNamedPipeInfo flags=0x0 out=4096 in=4096 max=1
+[P16] socket: type=File access=0x16019f GetFileType=3 GetNamedPipeInfo err=1
+[P16] disk file: type=File access=0x100081 GetFileType=1 GetNamedPipeInfo err=87
+[P16] section: type=Section access=0xf0007 GetFileType=0 GetNamedPipeInfo err=6
+[P16] event: type=Event access=0x1f0003 GetFileType=0 GetNamedPipeInfo err=6
+[P16] process: type=Process access=0x1fffff GetFileType=0 GetNamedPipeInfo err=6
+[P16] thread: type=Thread access=0x1fffff GetFileType=0 GetNamedPipeInfo err=6
+[P16] token: type=Token access=0x8 GetFileType=0 GetNamedPipeInfo err=6
+[P16] iocp: type=IoCompletion access=0x1f0003 GetFileType=0 GetNamedPipeInfo err=6
+[P17] server vs own dup: 1 (err=0); server vs client of same instance: 0 (err=1656); server vs copy pulled back from child: 1 (err=0); server vs other pair's server: 0 (err=1656)
+[P17] CompareObjectHandles cost: 319 ns (same object), 317 ns (different)
+[P18] receiver FILE_READ_DATA|SYNCHRONIZE (0x100001) ops:
+[P18]   child: type=File access=0x100001 filetype=3
+[P18]   child: PeekNamedPipe ok=1 err=0 avail=0 left=0
+[P18]   child: GetNamedPipeInfo err=5
+[P18]   child: SetNamedPipeHandleState(MESSAGE) ok=0 err=5
+[P18]   child: GetNamedPipeHandleState ok=0 err=5 state=0x0
+[P18]   child: CreateIoCompletionPort(assoc) ok
+[P18] receiver + FILE_READ_ATTRIBUTES ops:
+[P18]   child: type=File access=0x100081 filetype=3
+[P18]   child: PeekNamedPipe ok=1 err=0 avail=0 left=0
+[P18]   child: GetNamedPipeInfo flags=0xd out=65536 in=65536 max=1
+[P18]   child: SetNamedPipeHandleState(MESSAGE) ok=0 err=5
+[P18]   child: GetNamedPipeHandleState ok=1 err=0 state=0x2
+[P18]   child: CreateIoCompletionPort(assoc) ok
+[P18] sender FILE_WRITE_DATA|SYNCHRONIZE (0x100002) ops:
+[P18]   child: type=File access=0x100002 filetype=3
+[P18]   child: PeekNamedPipe ok=0 err=5 avail=0 left=0
+[P18]   child: GetNamedPipeInfo err=5
+[P18]   child: SetNamedPipeHandleState(MESSAGE) ok=0 err=5
+[P18]   child: GetNamedPipeHandleState ok=0 err=5 state=0x0
+[P18]   child: CreateIoCompletionPort(assoc) ok
+[P18] fresh receiver (FILE_READ_DATA|SYNCHRONIZE) read via completion port (broker wrote 33 B):
+[P18]   child: ReadFile ok=1 err=0
+[P18]   child: GQCS ok=1 err=0 bytes=33 key=42 ov-match=true
+[P18] sender write (child), broker reads:
+[P18]   child: write 0: Ok(21)
+[P18]   child: ok len=21 first=0
+[P19]   child: DuplicateHandle(self, 0x100003) FAILED err=5
+[P19]   child: DuplicateHandle(self, 0x100101) FAILED err=5
+[P19]   child: DuplicateHandle(self, 0x100081) FAILED err=5
+[P19]   child: DuplicateHandle(self, 0x40000000) FAILED err=5
+[P19]   child: DuplicateHandle(self, 0x1f01ff) FAILED err=5
+[P15]   child: type=File access=0x100001
+[P15] pulled back into broker with SAME_ACCESS: type=File access=0x100001
+[P20b] read posted ok=1/997; CancelIoEx ok=1
+[P20b] cancel_first=true: ["after cancel: ok=0 err=995 bytes=0 key=1 ov=true", "after close: ok=0 err=258 bytes=0 key=0 ov=false"]
+[P20b] cancel_first=false: ["after CloseHandle alone: ok=0 err=109 bytes=0 key=1 ov=true", "again: ok=0 err=258 bytes=0 key=0 ov=false"]
+[P22] sandbox=false broker: listed 80496 (type=File access=0x1a019f), 80520 (type=File access=0x100183); unlisted inheritable 80672
+[P22]   child: boot (main reached)
+[P22]   child: hello pid=9832 lowered=skipped args=["--nosandbox"] integrity=medium appcontainer=no privileges=1 user-file-read=not-probed sam-read=denied mitigations=lockdown+job (not-applied:appcontainer,untrusted,win32k,acg,cig,cet)
+[P22]   child: value 80496: GetHandleInformation ok=1 err=0 flags=1 filetype=3 type=File access=0x1a019f
+[P22]   child: value 80520: GetHandleInformation ok=1 err=0 flags=1 filetype=3 type=File access=0x100183
+[P22]   child: CloseHandle on 80672: returned ok=0 err=6
+[P22] sandbox=true broker: listed 80672 (type=File access=0x1a019f), 80520 (type=File access=0x100183); unlisted inheritable 80496
+[P22]   child: boot (main reached)
+[P22]   child: hello pid=25768 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P22]   child: value 80672: GetHandleInformation ok=1 err=0 flags=1 filetype=3 type=File access=0x1a019f
+[P22]   child: value 80520: GetHandleInformation ok=1 err=0 flags=1 filetype=3 type=File access=0x100183
+[P22]   child: CloseHandle on 80496: returned ok=0 err=6
+[P26x] sandbox=true: StrictHandleCheckPolicy flags=0x3 (ok=1 err=0) SystemCallDisablePolicy flags=0x0 (ok=1 err=0)
+[P26x] sandbox=false: StrictHandleCheckPolicy flags=0x0 (ok=1 err=0) SystemCallDisablePolicy flags=0x0 (ok=1 err=0)
+[P26x] sandboxed, before Untrusted lowering: StrictHandleCheckPolicy flags=0x3 (ok=1 err=0) SystemCallDisablePolicy flags=0x0 (ok=1 err=0)
+[P26x] sandbox=true GetHandleInformation(0x12344): <no END: Disconnected; exited code=0xc0000008> [child exited code=0xc0000008]
+[P26x] sandbox=false GetHandleInformation(0x12344): GetHandleInformation on 0x12344: returned ok=0 err=6 [child running]
+[P26x] sandbox=true GetHandleInformation(-3): GetHandleInformation on -3: returned ok=0 err=6 [child running]
+[P26x] sandbox=false GetHandleInformation(-3): GetHandleInformation on -3: returned ok=0 err=6 [child running]
+[P26x] sandbox=true GetFileType(0x12344): <no END: Disconnected; exited code=0xc0000008> [child exited code=0xc0000008]
+[P26x] sandbox=false GetFileType(0x12344): GetFileType on 0x12344: returned type=0 err=6 [child running]
+[P26x] sandbox=true GetFileType(-3): GetFileType on -3: returned type=0 err=6 [child running]
+[P26x] sandbox=false GetFileType(-3): GetFileType on -3: returned type=0 err=6 [child running]
+[P26x] sandbox=true NtQueryObject(0x12344): <no END: Disconnected; exited code=0xc0000008> [child exited code=0xc0000008]
+[P26x] sandbox=false NtQueryObject(0x12344): NtQueryObject on 0x12344: returned ntstatus=0xc0000008 [child running]
+[P26x] sandbox=true NtQueryObject(-3): NtQueryObject on -3: returned ntstatus=0xc0000008 [child running]
+[P26x] sandbox=false NtQueryObject(-3): NtQueryObject on -3: returned ntstatus=0xc0000008 [child running]
+[P26x] sandbox=true CloseHandle(0x12344): CloseHandle on 0x12344: returned ok=0 err=6 [child running]
+[P26x] sandbox=false CloseHandle(0x12344): CloseHandle on 0x12344: returned ok=0 err=6 [child running]
+[P26x] sandbox=true CloseHandle(-3): CloseHandle on -3: returned ok=1 err=6 [child running]
+[P26x] sandbox=false CloseHandle(-3): CloseHandle on -3: returned ok=1 err=6 [child running]
+[P26x] sandbox=true ReadFile(0x12344): <no END: Disconnected; exited code=0xc0000008> [child exited code=0xc0000008]
+[P26x] sandbox=false ReadFile(0x12344): ReadFile on 0x12344: returned ok=0 err=6 [child running]
+[P26x] sandbox=true ReadFile(-3): ReadFile on -3: returned ok=0 err=6 [child running]
+[P26x] sandbox=false ReadFile(-3): ReadFile on -3: returned ok=0 err=6 [child running]
+[P26x] sandbox=true WaitForSingleObject(0x12344): <no END: Disconnected; exited code=0xc0000008> [child exited code=0xc0000008]
+[P26x] sandbox=false WaitForSingleObject(0x12344): WaitForSingleObject on 0x12344: returned r=0xffffffff err=6 [child running]
+[P26x] sandbox=true WaitForSingleObject(-3): WaitForSingleObject on -3: returned r=0xffffffff err=6 [child running]
+[P26x] sandbox=false WaitForSingleObject(-3): WaitForSingleObject on -3: returned r=0xffffffff err=6 [child running]
+[P26x] sandbox=true DuplicateHandle(0x12344): DuplicateHandle on 0x12344: returned Err(6) [child running]
+[P26x] sandbox=false DuplicateHandle(0x12344): DuplicateHandle on 0x12344: returned Err(6) [child running]
+[P26x] sandbox=true DuplicateHandle(-3): DuplicateHandle on -3: returned Err(6) [child running]
+[P26x] sandbox=false DuplicateHandle(-3): DuplicateHandle on -3: returned Err(6) [child running]
+[child] pid=25568 boot (main reached)
+[child] pid=25568 hello pid=25568 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P23] P23 default SD: broker section type=Section access=0xf0007 SD 
+[P23]   child: type=Section access=0x4 (FILE_MAP_READ=0x4 FILE_MAP_WRITE=0x2 FILE_MAP_COPY=0x1 FILE_MAP_ALL_ACCESS=0xf001f SECTION_QUERY=0x1)
+[P23]   child: (i) MapViewOfFile(WRITE) FAILED err=5
+[P23]   child: (ii) read view ok, data="hello"; VirtualProtect(RW) ok=0 err=87 old=0x1
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_WRITE) OK -> type=Section access=0x2; write-map OK, wrote byte 100='W'
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_ALL_ACCESS) OK -> type=Section access=0xf001f; write-map OK, wrote byte 100='W'
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_READ|WRITE) OK -> type=Section access=0x6; write-map OK, wrote byte 100='W'
+[P23]   child: (v) copy view mapped, wrote byte 200='C' privately
+[P23] P23 default SD: broker view byte100='W' byte200='\0' (W = child widened and wrote; C = copy view leaked)
+[P23] P24 DACL: user GA, AppContainer FILE_MAP_READ only: broker section type=Section access=0xf0007 SD O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:P(A;;CCDCLCSWRPSDRCWDWO;;;S-1-5-21-<machine>-1001)(A;;LC;;;S-1-15-2-1441179094-4191469292-2235408272-3638971591-344463186-2204460163-2489588744)
+[P23]   child: type=Section access=0x4 (FILE_MAP_READ=0x4 FILE_MAP_WRITE=0x2 FILE_MAP_COPY=0x1 FILE_MAP_ALL_ACCESS=0xf001f SECTION_QUERY=0x1)
+[P23]   child: (i) MapViewOfFile(WRITE) FAILED err=5
+[P23]   child: (ii) read view ok, data="hello"; VirtualProtect(RW) ok=0 err=87 old=0x1
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_READ|WRITE) FAILED err=5
+[P23]   child: (v) copy view mapped, wrote byte 200='C' privately
+[P23] P24 DACL: user GA, AppContainer FILE_MAP_READ only: broker view byte100='\0' byte200='\0' (W = child widened and wrote; C = copy view leaked)
+[P23] P24 DACL: user GA only (AppContainer absent): broker section type=Section access=0xf0007 SD O:S-1-5-21-<machine>-1001G:S-1-5-21-<machine>-513D:P(A;;CCDCLCSWRPSDRCWDWO;;;S-1-5-21-<machine>-1001)
+[P23]   child: type=Section access=0x4 (FILE_MAP_READ=0x4 FILE_MAP_WRITE=0x2 FILE_MAP_COPY=0x1 FILE_MAP_ALL_ACCESS=0xf001f SECTION_QUERY=0x1)
+[P23]   child: (i) MapViewOfFile(WRITE) FAILED err=5
+[P23]   child: (ii) read view ok, data="hello"; VirtualProtect(RW) ok=0 err=87 old=0x1
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[P23]   child: (iii) DuplicateHandle(self, FILE_MAP_READ|WRITE) FAILED err=5
+[P23]   child: (v) copy view mapped, wrote byte 200='C' privately
+[P23] P24 DACL: user GA only (AppContainer absent): broker view byte100='\0' byte200='\0' (W = child widened and wrote; C = copy view leaked)
+[P23] reopen named section by Local\ name Local\izcal-d5-0b8406e9c6a9dd0ab67e182b493395a9 with FILE_MAP_WRITE:
+[P23]   child: OpenFileMappingW(Local\izcal-d5-0b8406e9c6a9dd0ab67e182b493395a9) FAILED err=5
+[P23] reopen named section by full name \Sessions\0\BaseNamedObjects\izcal-d5-0b8406e9c6a9dd0ab67e182b493395a9 with FILE_MAP_WRITE:
+[P23]   child: OpenFileMappingW(\Sessions\0\BaseNamedObjects\izcal-d5-0b8406e9c6a9dd0ab67e182b493395a9) FAILED err=161
+[P23] reopen named section by Global\ name Global\izcal-d5-0b8406e9c6a9dd0ab67e182b493395a9 with FILE_MAP_WRITE:
+[P23]   child: OpenFileMappingW(Global\izcal-d5-0b8406e9c6a9dd0ab67e182b493395a9) FAILED err=5
+[P25]   child: CreateFileMappingW OK type=Section access=0xf0007
+[P26] p26a: exit status Some(0) (0x0)
+[P26]   strict policy set ok=1 err=0
+[P26]   broker(strict) DuplicateHandle(child, 0x12345678) -> Err(6) (no exception)
+[P26]   broker(strict) DuplicateHandle(child, 0x1000) -> Err(6) (no exception)
+[P26]   broker(strict) DuplicateHandle(child, 0xfffffffffffffffe) -> Ok(0x188) (no exception)
+[P26]   broker(strict) DuplicateHandle(child, 0x12345678, CLOSE_SOURCE) -> Err(6) (no exception)
+[P26]   broker(strict) DuplicateHandle(self, 0x12345678 -> child) -> Err(6) (no exception)
+[P26] p26b: exit status Some(-1073741816) (0xc0000008)
+[P26]   strict policy set ok=1 err=0
+[P26]   broker(strict) CloseHandle(0x12345678) returned 0 err=6 (no exception)
+[child] pid=9664 boot (main reached)
+[child] pid=9664 hello pid=9664 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P26] child: strict on, then CloseHandle(0x12345678):
+[P26]   child: SetProcessMitigationPolicy(strict) ok=1 err=0
+[P26]   child: CloseHandle(0x12345678) returned ok=0 err=6 (no exception)
+[P26] child state after: running
+[child] pid=4296 boot (main reached)
+[child] pid=4296 hello pid=4296 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P26]   child: SetProcessMitigationPolicy(strict) ok=1 err=0
+[P26] broker (not strict) DuplicateHandle(strict child, 0x12345678) -> Err(6); child state running
+[P27]   child: boot (main reached)
+[P27]   child: hello pid=21772 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P27]   child: StrictHandleCheckPolicy flags=0x3 (ok=1 err=0)
+[P27]   child: SystemCallDisablePolicy flags=0x0 (ok=1 err=0)
+[P27] control (no policy): full-access ends; server ops:
+[P27]   child: type=File access=0x1a019f filetype=3
+[P27]   child: PeekNamedPipe ok=1 err=0 avail=0 left=0
+[P27]   child: GetNamedPipeInfo flags=0xd out=65536 in=65536 max=1
+[P27]   child: SetNamedPipeHandleState(MESSAGE) ok=1 err=0
+[P27]   child: GetNamedPipeHandleState ok=1 err=0 state=0x2
+[P27]   child: CreateIoCompletionPort(assoc) ok
+[P27]   child: write 0: Ok(12)
+[P27]   child: ok len=12 first=0
+[P27]   child: assoc FAILED err=87
+[P27]   child: boot (main reached)
+[P27]   child: hello pid=27116 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[P27]   child: StrictHandleCheckPolicy flags=0x3 (ok=1 err=0)
+[P27]   child: SystemCallDisablePolicy flags=0x4 (ok=1 err=0)
+[P27] FSCTL disable (POLICY2 1<<56): full-access ends; server ops:
+[P27]   child: type=File access=0x1a019f filetype=3
+[P27]   child: PeekNamedPipe ok=1 err=0 avail=0 left=0
+[P27]   child: GetNamedPipeInfo flags=0xd out=65536 in=65536 max=1
+[P27]   child: SetNamedPipeHandleState(MESSAGE) ok=1 err=0
+[P27]   child: GetNamedPipeHandleState ok=1 err=0 state=0x2
+[P27]   child: CreateIoCompletionPort(assoc) ok
+[P27]   child: write 0: Ok(12)
+[P27]   child: ok len=12 first=0
+[P27]   child: assoc FAILED err=87
+[RTT]   child: echo started
+[RTT] broker<->sandboxed child round trip, 64 B messages, n=10000: median 9.4 us, p10 9.2, p90 16.3, p99 27.4, mean 11.1
+[RTT] broker<->sandboxed child round trip, 4096 B messages, n=10000: median 11.2 us, p10 11.0, p90 15.9, p99 30.5, mean 12.5
+[RTT] broker<->sandboxed child round trip, 65536 B messages, n=2000: median 54.9 us, p10 22.2, p90 93.7, p99 117.1, mean 61.6
+[RTT] in-process write+read, 64 B, same thread: 4.73 us each
+[env] Medium-token broker exited code=0x0

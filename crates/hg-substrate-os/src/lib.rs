@@ -78,13 +78,17 @@ impl std::error::Error for StartError {}
 /// # Errors
 /// [`StartError`] if the OS random source or thread creation fails.
 pub fn os_substrate(threads: Threads) -> Result<Substrate, StartError> {
-    start(threads, None)
+    start(threads, Launch::default())
 }
 
 /// The launch channels a process was started with, already checked.
 #[cfg(target_os = "linux")]
 type Launch = Option<(std::os::fd::OwnedFd, std::os::fd::OwnedFd)>;
-#[cfg(not(target_os = "linux"))]
+/// On macOS, whether the process was launched with them: they are taken
+/// from the launcher over the bootstrap port when the transport starts.
+#[cfg(target_os = "macos")]
+type Launch = bool;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 type Launch = Option<core::convert::Infallible>;
 
 /// [`os_substrate`] for a process its launcher started with launch
@@ -103,6 +107,18 @@ pub fn os_substrate_launched(
     down: std::os::fd::OwnedFd,
 ) -> Result<Substrate, StartError> {
     start(threads, ipc::linux::launch_ends(up, down).ok())
+}
+
+/// [`os_substrate`] for a process its launcher started with launch
+/// channels. On macOS the launcher made this process's bootstrap port a
+/// port of its own; the transport sends a hello there and takes the
+/// launch channels from the answer, which `Ipc::bootstrap` then returns.
+///
+/// # Errors
+/// As [`os_substrate`], and [`StartError::Ipc`] if no answer comes.
+#[cfg(target_os = "macos")]
+pub fn os_substrate_launched(threads: Threads) -> Result<Substrate, StartError> {
+    start(threads, true)
 }
 
 fn start(threads: Threads, launch: Launch) -> Result<Substrate, StartError> {
@@ -147,8 +163,23 @@ fn os_ipc(
     }
 }
 
-/// This OS's IPC transport (none yet: D4, D5).
-#[cfg(not(target_os = "linux"))]
+/// This OS's IPC transport.
+#[cfg(target_os = "macos")]
+fn os_ipc(
+    exec: &Arc<executor::OsExecutor>,
+    launched: Launch,
+) -> Result<Arc<dyn hg_substrate::Ipc>, StartError> {
+    match ipc::macos::MacIpc::start(Arc::clone(exec), launched) {
+        Ok(t) => Ok(Arc::new(t)),
+        Err(ipc::macos::StartError::Os(e)) => Err(StartError::Ipc(e)),
+        Err(ipc::macos::StartError::Bootstrap) => Err(StartError::Ipc(std::io::Error::other(
+            "no launch channels from the launcher",
+        ))),
+    }
+}
+
+/// This OS's IPC transport (none yet: D5).
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn os_ipc(
     _exec: &Arc<executor::OsExecutor>,
     _boot: Launch,

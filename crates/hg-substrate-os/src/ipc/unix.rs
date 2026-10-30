@@ -1,16 +1,15 @@
 //! The libc-free core of the Unix IPC transport (M1 phase D3).
 //!
 //! Everything here is safe Rust over plain values. The syscall layer
-//! (`sys`, a later D3 step and the only `unsafe` in the transport)
+//! (`ipc::linux::sys`, the only `unsafe` in the transport)
 //! translates the kernel's structures into these types and back, so the
 //! decisions that keep a hostile peer out are made in code that compiles
 //! and is tested on every OS, and that Kani proves (security scope
-//! SEC-4 (b), VER-1).
+//! SEC-4 (b), VER-1). The record codec and the flow counters, which
+//! every backend shares, are in [`super::common`].
 //!
-//! - [`codec`]: the data and credit record formats (IPC-R6).
 //! - [`cmsg`]: our own parser of the ancillary data `recvmsg(2)` returns.
 //! - [`accept`]: which received descriptors become handles (IPC-R1).
-//! - [`flow`]: the counters behind `Full` and the credits.
 //! - [`decide`]: the decision on one received record.
 //!
 //! Sources: the Linux man pages unix(7), cmsg(3), socket(7) and
@@ -52,6 +51,4 @@
 
 pub(crate) mod accept;
 pub(crate) mod cmsg;
-pub(crate) mod codec;
 pub(crate) mod decide;
-pub(crate) mod flow;

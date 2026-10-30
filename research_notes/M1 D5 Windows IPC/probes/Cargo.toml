@@ -1,0 +1,31 @@
+[package]
+name = "d5probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "M1 D5 black-box probes of Windows named pipes, handle duplication and sections under Izcal's sandbox"
+
+[workspace]
+
+[dependencies]
+# The repo's locked version (Cargo.lock: windows-sys 0.61.2).
+windows-sys = { version = "=0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Isolation",
+  "Win32_Security_Authorization",
+  "Win32_Security_Cryptography",
+  "Win32_System_Threading",
+  "Win32_System_IO",
+  "Win32_System_Pipes",
+  "Win32_System_JobObjects",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Memory",
+  "Win32_System_LibraryLoader",
+  "Win32_System_ProcessStatus",
+  "Win32_System_RemoteDesktop",
+  "Win32_System_Console",
+] }
+
+[profile.release]
+debug = false

@@ -676,6 +676,16 @@ impl World {
         self.shared.lock().now
     }
 
+    /// `pid`'s current incarnation as its OS identity, the value a
+    /// bound receiver is given ([`hg_substrate::ipc::Ipc::listen_bound`]),
+    /// or `None` if no such process is running.
+    pub fn os_peer(&self, pid: ProcessId) -> Option<hg_substrate::ipc::OsPeer> {
+        let st = self.shared.lock();
+        let p = st.procs.get(usize::try_from(pid.0).ok()?)?;
+        p.alive
+            .then(|| hg_substrate::ipc::OsPeer::new(pid.0, u64::from(p.generation)))
+    }
+
     /// Whether `pid` is running (not crashed and awaiting restart).
     pub fn is_alive(&self, pid: ProcessId) -> bool {
         self.shared

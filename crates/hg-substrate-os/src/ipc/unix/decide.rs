@@ -39,9 +39,13 @@
 //! 5. A bound receiver (IPC-R2): every record must carry credentials
 //!    (`SO_PASSCRED` is set before the end leaves its maker, so their
 //!    absence means the channel is not what it claims; no one is
-//!    blamed, since no pid is known), and the pid must match the one
-//!    latched from the first accepted record (a mismatch is blamed on
-//!    the record's attested sender, the intruder).
+//!    blamed, since no pid is known), and the pid must be the peer the
+//!    receiver was bound to when it started listening
+//!    ([`hg_substrate::ipc::Ipc::listen_bound`]). A record from any
+//!    other process is blamed on the bound peer, not on its sender: a
+//!    bound sender reaches no one but that peer unless the peer passed
+//!    it on (relabelled as a free sender, which no transport can see),
+//!    and the process that received it may be an honest one.
 //! 6. A record that does not decode → Violation.
 //! 7. Handles: an `SCM_RIGHTS` with no descriptors, a descriptor count
 //!    that differs from the descriptor table's, a duplicate socket, a
@@ -63,8 +67,8 @@ use hg_substrate::ipc::{Fault, FaultKind, HandleKind, MAX_MESSAGE_HANDLES};
 
 use super::accept::{AcceptCtx, FdFacts, Held, Refusal, accept, distinct};
 use super::cmsg::{CmsgError, ParsedControl};
-use super::codec::{CodecError, DataView, HandleDesc, WireKind, decode_data};
-use super::flow::{FlowError, ReceiverFlow, SenderFlow};
+use crate::ipc::common::codec::{CodecError, DataView, HandleDesc, WireKind, decode_data};
+use crate::ipc::common::flow::{FlowError, ReceiverFlow, SenderFlow};
 
 /// One record as read.
 #[derive(Debug, Clone, Copy)]
@@ -88,10 +92,10 @@ pub(crate) struct Record<'a> {
 /// The receiving channel's binding (IPC-R2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Binding {
-    /// The channel is bound: only one process may send on it.
-    pub(crate) bound: bool,
-    /// The pid latched from the first accepted record, once there is one.
-    pub(crate) latched: Option<i32>,
+    /// For a bound channel, the one process that may send on it: the
+    /// pid it was bound to when it started listening. `None` for a free
+    /// channel.
+    pub(crate) peer: Option<i32>,
 }
 
 /// Why a record was a violation.
@@ -105,7 +109,7 @@ pub(crate) enum Reason {
     Control(CmsgError),
     /// No credentials on a bound channel.
     NoCredentials,
-    /// Credentials of a process other than the latched one.
+    /// Credentials of a process other than the bound peer.
     WrongPeer,
     /// A record that does not decode.
     Codec(CodecError),
@@ -203,8 +207,6 @@ pub(crate) struct Verdict<'a> {
     /// The descriptors to close now: every one the kernel installed,
     /// unless the record is accepted (then none).
     pub(crate) close: &'a [i32],
-    /// On a bound channel's first accepted record, the pid to latch.
-    pub(crate) latch: Option<i32>,
 }
 
 /// The attested sender, if the kernel named one.
@@ -256,12 +258,10 @@ where
             sender: if blame { sender } else { None },
         },
         close,
-        latch: None,
     };
     let closed = Verdict {
         decision: Decision::Closed,
         close,
-        latch: None,
     };
 
     // Rules 1 to 4: the read itself.
@@ -284,15 +284,18 @@ where
 
     // Rule 5: the binding.
     let pid = control.cred.map(|c| c.pid).filter(|&p| p > 0);
-    let mut latch = None;
-    if binding.bound {
+    if let Some(peer) = binding.peer {
         let Some(pid) = pid else {
             return refuse(Reason::NoCredentials, false);
         };
-        match binding.latched {
-            Some(l) if l != pid => return refuse(Reason::WrongPeer, true),
-            Some(_) => {}
-            None => latch = Some(pid),
+        if pid != peer {
+            return Verdict {
+                decision: Decision::Violation {
+                    reason: Reason::WrongPeer,
+                    sender: u32::try_from(peer).ok().filter(|&p| p > 0),
+                },
+                close,
+            };
         }
     }
 
@@ -345,7 +348,6 @@ where
             count: descs.len(),
         },
         close: &[],
-        latch,
     }
 }
 
@@ -356,9 +358,9 @@ where
 #[cfg(kani)]
 mod proofs {
     use super::*;
+    use crate::ipc::common::codec::proofs::any_desc;
     use crate::ipc::unix::accept::proofs::any_facts;
     use crate::ipc::unix::cmsg::Ucred;
-    use crate::ipc::unix::codec::proofs::any_desc;
 
     /// Which part of the decision a harness covers.
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -447,10 +449,7 @@ mod proofs {
             control: &control,
             facts: &facts[..n_facts],
         };
-        let binding = Binding {
-            bound: kani::any(),
-            latched: kani::any(),
-        };
+        let binding = Binding { peer: kani::any() };
         let capacity: u32 = kani::any_where(|&c: &u32| c <= 4);
         let received: u64 = kani::any_where(|&r: &u64| r <= 4);
         let delivered: u64 = kani::any_where(|&d: &u64| d <= received);
@@ -464,8 +463,7 @@ mod proofs {
         let held = move |_d: u64, _i: u64| held_answer;
 
         let pid = cred.map(|c| c.pid).filter(|&p| p > 0);
-        let binding_ok =
-            !binding.bound || pid.is_some_and(|p| binding.latched.is_none_or(|l| l == p));
+        let binding_ok = binding.peer.is_none_or(|b| pid == Some(b));
         let early_ok = !rec.ctrl_truncated
             && !rec.bytes.is_empty()
             && !rec.truncated
@@ -495,21 +493,22 @@ mod proofs {
                     }
                 }
                 assert!(flow.received == before.received + 1);
-                if let Some(p) = v.latch {
-                    assert!(binding.bound && binding.latched.is_none());
-                    assert!(cred.map(|c| c.pid) == Some(p));
-                }
-                if binding.bound {
-                    assert!(v.latch.is_some() || binding.latched == cred.map(|c| c.pid));
+                if let Some(b) = binding.peer {
+                    assert!(cred.map(|c| c.pid) == Some(b));
                 }
                 Seen::Accepted
             }
-            Decision::Violation { sender, .. } => {
+            Decision::Violation { reason, sender } => {
                 assert!(core::ptr::eq(v.close, control.close_set()));
                 assert!(flow == before);
-                assert!(v.latch.is_none());
                 if let Some(s) = sender {
-                    assert!(cred.is_some_and(|c| i64::from(c.pid) == i64::from(s)));
+                    // The attested sender, or, for a record from the
+                    // wrong process, the peer the channel is bound to.
+                    if reason == Reason::WrongPeer {
+                        assert!(binding.peer.is_some_and(|b| i64::from(b) == i64::from(s)));
+                    } else {
+                        assert!(cred.is_some_and(|c| i64::from(c.pid) == i64::from(s)));
+                    }
                     Seen::Blamed
                 } else {
                     Seen::Unblamed
@@ -613,9 +612,9 @@ mod proofs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::common::codec::encode_data;
     use crate::ipc::unix::accept::{AF_UNIX, SOCK_SEQPACKET};
     use crate::ipc::unix::cmsg::{CmsgError, Ucred};
-    use crate::ipc::unix::codec::encode_data;
 
     const PEER: i32 = 4242;
 
@@ -653,10 +652,7 @@ mod tests {
         false
     }
 
-    const FREE: Binding = Binding {
-        bound: false,
-        latched: None,
-    };
+    const FREE: Binding = Binding { peer: None };
 
     struct Case {
         bytes: Vec<u8>,
@@ -690,7 +686,7 @@ mod tests {
             }
         }
 
-        fn run(&mut self) -> (Decision<'_>, Vec<i32>, Option<i32>) {
+        fn run(&mut self) -> (Decision<'_>, Vec<i32>) {
             let rec = Record {
                 bytes: &self.bytes,
                 hang_up: self.hang_up,
@@ -700,13 +696,12 @@ mod tests {
                 facts: &self.facts,
             };
             let v = decide(&rec, self.binding, &mut self.flow, &none_held);
-            (v.decision, v.close.to_vec(), v.latch)
+            (v.decision, v.close.to_vec())
         }
 
         fn violation(&mut self) -> (Reason, Option<u32>, Vec<i32>) {
             let before = self.flow;
-            let (d, close, latch) = self.run();
-            assert_eq!(latch, None);
+            let (d, close) = self.run();
             let Decision::Violation { reason, sender } = d else {
                 panic!("expected a violation, got {d:?}");
             };
@@ -720,7 +715,7 @@ mod tests {
     #[test]
     fn a_good_record_is_accepted() {
         let mut c = Case::new(&[WireKind::Sender, WireKind::Receiver]);
-        let (d, close, latch) = c.run();
+        let (d, close) = c.run();
         assert_eq!(
             d.kinds(),
             &[HandleKind::ChannelSender, HandleKind::ChannelReceiver]
@@ -730,7 +725,6 @@ mod tests {
         };
         assert_eq!(view.payload, b"hello");
         assert!(close.is_empty());
-        assert_eq!(latch, None);
         assert_eq!(d.fault(), None);
         assert_eq!(c.flow.received, 1);
     }
@@ -739,7 +733,7 @@ mod tests {
     fn ctrunc_and_hang_up_close_without_blame() {
         let mut c = Case::new(&[WireKind::Sender]);
         c.ctrl_truncated = true;
-        assert_eq!(c.run(), (Decision::Closed, vec![10], None));
+        assert_eq!(c.run(), (Decision::Closed, vec![10]));
 
         let mut c = Case::new(&[]);
         c.bytes.clear();
@@ -835,7 +829,7 @@ mod tests {
     fn facts_out_of_step_with_the_descriptors_close_without_blame() {
         let mut c = Case::new(&[WireKind::Sender]);
         c.facts[0].fd = 99;
-        assert_eq!(c.run(), (Decision::Closed, vec![10], None));
+        assert_eq!(c.run(), (Decision::Closed, vec![10]));
         let mut c = Case::new(&[WireKind::Sender]);
         c.facts.clear();
         assert_eq!(c.run().0, Decision::Closed);
@@ -864,42 +858,27 @@ mod tests {
     }
 
     #[test]
-    fn a_bound_receiver_latches_its_first_sender() {
+    fn a_bound_receiver_takes_records_from_its_peer_only() {
         let mut c = Case::new(&[]);
-        c.binding = Binding {
-            bound: true,
-            latched: None,
-        };
-        let (d, _, latch) = c.run();
+        c.binding = Binding { peer: Some(PEER) };
+        let (d, _) = c.run();
         assert!(matches!(d, Decision::Accept { .. }));
-        assert_eq!(latch, Some(PEER));
 
-        let mut c = Case::new(&[]);
-        c.binding = Binding {
-            bound: true,
-            latched: Some(PEER),
-        };
-        let (d, _, latch) = c.run();
-        assert!(matches!(d, Decision::Accept { .. }));
-        assert_eq!(latch, None);
-
+        // Another process: blamed on the bound peer, which must have
+        // passed its sender on, not on the record's sender.
         let mut c = Case::new(&[WireKind::Sender]);
         c.binding = Binding {
-            bound: true,
-            latched: Some(PEER + 1),
+            peer: Some(PEER + 1),
         };
         let (reason, sender, close) = c.violation();
         assert_eq!(
             (reason, sender, close),
-            (Reason::WrongPeer, ATTESTED, vec![10])
+            (Reason::WrongPeer, Some(4243), vec![10])
         );
         assert_eq!(reason.fault_kind(), FaultKind::Identity);
 
         let mut c = Case::new(&[]);
-        c.binding = Binding {
-            bound: true,
-            latched: None,
-        };
+        c.binding = Binding { peer: Some(PEER) };
         c.control = ParsedControl::from_parts(&[], &[], 0, None, Ok(()));
         assert_eq!(c.violation(), (Reason::NoCredentials, None, vec![]));
     }

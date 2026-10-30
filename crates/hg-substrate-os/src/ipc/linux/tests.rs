@@ -11,14 +11,14 @@ use std::time::{Duration, Instant};
 
 use hg_substrate::ipc::{
     ChannelReceiver, ChannelSender, Delivery, Fault, FaultKind, Flow, Handle, HandleKind, Ipc,
-    IpcError, Transfer,
+    IpcError, OsPeer, Transfer,
 };
 use hg_substrate::{Executor, Priority};
 
 use super::sys::{self, SendOutcome};
 use super::{BOOTSTRAP_FDS, LinuxEnd, LinuxIpc, adopt_parent_ends, launch_ends, launch_pair};
 use crate::executor::OsExecutor;
-use crate::ipc::unix::codec::{HandleDesc, WireKind, encode_data};
+use crate::ipc::common::codec::{HandleDesc, WireKind, encode_data};
 
 const WAIT: Duration = Duration::from_secs(20);
 
@@ -50,6 +50,20 @@ impl Rig {
         let (tx, out) = sync_channel::<Ev>(4096);
         let seq = self.exec.sequence("test", Priority::UserVisible);
         let l = self.ipc.listen(rx, seq, sink(tx)).expect("listen");
+        (out, l)
+    }
+
+    fn listen_bound(
+        &self,
+        rx: ChannelReceiver,
+        peer: OsPeer,
+    ) -> (Receiver<Ev>, hg_substrate::ipc::Listening) {
+        let (tx, out) = sync_channel::<Ev>(4096);
+        let seq = self.exec.sequence("test", Priority::UserVisible);
+        let l = self
+            .ipc
+            .listen_bound(rx, peer, seq, sink(tx))
+            .expect("listen_bound");
         (out, l)
     }
 }
@@ -219,6 +233,29 @@ fn bound_senders_move_once_and_bound_receivers_never() {
     r.ipc
         .send(&carrier, b"grant".to_vec(), vec![btx.into_handle()])
         .unwrap();
+}
+
+#[test]
+fn bound_receivers_listen_only_with_their_peer_named() {
+    let r = rig();
+    let seq = || r.exec.sequence("test", Priority::UserVisible);
+    let nothing = || -> hg_substrate::ipc::Sink { Box::new(|_d| Flow::Continue) };
+    let peer = OsPeer::new(std::process::id(), 0);
+    let (_btx, brx) = r.ipc.channel(8, Transfer::Bound).unwrap();
+    let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    assert_eq!(
+        r.ipc.listen(brx, seq(), nothing()).err(),
+        Some(IpcError::Refused)
+    );
+    // Any receiver may name its one sender; a bound one must.
+    assert!(r.ipc.listen_bound(rx, peer, seq(), nothing()).is_ok());
+    let (_btx, brx) = r.ipc.channel(8, Transfer::Bound).unwrap();
+    assert_eq!(
+        r.ipc
+            .listen_bound(brx, OsPeer::new(0, 0), seq(), nothing())
+            .err(),
+        Some(IpcError::Refused)
+    );
 }
 
 #[test]
@@ -635,20 +672,19 @@ fn a_bound_receiver_hears_only_its_grantee() {
     let (btx, brx) = r.ipc.channel(8, Transfer::Bound).unwrap();
     // Keep a raw copy of the bound sender before granting it.
     let ours = raw(&r.ipc, btx.handle()).try_clone().unwrap();
-    let (out, _l) = r.listen(brx);
+    let child = u32::try_from(c.pid).unwrap();
+    let (out, _l) = r.listen_bound(brx, OsPeer::new(child, 0));
     r.ipc
         .send(&c.to_child, b"grant".to_vec(), vec![btx.into_handle()])
         .unwrap();
     assert_eq!(expect_msg(&out).0, b"from-child");
     assert_eq!(expect_msg(&c.from_child).0, b"done");
-    // Now another process (this one) writes on the bound channel.
+    // Now another process (this one) writes on the bound channel. The
+    // fault names the bound peer, the only process that could have
+    // passed the sender on.
     let rec = encode_data(1, &[], b"impostor").unwrap();
     assert_eq!(sys::send_record(ours.as_fd(), &rec, &[]), SendOutcome::Sent);
-    expect_fault(
-        &out,
-        FaultKind::Identity,
-        Some(u32::try_from(me()).unwrap()),
-    );
+    expect_fault(&out, FaultKind::Identity, Some(child));
     r.ipc
         .send(&c.to_child, b"bye".to_vec(), Vec::new())
         .unwrap();

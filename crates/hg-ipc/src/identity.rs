@@ -8,9 +8,12 @@
 //! one, and nothing in a message can change it. Free endpoints carry no
 //! identity: their handlers get none.
 //!
-//! M1 identifies the peer process. Site, origin, container, frame and
+//! M1 identifies the peer process, and the binding names its OS process
+//! too, so the transport itself refuses records from any other process. Site, origin, container, frame and
 //! worker identity join as those types arrive (IPC-R2 (b)); the types are
 //! `#[non_exhaustive]` for that.
+
+use hg_substrate::ipc::OsPeer;
 
 /// A peer process as the broker numbers it: an index and a generation,
 /// so an identifier is never reused for a later process (IPC-R8).
@@ -44,12 +47,16 @@ impl PeerId {
 pub struct PeerBinding {
     /// The peer the endpoint was made for.
     pub peer: PeerId,
+    /// That peer's process as the OS identifies it: the receiving
+    /// transport accepts records from this process only
+    /// ([`hg_substrate::ipc::Ipc::listen_bound`]).
+    pub os: OsPeer,
 }
 
 impl PeerBinding {
-    /// A binding to `peer`.
-    pub const fn new(peer: PeerId) -> Self {
-        Self { peer }
+    /// A binding to `peer`, whose process is `os`.
+    pub const fn new(peer: PeerId, os: OsPeer) -> Self {
+        Self { peer, os }
     }
 }
 

@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
     ChannelReceiver, ChannelSender, Delivery, Fault, Flow, Handle, HandleKind, Ipc, IpcError,
-    Listening, Transfer,
+    Listening, OsPeer, Sink, Transfer,
 };
 
 use crate::identity::{CallerIdentity, PeerBinding};
@@ -263,6 +263,7 @@ impl<T: Interface> Endpoint<T> {
 
     fn listen<E: Send + 'static>(
         self,
+        peer: Option<OsPeer>,
         seq: SequenceHandle,
         mut handle: impl FnMut(T) -> Result<(), E> + Send + 'static,
         on_end: impl FnOnce(EndReason<E>) + Send + 'static,
@@ -275,21 +276,21 @@ impl<T: Interface> Endpoint<T> {
             }
             Flow::Close
         };
-        let listening = self.ipc.listen(
-            self.rx,
-            seq,
-            Box::new(move |d| match d {
-                Delivery::Message { bytes, handles } => match T::from_wire(&bytes, handles, &ipc) {
-                    Ok(msg) => match handle(msg) {
-                        Ok(()) => Flow::Continue,
-                        Err(e) => end(EndReason::Handler(e)),
-                    },
-                    Err(bad) => end(EndReason::BadMessage(bad)),
+        let sink: Sink = Box::new(move |d| match d {
+            Delivery::Message { bytes, handles } => match T::from_wire(&bytes, handles, &ipc) {
+                Ok(msg) => match handle(msg) {
+                    Ok(()) => Flow::Continue,
+                    Err(e) => end(EndReason::Handler(e)),
                 },
-                Delivery::Closed => end(EndReason::PeerClosed),
-                Delivery::Violation(fault) => end(EndReason::Violation(fault)),
-            }),
-        )?;
+                Err(bad) => end(EndReason::BadMessage(bad)),
+            },
+            Delivery::Closed => end(EndReason::PeerClosed),
+            Delivery::Violation(fault) => end(EndReason::Violation(fault)),
+        });
+        let listening = match peer {
+            None => self.ipc.listen(self.rx, seq, sink)?,
+            Some(p) => self.ipc.listen_bound(self.rx, p, seq, sink)?,
+        };
         Ok(Serving {
             _closes_on_drop: listening,
         })
@@ -308,7 +309,7 @@ impl<T: FreeInterface> Endpoint<T> {
         handle: impl FnMut(T) -> Result<(), E> + Send + 'static,
         on_end: impl FnOnce(EndReason<E>) + Send + 'static,
     ) -> Result<Serving, IpcError> {
-        self.listen(seq, handle, on_end)
+        self.listen(None, seq, handle, on_end)
     }
 }
 
@@ -326,7 +327,7 @@ impl<T: BoundInterface> Endpoint<T> {
         on_end: impl FnOnce(EndReason<E>) + Send + 'static,
     ) -> Result<Serving, IpcError> {
         let who = CallerIdentity::from_binding(binding);
-        self.listen(seq, move |m| handle(m, &who), on_end)
+        self.listen(Some(binding.os), seq, move |m| handle(m, &who), on_end)
     }
 }
 

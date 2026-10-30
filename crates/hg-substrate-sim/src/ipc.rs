@@ -14,6 +14,9 @@
 //!   (IPC-R1);
 //! - a bound sender is sent at most once, by the process that made the
 //!   channel (IPC-R2 (a));
+//! - a receiver listened to with [`Ipc::listen_bound`] takes messages
+//!   from the process it names only, and a bound receiver listens no
+//!   other way (IPC-R2);
 //! - a crash closes every end the process held, so its peers see
 //!   [`Delivery::Closed`] (IPC-R8's closure fault);
 //! - a process marked with [`crate::World::corrupt_next_send`] sends one
@@ -31,7 +34,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, FaultKind, Flow, Handle,
     HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES,
-    Sink, Transfer,
+    OsPeer, Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
@@ -63,6 +66,9 @@ struct Listen {
     generation: u32,
     seq: usize,
     sink: Arc<Mutex<Sink>>,
+    /// For a bound receiver, the one process whose messages it accepts
+    /// ([`Ipc::listen_bound`]).
+    peer: Option<Owner>,
 }
 
 struct Chan {
@@ -72,7 +78,8 @@ struct Chan {
     granted: bool,
     sender: End,
     receiver: End,
-    queue: VecDeque<(Vec<u8>, Vec<Handle>)>,
+    /// Undelivered messages, each with the end's owner when it was sent.
+    queue: VecDeque<(Vec<u8>, Vec<Handle>, Owner)>,
     /// A refused record, delivered after the queued messages; nothing
     /// follows it.
     fault: Option<Fault>,
@@ -100,7 +107,7 @@ pub(crate) struct Channels {
     chans: BTreeMap<u64, Chan>,
     next: u64,
     /// A process's launch channels: (to its parent, from its parent).
-    boot: BTreeMap<ProcessId, (u64, u64)>,
+    boot: BTreeMap<ProcessId, (u64, u64, OsPeer)>,
     /// Processes whose next send is refused by the receiving transport.
     corrupt: BTreeMap<ProcessId, FaultKind>,
 }
@@ -170,7 +177,7 @@ impl Channels {
     /// Everything, for the world's teardown.
     pub(crate) fn drain(&mut self, out: &mut Dropped) {
         for (_, mut c) in std::mem::take(&mut self.chans) {
-            for (_, handles) in c.queue.drain(..) {
+            for (_, handles, _) in c.queue.drain(..) {
                 out.push(Box::new(handles));
             }
             if let Some(l) = c.listen.take() {
@@ -196,7 +203,7 @@ fn close(st: &mut State, id: u64, side: Side, out: &mut Dropped) {
         Side::Sender => kick(st, id),
         Side::Receiver => {
             if let Some(c) = st.ipc.chans.get_mut(&id) {
-                for (_, handles) in c.queue.drain(..) {
+                for (_, handles, _) in c.queue.drain(..) {
                     out.push(Box::new(handles));
                 }
                 if let Some(l) = c.listen.take() {
@@ -283,9 +290,29 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
     };
     c.draining = false;
     let Some(l) = &c.listen else { return };
-    let (pid, generation, sink) = (l.pid, l.generation, Arc::clone(&l.sink));
-    let delivery = if let Some((bytes, handles)) = c.queue.pop_front() {
-        Delivery::Message { bytes, handles }
+    let (pid, generation, sink, peer) = (l.pid, l.generation, Arc::clone(&l.sink), l.peer);
+    // Handles of a message refused here, dropped once the lock is released.
+    let mut stray = Vec::new();
+    let delivery = if let Some((bytes, handles, from)) = c.queue.pop_front() {
+        match peer {
+            // A bound receiver's message from another process: the bound
+            // peer passed its sender on, so it is the one named.
+            Some(bound @ Owner::Proc(p, _)) if from != bound => {
+                // Nothing follows a violation. The handles of this message
+                // and of every one queued after it close once the lock is
+                // released (dropping one locks the world).
+                stray = handles;
+                for (_, h, _) in c.queue.drain(..) {
+                    stray.extend(h);
+                }
+                c.closed_delivered = true;
+                Delivery::Violation(Fault {
+                    kind: FaultKind::Identity,
+                    sender: Some(p.0),
+                })
+            }
+            _ => Delivery::Message { bytes, handles },
+        }
     } else if let Some(fault) = c.fault.take() {
         c.closed_delivered = true;
         Delivery::Violation(fault)
@@ -313,6 +340,7 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
     };
     st.trace.record(format_args!("ipc deliver #{id} {what}"));
     drop(st);
+    drop(stray);
     let flow = sink.lock().unwrap_or_else(PoisonError::into_inner)(delivery);
     let mut out = Dropped::new();
     let mut st = shared.lock();
@@ -522,7 +550,7 @@ impl Ipc for SimIpc {
             handles.len()
         ));
         if let Some(c) = st.ipc.chans.get_mut(&id) {
-            c.queue.push_back((bytes, handles));
+            c.queue.push_back((bytes, handles, self.me()));
         }
         kick(&mut st, id);
         Ok(())
@@ -534,51 +562,25 @@ impl Ipc for SimIpc {
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
-        let mut st = self.shared.lock();
-        let Some((id, Side::Receiver)) = self.held(&st, from.handle()) else {
-            drop(st);
-            return Err(IpcError::Refused);
-        };
-        let si = usize::try_from(seq.raw()).unwrap_or(usize::MAX);
-        if st
-            .proc(self.pid, self.generation)
-            .and_then(|p| p.seqs.get(si))
-            .is_none()
-        {
-            drop(st);
-            return Err(IpcError::Sequence);
-        }
-        let Some(c) = st.ipc.chans.get_mut(&id) else {
-            drop(st);
-            return Err(IpcError::Closed);
-        };
-        c.listen = Some(Listen {
-            pid: self.pid,
-            generation: self.generation,
-            seq: si,
-            sink: Arc::new(Mutex::new(sink)),
-        });
-        let pending = c.queue.len();
-        st.trace
-            .record(format_args!("ipc listen #{id} pending={pending}"));
-        kick(&mut st, id);
-        drop(st);
-        // The receiver object becomes the listener: disarm it, so only the
-        // listener's drop closes the end.
-        if let Ok(mut end) = from.into_handle().into_object().downcast::<SimEnd>() {
-            end.armed = false;
-        }
-        Ok(Listening::new(end_handle(
-            &self.shared,
-            id,
-            Side::Receiver,
-            Transfer::Free,
-        )))
+        self.start_listening(from, None, seq, sink)
     }
 
+    fn listen_bound(
+        &self,
+        from: ChannelReceiver,
+        peer: OsPeer,
+        seq: SequenceHandle,
+        sink: Sink,
+    ) -> Result<Listening, IpcError> {
+        let Ok(generation) = u32::try_from(peer.generation()) else {
+            return Err(IpcError::Refused);
+        };
+        let owner = Owner::Proc(ProcessId(peer.pid()), generation);
+        self.start_listening(from, Some(owner), seq, sink)
+    }
     fn bootstrap(&self) -> Option<Bootstrap> {
         let mut st = self.shared.lock();
-        let (up, down) = *st.ipc.boot.get(&self.pid)?;
+        let (up, down, parent) = *st.ipc.boot.get(&self.pid)?;
         let ours = |e: &End| e.open && e.owner == self.me();
         let ok = st.ipc.chans.get(&up).is_some_and(|c| ours(&c.sender))
             && st.ipc.chans.get(&down).is_some_and(|c| ours(&c.receiver));
@@ -600,7 +602,67 @@ impl Ipc for SimIpc {
         Some(Bootstrap {
             to_parent,
             from_parent,
+            parent,
         })
+    }
+}
+
+impl SimIpc {
+    /// [`Ipc::listen`] and [`Ipc::listen_bound`]: `peer` is the bound
+    /// peer, `None` for a free receiver.
+    fn start_listening(
+        &self,
+        from: ChannelReceiver,
+        peer: Option<Owner>,
+        seq: SequenceHandle,
+        sink: Sink,
+    ) -> Result<Listening, IpcError> {
+        let mut st = self.shared.lock();
+        let Some((id, Side::Receiver)) = self.held(&st, from.handle()) else {
+            drop(st);
+            return Err(IpcError::Refused);
+        };
+        let si = usize::try_from(seq.raw()).unwrap_or(usize::MAX);
+        if st
+            .proc(self.pid, self.generation)
+            .and_then(|p| p.seqs.get(si))
+            .is_none()
+        {
+            drop(st);
+            return Err(IpcError::Sequence);
+        }
+        let Some(c) = st.ipc.chans.get_mut(&id) else {
+            drop(st);
+            return Err(IpcError::Closed);
+        };
+        // A bound receiver listens only with its peer named.
+        if (c.transfer == Transfer::Bound && peer.is_none()) || c.listen.is_some() {
+            drop(st);
+            return Err(IpcError::Refused);
+        }
+        c.listen = Some(Listen {
+            pid: self.pid,
+            generation: self.generation,
+            seq: si,
+            sink: Arc::new(Mutex::new(sink)),
+            peer,
+        });
+        let pending = c.queue.len();
+        st.trace
+            .record(format_args!("ipc listen #{id} pending={pending}"));
+        kick(&mut st, id);
+        drop(st);
+        // The receiver object becomes the listener: disarm it, so only the
+        // listener's drop closes the end.
+        if let Ok(mut end) = from.into_handle().into_object().downcast::<SimEnd>() {
+            end.armed = false;
+        }
+        Ok(Listening::new(end_handle(
+            &self.shared,
+            id,
+            Side::Receiver,
+            Transfer::Free,
+        )))
     }
 }
 
@@ -627,7 +689,8 @@ pub(crate) fn link(
     let (p, c) = (Owner::Proc(parent, pgen), Owner::Proc(child, cgen));
     let up = st.ipc.new_chan(capacity, Transfer::Free, c, p, parent);
     let down = st.ipc.new_chan(capacity, Transfer::Free, p, c, parent);
-    st.ipc.boot.insert(child, (up, down));
+    let parent_peer = OsPeer::new(parent.0, u64::from(pgen));
+    st.ipc.boot.insert(child, (up, down, parent_peer));
     st.trace.record(format_args!(
         "ipc link {}->{} #{up} #{down}",
         parent.0, child.0

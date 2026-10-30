@@ -26,8 +26,10 @@
 //!   process, so its owner can terminate it;
 //! - a bound sender is accepted only from the process that created its
 //!   socket pair (`SO_PEERCRED`, fixed for the socket's life), and a
-//!   bound receiver accepts records from one process only (the first
-//!   one; the launcher supplies the expected process in phase E);
+//!   receiver listened to with `listen_bound` (every bound channel's,
+//!   and the launch channels') accepts records from the one process it
+//!   names; a record from another is blamed on that named peer, since
+//!   only it could have passed its sender on;
 //! - which end of a pair a descriptor is cannot be attested; mislabelling
 //!   only lets a peer talk to this process over a channel it controls at
 //!   both ends, and the credit path installs no descriptors at all.
@@ -73,18 +75,19 @@ use std::time::{Duration, Instant as StdInstant};
 
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, Flow, Handle, HandleKind,
-    HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES, Sink, Transfer,
+    HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES, OsPeer, Sink,
+    Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
 use crate::executor::OsExecutor;
-use crate::ipc::unix::accept::FdFacts;
-use crate::ipc::unix::codec::{
+use crate::ipc::common::codec::{
     CREDIT_LEN, Credit, HandleDesc, MAX_DATA_RECORD, WireKind, decode_credit, encode_credit,
     encode_data,
 };
+use crate::ipc::common::flow::{PendingCredit, ReceiverFlow, SenderFlow};
+use crate::ipc::unix::accept::FdFacts;
 use crate::ipc::unix::decide::{Binding, Decision, Record, decide};
-use crate::ipc::unix::flow::{PendingCredit, ReceiverFlow, SenderFlow};
 use sys::{Interest, RecvOutcome, SendOutcome};
 
 /// The send buffer each end asks for: room for several maximum records
@@ -145,8 +148,9 @@ struct Listener {
     ended: bool,
     /// Registered with epoll and armed.
     armed: bool,
-    bound: bool,
-    latched: Option<i32>,
+    /// For a bound receiver, the one process whose records it accepts
+    /// ([`Ipc::listen_bound`]); `None` for a free one.
+    peer: Option<i32>,
     credit: PendingCredit,
 }
 
@@ -508,16 +512,10 @@ impl Inner {
                 drop(owned);
                 return;
             };
-            let binding = Binding {
-                bound: l.bound,
-                latched: l.latched,
-            };
+            let binding = Binding { peer: l.peer };
             let verdict = decide(&record, binding, flow, &|dev: u64, ino: u64| {
                 held.contains(&(dev, ino))
             });
-            if let Some(p) = verdict.latch {
-                l.latched = Some(p);
-            }
             match verdict.decision {
                 Decision::Accept { view, .. } => {
                     let kinds: Vec<HandleKind> = verdict.decision.kinds().to_vec();
@@ -1255,43 +1253,21 @@ impl Ipc for LinuxIpc {
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
-        let Some(id) = self.held_end(from.handle()) else {
+        self.start_listening(from, None, seq, sink)
+    }
+
+    fn listen_bound(
+        &self,
+        from: ChannelReceiver,
+        peer: OsPeer,
+        seq: SequenceHandle,
+        sink: Sink,
+    ) -> Result<Listening, IpcError> {
+        // A pid the kernel can never attest binds to no one.
+        let Some(pid) = i32::try_from(peer.pid()).ok().filter(|&p| p > 0) else {
             return Err(IpcError::Refused);
         };
-        if !self.inner.exec.has_sequence(seq) {
-            return Err(IpcError::Sequence);
-        }
-        let mut st = self.inner.lock();
-        let Some(End {
-            role: Role::Receiver {
-                bound, listener, ..
-            },
-            ..
-        }) = st.ends.get_mut(&id)
-        else {
-            return Err(IpcError::Refused);
-        };
-        if listener.is_some() {
-            return Err(IpcError::Refused);
-        }
-        *listener = Some(Listener {
-            seq,
-            sink: Arc::new(Mutex::new(sink)),
-            queue: VecDeque::new(),
-            draining: false,
-            ended: false,
-            armed: false,
-            bound: *bound,
-            latched: None,
-            credit: PendingCredit::default(),
-        });
-        self.inner.arm(&mut st, id);
-        drop(st);
-        disarm(from.into_handle());
-        Ok(Listening::new(Handle::new(Box::new(LinuxListening {
-            inner: Arc::clone(&self.inner),
-            id,
-        }))))
+        self.start_listening(from, Some(pid), seq, sink)
     }
 
     fn bootstrap(&self) -> Option<Bootstrap> {
@@ -1330,10 +1306,64 @@ impl Ipc for LinuxIpc {
             ChannelSender::from_handle(self.handle(tx?, HandleKind::ChannelSender)).ok()?;
         let from_parent =
             ChannelReceiver::from_handle(self.handle(rx?, HandleKind::ChannelReceiver)).ok()?;
+        // The launching process. Until phase E's spawner sits between
+        // the broker and its children, it is this process's parent.
+        let parent = OsPeer::new(std::os::unix::process::parent_id(), 0);
         Some(Bootstrap {
             to_parent,
             from_parent,
+            parent,
         })
+    }
+}
+
+impl LinuxIpc {
+    /// [`Ipc::listen`] and [`Ipc::listen_bound`]: `peer` is the bound
+    /// peer's pid, `None` for a free receiver.
+    fn start_listening(
+        &self,
+        from: ChannelReceiver,
+        peer: Option<i32>,
+        seq: SequenceHandle,
+        sink: Sink,
+    ) -> Result<Listening, IpcError> {
+        let Some(id) = self.held_end(from.handle()) else {
+            return Err(IpcError::Refused);
+        };
+        if !self.inner.exec.has_sequence(seq) {
+            return Err(IpcError::Sequence);
+        }
+        let mut st = self.inner.lock();
+        let Some(End {
+            role: Role::Receiver {
+                bound, listener, ..
+            },
+            ..
+        }) = st.ends.get_mut(&id)
+        else {
+            return Err(IpcError::Refused);
+        };
+        // A bound receiver listens only with its peer named.
+        if listener.is_some() || (*bound && peer.is_none()) {
+            return Err(IpcError::Refused);
+        }
+        *listener = Some(Listener {
+            seq,
+            sink: Arc::new(Mutex::new(sink)),
+            queue: VecDeque::new(),
+            draining: false,
+            ended: false,
+            armed: false,
+            peer,
+            credit: PendingCredit::default(),
+        });
+        self.inner.arm(&mut st, id);
+        drop(st);
+        disarm(from.into_handle());
+        Ok(Listening::new(Handle::new(Box::new(LinuxListening {
+            inner: Arc::clone(&self.inner),
+            id,
+        }))))
     }
 }
 
