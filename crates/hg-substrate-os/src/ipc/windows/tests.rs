@@ -1772,8 +1772,23 @@ fn a_refused_relay_leaves_the_registry_as_it_was() {
 /// work under the broker's lock). Measured on rig253 (eight 64 MiB
 /// copies, about 20 s): with the copies under the lock the worst round
 /// trip was 16 to 19 s; with them off it, 19 to 22 ms (one run 109 ms).
+///
+/// Only round trips to a child already serving count: the first one to a
+/// child just launched waits for its process to start, which took 513 to
+/// 780 ms at 4 CPUs with the suite running (29 Oct, facts W16), and is
+/// not a stall.
 const STALL_BOUND: Duration = Duration::from_millis(STALL_BOUND_MS);
 const STALL_BOUND_MS: u64 = 500;
+
+/// One untimed round trip through `echo` child `b` (a receiver end sent
+/// to it and back): it has started and serves.
+fn serving(r: &Rig, b: &Kid) {
+    let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    r.ipc
+        .send(&b.to_child, b"h".to_vec(), vec![rx.into_handle()])
+        .unwrap();
+    let _ = expect_msg(&b.from_child);
+}
 
 /// While one child seals eight 64 MiB regions `immutable` (the broker
 /// copies each, review Q1), another child's relays and redeems (a
@@ -1785,6 +1800,7 @@ fn a_large_copy_stalls_no_other_child() {
     let r = rig();
     let a = launch(&r, "region-big", true);
     let b = launch(&r, "echo", true);
+    serving(&r, &b);
     let ws: Vec<Handle> = (0..8)
         .map(|_| r.ipc.allocate_region(MIB64, a.peer).unwrap().into_handle())
         .collect();
@@ -2024,6 +2040,7 @@ fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
     let r = rig();
     let a = launch(&r, "region-big-exit", true);
     let b = launch(&r, "echo", true);
+    serving(&r, &b);
     let ws: Vec<Handle> = (0..8)
         .map(|_| r.ipc.allocate_region(MIB64, a.peer).unwrap().into_handle())
         .collect();
