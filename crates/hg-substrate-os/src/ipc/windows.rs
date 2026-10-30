@@ -770,9 +770,35 @@ pub(crate) struct Inner {
     /// refunded their copies.
     #[cfg(test)]
     copies_settled: AtomicUsize,
+    /// Tests only: run once by the next launch while its inheritable
+    /// handle is open (to start a process that inherits in that window).
+    #[cfg(test)]
+    in_launch_window: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    /// Tests only: a second handle to the last launched child's end of
+    /// its link, to count the end's holders.
+    #[cfg(test)]
+    last_link_end: Mutex<Option<OwnedHandle>>,
 }
 
 impl Inner {
+    /// Tests only: runs the launch-window hook, if one is set, and keeps
+    /// a second handle to the child's link end.
+    #[cfg(test)]
+    fn test_launch_window(&self, link_end: &OwnedHandle) {
+        let hook = self
+            .in_launch_window
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(h) = hook {
+            *self
+                .last_link_end
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = sys::duplicate(link_end).ok();
+            h();
+        }
+    }
+
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -4381,6 +4407,10 @@ impl WindowsIpc {
             copies_planned: AtomicUsize::new(0),
             #[cfg(test)]
             copies_settled: AtomicUsize::new(0),
+            #[cfg(test)]
+            in_launch_window: Mutex::new(None),
+            #[cfg(test)]
+            last_link_end: Mutex::new(None),
         });
         let io = Arc::clone(&inner);
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
@@ -5187,8 +5217,30 @@ impl<'a> Sandbox<'a> {
     }
 }
 
-/// The environment variable that carries a child's link handle value.
+/// The environment variable that carries the value of a child's link
+/// carrier: the one handle it inherits, a read-only section whose first
+/// [`CARRIER_BYTES`] hold its link end's value (a native `u64`), written
+/// by the broker before the child runs.
 pub(crate) const LINK_VAR: &str = "IZCAL_IPC_LINK";
+
+/// A link carrier's size, as the section is made.
+const CARRIER_LEN: u32 = 8;
+/// A link carrier's size, as it is mapped.
+const CARRIER_BYTES: usize = 8;
+
+/// The child's end of its link, from the carrier its broker left it
+/// ([`LINK_VAR`]); the carrier is closed here. `None` unless the value
+/// names a read-only section that names a client pipe end.
+pub(crate) fn take_link() -> Option<OwnedHandle> {
+    let v = std::env::var(LINK_VAR).ok()?.parse::<u64>().ok()?;
+    let carrier = sys::adopt_section(v, sys::SECTION_READ)?;
+    let link = sys::map_section(&carrier, CARRIER_BYTES, false, None)
+        .ok()?
+        .load_u64(0, Ordering::Acquire)
+        .ok()?;
+    drop(carrier);
+    sys::adopt_pipe(link, false)
+}
 
 impl WindowsIpc {
     /// Starts a child with its control link and launch channels; this
@@ -5213,7 +5265,19 @@ impl WindowsIpc {
             creator: BROKER,
             id: down_id,
         };
-        let inherit = sys::inheritable(&link_client)?;
+        // The child's link end is never inheritable in this process's
+        // table: a process started meanwhile by any thread with
+        // inheritance on and no handle list (`std::process::Command`
+        // among them) would get a copy (probe P12), and while that copy
+        // lived the broker would never see the link close when the child
+        // dies (facts W15). The end is duplicated into the suspended
+        // child like its launch ends; the one handle it inherits is a
+        // read-only carrier section, which holds only the end's value
+        // there.
+        let carrier = sys::create_section(CARRIER_LEN)?;
+        let inherit = sys::inheritable(&carrier, sys::SECTION_READ)?;
+        #[cfg(test)]
+        self.inner.test_launch_window(&link_client);
         let mut env = spec.env;
         env.push((LINK_VAR.to_owned(), sys::value(&inherit).to_string()));
         // A sandboxed launch must have a SID to key its channels and to
@@ -5263,16 +5327,23 @@ impl WindowsIpc {
             }
         };
         drop(inherit);
-        drop(link_client);
         #[cfg(feature = "measure-launch")]
         crate::launch::windows::timing::mark("spawned");
         let started = (|| -> std::io::Result<(u64, u64)> {
+            // The link end, then its value in the carrier, before the
+            // child runs.
+            let v_link = sys::give(&child.process, &link_client)
+                .map_err(|e| std::io::Error::from_raw_os_error(i32::try_from(e).unwrap_or(0)))?;
+            sys::map_section(&carrier, CARRIER_BYTES, true, None)?
+                .store_u64(0, v_link, Ordering::Release)
+                .map_err(|_e| std::io::Error::other("the link carrier"))?;
             let v_up = sys::give(&child.process, &up_tx)
                 .map_err(|e| std::io::Error::from_raw_os_error(i32::try_from(e).unwrap_or(0)))?;
             let v_down = sys::give(&child.process, &down_rx)
                 .map_err(|e| std::io::Error::from_raw_os_error(i32::try_from(e).unwrap_or(0)))?;
             Ok((v_up, v_down))
         })();
+        drop((link_client, carrier));
         let (v_up, v_down) = match started {
             Ok(v) => v,
             Err(e) => {

@@ -769,23 +769,28 @@ fn wide_to_string(s: *const u16) -> String {
     String::from_utf16_lossy(unsafe { core::slice::from_raw_parts(s, n) })
 }
 
-/// An inheritable copy of `h` for a child's handle list.
+/// An inheritable copy of `h` with exactly `access`, for a child's
+/// handle list. Only a launch's link carrier is ever made inheritable:
+/// any process this one starts while the copy lives with inheritance on
+/// and no handle list gets it too (probe P12, facts W15), so it must
+/// carry nothing but a value.
 #[expect(
     clippy::disallowed_methods,
     reason = "SEC-4 (d): this is the Windows IPC backend"
 )]
-pub(crate) fn inheritable(h: &OwnedHandle) -> io::Result<OwnedHandle> {
+pub(crate) fn inheritable(h: &OwnedHandle, access: u32) -> io::Result<OwnedHandle> {
     let mut out: HANDLE = null_mut();
-    // SAFETY: valid handle; same access, inheritable; valid out-pointer.
+    // SAFETY: valid handle; an explicit access mask, inheritable; valid
+    // out-pointer.
     let ok = unsafe {
         DuplicateHandle(
             current_process(),
             raw(h),
             current_process(),
             &raw mut out,
-            0,
+            access,
             1,
-            DUPLICATE_SAME_ACCESS,
+            0,
         )
     };
     if ok == 0 {
@@ -1104,7 +1109,7 @@ pub(crate) fn stale_read(v: u64, cap: usize, wait_ms: u32) -> std::sync::mpsc::R
 /// Starting sandboxed children: for the launcher (phase E) and the
 /// tests. The child runs in its own AppContainer (`container`), under
 /// the lockdown token, in a kill-on-close job assigned before it runs,
-/// with exactly one inherited handle: `inherit`. It starts suspended;
+/// with exactly one inherited handle: `inherit` (the link carrier). It starts suspended;
 /// the caller duplicates its launch ends in, then [`resume`]s it.
 pub(crate) mod spawn {
     use super::{Process, last_error, raw, wide};
@@ -1145,7 +1150,8 @@ pub(crate) mod spawn {
         pub(crate) args: &'a str,
         /// Variables added to this process's environment.
         pub(crate) env: &'a [(String, String)],
-        /// The one handle the child inherits.
+        /// The one handle the child inherits: its link carrier, a
+        /// read-only section (never a pipe end, probe P12).
         pub(crate) inherit: &'a OwnedHandle,
         /// Sandboxed: container, lockdown token and job. `None` starts
         /// the child plainly (tests of the transport alone).
