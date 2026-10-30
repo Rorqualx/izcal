@@ -109,7 +109,10 @@ jobs:
   # and hg-launch-wire (7, about 5 min) the job needs longer.
   kani:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    # Every harness runs in one job, and the set grows by phase: at D4
+    # hg-substrate-os alone took 43 min on this runner, and the whole M1
+    # set is about 2.5 h on hueyj. 360 is the hosted runner's maximum.
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
         with:
