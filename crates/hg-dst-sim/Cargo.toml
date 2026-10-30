@@ -18,6 +18,7 @@ hg-substrate-sim = { path = "../hg-substrate-sim" }
 hg-types = { path = "../hg-types" }
 
 [dev-dependencies]
+hg-build-id = { path = "../hg-build-id" }
 hg-dst = { path = "../hg-dst" }
 
 [[bin]]

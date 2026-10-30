@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # VER-1 (Stage 1 4.1; security scope 6.6): runs every Kani harness in the
-# IPC crates and the pure cores of the OS transports (hg-substrate-os
-# `ipc::unix` and `ipc::win`). Fails on a failed proof, and on a
-# `kani::cover!` that no input reaches, since that harness would prove
-# nothing.
+# IPC crates (hg-ipc, the generated hg-ipc-gen and hg-os-types), the
+# launcher hand-off (hg-launch-wire), the spawner plan (hg-launch-plan)
+# and the pure cores of the OS transports (hg-substrate-os `ipc::unix`
+# and `ipc::win`). Fails on a failed proof, and on a `kani::cover!` that
+# no input reaches, since that harness would prove nothing.
 # Usage: tools/kani.sh [extra cargo-kani args]. Needs Kani 0.68.0
 # (`cargo install --locked kani-verifier --version 0.68.0 && cargo kani setup`).
 set -euo pipefail
@@ -23,7 +24,7 @@ fi
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 status=0
-for pkg in hg-ipc hg-ipc-gen hg-substrate-os hg-launch-plan; do
+for pkg in hg-ipc hg-ipc-gen hg-os-types hg-launch-wire hg-launch-plan hg-substrate-os; do
   echo "== cargo kani -p $pkg"
   # pipefail: the pipeline fails if cargo kani does.
   # -Z stubbing: the generated unknown-ordinal harnesses stub each

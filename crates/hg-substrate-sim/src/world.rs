@@ -8,8 +8,13 @@
 //! firing-time order. A delayed task's firing time is drawn inside its
 //! tolerance band when it is posted, and the trace records the draw.
 //!
-//! **Faults** come from their own stream, so a fault-free run draws
-//! nothing from it and its trace does not depend on the fault settings.
+//! **Faults** come from streams of their own, so a fault-free run draws
+//! nothing from them and its trace does not depend on the fault settings.
+//! Each fault class added since phase C has its own stream ([`tag`]), so
+//! turning one on, or adding a new class, never moves another class's
+//! draws: a seed's trace with the new classes off is the trace it had
+//! before they existed. Crashes, their restart delays and commit failures
+//! share the phase C stream, as they always have.
 //! A crash is a scheduler action (CS-ER-2): it drops the process's
 //! queued tasks, timers and memory, never panics, and may schedule a
 //! restart that runs the process's entry function again with a fresh
@@ -54,6 +59,37 @@ pub struct FaultPlan {
     /// A restart happens 1 ms plus up to this much virtual time after the
     /// crash.
     pub restart_delay_max: Duration,
+    /// Chance, per million IPC sends, that the message is held back by up
+    /// to [`FaultPlan::ipc_delay_max`] of virtual time (phase E rule
+    /// E-R8). Later messages on the same channel wait behind it: a
+    /// channel stays FIFO.
+    pub ipc_delay_per_million: u32,
+    /// The longest injected IPC delay.
+    pub ipc_delay_max: Duration,
+    /// Chance, per million deliveries, that a channel's next delivery
+    /// steps back behind the work already queued on its receiver's
+    /// sequence, so deliveries from other channels overtake it (E-R8:
+    /// reordering across channels only; one channel's messages keep
+    /// their order, the transport's contract).
+    pub ipc_reorder_per_million: u32,
+    /// Chance, per million IPC sends, that the message is lost and its
+    /// channel closes: the receiver gets what was queued before it, then
+    /// `Closed`; the sender's later sends fail with `Closed`. A lost
+    /// message is never silent (E-R8).
+    pub ipc_drop_per_million: u32,
+    /// Chance, per million launches, that the Linux spawner dies with the
+    /// launch in flight: the launch fails and the spawner is restarted
+    /// for the next one (E-R2).
+    pub spawner_death_per_million: u32,
+    /// Chance, per million launches, that the OS refuses the launch (the
+    /// spawner's `Failed`, a failed `posix_spawn` or `CreateProcess`).
+    pub launch_fail_per_million: u32,
+    /// Chance, per million launches, that the child starts only after
+    /// [`FaultPlan::ready_stall`] of virtual time, so it misses the
+    /// broker's `ready` deadline (E-R3).
+    pub ready_stall_per_million: u32,
+    /// How long a stalled child waits before its first task runs.
+    pub ready_stall: Duration,
 }
 
 impl FaultPlan {
@@ -62,7 +98,57 @@ impl FaultPlan {
         crash_per_million_steps: 0,
         commit_fail_per_million: 0,
         restart_delay_max: Duration::from_millis(10),
+        ipc_delay_per_million: 0,
+        ipc_delay_max: Duration::from_millis(50),
+        ipc_reorder_per_million: 0,
+        ipc_drop_per_million: 0,
+        spawner_death_per_million: 0,
+        launch_fail_per_million: 0,
+        ready_stall_per_million: 0,
+        ready_stall: Duration::from_secs(10),
     };
+}
+
+/// One seeded stream per fault class added in phase E (E-R8; design
+/// review DST minor 1).
+pub(crate) struct FaultStreams {
+    pub(crate) ipc_delay: Xoshiro256StarStar,
+    pub(crate) ipc_reorder: Xoshiro256StarStar,
+    pub(crate) ipc_drop: Xoshiro256StarStar,
+    pub(crate) spawner_death: Xoshiro256StarStar,
+    pub(crate) launch_fail: Xoshiro256StarStar,
+    pub(crate) ready_stall: Xoshiro256StarStar,
+}
+
+impl FaultStreams {
+    fn new(seed: u64) -> Self {
+        let s = |class: u64| Xoshiro256StarStar::from_seed(derive(&[seed, tag::FAULT, class]));
+        Self {
+            ipc_delay: s(fault_class::IPC_DELAY),
+            ipc_reorder: s(fault_class::IPC_REORDER),
+            ipc_drop: s(fault_class::IPC_DROP),
+            spawner_death: s(fault_class::SPAWNER_DEATH),
+            launch_fail: s(fault_class::LAUNCH_FAIL),
+            ready_stall: s(fault_class::READY_STALL),
+        }
+    }
+}
+
+/// Whether a fault with `rate` per million fires, drawing from `rng` only
+/// when the rate is not zero (so a class that is off draws nothing).
+pub(crate) fn fires(rng: &mut Xoshiro256StarStar, rate: u32) -> bool {
+    rate > 0 && below(rng, 1_000_000) < u64::from(rate)
+}
+
+/// The fault classes' sub-tags under [`tag::FAULT`]. A new class takes
+/// the next number; none is ever reused.
+pub(crate) mod fault_class {
+    pub(crate) const IPC_DELAY: u64 = 1;
+    pub(crate) const IPC_REORDER: u64 = 2;
+    pub(crate) const IPC_DROP: u64 = 3;
+    pub(crate) const SPAWNER_DEATH: u64 = 4;
+    pub(crate) const LAUNCH_FAIL: u64 = 5;
+    pub(crate) const READY_STALL: u64 = 6;
 }
 
 /// A world's settings.
@@ -83,6 +169,17 @@ pub struct SimConfig {
     pub keep_trace_text: bool,
     /// Whose shared-memory behaviour the regions model (D6 review M7).
     pub region_os: crate::region::SimOs,
+    /// Children the simulated launcher starts run in a modelled PID
+    /// namespace (design review M7, M8): their bootstrap's parent is
+    /// [`hg_substrate::ipc::PeerAttest::Inherited`], they attest no
+    /// sender by pid (a receiver bound to a pid refuses every record, as
+    /// the Linux restricted tier's pid 0 would), a region writer reaches
+    /// them only on the inherited bootstrap channel, and every fault they
+    /// report names no sender. On by default: the contract (M8) is that a
+    /// child's identity check is always the broker-issued channel binding,
+    /// so code written to it passes on every OS. Processes linked with
+    /// [`World::link`] are not affected.
+    pub pid_namespaces: bool,
 }
 
 impl SimConfig {
@@ -97,6 +194,7 @@ impl SimConfig {
             page_size: 4096,
             keep_trace_text: false,
             region_os: crate::region::SimOs::Linux,
+            pid_namespaces: true,
         }
     }
 }
@@ -196,6 +294,9 @@ pub(crate) struct Proc {
     pub(crate) committed: u64,
     /// Launched by another process ([`World::link`]): never the broker.
     pub(crate) launched: bool,
+    /// Started by the simulated launcher in a modelled PID namespace
+    /// ([`SimConfig::pid_namespaces`]).
+    pub(crate) pid_ns: bool,
     /// The kinds this process may launch: the broker's only.
     pub(crate) children: Option<Arc<crate::launch::ChildTable>>,
 }
@@ -218,6 +319,8 @@ enum TimerItem {
         task: Task,
     },
     Restart(ProcessId),
+    /// A channel whose next message was held back is due (E-R8 delay).
+    IpcWake(u64),
 }
 
 pub(crate) struct State {
@@ -227,6 +330,8 @@ pub(crate) struct State {
     crashes: u64,
     pub(crate) sched: Xoshiro256StarStar,
     pub(crate) fault: Xoshiro256StarStar,
+    /// The phase E fault classes' streams.
+    pub(crate) faults: FaultStreams,
     pub(crate) procs: Vec<Proc>,
     /// Pending timers by (firing time in ns, post order).
     timers: BTreeMap<(u64, u64), TimerItem>,
@@ -344,6 +449,39 @@ impl State {
     }
 }
 
+impl State {
+    /// Wakes channel `id` at virtual time `at_ns` (an injected delay ran
+    /// out). No draw: the time is the delay's own.
+    pub(crate) fn add_ipc_wake(&mut self, id: u64, at_ns: u64) {
+        let key = self.next_timer;
+        self.next_timer = self.next_timer.saturating_add(1);
+        self.timers.insert((at_ns, key), TimerItem::IpcWake(id));
+    }
+
+    /// Queues `task` on `(pid, generation)`'s sequence `seq` at virtual
+    /// time `at_ns`, with no draw (a stalled child's first task).
+    fn add_start_timer(&mut self, slot: Slot, task: Task, at_ns: u64) {
+        let key = self.next_timer;
+        self.next_timer = self.next_timer.saturating_add(1);
+        if let Some(s) = self
+            .proc_mut(slot.pid, slot.generation)
+            .and_then(|p| p.seqs.get_mut(slot.seq))
+        {
+            s.delayed = s.delayed.saturating_add(1);
+        }
+        self.timers.insert(
+            (at_ns, key),
+            TimerItem::Task {
+                pid: slot.pid,
+                generation: slot.generation,
+                seq: slot.seq,
+                number: slot.number,
+                task,
+            },
+        );
+    }
+}
+
 /// What a crash removed, dropped and released once the lock is free (a
 /// task's captures may themselves reach the world when dropped).
 #[derive(Default)]
@@ -398,6 +536,7 @@ impl World {
             crashes: 0,
             sched: Xoshiro256StarStar::from_seed(derive(&[seed, tag::SCHED])),
             fault: Xoshiro256StarStar::from_seed(derive(&[seed, tag::FAULT])),
+            faults: FaultStreams::new(seed),
             procs: Vec::new(),
             timers: BTreeMap::new(),
             next_timer: 0,
@@ -486,16 +625,19 @@ impl World {
             &self.shared,
             name,
             backing,
-            restart,
             entry,
-            script,
-            children,
+            SpawnOptions {
+                restart,
+                script,
+                children,
+                stall: None,
+            },
         )
     }
 
     /// Brings incarnation `generation` of `pid` up and queues its entry.
     fn start(&self, st: &mut State, pid: ProcessId, generation: u32) {
-        start_in(&self.shared, st, pid, generation);
+        start_in(&self.shared, st, pid, generation, None);
     }
 }
 
@@ -542,6 +684,19 @@ pub(crate) fn os_peer_in(
         .then(|| hg_substrate::ipc::OsPeer::new(pid.0, u64::from(p.generation)))
 }
 
+/// How [`spawn_in`] starts a process.
+#[derive(Default)]
+pub(crate) struct SpawnOptions {
+    /// Restart it after a crash.
+    pub(crate) restart: bool,
+    /// Its scripted OS (the broker's).
+    pub(crate) script: Option<crate::os::OsScript>,
+    /// What it may launch (the broker's).
+    pub(crate) children: Option<Arc<crate::launch::ChildTable>>,
+    /// Hold its first task back this long (a launch fault).
+    pub(crate) stall: Option<Duration>,
+}
+
 /// [`World::spawn`]'s work, on the shared state: what the simulated
 /// launcher calls from inside a running task (a temporary [`World`] would
 /// tear the run down when dropped).
@@ -549,11 +704,15 @@ pub(crate) fn spawn_in(
     shared: &Arc<Shared>,
     name: &'static str,
     backing: Arc<dyn Memory>,
-    restart: bool,
     entry: Entry,
-    script: Option<crate::os::OsScript>,
-    children: Option<Arc<crate::launch::ChildTable>>,
+    opts: SpawnOptions,
 ) -> ProcessId {
+    let SpawnOptions {
+        restart,
+        script,
+        children,
+        stall,
+    } = opts;
     let mut st = shared.lock();
     let pid = ProcessId(u32::try_from(st.procs.len()).unwrap_or(u32::MAX));
     if let Some(script) = script {
@@ -569,16 +728,25 @@ pub(crate) fn spawn_in(
         seqs: Vec::new(),
         regions: BTreeMap::new(),
         launched: false,
+        pid_ns: false,
         reserved: 0,
         committed: 0,
         children,
     });
-    start_in(shared, &mut st, pid, 0);
+    start_in(shared, &mut st, pid, 0, stall);
     pid
 }
 
-/// Brings incarnation `generation` of `pid` up and queues its entry.
-fn start_in(shared: &Arc<Shared>, st: &mut State, pid: ProcessId, generation: u32) {
+/// Brings incarnation `generation` of `pid` up and queues its entry, or,
+/// with `stall`, holds the entry back that long (a child that misses its
+/// `ready` deadline).
+fn start_in(
+    shared: &Arc<Shared>,
+    st: &mut State,
+    pid: ProcessId,
+    generation: u32,
+    stall: Option<Duration>,
+) {
     let seed = st.config.seed;
     let Some(p) = st
         .procs
@@ -605,12 +773,32 @@ fn start_in(shared: &Arc<Shared>, st: &mut State, pid: ProcessId, generation: u3
         children,
     );
     let entry = Arc::clone(&p.entry);
-    if let Some(main) = p.seqs.first_mut() {
-        main.queue
-            .push_back((0, Task::new(move || entry(substrate))));
-    }
     let name = p.name;
-    st.trace.record(format_args!("start {name}.{generation}"));
+    let task = Task::new(move || entry(substrate));
+    if let Some(stall) = stall {
+        let at = st
+            .now
+            .checked_add(stall)
+            .unwrap_or(Instant::from_nanos(u64::MAX))
+            .as_nanos();
+        st.add_start_timer(
+            Slot {
+                pid,
+                generation,
+                seq: 0,
+                number: 0,
+            },
+            task,
+            at,
+        );
+        st.trace
+            .record(format_args!("start {name}.{generation} stalled until {at}"));
+    } else {
+        if let Some(main) = p.seqs.first_mut() {
+            main.queue.push_back((0, task));
+        }
+        st.trace.record(format_args!("start {name}.{generation}"));
+    }
 }
 
 impl World {
@@ -766,6 +954,7 @@ impl World {
                     }
                 }
                 TimerItem::Restart(pid) => restarts.push(pid),
+                TimerItem::IpcWake(id) => crate::ipc::wake(&mut st, id),
             }
         }
         for pid in restarts {

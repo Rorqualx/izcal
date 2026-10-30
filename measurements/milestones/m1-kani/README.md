@@ -36,8 +36,116 @@ bytes 4.2 GiB.
 | Round trip, `OsInput.power` | Symbolic length: every offset after the first variable field symbolic. Decode alone: 4 s; decode and encode: 57 s, 2.6 GiB; with the byte comparison: out of memory, at a fixed 14-byte length too | Split by layout: option presence, union case, string length and vec count fixed, contents free | One layout: 6.8 s, 30,356 steps; 5 of 6 layouts pass |
 | Validator, two strings (`OsCommand.launch`, `post`) | Each string's UTF-8 check on a symbolic-length slice costs about 1.1 M steps and 4.2 GiB (one `string<8192>`, 62 bytes: 158 s); two in one formula exceed 10 GiB | Not changed (see below) | Open |
 
-A byte-at-a-time UTF-8 check (experiment only, not committed) took the
-`OsCommand.launch` validator from out of memory (2.5 M steps) to a pass
-in 181 s at 1.7 GiB (463 k steps), and `validate_agrees_with_core` still
-passes with it (12 s). It changes `hg-ipc`'s inventoried UTF-8 code, so
-it waits for a decision.
+## The byte-at-a-time UTF-8 check (commit 11dcf0f)
+
+`hg-ipc`'s validator now reads one byte per step. Measured with it:
+`OsCommand.launch` and `post` validators pass (they ran out of memory
+before); `validate_agrees_with_core` 12 s and the new six-byte proof
+30 s; `hg-ipc` 9 of 9 and `hg-ipc-gen` 41 of 41 pass.
+
+Throughput, `measure_validate_throughput` (release, 1 MiB inputs, three
+runs, hueyj under a light booking at load 1.9 to 4), side by side with
+the previous algorithm:
+
+| Input | By byte (now) | By sequence (before) |
+|---|---|---|
+| ASCII | 900–1,010 MiB/s | 1,158–1,355 MiB/s |
+| Mixed (Latin, euro, emoji) | 917–1,056 MiB/s | 854–1,009 MiB/s |
+| CJK | 784–907 MiB/s | 562–658 MiB/s |
+
+## The register round trip
+
+Every layout of `OsCommand.register` runs out of memory, though all its
+structural bytes are fixed (only the 8-byte id is free). Measured piece
+by piece, each a separate harness on the fixed 25-byte layout:
+
+| Harness | Steps | Time |
+|---|---|---|
+| Decode only | 52,175 | 4 s |
+| Decode and encode, length only | 566,024 | 73 s |
+| Decode, encode and compare bytes | 577,341 | out of memory |
+| An empty `string<512>`, round trip | 201,771 | 13 s |
+| `RegistrationKind::NotificationIdentity` (no payload), round trip | 238,953 | 18 s |
+| `u64`, `Option<u64>` (none), `RegistrationOwner::Browser` | 7–10 k | under 1 s |
+
+Encoding, not decoding, is the cost: an encoder reads back a value the
+decoder built on the heap, and CBMC does not carry the fixed layout
+through it. An empty string's encoder costs 200 k steps (its length and
+pointer come from the decoded `String`), and the union's encoder costs
+as much although the case is fixed, because every case's encoder (three
+strings for `Launcher`) is in the formula. Register has two strings and
+that union, so its encoders alone are 566 k steps, and the byte
+comparison on top runs out of memory. (That the union's cost comes from
+its other cases' encoders is an inference from the step counts, not
+measured case by case.) `default_status` layouts 1, 2 and 4 also run
+out of memory; they hold a decoded `Vec` of two-enum structs (no
+strings), and were not measured piece by piece. `power` layout 0 (no call id, the `State` case: four
+enums, no heap values) runs out of memory too, at 426 k steps; its cause
+is not measured yet.
+
+## The output buffer, and the Kani writer
+
+`power` layout 0 has no decoded heap value, yet ran out of memory. Measured
+piece by piece (fixed 21-byte layout):
+
+| Harness | Steps | Result |
+|---|---|---|
+| Decode only | 19,798 | 0.8 s |
+| Decode and encode, length check only | 416,754 | 32 s |
+| Decode, encode and compare | 426,258 | out of memory |
+| The same, with `Writer::with_capacity(21)` | 406,118 | out of memory |
+| `PowerEvent::State` alone, round trip | 132,662 | 15 s |
+| `Tri` alone / `Thermal` alone | 18,591 / 29,203 | 1–2 s |
+| `vec<TypeDefault, 7>`, one element: decode / encode, length / full | 15,261 / 250,156 / 255,574 | 1 / 17 / 23 s |
+
+The heap value is the encoder's output: every `put` goes through
+`Vec::extend_from_slice` and its growth code, about 60–70 k steps a put,
+whatever the capacity. With a fixed-buffer writer in its place (an
+experiment, 96 bytes), the full layout-0 round trip took 89,512 steps
+and passed (237 s, 8.4 GiB).
+
+So under `cfg(kani)` `hg_ipc::wire::Writer` now appends to a fixed
+buffer of `KANI_WRITER_CAPACITY` bytes, with the same `new`, `put` and
+`into_bytes`. The trust boundary: the Kani proofs prove this crate's and
+the generated encoders and decoders against that buffer; std is trusted
+for `Vec::extend_from_slice` appending a slice, which is all the
+production writer does. A put past the capacity fails an assertion, and
+every generated round-trip harness checks at compile time that its
+longest message fits. The `the_kani_buffer_appends_as_a_vec` test runs
+20,000 random put sequences (empty puts, puts to exactly the capacity)
+through both and compares the bytes, in every build.
+
+The buffer's size matters to CBMC: at 128 bytes `power` layout 0 ran
+out of memory again (92,788 steps); the capacity is 64, the largest
+harness input plus its ordinal.
+
+## Final run (26–27 October 2026)
+
+Every hg-os-types harness, with the Kani writer, the byte-at-a-time
+UTF-8 check, the size raise and the proofs by parts, on hueyj under a
+10 GiB cap, 15 minutes a harness, one job at a time:
+
+| Crate | Harnesses | Result | Slowest | Peak RSS |
+|---|---|---|---|---|
+| hg-os-types | 224 | 224 pass, every cover satisfied | 99 s | 5.3 GiB (second half) |
+| hg-ipc | 12 | 12 pass (with the three vector-loop proofs) | — | 1.7 GiB |
+| hg-ipc-gen | 41 | 41 pass | — | 1.9 GiB |
+| hg-launch-wire | 7 | 7 pass (earlier the same day) | — | 3.3 GiB |
+| hg-substrate-os | 34 | 34 pass (29 min) | — | 6.5 GiB |
+
+The hg-os-types run was cut at 23:28 when hueyj's disk filled (another
+session's runaway trace log); the 111 harnesses finished before then are
+complete in the log, and the other 113 were run again after space was
+freed. The peak memory of the first half was lost with that log write.
+
+The two kinds of proof by parts that are not whole-message proofs, and
+what each relies on:
+
+- **Fields of a split message, struct or union.** The join is checked by
+  the `every_codec_is_its_fields_in_order` test (generated codecs against
+  templates); the composition argument is in `hg-ipc-codegen`'s `shape`
+  module docs.
+- **A vector's elements (validators only).** The loop is proved in
+  `hg-ipc` against any element at the generated bounds
+  (`vec_of_any_element_validates_*`); `shape::VEC_LOOP_PROOFS` lists
+  the bounds and a test checks each proof exists.

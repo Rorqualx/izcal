@@ -18,3 +18,6 @@ mod install;
 
 #[cfg(test)]
 mod launch;
+
+#[cfg(test)]
+mod faults;

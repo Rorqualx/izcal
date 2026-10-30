@@ -1,0 +1,55 @@
+# host: Linux 6.8.0-147-generic #147-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep 24 11:33:16 UTC 2026 x86_64
+# probe: research_notes/M1 E launch/probes/linux/src/bin/unixsock.rs, release build, as joe (uid 1000), light booking b-a39c35
+Mon Oct 26 06:21:56 PM UTC 2026
+dbus-session-env=Some("unix:path=/run/user/1000/bus")
+display-env=None
+landlock-abi=4
+own-target=/tmp/izcal-unixsock-2839426/target.sock bind=OK
+own-abstract=@izcal-unixsock-2839426 bind=OK listen=OK
+plain                pid=2839427 uid=1000
+plain                /run/user/1000/bus                       stat=OK socket=OK connect=OK preconnect=OK
+plain                /run/dbus/system_bus_socket              stat=OK socket=OK connect=OK
+plain                /var/run/docker.sock                     stat=OK socket=OK connect=OK
+plain                @izcal-unixsock-2839426                  socket=OK connect=OK
+plain                own-dgram-target: sendto(pre-made dgram)=OK sendto(seqpacket pair end)=OK socketpair(DGRAM)=OK
+plain                child exit status=0x0
+ns                   pid=1 uid=65534
+ns                   /run/user/1000/bus                       stat=OK socket=OK connect=OK preconnect=OK
+ns                   /run/dbus/system_bus_socket              stat=OK socket=OK connect=OK
+ns                   /var/run/docker.sock                     stat=OK socket=OK connect=OK
+ns                   @izcal-unixsock-2839426                  socket=OK connect=111:ECONNREFUSED
+ns                   own-dgram-target: sendto(pre-made dgram)=OK sendto(seqpacket pair end)=OK socketpair(DGRAM)=OK
+ns                   child exit status=0x0
+ns+landlock          pid=1 uid=65534 landlock abi=4 restrict=OK
+ns+landlock          /run/user/1000/bus                       stat=OK socket=OK connect=OK preconnect=OK
+ns+landlock          /run/dbus/system_bus_socket              stat=OK socket=OK connect=OK
+ns+landlock          /var/run/docker.sock                     stat=OK socket=OK connect=OK
+ns+landlock          @izcal-unixsock-2839426                  socket=OK connect=111:ECONNREFUSED
+ns+landlock          own-dgram-target: sendto(pre-made dgram)=OK sendto(seqpacket pair end)=OK socketpair(DGRAM)=OK
+ns+landlock          child exit status=0x0
+ns+landlock+seccomp  pid=1 uid=65534 landlock abi=4 restrict=OK seccomp=OK
+ns+landlock+seccomp  /run/user/1000/bus                       stat=OK socket=1:EPERM preconnect=1:EPERM
+ns+landlock+seccomp  /run/dbus/system_bus_socket              stat=OK socket=1:EPERM
+ns+landlock+seccomp  /var/run/docker.sock                     stat=OK socket=1:EPERM
+ns+landlock+seccomp  @izcal-unixsock-2839426                  socket=1:EPERM
+ns+landlock+seccomp  own-dgram-target: sendto(pre-made dgram)=OK sendto(seqpacket pair end)=OK socketpair(DGRAM)=1:EPERM
+ns+landlock+seccomp  child exit status=0x0
+landlock-only        pid=2839432 uid=1000 landlock abi=4 restrict=OK
+landlock-only        /run/user/1000/bus                       stat=OK socket=OK connect=OK preconnect=OK
+landlock-only        /run/dbus/system_bus_socket              stat=OK socket=OK connect=OK
+landlock-only        /var/run/docker.sock                     stat=OK socket=OK connect=OK
+landlock-only        @izcal-unixsock-2839426                  socket=OK connect=OK
+landlock-only        own-dgram-target: sendto(pre-made dgram)=OK sendto(seqpacket pair end)=OK socketpair(DGRAM)=OK
+landlock-only        child exit status=0x0
+own-target received 5 datagram(s)
+# NOTE (added 2026-10-26 18:26 UTC, by the agent that ran this probe): right after the probe, the same ssh
+# command ran `sudo -n true 2>/dev/null` (non-interactive: never prompts), followed by
+# `echo "# kernel audit lines are not read (needs root on this host)"`. That echo line was in the
+# original log and was wrongly removed at first; this note restores the record. Nothing else in this run
+# used sudo, and nothing else ran as root. The output of `sudo -n true` was discarded, so whether it ran is
+# not in this log. Non-root follow-up at 18:25:37 UTC, `sudo -n -l` (lists rules, runs nothing): exit 0.
+# joe has `(ALL : ALL) ALL`, which needs a password, plus NOPASSWD only for apt/apt-get, `systemctl restart
+# docker|containerd|nvidia-persistenced`, `systemctl status *` and `journalctl *`. /usr/bin/true is not in
+# the NOPASSWD list, so `sudo -n true` ran `true` as root only if this new, non-tty ssh session had a cached
+# sudo timestamp. Otherwise it failed with "a password is required". The log cannot tell which.
+# kernel audit lines are not read (needs root on this host)

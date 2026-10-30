@@ -793,6 +793,7 @@ fn verify_strict_nothing_round_trip_0() {
     let decoded = Strict::decode_nothing(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok(()) = decoded {
+        const { assert!(0 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         0u16.encode(&mut w);
         Strict::encode_nothing(&mut w);
@@ -849,6 +850,7 @@ fn verify_strict_scalars_round_trip_0() {
     let decoded = Strict::decode_scalars(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((value,)) = decoded {
+        const { assert!(40 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Strict::encode_scalars(&mut w, &value);
@@ -1241,6 +1243,7 @@ fn verify_loose_tick_round_trip_0() {
     let decoded = Loose::decode_tick(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((value,)) = decoded {
+        const { assert!(1 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         0u16.encode(&mut w);
         Loose::encode_tick(&mut w, &value);
@@ -1301,6 +1304,7 @@ fn verify_loose_maybe_event_round_trip_0() {
     let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((event,)) = decoded {
+        const { assert!(1 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Loose::encode_maybe_event(&mut w, &event);
@@ -1338,6 +1342,7 @@ fn verify_loose_maybe_event_round_trip_1() {
     let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((event,)) = decoded {
+        const { assert!(5 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Loose::encode_maybe_event(&mut w, &event);
@@ -1379,6 +1384,7 @@ fn verify_loose_maybe_event_round_trip_2() {
     let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((event,)) = decoded {
+        const { assert!(10 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Loose::encode_maybe_event(&mut w, &event);
@@ -1425,6 +1431,7 @@ fn verify_loose_maybe_event_round_trip_3() {
     let decoded = Loose::decode_maybe_event(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((event,)) = decoded {
+        const { assert!(9 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Loose::encode_maybe_event(&mut w, &event);
@@ -1761,6 +1768,7 @@ fn verify_handles_connect_round_trip_0() {
     let decoded = Handles::decode_connect(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((note,)) = decoded {
+        const { assert!(1 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         0u16.encode(&mut w);
         Handles::encode_connect(&mut w, &note);
@@ -1818,6 +1826,7 @@ fn verify_handles_hand_over_round_trip_0() {
     let decoded = Handles::decode_hand_over(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok(()) = decoded {
+        const { assert!(0 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         1u16.encode(&mut w);
         Handles::encode_hand_over(&mut w);
@@ -2110,6 +2119,7 @@ fn verify_regions_lend_round_trip_0() {
     let decoded = Regions::decode_lend(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
     if let Ok((tag,)) = decoded {
+        const { assert!(4 + 2 <= hg_ipc::wire::KANI_WRITER_CAPACITY) };
         let mut w = Writer::new();
         0u16.encode(&mut w);
         Regions::encode_lend(&mut w, &tag);
