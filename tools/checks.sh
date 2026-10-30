@@ -265,7 +265,12 @@ fi
 # --- security: known-dangerous patterns, workflows and dependencies ---------
 # Four deterministic parts, each on what this change adds:
 #   (1) Rust `unsafe` blocks and impls need a `// SAFETY:` comment just above
-#       them, saying why the invariants hold;
+#       them, saying why the invariants hold: in the three lines before, or
+#       anywhere in the comment block that ends on the line before. Standalone
+#       probe crates under research_notes/ (their own Cargo.toml `[workspace]`,
+#       outside Izcal's workspace and never shipped) are exempt: they are
+#       black-box measurements of raw OS calls, and every commit that added
+#       one recorded the skip and its reason;
 #   (2) risky patterns: TLS verification turned off, a download piped into a
 #       shell, world-writable permissions;
 #   (3) GitHub workflows pass zizmor (unpinned actions, credential
@@ -276,22 +281,55 @@ fi
 if ! skipped security; then
   sec_bad=""
   rs=$(files_matching '\.rs$' | grep -v '/third_party/' || true)
+  # Drop standalone probe crates: a .rs file under research_notes/ whose
+  # nearest Cargo.toml, read at the commit being checked, has a [workspace]
+  # table.
+  if [ -n "$rs" ]; then
+    kept=""
+    while IFS= read -r f; do
+      case "$f" in
+        research_notes/*)
+          d=$(dirname "$f"); probe=0
+          while [ "$d" != "research_notes" ] && [ "$d" != "." ]; do
+            if [ "$MODE" = staged ]; then toml=$(git show ":$d/Cargo.toml" 2>/dev/null)
+            else toml=$(git show "$HEAD:$d/Cargo.toml" 2>/dev/null); fi
+            if [ -n "$toml" ]; then
+              printf '%s\n' "$toml" | grep -q '^\[workspace\]' && probe=1
+              break
+            fi
+            d=$(dirname "$d")
+          done
+          [ "$probe" = 1 ] && continue ;;
+      esac
+      kept="$kept$f
+"
+    done <<EOF_RS
+$rs
+EOF_RS
+    rs=$(printf '%s' "$kept" | sed '/^$/d')
+  fi
   if [ -n "$rs" ]; then
     printf '%s\n' "$rs" | tr '\n' '\0' > "$TMP/sec_rs"
     if [ "$MODE" = staged ]; then xargs -0 git diff --cached -U3 -- < "$TMP/sec_rs" > "$TMP/sec_rs.diff"
     else xargs -0 git diff -U3 "$BASE" "$HEAD" -- < "$TMP/sec_rs" > "$TMP/sec_rs.diff"; fi
     # Added lines with `unsafe {` or `unsafe impl`, with no SAFETY: comment
-    # in the three lines before them (added or context).
+    # in the three lines before them (added or context), nor in the comment
+    # block ending on the line before. A block that starts above the diff's
+    # context is not seen, so such a hit is a false alarm to fix by moving
+    # the SAFETY: line down, never a pass.
     unsafe_hits=$(awk '
-      /^\+\+\+ / {f=substr($0,7); n=0; next}
-      /^@@/ {n=0; next}
+      /^\+\+\+ / {f=substr($0,7); split("", prev); inc=0; blk=0; next}
+      /^@@/ {split("", prev); inc=0; blk=0; next}
       /^[ +]/ {
         line=substr($0,2)
         if ($0 ~ /^\+/ && line ~ /unsafe[ \t]*(\{|impl)/ && line !~ /^[ \t]*\/\//) {
           ok=0; for (i=1;i<=3;i++) if (prev[i] ~ /SAFETY:/) ok=1
           if (line ~ /SAFETY:/) ok=1
+          if (inc && blk) ok=1
           if (!ok) print f ": unsafe without a SAFETY: comment: " substr(line,1,80)
         }
+        if (line ~ /^[ \t]*\/\//) { if (!inc) blk=0; inc=1; if (line ~ /SAFETY:/) blk=1 }
+        else { inc=0; blk=0 }
         prev[3]=prev[2]; prev[2]=prev[1]; prev[1]=line
       }' "$TMP/sec_rs.diff")
     [ -n "$unsafe_hits" ] && sec_bad="$sec_bad
