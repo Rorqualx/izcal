@@ -1,0 +1,12 @@
+[package]
+name = "d6-macos-probes"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "M1 D6 black-box probes of Mach memory entries (shared memory) on macOS"
+
+[dependencies]
+libc = "0.2"
+
+# Standalone: not a member of the repository's workspace.
+[workspace]

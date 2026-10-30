@@ -112,22 +112,25 @@ mod tests;
 use core::any::Any;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::os::windows::io::OwnedHandle;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak, mpsc};
 use std::time::{Duration, Instant as StdInstant};
 
 use hg_substrate::ipc::{
-    Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, FaultKind, Flow, Handle,
-    HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES,
-    OsPeer, Sink, Transfer,
+    Bootstrap, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, FaultKind, Flow,
+    Handle, HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES,
+    MAX_MESSAGE_HANDLES, Mapping, MappingObject, OsPeer, ProducerRegion, ReadOnlyRegion,
+    RegionObject, RegionRefused, RegionWriter, Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
 use crate::executor::OsExecutor;
 use crate::ipc::common::codec::{
-    CREDIT_LEN, HandleDesc, WireKind, decode_credit, encode_credit, encode_data,
+    CREDIT_LEN, HandleDesc, REGION_FILLER_TRUSTED, REGION_IMMUTABLE, WireKind, decode_credit,
+    encode_credit, encode_data,
 };
 use crate::ipc::common::flow::{PendingCredit, ReceiverFlow, SenderFlow};
+use crate::ipc::common::quota::Ledger as Quota;
 use crate::ipc::win::accept::{
     End as PipeEnd, Facts, PipeKey, Proc, Refusal, accept, check_value, distinct, parse_name,
 };
@@ -137,6 +140,7 @@ use crate::ipc::win::frame::{
     encode_ctl, join_data,
 };
 use crate::ipc::win::ledger::{BindEvent, Held, Ledger};
+use crate::ipc::win::regions::{Grant, Pulled as RegionPulled, State as RState, relay_rule};
 
 /// The capacity of a process's launch channels (Stage 1 4.1): the
 /// process-host interfaces' declared capacity.
@@ -241,6 +245,36 @@ enum Role {
     /// A control link: in a child, to its broker; in the broker, to
     /// child `proc`.
     Link { proc: Proc, out: VecDeque<Vec<u8>> },
+    /// A shared-memory region (D6): a section handle with its kind's
+    /// access. No I/O ever runs on it.
+    Region {
+        kind: HandleKind,
+        /// The exact length (the broker's registered size).
+        len: u32,
+        /// Carry it with the `immutable` flag (the IDL attribute).
+        want: bool,
+        /// Live mappings made from it here (a seal waits for none).
+        live: Arc<AtomicUsize>,
+    },
+}
+
+/// What [`Inner::region_rollback`] undoes.
+#[derive(Default)]
+struct RegionUndo {
+    /// Sections whose state moved, with the state before.
+    states: Vec<(u64, RState)>,
+    /// Copies made.
+    copies: Vec<u64>,
+}
+
+/// A registered section, as the broker knows it (D6 review B1).
+struct RegEntry {
+    size: u32,
+    owner: OsPeer,
+    state: RState,
+    /// The broker's own full-access handle: identifies the section when
+    /// it comes back (fact S3), and is the source of a copy.
+    master: OwnedHandle,
 }
 
 struct End {
@@ -295,6 +329,11 @@ struct Broker {
     creator_sids: BTreeMap<String, Proc>,
     #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher reads it"))]
     next_proc: Proc,
+    /// Every section the broker made, by registry id (D6).
+    regions: BTreeMap<u64, RegEntry>,
+    next_region: u64,
+    /// Region charges per owner (D6 review M4).
+    quota: Quota,
 }
 
 impl Broker {
@@ -371,6 +410,11 @@ struct Pulled {
     kind: WireKind,
     handle: Option<OwnedHandle>,
     raw: sys::RawFacts,
+    /// For a region: its declared length and flags, and the kernel's
+    /// facts on it as a section.
+    len: u32,
+    flags: u8,
+    section: sys::SectionFacts,
 }
 
 #[derive(Default)]
@@ -578,7 +622,8 @@ impl Inner {
         let which = match &e.role {
             Role::Sender { .. } => PipeEnd::Sender,
             Role::Receiver { .. } => PipeEnd::Receiver,
-            Role::Link { .. } => return,
+            // A region has no ledger entry: its charge is its owner's.
+            Role::Link { .. } | Role::Region { .. } => return,
         };
         let value = sys::value(&e.h);
         let handle = Arc::clone(&e.h);
@@ -683,12 +728,21 @@ impl Inner {
                 let handle = check_value(i.value)
                     .ok()
                     .and_then(|()| sys::pull(process, i.value, true).ok());
-                let raw = handle.as_ref().map(sys::facts).unwrap_or_default();
+                let (raw, section) = if i.kind.is_region() {
+                    let s = handle.as_ref().map(sys::section_facts).unwrap_or_default();
+                    (sys::RawFacts::default(), s)
+                } else {
+                    let r = handle.as_ref().map(sys::facts).unwrap_or_default();
+                    (r, sys::SectionFacts::default())
+                };
                 Pulled {
                     value: i.value,
                     kind: i.kind,
                     handle,
                     raw,
+                    len: i.len,
+                    flags: i.flags,
+                    section,
                 }
             })
             .collect();
@@ -719,7 +773,21 @@ impl Inner {
         let mut ends = Vec::with_capacity(pulled.len());
         let mut handles = Vec::with_capacity(pulled.len());
         let mut first_err = None;
-        for p in pulled {
+        // Regions (D6): (index, registry id, outcome, kind, len).
+        let mut regions = Vec::new();
+        for (index, p) in pulled.into_iter().enumerate() {
+            if p.kind.is_region() {
+                match Self::region_decide(b, from, &p) {
+                    Ok((id, o)) => regions.push((index, id, o, p.kind, p.len)),
+                    Err(r) => {
+                        first_err.get_or_insert(r);
+                    }
+                }
+                if let Some(h) = p.handle {
+                    handles.push(h);
+                }
+                continue;
+            }
             let facts = Facts {
                 raw: p.value,
                 pulled: p.handle.is_some(),
@@ -751,6 +819,12 @@ impl Inner {
             }
         }
         let keys: Vec<(PipeKey, PipeEnd)> = ends.iter().map(|(p, e, _)| (*p, *e)).collect();
+        // A section named twice in one relay.
+        let mut ids: Vec<u64> = regions.iter().map(|r| r.1).collect();
+        ids.sort_unstable();
+        if ids.windows(2).any(|w| w.first() == w.get(1)) {
+            first_err.get_or_insert(Refusal::Duplicate);
+        }
         let result = match first_err {
             Some(r) => Err(r),
             None => distinct(&keys).and_then(|()| {
@@ -760,16 +834,19 @@ impl Inner {
                         break t;
                     }
                 };
-                b.ledger
-                    .relay(
-                        ticket,
-                        Held {
-                            carrier,
-                            from,
-                            ends,
-                        },
-                    )
-                    .map_err(|_e| Refusal::Quota)?;
+                // The registry moves on last, and is put back if the
+                // ledger then refuses the relay.
+                let (grants, undo) = Self::region_commit(b, &regions, &mut handles, &mut spare)?;
+                let held = Held {
+                    carrier,
+                    from,
+                    ends,
+                    regions: grants,
+                };
+                if b.ledger.relay(ticket, held).is_err() {
+                    Self::region_rollback(b, undo);
+                    return Err(Refusal::Quota);
+                }
                 Ok(ticket)
             }),
         };
@@ -783,6 +860,156 @@ impl Inner {
                 (Err(r), spare)
             }
         }
+    }
+
+    /// Decides one pulled region against the registry (D6 review B1):
+    /// its registry id and what the relay does to it.
+    fn region_decide(
+        b: &Broker,
+        from: Proc,
+        p: &Pulled,
+    ) -> Result<(u64, crate::ipc::win::regions::Outcome), Refusal> {
+        let h = p.handle.as_ref().ok_or(Refusal::PullFailed)?;
+        let found = p
+            .section
+            .is_section
+            .then(|| {
+                b.regions
+                    .iter()
+                    .find(|(_, e)| sys::same_object(&e.master, h))
+            })
+            .flatten();
+        let facts = RegionPulled {
+            is_section: p.section.is_section,
+            ours: found.is_some(),
+            access: p.section.access,
+            handle_count: p.section.handle_count,
+        };
+        let (id, size, state) = found.map_or((0, 0, RState::SealedByBroker), |(id, e)| {
+            (*id, e.size, e.state)
+        });
+        let want = u64::from(p.flags) & REGION_IMMUTABLE != 0;
+        relay_rule(p.kind, p.len, want, from, &facts, size, state)
+            .map(|o| (id, o))
+            .map_err(|_r| Refusal::Region)
+    }
+
+    /// Applies a relay's region outcomes once every item passed: moves
+    /// each section's state on and makes the copies the outcomes ask for
+    /// (review Q1), putting each copy's read-only handle in place of the
+    /// pulled one. Returns the grants for the ticket.
+    fn region_commit(
+        b: &mut Broker,
+        regions: &[(usize, u64, crate::ipc::win::regions::Outcome, WireKind, u32)],
+        handles: &mut [OwnedHandle],
+        spare: &mut Vec<OwnedHandle>,
+    ) -> Result<(Vec<(usize, Grant)>, RegionUndo), Refusal> {
+        let mut grants = Vec::with_capacity(regions.len());
+        let mut undo = RegionUndo::default();
+        for &(index, id, o, kind, len) in regions {
+            let mut grant = Grant {
+                id,
+                kind,
+                len,
+                filler_trusted: o.filler_trusted,
+            };
+            if o.copy {
+                let Some((copy_id, h)) = Self::copy_region(b, id) else {
+                    Self::region_rollback(b, undo);
+                    return Err(Refusal::Quota);
+                };
+                undo.copies.push(copy_id);
+                if let Some(slot) = handles.get_mut(index) {
+                    spare.push(core::mem::replace(slot, h));
+                }
+                grant.id = copy_id;
+                grant.filler_trusted = false;
+            }
+            if let Some(e) = b.regions.get_mut(&id) {
+                undo.states.push((id, e.state));
+                e.state = o.next;
+            }
+            grants.push((index, grant));
+        }
+        Ok((grants, undo))
+    }
+
+    /// Puts the registry back as it was before a relay that failed after
+    /// [`Inner::region_commit`]: the states restored, the copies forgotten
+    /// and refunded.
+    fn region_rollback(b: &mut Broker, undo: RegionUndo) {
+        for (id, state) in undo.states.into_iter().rev() {
+            if let Some(e) = b.regions.get_mut(&id) {
+                e.state = state;
+            }
+        }
+        for id in undo.copies {
+            if let Some(e) = b.regions.remove(&id) {
+                b.quota.refund(e.owner, u64::from(e.size));
+            }
+        }
+    }
+
+    /// Registers a new section made by the broker, charged to `owner`:
+    /// its id and the broker's full-access handle's twin with `access`.
+    fn register(
+        b: &mut Broker,
+        len: u32,
+        owner: OsPeer,
+        state: RState,
+        access: u32,
+    ) -> Result<(u64, OwnedHandle), IpcError> {
+        if !b.quota.charge(owner, u64::from(len)) {
+            return Err(IpcError::Quota);
+        }
+        let made = sys::create_section(len).and_then(|m| sys::narrow(&m, access).map(|h| (m, h)));
+        let Ok((master, h)) = made else {
+            b.quota.refund(owner, u64::from(len));
+            return Err(IpcError::Refused);
+        };
+        b.next_region = b.next_region.wrapping_add(1);
+        let id = b.next_region;
+        b.regions.insert(
+            id,
+            RegEntry {
+                size: len,
+                owner,
+                state,
+                master,
+            },
+        );
+        Ok((id, h))
+    }
+
+    /// Copies section `id` into a new one the broker seals itself
+    /// (`SealedByBroker`, charged to the same owner): the one copy
+    /// review Q1 makes of a region a sandboxed process sealed. Returns
+    /// the copy's id and a read-only handle to it.
+    fn copy_region(b: &mut Broker, id: u64) -> Option<(u64, OwnedHandle)> {
+        let (len, owner) = b.regions.get(&id).map(|e| (e.size, e.owner))?;
+        let (copy_id, ro) =
+            Self::register(b, len, owner, RState::SealedByBroker, sys::SECTION_READ).ok()?;
+        let n = usize::try_from(len).ok()?;
+        let src = sys::map_section(&b.regions.get(&id)?.master, n, false, None).ok()?;
+        let dst = sys::map_section(&b.regions.get(&copy_id)?.master, n, true, None).ok()?;
+        let mut buf = vec![0u8; 64 * 1024];
+        let mut off = 0usize;
+        while off < n {
+            let k = buf.len().min(n - off);
+            let chunk = buf.get_mut(..k)?;
+            src.read(off, chunk).ok()?;
+            dst.write(off, chunk).ok()?;
+            off += k;
+        }
+        Some((copy_id, ro))
+    }
+
+    /// The registry id of the section `h` names, in the broker.
+    fn region_id(b: &Broker, h: &OwnedHandle) -> Option<u64> {
+        b.regions
+            .iter()
+            .find(|(_, e)| sys::same_object(&e.master, h))
+            .map(|(id, _)| *id)
     }
 
     /// What the kernel says about a receiver end a child names by value,
@@ -833,15 +1060,37 @@ impl Inner {
         let handles = b.held.remove(&ticket).unwrap_or_default();
         let mut items = Vec::with_capacity(handles.len());
         let mut noted = Vec::with_capacity(handles.len());
-        let mut ok = handles.len() == held.ends.len();
+        let mut writers = Vec::new();
+        let mut ok = handles.len() == held.ends.len() + held.regions.len();
         if let Some(c) = b.children.get(&from) {
-            for (h, (pipe, end, kind)) in handles.iter().zip(&held.ends) {
+            let mut ends = held.ends.iter();
+            for (index, h) in handles.iter().enumerate() {
+                let region = held.regions.iter().find(|(i, _)| *i == index);
+                if let Some((_, g)) = region {
+                    // A region goes in with exactly its kind's access.
+                    let access = if g.kind == WireKind::RegionWriter {
+                        sys::SECTION_RW
+                    } else {
+                        sys::SECTION_READ
+                    };
+                    match sys::give_with(&c.process, h, access) {
+                        Ok(v) => {
+                            items.push(region_item(v, g));
+                            if g.kind == WireKind::RegionWriter {
+                                writers.push(g.id);
+                            }
+                        }
+                        Err(_) => ok = false,
+                    }
+                    continue;
+                }
+                let Some((pipe, end, kind)) = ends.next() else {
+                    ok = false;
+                    continue;
+                };
                 match sys::give(&c.process, h) {
                     Ok(v) => {
-                        items.push(CtlItem {
-                            value: v,
-                            kind: *kind,
-                        });
+                        items.push(CtlItem::end(v, *kind));
                         noted.push((v, *pipe, *end));
                     }
                     Err(_) => ok = false,
@@ -849,6 +1098,14 @@ impl Inner {
             }
         } else {
             ok = false;
+        }
+        // A writer now rests with the redeemer (review B1).
+        if ok {
+            for id in writers {
+                if let Some(e) = b.regions.get_mut(&id) {
+                    e.state = RState::WriterOut(Some(from));
+                }
+            }
         }
         later.push(Box::new(handles));
         match Items::from_slice(&items) {
@@ -1196,14 +1453,23 @@ impl Inner {
                     // A value naming an end this process already holds is
                     // refused, never adopted twice.
                     let held: Vec<u64> = st.ends.values().map(|e| sys::value(&e.h)).collect();
-                    let got: Vec<(Option<OwnedHandle>, WireKind)> = items
+                    let got: Vec<(Option<OwnedHandle>, CtlItem)> = items
                         .as_slice()
                         .iter()
                         .map(|i| {
-                            let h = (!held.contains(&i.value))
-                                .then(|| sys::adopt_pipe(i.value, i.kind == WireKind::Receiver))
-                                .flatten();
-                            (h, i.kind)
+                            let adopt = || match i.kind {
+                                WireKind::RegionWriter => {
+                                    sys::adopt_section(i.value, sys::SECTION_RW)
+                                }
+                                WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {
+                                    sys::adopt_section(i.value, sys::SECTION_READ)
+                                }
+                                WireKind::Sender | WireKind::BoundSender | WireKind::Receiver => {
+                                    sys::adopt_pipe(i.value, i.kind == WireKind::Receiver)
+                                }
+                            };
+                            let h = (!held.contains(&i.value)).then(adopt).flatten();
+                            (h, *i)
                         })
                         .collect();
                     out.extend(self.redeemed(st, rx, req, Some(got)));
@@ -1265,7 +1531,7 @@ impl Inner {
         st: &mut State,
         rx: u64,
         req: u64,
-        got: Option<Vec<(Option<OwnedHandle>, WireKind)>>,
+        got: Option<Vec<(Option<OwnedHandle>, CtlItem)>>,
     ) -> Vec<Box<dyn Any + Send>> {
         let mut out: Vec<Box<dyn Any + Send>> = Vec::new();
         let Some(End {
@@ -1303,18 +1569,40 @@ impl Inner {
             return out;
         };
         let checked = {
-            let kinds: Vec<WireKind> = got.iter().map(|(_, k)| *k).collect();
+            let items: Vec<CtlItem> = got.iter().map(|(_, i)| *i).collect();
             if got.iter().any(|(h, _)| h.is_none()) {
                 Err(Reason::Redeem)
             } else {
-                check_redeemed(&descs, &kinds)
+                check_redeemed(&descs, &items)
             }
         };
         match checked {
             Ok(kinds) => {
                 let mut handles = Vec::with_capacity(got.len());
-                for (((h, _), kind), desc) in got.into_iter().zip(kinds).zip(&descs) {
+                for (((h, _), (kind, immutable)), desc) in got.into_iter().zip(kinds).zip(&descs) {
                     let Some(h) = h else { continue };
+                    if desc.kind.is_region() {
+                        let role = Role::Region {
+                            kind,
+                            len: desc.capacity,
+                            want: false,
+                            live: Arc::new(AtomicUsize::new(0)),
+                        };
+                        if let Some(id) = Self::insert(st, h, role) {
+                            handles.push(Handle::new(Box::new(WinEnd {
+                                inner: Arc::clone(self),
+                                id,
+                                kind,
+                                armed: true,
+                                region: Some(RegionInfo {
+                                    len: usize::try_from(desc.capacity).unwrap_or(0),
+                                    immutable,
+                                    want: AtomicBool::new(false),
+                                }),
+                            })));
+                        }
+                        continue;
+                    }
                     let role = match kind {
                         HandleKind::ChannelSender | HandleKind::BoundChannelSender => {
                             let Ok(flow) = SenderFlow::from_transfer(desc) else {
@@ -1331,6 +1619,14 @@ impl Inner {
                                 broken: false,
                             }
                         }
+                        // Regions were made above; nothing else is redeemed.
+                        HandleKind::RegionWriter
+                        | HandleKind::ReadOnlyRegion
+                        | HandleKind::ConsumerRegion
+                        | HandleKind::ProducerRegion
+                        | HandleKind::GpuIoSurface
+                        | HandleKind::GpuDmaBuf
+                        | HandleKind::GpuDxgiShared => continue,
                         HandleKind::ChannelReceiver => {
                             let Ok(flow) = ReceiverFlow::from_transfer(desc) else {
                                 continue;
@@ -1349,6 +1645,7 @@ impl Inner {
                             id,
                             kind,
                             armed: true,
+                            region: None,
                         })));
                     }
                 }
@@ -1442,7 +1739,7 @@ impl Inner {
                     };
                     (read, write)
                 }
-                Role::Receiver { .. } => (None, None),
+                Role::Receiver { .. } | Role::Region { .. } => (None, None),
                 Role::Link { out, .. } => {
                     let write = if end.writing { None } else { out.pop_front() };
                     (Some(MAX_CTL_LEN), write)
@@ -1471,7 +1768,7 @@ impl Inner {
                         }
                         // The link is broken, as when a read on it fails.
                         Role::Link { proc, .. } => lost_links.push(*proc),
-                        Role::Receiver { listener: None, .. } => {}
+                        Role::Receiver { listener: None, .. } | Role::Region { .. } => {}
                     },
                 }
             }
@@ -1580,12 +1877,17 @@ impl Inner {
             }
             return;
         }
-        // Encode the record now, with the carried ends' final counters.
+        // Encode the record now, with the carried ends' final counters
+        // and the regions' lengths and flags.
         let mut descs = Vec::with_capacity(carried.len());
         for (cid, kind) in &carried {
             match st.ends.get(cid).map(|e| &e.role) {
                 Some(Role::Sender { flow, .. }) => descs.push(flow.to_desc(*kind)),
                 Some(Role::Receiver { flow, .. }) => descs.push(flow.to_desc()),
+                Some(Role::Region { len, want, .. }) => {
+                    let flags = if *want { REGION_IMMUTABLE } else { 0 };
+                    descs.push(HandleDesc::region(*kind, *len, flags));
+                }
                 Some(Role::Link { .. }) | None => {
                     Self::break_sender(st, id);
                     return;
@@ -1639,11 +1941,26 @@ impl Inner {
             // stays inline. Classify each owned handle, then decide.
             let pulled: Vec<Pulled> = taken
                 .into_iter()
-                .map(|(h, kind)| Pulled {
-                    value: sys::value(&h),
-                    kind,
-                    raw: sys::facts(&h),
-                    handle: Some(h),
+                .zip(&descs)
+                .map(|((h, kind), d)| {
+                    let region = kind.is_region();
+                    Pulled {
+                        value: sys::value(&h),
+                        kind,
+                        raw: if region {
+                            sys::RawFacts::default()
+                        } else {
+                            sys::facts(&h)
+                        },
+                        len: if region { d.capacity } else { 0 },
+                        flags: if region { item_flags(d.sent) } else { 0 },
+                        section: if region {
+                            sys::section_facts(&h)
+                        } else {
+                            sys::SectionFacts::default()
+                        },
+                        handle: Some(h),
+                    }
                 })
                 .collect();
             let b = match st.broker.as_mut() {
@@ -1670,9 +1987,18 @@ impl Inner {
         // A child: ask the broker.
         let items: Vec<CtlItem> = taken
             .iter()
-            .map(|(h, k)| CtlItem {
-                value: sys::value(h),
-                kind: *k,
+            .zip(&descs)
+            .map(|((h, k), d)| {
+                if k.is_region() {
+                    CtlItem {
+                        value: sys::value(h),
+                        kind: *k,
+                        len: d.capacity,
+                        flags: item_flags(d.sent),
+                    }
+                } else {
+                    CtlItem::end(sys::value(h), *k)
+                }
             })
             .collect();
         let Some(items) = Items::from_slice(&items) else {
@@ -1804,7 +2130,7 @@ impl Inner {
                     }
                 }
             }
-            Role::Receiver { listener: None, .. } => Next::Nothing,
+            Role::Receiver { listener: None, .. } | Role::Region { .. } => Next::Nothing,
             Role::Link { proc, .. } => {
                 let p = *proc;
                 if c.error != 0 {
@@ -1874,11 +2200,20 @@ impl Inner {
             let (got, events) = match r {
                 Ok((held, events)) => {
                     let hs = b.held.remove(&ticket).unwrap_or_default();
-                    let got: Vec<(Option<OwnedHandle>, WireKind)> = hs
-                        .into_iter()
-                        .zip(held.ends.iter().map(|(_, _, k)| *k))
-                        .map(|(h, k)| (Some(h), k))
-                        .collect();
+                    let mut ends = held.ends.iter();
+                    let mut got: Vec<(Option<OwnedHandle>, CtlItem)> = Vec::with_capacity(hs.len());
+                    for (index, h) in hs.into_iter().enumerate() {
+                        if let Some((_, g)) = held.regions.iter().find(|(i, _)| *i == index) {
+                            if g.kind == WireKind::RegionWriter
+                                && let Some(e) = b.regions.get_mut(&g.id)
+                            {
+                                e.state = RState::WriterOut(Some(BROKER));
+                            }
+                            got.push((Some(h), region_item(0, g)));
+                        } else if let Some((_, _, k)) = ends.next() {
+                            got.push((Some(h), CtlItem::end(0, *k)));
+                        }
+                    }
                     (Some(got), events)
                 }
                 Err(_) => (None, Vec::new()),
@@ -1931,6 +2266,34 @@ impl Inner {
     }
 }
 
+/// A region's control item as the broker hands it over: its exact
+/// length, and filler-trust when the broker cannot attest it.
+fn region_item(value: u64, g: &Grant) -> CtlItem {
+    CtlItem {
+        value,
+        kind: g.kind,
+        len: g.len,
+        flags: if g.filler_trusted {
+            item_flags(REGION_FILLER_TRUSTED)
+        } else {
+            0
+        },
+    }
+}
+
+/// Region flags as a control item carries them (two bits).
+fn item_flags(sent: u64) -> u8 {
+    u8::try_from(sent & (REGION_IMMUTABLE | REGION_FILLER_TRUSTED)).unwrap_or(0)
+}
+
+/// What a region handle knows beyond its kind.
+#[derive(Debug)]
+struct RegionInfo {
+    len: usize,
+    immutable: bool,
+    want: AtomicBool,
+}
+
 /// A channel end this transport made or received.
 struct WinEnd {
     inner: Arc<Inner>,
@@ -1938,6 +2301,8 @@ struct WinEnd {
     kind: HandleKind,
     /// False once the end became a listener or was sent.
     armed: bool,
+    /// For a region (D6).
+    region: Option<RegionInfo>,
 }
 
 impl core::fmt::Debug for WinEnd {
@@ -1958,6 +2323,23 @@ impl HandleObject for WinEnd {
     }
     fn into_any(self: Box<Self>) -> Box<dyn Any + Send> {
         self
+    }
+    fn region(&self) -> Option<&dyn RegionObject> {
+        self.region.is_some().then_some(self as &dyn RegionObject)
+    }
+}
+
+impl RegionObject for WinEnd {
+    fn len(&self) -> usize {
+        self.region.as_ref().map_or(0, |r| r.len)
+    }
+    fn immutable(&self) -> bool {
+        self.region.as_ref().is_some_and(|r| r.immutable)
+    }
+    fn want_immutable(&self) {
+        if let Some(r) = &self.region {
+            r.want.store(true, Ordering::Relaxed);
+        }
     }
 }
 
@@ -2079,6 +2461,9 @@ impl WindowsIpc {
                 given: BTreeMap::new(),
                 own: BTreeMap::new(),
                 next_proc: 1,
+                regions: BTreeMap::new(),
+                next_region: 0,
+                quota: Quota::default(),
             });
         }
         let inner = Arc::new(Inner {
@@ -2111,12 +2496,43 @@ impl WindowsIpc {
         self.inner.lock().ends.contains_key(&e.id).then_some(e.id)
     }
 
+    /// Puts a section handle in the table as a region of `kind` and
+    /// returns its handle object.
+    fn region_handle(
+        &self,
+        st: &mut State,
+        h: OwnedHandle,
+        kind: HandleKind,
+        len: u32,
+        immutable: bool,
+    ) -> Result<Handle, IpcError> {
+        let role = Role::Region {
+            kind,
+            len,
+            want: false,
+            live: Arc::new(AtomicUsize::new(0)),
+        };
+        let id = Inner::insert(st, h, role).ok_or(IpcError::Refused)?;
+        Ok(Handle::new(Box::new(WinEnd {
+            inner: Arc::clone(&self.inner),
+            id,
+            kind,
+            armed: true,
+            region: Some(RegionInfo {
+                len: usize::try_from(len).unwrap_or(0),
+                immutable,
+                want: AtomicBool::new(false),
+            }),
+        })))
+    }
+
     fn handle(&self, id: u64, kind: HandleKind) -> Handle {
         Handle::new(Box::new(WinEnd {
             inner: Arc::clone(&self.inner),
             id,
             kind,
             armed: true,
+            region: None,
         }))
     }
 
@@ -2297,13 +2713,29 @@ impl Ipc for WindowsIpc {
             _ => return Err(IpcError::Refused),
         }
         // Every carried handle: a bound or listening receiver never
-        // moves; a bound sender moves once, from its maker (IPC-R2 (a)).
+        // moves; a bound sender moves once, from its maker (IPC-R2 (a));
+        // a writer only from the broker and a producer never (D6).
+        let is_broker = st.broker.is_some();
         let mut carried = Vec::with_capacity(ids.len());
         for (&id, h) in ids.iter().zip(&handles) {
-            let Some(end) = st.ends.get(&id) else {
+            let Some(end) = st.ends.get_mut(&id) else {
                 return Err(IpcError::Refused);
             };
-            let kind = match &end.role {
+            let kind = match &mut end.role {
+                Role::Region { kind, want, .. } => {
+                    let wire = match kind {
+                        HandleKind::RegionWriter if is_broker => WireKind::RegionWriter,
+                        HandleKind::ReadOnlyRegion => WireKind::ReadOnlyRegion,
+                        HandleKind::ConsumerRegion => WireKind::ConsumerRegion,
+                        _ => return Err(IpcError::Refused),
+                    };
+                    *want = h
+                        .object()
+                        .downcast_ref::<WinEnd>()
+                        .and_then(|e| e.region.as_ref())
+                        .is_some_and(|i| i.want.load(Ordering::Relaxed));
+                    wire
+                }
                 Role::Receiver { bound: true, .. }
                 | Role::Receiver {
                     listener: Some(_), ..
@@ -2383,7 +2815,7 @@ impl Ipc for WindowsIpc {
                         *granted = true;
                     }
                     Role::Receiver { in_transit, .. } => *in_transit = true,
-                    Role::Link { .. } => {}
+                    Role::Link { .. } | Role::Region { .. } => {}
                 }
             }
         }
@@ -2393,6 +2825,208 @@ impl Ipc for WindowsIpc {
         }
         self.inner.wake();
         Ok(())
+    }
+
+    fn allocate_region(&self, len: usize, owner: OsPeer) -> Result<RegionWriter, IpcError> {
+        let len = u32::try_from(len).map_err(|_e| IpcError::Refused)?;
+        if len == 0 {
+            return Err(IpcError::Refused);
+        }
+        let mut st = self.inner.lock();
+        let Some(b) = st.broker.as_mut() else {
+            return Err(IpcError::Unsupported);
+        };
+        let (_id, h) = Inner::register(
+            b,
+            len,
+            owner,
+            RState::WriterOut(Some(BROKER)),
+            sys::SECTION_RW,
+        )?;
+        let h = self.region_handle(&mut st, h, HandleKind::RegionWriter, len, false)?;
+        drop(st);
+        RegionWriter::from_handle(h).map_err(|_h| IpcError::Refused)
+    }
+
+    fn release_owner(&self, owner: OsPeer) {
+        let mut st = self.inner.lock();
+        let mut gone = Vec::new();
+        if let Some(b) = st.broker.as_mut() {
+            b.quota.release(owner);
+            // The broker forgets the owner's sections; each lives on while
+            // a process holds a handle or a view (fact S10).
+            let ids: Vec<u64> = b
+                .regions
+                .iter()
+                .filter(|(_, e)| e.owner == owner)
+                .map(|(id, _)| *id)
+                .collect();
+            for id in ids {
+                gone.extend(b.regions.remove(&id));
+            }
+        }
+        drop(st);
+        drop(gone);
+    }
+
+    fn map_region(&self, region: &Handle) -> Result<Mapping, IpcError> {
+        let id = self.held_end(region).ok_or(IpcError::Refused)?;
+        let st = self.inner.lock();
+        let Some(End {
+            h,
+            role: Role::Region {
+                kind, len, live, ..
+            },
+            ..
+        }) = st.ends.get(&id)
+        else {
+            return Err(IpcError::Refused);
+        };
+        let writable = match kind {
+            HandleKind::RegionWriter => true,
+            HandleKind::ReadOnlyRegion | HandleKind::ConsumerRegion => false,
+            // A producer holds its one mapping.
+            _ => return Err(IpcError::Refused),
+        };
+        let n = usize::try_from(*len).map_err(|_e| IpcError::Refused)?;
+        sys::map_section(h, n, writable, Some(Arc::clone(live)))
+            .map(|m| Mapping::new(Box::new(m)))
+            .map_err(|_e| IpcError::Refused)
+    }
+
+    fn seal_region(&self, writer: RegionWriter) -> Result<ReadOnlyRegion, RegionRefused> {
+        let refuse = |w: RegionWriter, e| Err(RegionRefused::new(w.into_handle(), e));
+        let Some(id) = self.held_end(writer.handle()) else {
+            return refuse(writer, IpcError::Refused);
+        };
+        let mut st = self.inner.lock();
+        let (narrowed, len) = match st.ends.get(&id) {
+            Some(End {
+                h,
+                role:
+                    Role::Region {
+                        kind: HandleKind::RegionWriter,
+                        len,
+                        live,
+                        ..
+                    },
+                ..
+            }) => {
+                if live.load(Ordering::Acquire) != 0 {
+                    drop(st);
+                    return refuse(writer, IpcError::Busy);
+                }
+                (sys::narrow(h, sys::SECTION_READ), *len)
+            }
+            _ => {
+                drop(st);
+                return refuse(writer, IpcError::Refused);
+            }
+        };
+        let Ok(ro) = narrowed else {
+            drop(st);
+            return refuse(writer, IpcError::Refused);
+        };
+        // In the broker, which holds the writer and no view of it now,
+        // the section is sealed for good: attested immutable.
+        let mut immutable = false;
+        let sm: &mut State = &mut st;
+        if let (Some(b), Some(e)) = (sm.broker.as_mut(), sm.ends.get(&id)) {
+            let hid = Inner::region_id(b, &e.h);
+            if let Some(e) = hid.and_then(|i| b.regions.get_mut(&i))
+                && e.state == RState::WriterOut(Some(BROKER))
+            {
+                e.state = RState::SealedByBroker;
+                immutable = true;
+            }
+        }
+        let h = match self.region_handle(&mut st, ro, HandleKind::ReadOnlyRegion, len, immutable) {
+            Ok(h) => h,
+            Err(e) => {
+                drop(st);
+                return refuse(writer, e);
+            }
+        };
+        drop(st);
+        drop(writer);
+        ReadOnlyRegion::from_handle(h).map_err(|h| RegionRefused::new(h, IpcError::Refused))
+    }
+
+    fn share_region(&self, writer: RegionWriter) -> Result<ProducerRegion, RegionRefused> {
+        let refuse = |w: RegionWriter, e| Err(RegionRefused::new(w.into_handle(), e));
+        let Some(id) = self.held_end(writer.handle()) else {
+            return refuse(writer, IpcError::Refused);
+        };
+        let mut st = self.inner.lock();
+        let (mapping, dup, len) = match st.ends.get(&id) {
+            Some(End {
+                h,
+                role:
+                    Role::Region {
+                        kind: HandleKind::RegionWriter,
+                        len,
+                        ..
+                    },
+                ..
+            }) => {
+                let n = usize::try_from(*len).unwrap_or(0);
+                (
+                    sys::map_section(h, n, true, None),
+                    sys::narrow(h, sys::SECTION_RW),
+                    *len,
+                )
+            }
+            _ => {
+                drop(st);
+                return refuse(writer, IpcError::Refused);
+            }
+        };
+        let (Ok(mapping), Ok(dup)) = (mapping, dup) else {
+            drop(st);
+            return refuse(writer, IpcError::Refused);
+        };
+        let sm: &mut State = &mut st;
+        if let (Some(b), Some(e)) = (sm.broker.as_mut(), sm.ends.get(&id))
+            && let Some(e) = Inner::region_id(b, &e.h).and_then(|i| b.regions.get_mut(&i))
+            && e.state == RState::WriterOut(Some(BROKER))
+        {
+            e.state = RState::Producer(BROKER);
+        }
+        let h = match self.region_handle(&mut st, dup, HandleKind::ProducerRegion, len, false) {
+            Ok(h) => h,
+            Err(e) => {
+                drop(st);
+                return refuse(writer, e);
+            }
+        };
+        drop(st);
+        drop(writer);
+        ProducerRegion::new(h, Mapping::new(Box::new(mapping)))
+            .map_err(|(h, _m)| RegionRefused::new(h, IpcError::Refused))
+    }
+
+    fn consumer_of(&self, producer: &ProducerRegion) -> Result<ConsumerRegion, IpcError> {
+        let id = self.held_end(producer.handle()).ok_or(IpcError::Refused)?;
+        let mut st = self.inner.lock();
+        let (ro, len) = match st.ends.get(&id) {
+            Some(End {
+                h,
+                role:
+                    Role::Region {
+                        kind: HandleKind::ProducerRegion,
+                        len,
+                        ..
+                    },
+                ..
+            }) => (
+                sys::narrow(h, sys::SECTION_READ).map_err(|_e| IpcError::Refused)?,
+                *len,
+            ),
+            _ => return Err(IpcError::Refused),
+        };
+        let h = self.region_handle(&mut st, ro, HandleKind::ConsumerRegion, len, false)?;
+        drop(st);
+        ConsumerRegion::from_handle(h).map_err(|_h| IpcError::Refused)
     }
 
     fn listen(

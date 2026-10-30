@@ -17,6 +17,7 @@ entries = [
   "ipc::linux::sys",            # the Linux IPC transport's socket, sendmsg/recvmsg (SCM_RIGHTS), epoll and eventfd calls
   "ipc::macos::sys",            # the macOS IPC transport's Mach port and mach_msg calls, posix_spawn with a bootstrap port
   "ipc::windows::sys",          # the Windows IPC transport's named pipes, ReadFileEx/WriteFileEx, DuplicateHandle and child start
+  "ipc::shm",                   # atomic byte and word access to a mapped shared-memory region (D6)
 ]
 
 [crates.hg-ipc]

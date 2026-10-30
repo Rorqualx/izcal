@@ -126,3 +126,21 @@ interface Handles free capacity 4 overflow terminate {
         target: remote<Loose>,
     );
 }
+
+/// An interface only the broker sends, with every region form (D6).
+interface Regions free capacity 4 overflow terminate from broker {
+    /// A fresh region to fill, a sealed one, an immutable sealed one and
+    /// a producer's view, with data beside them.
+    lend(
+        /// Up to 64 KiB to fill.
+        fresh: region<writer, 65536>,
+        /// Up to 4 KiB, sealed.
+        sealed: region<ro, 4096>,
+        /// Up to 4 KiB, sealed, attested immutable on arrival.
+        frozen: region<ro, 4096, immutable>,
+        /// A producer's view, up to 1 MiB.
+        view: region<consumer, 1048576>,
+        /// Data beside the regions.
+        tag: u32,
+    );
+}

@@ -743,7 +743,7 @@ fn d4_child() {
 }
 
 fn child(case: &str) -> i32 {
-    if case == "sandbox" {
+    if case == "sandbox" || case == "region-roundtrip" {
         // Locked down first: the hello and everything after run inside.
         crate::sandbox::macos::apply_empty_process_profile().unwrap();
     }
@@ -826,6 +826,7 @@ fn child(case: &str) -> i32 {
             let _ = next(&from_parent);
             0
         }
+        "region-roundtrip" | "forge-writer" => region_child(case, &r, &up, &from_parent),
         _ => 99,
     }
 }
@@ -1062,4 +1063,322 @@ fn no_launch_without_a_launcher() {
     // A process not started by a launcher has no bootstrap channels.
     let r = rig();
     assert!(r.ipc.bootstrap().is_none());
+}
+
+// ---- shared-memory regions (D6) ----
+
+use hg_substrate::ipc::{ConsumerRegion, MAX_REGIONS_PER_OWNER, ReadOnlyRegion, RegionWriter};
+
+use super::region::MacRegion;
+use crate::ipc::common::codec::REGION_IMMUTABLE;
+
+/// The entry name behind one of this transport's region handles.
+fn region_name(h: &Handle) -> u32 {
+    h.object().downcast_ref::<MacRegion>().unwrap().name
+}
+
+/// A data message to `dest` carrying `ports` with the given table.
+fn raw_region(dest: u32, ports: &[(u32, u8)], descs: &[HandleDesc], seq: u64) {
+    let body = wire::frame(&encode_data(seq, descs, b"region").unwrap()).unwrap();
+    let reply = test_support::port_with_send();
+    test_support::send_raw(&Outgoing {
+        dest,
+        dest_disposition: COPY_SEND,
+        reply,
+        reply_disposition: MAKE_SEND_ONCE,
+        id: ID_DATA,
+        ports,
+        body: &body,
+    })
+    .unwrap();
+}
+
+fn my_peer() -> OsPeer {
+    OsPeer::new(me(), 0)
+}
+
+fn region_child(case: &str, r: &Rig, up: &ChannelSender, from_parent: &Receiver<Ev>) -> i32 {
+    let Ev::Msg(_, hs) = next(from_parent) else {
+        return 30;
+    };
+    let mut hs = hs.into_iter();
+    match case {
+        "region-roundtrip" => {
+            // Inside the sandbox: a writer from the broker is mapped,
+            // written, refused a seal while mapped, then sealed; a second
+            // becomes a producer whose consumer goes back up.
+            let w1 = RegionWriter::from_handle(hs.next().unwrap()).unwrap();
+            let w2 = RegionWriter::from_handle(hs.next().unwrap()).unwrap();
+            let m = r.ipc.map_region(w1.handle()).unwrap();
+            let mut hi = [0u8; 2];
+            m.read_into(0, &mut hi).unwrap();
+            m.write_from(0, b"child").unwrap();
+            let refused = r.ipc.seal_region(w1).unwrap_err();
+            let busy = refused.error;
+            let w1 = refused.into_writer().unwrap();
+            drop(m);
+            let ro = r.ipc.seal_region(w1).unwrap();
+            ro.want_immutable();
+            let p = r.ipc.share_region(w2).unwrap();
+            let c = r.ipc.consumer_of(&p).unwrap();
+            p.mapping().store_u32_release(0, 42).unwrap();
+            let report = format!("hi={} busy={busy:?}", String::from_utf8_lossy(&hi));
+            r.ipc
+                .send(
+                    up,
+                    report.into_bytes(),
+                    vec![ro.into_handle(), c.into_handle()],
+                )
+                .unwrap();
+            let _ = next(from_parent);
+            drop(p);
+            0
+        }
+        "forge-writer" => {
+            let w = hs.next().unwrap();
+            let name = region_name(&w);
+            sys::add_send_ref(name).unwrap();
+            let refused = r.ipc.send(up, b"w".to_vec(), vec![w]).unwrap_err();
+            r.ipc
+                .send(up, format!("send={refused:?}").into_bytes(), Vec::new())
+                .unwrap();
+            let (data, _credit) = r.sender_names(up.handle());
+            raw_region(
+                data,
+                &[(name, COPY_SEND)],
+                &[HandleDesc::region(WireKind::RegionWriter, 4096, 0)],
+                1,
+            );
+            let _ = next(from_parent);
+            0
+        }
+        _ => 99,
+    }
+}
+
+#[test]
+fn regions_cross_to_a_sandboxed_child_and_back() {
+    let r = rig();
+    let c = spawn(&r, "region-roundtrip");
+    let w1 = r.ipc.allocate_region(4096, c.peer).unwrap();
+    let m = r.ipc.map_region(w1.handle()).unwrap();
+    m.write_from(0, b"hi").unwrap();
+    drop(m);
+    let w2 = r.ipc.allocate_region(8192, c.peer).unwrap();
+    r.ipc
+        .send(
+            &c.to_child,
+            b"take".to_vec(),
+            vec![w1.into_handle(), w2.into_handle()],
+        )
+        .unwrap();
+    let (report, mut hs) = expect_msg(&c.from_child);
+    assert_eq!(String::from_utf8(report).unwrap(), "hi=hi busy=Busy");
+    let cons = ConsumerRegion::from_handle(hs.pop().unwrap()).unwrap();
+    let ro = ReadOnlyRegion::from_handle(hs.pop().unwrap()).unwrap();
+    // Sent `immutable`: a snapshot, attested here.
+    assert!(ro.immutable());
+    assert!(!cons.immutable());
+    assert_eq!((ro.len(), cons.len()), (4096, 8192));
+    let rm = r.ipc.map_region(ro.handle()).unwrap();
+    let mut got = [0u8; 5];
+    rm.read_into(0, &mut got).unwrap();
+    assert_eq!(&got, b"child");
+    assert!(!rm.writable());
+    let cm = r.ipc.map_region(cons.handle()).unwrap();
+    assert_eq!(cm.load_u32_acquire(0), Ok(42));
+    assert!(cm.write_from(0, b"x").is_err());
+    // Neither entry gives a writable sub-entry here.
+    for name in [region_name(ro.handle()), region_name(cons.handle())] {
+        assert!(sys::sub_entry(name, 4096, true).is_err());
+    }
+    r.ipc
+        .send(&c.to_child, b"bye".to_vec(), Vec::new())
+        .unwrap();
+    assert_eq!(sys::wait_child(c.pid).unwrap(), 0);
+    // The producer is gone; the consumer's mapping still reads (M10).
+    assert_eq!(cm.load_u32_acquire(0), Ok(42));
+    r.ipc.release_owner(c.peer);
+}
+
+#[test]
+fn a_writer_never_goes_on_from_a_child() {
+    let r = rig();
+    let c = spawn(&r, "forge-writer");
+    let w = r.ipc.allocate_region(4096, c.peer).unwrap();
+    r.ipc
+        .send(&c.to_child, b"take".to_vec(), vec![w.into_handle()])
+        .unwrap();
+    assert_eq!(expect_msg(&c.from_child).0, b"send=Refused");
+    expect_fault(&c.from_child, FaultKind::Identity, Some(c.peer.pid()));
+    r.ipc
+        .send(&c.to_child, b"bye".to_vec(), Vec::new())
+        .unwrap();
+    assert_eq!(sys::wait_child(c.pid).unwrap(), 0);
+}
+
+/// Sends one region claim to a fresh listening channel and returns what
+/// it saw.
+fn claim(r: &Rig, name: u32, d: HandleDesc) -> Ev {
+    let (_tx, out, _l, dest) = victim(r);
+    raw_region(dest, &[(name, COPY_SEND)], &[d], 0);
+    next(&out)
+}
+
+fn assert_fault(ev: Ev, kind: FaultKind) {
+    match ev {
+        Ev::Fault(f) => assert_eq!((f.kind, f.sender), (kind, Some(me())), "{f:?}"),
+        other => panic!("expected a violation, got {other:?}"),
+    }
+}
+
+#[test]
+fn region_claims_are_checked_against_the_kernel() {
+    let r = rig();
+    let w = r.ipc.allocate_region(4096, my_peer()).unwrap();
+    let wn = region_name(w.handle());
+    let rd = |k| HandleDesc::region(k, 4096, 0);
+    // A writer claimed as read-only or consumer: its entry is writable.
+    for k in [WireKind::ReadOnlyRegion, WireKind::ConsumerRegion] {
+        assert_fault(claim(&r, wn, rd(k)), FaultKind::BadHandle);
+    }
+    // The broker never receives a writer (review M1).
+    assert_fault(
+        claim(&r, wn, rd(WireKind::RegionWriter)),
+        FaultKind::Identity,
+    );
+    let ro = r.ipc.seal_region(w).unwrap();
+    let rn = region_name(ro.handle());
+    // Longer than the entry (one 16 KiB page here).
+    let big = HandleDesc::region(WireKind::ReadOnlyRegion, 1 << 20, 0);
+    assert_fault(claim(&r, rn, big), FaultKind::BadHandle);
+    // A read-only entry claimed as a writer (from the broker's own
+    // token, so the entry check is what refuses it, in a child).
+    // A plain port and a host port claimed as regions.
+    for p in [test_support::port_with_send(), test_support::host_port()] {
+        assert_fault(
+            claim(&r, p, rd(WireKind::ReadOnlyRegion)),
+            FaultKind::BadHandle,
+        );
+    }
+    // A region claimed as a channel sender.
+    let (_tx, out, _l, dest) = victim(&r);
+    let c = test_support::port_with_send();
+    raw(
+        dest,
+        &[(rn, COPY_SEND), (c, MOVE_RECEIVE)],
+        &[WireKind::Sender],
+        0,
+    )
+    .unwrap();
+    assert_fault(next(&out), FaultKind::BadHandle);
+    // The right claim passes, and both names now hold the region.
+    match claim(&r, rn, rd(WireKind::ReadOnlyRegion)) {
+        Ev::Msg(_, mut hs) => {
+            let got = ReadOnlyRegion::from_handle(hs.remove(0)).unwrap();
+            assert_eq!(region_name(got.handle()), rn);
+            assert!(!got.immutable());
+        }
+        other => panic!("{other:?}"),
+    }
+    drop(ro);
+}
+
+/// Fact M4 in the transport: an `immutable` read-only region is a
+/// snapshot taken at acceptance, so its filler's later writes never
+/// reach it; without the attribute the view is shared.
+#[test]
+fn an_immutable_region_is_a_snapshot_its_filler_cannot_change() {
+    let r = rig();
+    let w = r.ipc.allocate_region(4096, my_peer()).unwrap();
+    let m = r.ipc.map_region(w.handle()).unwrap();
+    m.write_from(0, b"old").unwrap();
+    // A read-only entry made by hand while the filler keeps its mapping
+    // (the transport's own seal refuses that).
+    let sub = sys::sub_entry(region_name(w.handle()), 4096, false).unwrap();
+    let frozen = HandleDesc::region(WireKind::ReadOnlyRegion, 4096, REGION_IMMUTABLE);
+    let Ev::Msg(_, mut hs) = claim(&r, sub, frozen) else {
+        panic!("refused");
+    };
+    let snap = ReadOnlyRegion::from_handle(hs.remove(0)).unwrap();
+    let plain = HandleDesc::region(WireKind::ReadOnlyRegion, 4096, 0);
+    let Ev::Msg(_, mut hs) = claim(&r, sub, plain) else {
+        panic!("refused");
+    };
+    let shared = ReadOnlyRegion::from_handle(hs.remove(0)).unwrap();
+    assert!(snap.immutable());
+    assert!(!shared.immutable());
+    m.write_from(0, b"new").unwrap();
+    let mut got = [0u8; 3];
+    r.ipc
+        .map_region(snap.handle())
+        .unwrap()
+        .read_into(0, &mut got)
+        .unwrap();
+    assert_eq!(&got, b"old");
+    r.ipc
+        .map_region(shared.handle())
+        .unwrap()
+        .read_into(0, &mut got)
+        .unwrap();
+    assert_eq!(&got, b"new");
+    sys::deallocate(sub);
+}
+
+#[test]
+fn a_seal_with_a_live_mapping_is_an_error_not_a_violation() {
+    let r = rig();
+    let w = r.ipc.allocate_region(4096, my_peer()).unwrap();
+    let m = r.ipc.map_region(w.handle()).unwrap();
+    let refused = r.ipc.seal_region(w).unwrap_err();
+    assert_eq!(refused.error, IpcError::Busy);
+    let w = refused.into_writer().unwrap();
+    drop(m);
+    let ro = r.ipc.seal_region(w).unwrap();
+    assert!(sys::sub_entry(region_name(ro.handle()), 4096, true).is_err());
+}
+
+#[test]
+fn a_producer_keeps_its_one_mapping_and_never_crosses() {
+    let r = rig();
+    let p = r
+        .ipc
+        .share_region(r.ipc.allocate_region(4096, my_peer()).unwrap())
+        .unwrap();
+    assert!(p.mapping().writable());
+    assert_eq!(r.ipc.map_region(p.handle()).err(), Some(IpcError::Refused));
+    let (tx, _rx) = r.ipc.channel(8, Transfer::Free).unwrap();
+    let c = r.ipc.consumer_of(&p).unwrap();
+    p.mapping().write_from(0, b"live").unwrap();
+    let mut got = [0u8; 4];
+    r.ipc
+        .map_region(c.handle())
+        .unwrap()
+        .read_into(0, &mut got)
+        .unwrap();
+    assert_eq!(&got, b"live");
+    assert!(
+        r.ipc
+            .send(&tx, b"c".to_vec(), vec![c.into_handle()])
+            .is_ok()
+    );
+}
+
+#[test]
+fn allocation_is_the_broker_s_within_quota() {
+    let r = rig();
+    let owner = OsPeer::new(77, 0);
+    assert_eq!(
+        r.ipc.allocate_region(0, owner).map(|_w| ()),
+        Err(IpcError::Refused)
+    );
+    for _ in 0..MAX_REGIONS_PER_OWNER {
+        drop(r.ipc.allocate_region(4096, owner).unwrap());
+    }
+    assert_eq!(
+        r.ipc.allocate_region(4096, owner).map(|_w| ()),
+        Err(IpcError::Quota)
+    );
+    r.ipc.release_owner(owner);
+    assert!(r.ipc.allocate_region(4096, owner).is_ok());
 }

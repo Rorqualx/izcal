@@ -1,0 +1,116 @@
+[child] pid=3672 hello pid=3672 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[child] pid=20044 hello pid=20044 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[S1] producer AC SID S-1-15-2-1381980954-1453657326-4245478858-2543670151-690690823-2451565967-353777444; consumer AC SID S-1-15-2-3005305667-440655566-3273276558-2698240479-3836555188-1366102476-4061402903
+[S1] broker section type=Section access=0xf0007 size 100000 SD O:BAG:S-1-5-21-<machine>-513D:P(A;;CCDCLCSWRPSDRCWDWO;;;S-1-5-21-<machine>-1001)(A;;DCLC;;;S-1-15-2-1381980954-1453657326-4245478858-2543670151-690690823-2451565967-353777444)
+[S1]   child: map rw OK VirtualQuery r=48 RegionSize=102400 Protect=0x4 AllocationProtect=0x4 Type=0x40000 State=0x1000
+[S1]   child: wrote "hello-1" at 0
+[S1]   child: map r OK VirtualQuery r=48 RegionSize=102400 Protect=0x2 AllocationProtect=0x2 Type=0x40000 State=0x1000
+[S1]   child: read "hello-1" at 0
+[S1]   child: wrote "hello-2" at 0
+[S1]   child: read "hello-2" at 0
+[S1] consumer tries to widen:
+[S1]   child: MapViewOfFile(WRITE) FAILED err=5
+[S1]   child: VirtualProtect(view, RW) ok=0 err=87
+[S1]   child: VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S1]   child: DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S1]   child: DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S1]   child: DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S1]   child: DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S1]   child: DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S1]   child: MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S1] producer tries to widen beyond its grant:
+[S1]   child: MapViewOfFile(WRITE) MAPPED
+[S1]   child: VirtualProtect(view, RW) ok=0 err=87
+[S1]   child: VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S1]   child: DuplicateHandle(self, FILE_MAP_WRITE) OK -> type=Section access=0x2
+[S1]   child: DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S1]   child: DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S1]   child: DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S1]   child: DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S1]   child: MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S2] what the consumer can learn about its handle:
+[S2]   child: describe type=Section access=0x4
+[S2]   child: NtQuerySection(basic) status=0xc0000022 len=0 attrs=0x0 max_size=0
+[S2]   child: map READ size 0: VirtualQuery r=48 RegionSize=102400 Protect=0x2 AllocationProtect=0x2 Type=0x40000 State=0x1000
+[S2] the same for the producer's handle:
+[S2]   child: describe type=Section access=0x6
+[S2]   child: NtQuerySection(basic) status=0xc0000022 len=0 attrs=0x0 max_size=0
+[S2]   child: map READ size 0: VirtualQuery r=48 RegionSize=102400 Protect=0x2 AllocationProtect=0x2 Type=0x40000 State=0x1000
+[S3] pulled consumer's handle: type=Section access=0x4 CompareObjectHandles(ours)=1
+[S3]   child: made 156 type=Section access=0xf0007
+[S3] pulled a child-made section: type=Section access=0xf0007 CompareObjectHandles(ours)=0
+[S4] broker closed its handle; producer killed: exited code=0x0
+[S4]   child: read "hello-2" at 0
+[S4] consumer: exited code=0x0
+[S5] 64 KiB: create(with DACL)+close 5.38 µs; map+unmap 1.67 µs; map+read every page+unmap 15.43 µs
+[S5] 4096 KiB: create(with DACL)+close 5.33 µs; map+unmap 4.01 µs; map+read every page+unmap 847.24 µs
+[S6] commit limit (ullTotalPageFile) 37677 MiB, available 26166 MiB, physical 28311 MiB
+[S6] 1 GiB SEC_COMMIT: created
+[S6] 1 GiB SEC_RESERVE: created
+[S6] 16 GiB SEC_COMMIT: created
+[S6] 16 GiB SEC_RESERVE: created
+[S6] 256 GiB SEC_COMMIT: FAILED err=1455
+[S6] 256 GiB SEC_RESERVE: created
+run exit=0
+[child] pid=28108 hello pid=28108 lowered=ok args=[] integrity=untrusted appcontainer=yes privileges=1 user-file-read=not-probed sam-read=denied mitigations=appcontainer+lockdown+job+untrusted (not-applied:win32k,acg,cig,cet)
+[S7] broker's handle only, no view: (HandleCount, PointerCount) = Ok((1, 32769))
+[S7] broker's handle + one broker view: (HandleCount, PointerCount) = Ok((1, 32767))
+[S7] broker view unmapped: (HandleCount, PointerCount) = Ok((1, 32766))
+[S7] given to the child (two handles): (HandleCount, PointerCount) = Ok((2, 32766))
+[S7]   child: map rw OK VirtualQuery r=48 RegionSize=65536 Protect=0x4 AllocationProtect=0x4 Type=0x40000 State=0x1000
+[S7] child mapped a view: (HandleCount, PointerCount) = Ok((2, 65532))
+[S7] child's handle pulled with CLOSE_SOURCE; child keeps its view: (HandleCount, PointerCount) = Ok((2, 32764))
+[S7]   child: wrote "after-pull" at 0
+[S7] broker reads "after-pull": the child's view still writes
+[S7]   child: unmap ok=1
+[S7] child unmapped its view: (HandleCount, PointerCount) = Ok((2, 32762))
+[S7] pulled handle closed: (HandleCount, PointerCount) = Ok((1, 32760))
+run exit=0
+[S9] section SD O:BAG:S-1-5-21-<machine>-513D:P(A;;CCDCLCSWRPSDRCWDWO;;;S-1-5-21-<machine>-1001)
+[S9]   child: describe type=Section access=0x6
+[S9]   child: NtQuerySection(basic) status=0xc0000022 len=0 attrs=0x0 max_size=0
+[S9]   child: map READ size 0: VirtualQuery r=48 RegionSize=65536 Protect=0x2 AllocationProtect=0x2 Type=0x40000 State=0x1000
+[S9]   child: map rw OK VirtualQuery r=48 RegionSize=65536 Protect=0x4 AllocationProtect=0x4 Type=0x40000 State=0x1000
+[S9]   child: wrote "s9-child" at 0
+[S9] broker reads "s9-child"
+[S9] the child tries to widen past 0x6 (DACL names only the broker):
+[S9]   child: MapViewOfFile(WRITE) MAPPED
+[S9]   child: VirtualProtect(view, RW) ok=0 err=87
+[S9]   child: VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S9]   child: DuplicateHandle(self, FILE_MAP_WRITE) OK -> type=Section access=0x2
+[S9]   child: DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S9]   child: DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S9]   child: DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S9]   child: DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S9]   child: MapViewOfFile(COPY) MAPPED (private copy-on-write)
+[S9] a FILE_MAP_READ handle in that child:
+[S9]   child: MapViewOfFile(WRITE) FAILED err=5
+[S9]   child: VirtualProtect(view, RW) ok=0 err=87
+[S9]   child: VirtualProtect(view, WRITECOPY) ok=1 err=0
+[S9]   child: DuplicateHandle(self, FILE_MAP_WRITE) FAILED err=5
+[S9]   child: DuplicateHandle(self, FILE_MAP_ALL_ACCESS) FAILED err=5
+[S9]   child: DuplicateHandle(self, SECTION_QUERY) FAILED err=5
+[S9]   child: DuplicateHandle(self, SECTION_EXTEND_SIZE) FAILED err=5
+[S9]   child: DuplicateHandle(self, WRITE_DAC) FAILED err=5
+[S9]   child: MapViewOfFile(COPY) MAPPED (private copy-on-write)
+run exit=0
+[S10] before: broker ok=1 PrivateUsage=1020 KiB WorkingSet=6596 KiB PagefileUsage=1020 KiB | system commit used=11526 MiB | child ok=1 PrivateUsage=812 KiB WorkingSet=4608 KiB PagefileUsage=812 KiB | system commit used=11526 MiB
+[S10] broker created 64 MiB SEC_COMMIT: broker ok=1 PrivateUsage=1028 KiB WorkingSet=6796 KiB PagefileUsage=1028 KiB | system commit used=11590 MiB | child ok=1 PrivateUsage=812 KiB WorkingSet=4608 KiB PagefileUsage=812 KiB | system commit used=11590 MiB
+[S10]   child: map rw OK VirtualQuery r=48 RegionSize=67108864 Protect=0x4 AllocationProtect=0x4 Type=0x40000 State=0x1000
+[S10] child mapped: broker ok=1 PrivateUsage=1028 KiB WorkingSet=6804 KiB PagefileUsage=1028 KiB | system commit used=11590 MiB | child ok=1 PrivateUsage=940 KiB WorkingSet=4620 KiB PagefileUsage=940 KiB | system commit used=11590 MiB
+[S10]   child: wrote 16384 pages
+[S10] child wrote every page: broker ok=1 PrivateUsage=1028 KiB WorkingSet=6804 KiB PagefileUsage=1028 KiB | system commit used=11584 MiB | child ok=1 PrivateUsage=940 KiB WorkingSet=70156 KiB PagefileUsage=940 KiB | system commit used=11584 MiB
+[S10]   child: unmap ok=1
+[S10] child unmapped: broker ok=1 PrivateUsage=1028 KiB WorkingSet=6804 KiB PagefileUsage=1028 KiB | system commit used=11584 MiB | child ok=1 PrivateUsage=812 KiB WorkingSet=4628 KiB PagefileUsage=812 KiB | system commit used=11584 MiB
+[S10] broker closed (child still has a handle): broker ok=1 PrivateUsage=1028 KiB WorkingSet=6804 KiB PagefileUsage=1028 KiB | system commit used=11584 MiB | child ok=1 PrivateUsage=812 KiB WorkingSet=4628 KiB PagefileUsage=812 KiB | system commit used=11584 MiB
+[S10] child exited: broker ok=1 PrivateUsage=984 KiB WorkingSet=6808 KiB PagefileUsage=984 KiB | system commit used=11520 MiB
+run exit=0
+[S11]   child: map r OK VirtualQuery r=48 RegionSize=1048576 Protect=0x2 AllocationProtect=0x2 Type=0x40000 State=0x1000
+[S11]   child: touched 256 pages sum 23040
+[S11]   child: OfferVirtualMemory rc=87
+[S11]   child: ReclaimVirtualMemory rc=87
+[S11]   child: DiscardVirtualMemory rc=87
+[S11]   child: VirtualProtect(NOACCESS) ok=1 err=0
+[S11] broker's view after the consumer's offer/discard: 0 of 256 pages changed
+[S11]   child: read "Z" at 0
+run exit=0

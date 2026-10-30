@@ -6,3 +6,6 @@ mod sim;
 
 #[cfg(test)]
 mod ipc;
+
+#[cfg(test)]
+mod region;

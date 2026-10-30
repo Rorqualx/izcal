@@ -14,6 +14,10 @@ pub(crate) mod unix;
 /// The record codec and flow counters every backend shares.
 pub(crate) mod common;
 
+/// Atomic access to a mapped shared-memory region (D6), for every OS
+/// backend's mappings.
+pub(crate) mod shm;
+
 /// The libc-free parts of the macOS transport: message layout and
 /// parser, handle acceptance, the per-message decision and notification
 /// classification. Pure code, tested on every OS and proved by Kani.

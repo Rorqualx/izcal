@@ -29,8 +29,11 @@
 //! | 9 `BindBroken` | broker to child | receiver value u64, peer pid u32, reserved u32 |
 //!
 //! An item is a handle value (u64) in the process that sent or receives
-//! it, the claimed [`WireKind`] (u8) and 7 reserved bytes. Only `Relay`
-//! and `Redeemed` have items, at most [`MAX_MESSAGE_HANDLES`].
+//! it, the claimed [`WireKind`] (u8), then for a region (D6) its declared
+//! length (u32, not 0) and flags (u8: `REGION_IMMUTABLE`, and from the
+//! broker `REGION_FILLER_TRUSTED`), then reserved bytes to 16; for a
+//! channel end those 7 bytes are all reserved. Only `Relay` and
+//! `Redeemed` have items, at most [`MAX_MESSAGE_HANDLES`].
 
 use hg_substrate::ipc::MAX_MESSAGE_HANDLES;
 
@@ -116,13 +119,24 @@ pub(crate) struct Item {
     pub(crate) value: u64,
     /// What the handle claims to be.
     pub(crate) kind: WireKind,
+    /// A region's declared length; 0 for a channel end.
+    pub(crate) len: u32,
+    /// A region's flags; 0 for a channel end.
+    pub(crate) flags: u8,
 }
 
 impl Item {
-    const EMPTY: Self = Self {
-        value: 0,
-        kind: WireKind::Sender,
-    };
+    const EMPTY: Self = Self::end(0, WireKind::Sender);
+
+    /// A channel end's item.
+    pub(crate) const fn end(value: u64, kind: WireKind) -> Self {
+        Self {
+            value,
+            kind,
+            len: 0,
+            flags: 0,
+        }
+    }
 }
 
 /// Up to [`MAX_MESSAGE_HANDLES`] items, without allocating.
@@ -295,7 +309,9 @@ impl Out {
         for it in items.as_slice() {
             self.u64(it.value);
             self.u8(it.kind.to_byte());
-            self.zeros(7);
+            self.u32(it.len);
+            self.u8(it.flags);
+            self.zeros(2);
         }
     }
 }
@@ -415,8 +431,25 @@ impl In<'_> {
             }
             let value = self.u64()?;
             let kind = WireKind::from_byte(self.u8()?).ok_or(FrameError::BadItemKind)?;
-            self.zeros::<7>()?;
-            *slot = Item { value, kind };
+            let len = self.u32()?;
+            let flags = self.u8()?;
+            self.zeros::<2>()?;
+            // A channel end has no length or flags; a region has a
+            // length and only the two region flags.
+            let fits = if kind.is_region() {
+                len > 0 && flags & !3 == 0
+            } else {
+                len == 0 && flags == 0
+            };
+            if !fits {
+                return Err(FrameError::Reserved);
+            }
+            *slot = Item {
+                value,
+                kind,
+                len,
+                flags,
+            };
         }
         out.count = count;
         Ok(out)
@@ -597,13 +630,18 @@ mod tests {
 
     fn items(n: usize) -> Items {
         let v: Vec<Item> = (1..=n)
-            .map(|i| Item {
-                value: u64::try_from(i).unwrap().checked_mul(4).unwrap(),
-                kind: if i % 2 == 0 {
-                    WireKind::Sender
-                } else {
-                    WireKind::Receiver
-                },
+            .map(|i| {
+                let value = u64::try_from(i).unwrap().checked_mul(4).unwrap();
+                match i % 3 {
+                    0 => Item::end(value, WireKind::Sender),
+                    1 => Item::end(value, WireKind::Receiver),
+                    _ => Item {
+                        value,
+                        kind: WireKind::ReadOnlyRegion,
+                        len: 4096,
+                        flags: 3,
+                    },
+                }
             })
             .collect();
         Items::from_slice(&v).unwrap()
@@ -657,6 +695,45 @@ mod tests {
             assert!(b.len() <= MAX_CTL_LEN);
             assert_eq!(decode_ctl(&b), Ok(c));
         }
+    }
+
+    /// D6: a channel end's item has no length or flags; a region's has a
+    /// length and only the two region flags.
+    #[test]
+    fn region_items_are_strict() {
+        let one = |it: Item| {
+            encode_ctl(&Ctl::Redeemed {
+                req: 1,
+                items: Items::from_slice(&[it]).unwrap(),
+            })
+        };
+        let region = Item {
+            value: 8,
+            kind: WireKind::ConsumerRegion,
+            len: 100,
+            flags: 0,
+        };
+        assert!(decode_ctl(&one(region)).is_ok());
+        for bad in [
+            Item { len: 0, ..region },
+            Item { flags: 4, ..region },
+            Item {
+                kind: WireKind::Sender,
+                ..region
+            },
+            Item {
+                len: 0,
+                flags: 1,
+                ..Item::end(8, WireKind::Receiver)
+            },
+        ] {
+            assert_eq!(decode_ctl(&one(bad)), Err(FrameError::Reserved), "{bad:?}");
+        }
+        // The last two reserved bytes stay reserved.
+        let mut b = one(region);
+        let last = b.len() - 1;
+        b[last] = 1;
+        assert_eq!(decode_ctl(&b), Err(FrameError::Reserved));
     }
 
     #[test]

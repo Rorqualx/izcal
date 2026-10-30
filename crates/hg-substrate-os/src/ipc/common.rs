@@ -5,6 +5,7 @@
 //!
 //! - [`codec`]: the data and credit record formats (IPC-R6).
 //! - [`flow`]: the counters behind `Full` and the credits.
+//! - [`quota`]: the broker's region ledger (D6).
 //!
 //! These modules follow the tier P rules (coding standard CS-ER-3,
 //! CS-TY-12) although the crate is tier O: they parse what a peer sends.
@@ -42,3 +43,4 @@
 
 pub(crate) mod codec;
 pub(crate) mod flow;
+pub(crate) mod quota;

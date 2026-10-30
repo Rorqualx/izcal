@@ -17,8 +17,13 @@
 
 use std::collections::BTreeMap;
 use std::io;
-use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 
+use core::ptr::NonNull;
+
+use hg_substrate::ipc::Mapping;
+
+use crate::ipc::shm::{OsMapping, Raw};
 use crate::ipc::unix::accept::FdFacts;
 use crate::ipc::unix::cmsg;
 
@@ -131,15 +136,25 @@ pub(crate) fn take_error(fd: BorrowedFd<'_>) -> io::Result<i32> {
 
 /// The raw facts handle acceptance decides on (`ipc::unix::accept`).
 ///
+/// `fstat` is the raw system call, not the C library's wrapper, which
+/// may use `newfstatat` or `statx` instead (D6 review minor 4): the
+/// sandbox filter allows exactly this call. On both supported arches the
+/// kernel's `struct stat` is the C library's (x86_64's own layout,
+/// aarch64's generic one), so `libc::stat` is the buffer.
+///
 /// # Errors
-/// The `fstat` error; a failed socket query on a non-socket is not an
-/// error, it leaves the socket facts zero.
+/// The `fstat` error; a failed socket or seal query is not an error, it
+/// leaves those facts at -1 (or 0 for the credentials).
 pub(crate) fn fd_facts(fd: BorrowedFd<'_>) -> io::Result<FdFacts> {
     // SAFETY: an all-zero `stat` is a valid value to be overwritten.
     let mut st: libc::stat = unsafe { core::mem::zeroed() };
-    // SAFETY: a valid fd and a pointer to a live `stat`.
-    check(unsafe { libc::fstat(fd.as_raw_fd(), &raw mut st) })?;
+    // SAFETY: a valid fd and a pointer to a live `stat` the kernel fills.
+    let rc = unsafe { libc::syscall(libc::SYS_fstat, fd.as_raw_fd(), &raw mut st) };
+    if rc < 0 {
+        return Err(io::Error::last_os_error());
+    }
     let is_socket = st.st_mode & libc::S_IFMT == libc::S_IFSOCK;
+    let is_regular = st.st_mode & libc::S_IFMT == libc::S_IFREG;
     let (domain, sock_type, protocol, peercred_pid) = if is_socket {
         (
             getsockopt_int(fd, libc::SO_DOMAIN).unwrap_or(-1),
@@ -150,6 +165,11 @@ pub(crate) fn fd_facts(fd: BorrowedFd<'_>) -> io::Result<FdFacts> {
     } else {
         (-1, -1, -1, 0)
     };
+    let seals = if is_regular {
+        get_seals(fd).unwrap_or(-1)
+    } else {
+        -1
+    };
     Ok(FdFacts {
         fd: fd.as_raw_fd(),
         is_socket,
@@ -159,7 +179,180 @@ pub(crate) fn fd_facts(fd: BorrowedFd<'_>) -> io::Result<FdFacts> {
         dev: st.st_dev,
         ino: st.st_ino,
         peercred_pid,
+        is_regular,
+        size: st.st_size,
+        seals,
     })
+}
+
+/// The creator of the socket pair `fd` belongs to (`SO_PEERCRED`): for a
+/// launch channel end, the broker that launched this process.
+pub(crate) fn creator_pid(fd: BorrowedFd<'_>) -> Option<i32> {
+    peer_pid(fd).ok().filter(|&p| p > 0)
+}
+
+// ---- shared memory (D6), from memfd_create(2), fcntl(2) "File
+// sealing", ftruncate(2), mmap(2) and munmap(2) --------------------------
+
+/// `F_ADD_SEALS` and `F_GET_SEALS` (fcntl(2)).
+const F_ADD_SEALS: libc::c_int = 1033;
+const F_GET_SEALS: libc::c_int = 1034;
+/// memfd_create(2) flags: close-on-exec, sealable, and (Linux 6.3) not
+/// executable with the exec seal set.
+const MFD_CLOEXEC: libc::c_uint = 0x1;
+const MFD_ALLOW_SEALING: libc::c_uint = 0x2;
+const MFD_NOEXEC_SEAL: libc::c_uint = 0x8;
+
+/// A new memfd of `len` bytes, zeroed, made with `MFD_NOEXEC_SEAL`
+/// (review M5), then grown to `len` and sealed against growing and
+/// shrinking: its seals are then exactly `GROW | SHRINK | EXEC`.
+///
+/// # Errors
+/// The failing call's error (`EINVAL` from a kernel without
+/// `MFD_NOEXEC_SEAL`).
+pub(crate) fn memfd_region(len: usize, grow_shrink: libc::c_int) -> io::Result<OwnedFd> {
+    let size =
+        libc::off_t::try_from(len).map_err(|_e| io::Error::from_raw_os_error(libc::EINVAL))?;
+    // SAFETY: a NUL-terminated name and flags; no pointer is kept.
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_memfd_create,
+            c"izcal-region".as_ptr(),
+            MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_NOEXEC_SEAL,
+        )
+    };
+    if rc < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let raw = RawFd::try_from(rc).map_err(|_e| io::Error::from_raw_os_error(libc::EBADF))?;
+    // SAFETY: the kernel just returned this new descriptor; nothing else
+    // owns it.
+    let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+    // SAFETY: a valid fd and a size.
+    check(unsafe { libc::ftruncate(fd.as_raw_fd(), size) })?;
+    add_seals(fd.as_fd(), grow_shrink)?;
+    Ok(fd)
+}
+
+/// `fcntl(F_ADD_SEALS)`.
+///
+/// # Errors
+/// `EBUSY` for `F_SEAL_WRITE` while a shared mapping made through a
+/// writable descriptor exists (fact L1b), `EPERM` once `F_SEAL_SEAL` is
+/// set.
+pub(crate) fn add_seals(fd: BorrowedFd<'_>, seals: libc::c_int) -> io::Result<()> {
+    // SAFETY: F_ADD_SEALS takes an int.
+    check(unsafe { libc::fcntl(fd.as_raw_fd(), F_ADD_SEALS, seals) }).map(|_| ())
+}
+
+/// `fcntl(F_GET_SEALS)`: the seals, or `EINVAL` for a file that cannot be
+/// sealed.
+pub(crate) fn get_seals(fd: BorrowedFd<'_>) -> io::Result<libc::c_int> {
+    // SAFETY: F_GET_SEALS takes no argument.
+    check(unsafe { libc::fcntl(fd.as_raw_fd(), F_GET_SEALS) })
+}
+
+/// `mmap(NULL, len, PROT_READ [| PROT_WRITE], MAP_SHARED, fd, 0)`; never
+/// `PROT_EXEC`.
+fn mmap_shared(fd: BorrowedFd<'_>, len: usize, writable: bool) -> io::Result<NonNull<u8>> {
+    let prot = if writable {
+        libc::PROT_READ | libc::PROT_WRITE
+    } else {
+        libc::PROT_READ
+    };
+    // SAFETY: a new mapping at an address the kernel picks; no existing
+    // memory is touched.
+    let p = unsafe {
+        libc::mmap(
+            core::ptr::null_mut(),
+            len,
+            prot,
+            libc::MAP_SHARED,
+            fd.as_raw_fd(),
+            0,
+        )
+    };
+    if p == libc::MAP_FAILED {
+        return Err(io::Error::last_os_error());
+    }
+    NonNull::new(p.cast::<u8>()).ok_or_else(|| io::Error::from_raw_os_error(libc::EFAULT))
+}
+
+/// A live `mmap_shared` mapping, unmapped when dropped.
+struct Mapped {
+    base: NonNull<u8>,
+    len: usize,
+}
+
+impl Mapped {
+    fn new(fd: BorrowedFd<'_>, len: usize, writable: bool) -> io::Result<Self> {
+        mmap_shared(fd, len, writable).map(|base| Self { base, len })
+    }
+}
+
+impl Drop for Mapped {
+    fn drop(&mut self) {
+        // SAFETY: the one live mapping `new` made; nothing uses it after.
+        unsafe { libc::munmap(self.base.as_ptr().cast::<libc::c_void>(), self.len) };
+    }
+}
+
+// SAFETY: `Mapped` only names an address range; unmapping it from any
+// thread is sound.
+unsafe impl Send for Mapped {}
+// SAFETY: `&Mapped` gives no access to the memory.
+unsafe impl Sync for Mapped {}
+
+/// Maps `fd` for `len` bytes, read-write or read-only, as a [`Mapping`]:
+/// every access checked and atomic (`ipc::shm`), unmapped when dropped.
+///
+/// # Errors
+/// The kernel's error: `EPERM` for a write mapping of a sealed region.
+pub(crate) fn map_region(fd: BorrowedFd<'_>, len: usize, writable: bool) -> io::Result<Mapping> {
+    let m = Mapped::new(fd, len, writable)?;
+    // SAFETY: `m.base` is a fresh page-aligned mapping of `len` bytes,
+    // readable, and writable if asked; `OsMapping` owns `m`, which unmaps
+    // only when the `OsMapping` (and its `Raw`) is dropped.
+    let raw = unsafe { Raw::new(m.base, len, writable) };
+    Ok(Mapping::new(Box::new(OsMapping::new(raw, m))))
+}
+
+/// The self-test's probe of fact L1b: the error `F_SEAL_WRITE` gets while
+/// a read-only shared mapping through `fd` exists.
+pub(crate) fn seal_write_with_reader(fd: BorrowedFd<'_>, len: usize) -> Option<i32> {
+    let m = Mapped::new(fd, len, false).ok()?;
+    let e = add_seals(fd, 0x8).err().and_then(|e| e.raw_os_error());
+    drop(m);
+    e
+}
+
+/// The self-test's probe that a read-only mapping of `fd` cannot be made
+/// writable with `mprotect`.
+pub(crate) fn can_widen_reader(fd: BorrowedFd<'_>, len: usize) -> io::Result<bool> {
+    let m = Mapped::new(fd, len, false)?;
+    // SAFETY: `m` is a live mapping of `len` bytes; only its protection
+    // changes, and it is unmapped right after.
+    let rc = unsafe {
+        libc::mprotect(
+            m.base.as_ptr().cast::<libc::c_void>(),
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+        )
+    };
+    Ok(rc == 0)
+}
+
+/// `pwrite` of one byte at 0: the self-test's check that a sealed
+/// region refuses writes through its descriptor.
+pub(crate) fn try_pwrite(fd: BorrowedFd<'_>) -> io::Result<()> {
+    let b = [1u8];
+    // SAFETY: a valid fd and a one-byte buffer.
+    let n = unsafe { libc::pwrite(fd.as_raw_fd(), b.as_ptr().cast::<libc::c_void>(), 1, 0) };
+    if n < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 /// `SO_PEERCRED`'s pid: for a `socketpair` end, the process that created
@@ -759,6 +952,51 @@ pub(crate) fn set_fd_limit(n: usize) {
     };
     // SAFETY: a pointer to a live rlimit.
     unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const r) };
+}
+
+/// Tests only: the errno of an executable shared mapping of `fd` (0 if
+/// it was made), and of `mprotect` to executable on a fresh private page
+/// (0 if allowed). Inside the sandbox both are refused (review M5).
+#[cfg(test)]
+pub(crate) fn try_exec(fd: BorrowedFd<'_>, len: usize) -> (i32, i32) {
+    // SAFETY: a new mapping the kernel places; unmapped below if made.
+    let p = unsafe {
+        libc::mmap(
+            core::ptr::null_mut(),
+            len,
+            libc::PROT_READ | libc::PROT_EXEC,
+            libc::MAP_SHARED,
+            fd.as_raw_fd(),
+            0,
+        )
+    };
+    let map = if p == libc::MAP_FAILED {
+        last_errno()
+    } else {
+        // SAFETY: the mapping just made, unused.
+        unsafe { libc::munmap(p, len) };
+        0
+    };
+    // SAFETY: a new private anonymous page.
+    let q = unsafe {
+        libc::mmap(
+            core::ptr::null_mut(),
+            4096,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+            -1,
+            0,
+        )
+    };
+    if q == libc::MAP_FAILED {
+        return (map, last_errno());
+    }
+    // SAFETY: `q` is the page just mapped; only its protection changes.
+    let rc = unsafe { libc::mprotect(q, 4096, libc::PROT_READ | libc::PROT_EXEC) };
+    let protect = if rc == 0 { 0 } else { last_errno() };
+    // SAFETY: as above, unused after.
+    unsafe { libc::munmap(q, 4096) };
+    (map, protect)
 }
 
 #[cfg(test)]

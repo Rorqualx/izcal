@@ -17,6 +17,12 @@
 //! the attacker controls at both ends, and credit reads use no control
 //! buffer, so the wrong end's traffic never installs a descriptor.
 //!
+//! Shared-memory regions (M1 phase D6) are memfds, checked by their seals
+//! ([`accept_region`]): seals are a property of the file, so a holder
+//! that reopens its descriptor read-write through `/proc` gains nothing,
+//! and only a memfd made with `MFD_ALLOW_SEALING` can carry a write seal
+//! (facts L4, L5, L7 in `research_notes/M1 D6 shared memory`).
+//!
 //! A bound sender is different: it may be sent only by the process that
 //! made it (IPC-R2 (a)). `SO_PEERCRED` on a socket-pair end names the
 //! process that called `socketpair(2)`, and no later holder can change
@@ -26,13 +32,34 @@
 
 use hg_substrate::ipc::{HandleKind, MAX_MESSAGE_HANDLES};
 
-use crate::ipc::common::codec::WireKind;
+#[cfg(test)]
+use crate::ipc::common::codec::REGION_IMMUTABLE;
+use crate::ipc::common::codec::{HandleDesc, REGION_FILLER_TRUSTED, WireKind};
 
 /// `AF_UNIX`, the Unix-domain address family (unix(7)).
 pub(crate) const AF_UNIX: i32 = 1;
 
 /// `SOCK_SEQPACKET`, the socket type of every channel (socket(2)).
 pub(crate) const SOCK_SEQPACKET: i32 = 5;
+
+/// `F_SEAL_SEAL`, `F_SEAL_SHRINK`, `F_SEAL_GROW`, `F_SEAL_WRITE`,
+/// `F_SEAL_FUTURE_WRITE` (fcntl(2); values as the `libc` crate compiles
+/// them, fact L0) and the exec seal `MFD_NOEXEC_SEAL` sets (0x20, read
+/// back black-box, fact L13).
+pub(crate) const SEAL_SEAL: i32 = 0x1;
+pub(crate) const SEAL_SHRINK: i32 = 0x2;
+pub(crate) const SEAL_GROW: i32 = 0x4;
+pub(crate) const SEAL_WRITE: i32 = 0x8;
+pub(crate) const SEAL_FUTURE_WRITE: i32 = 0x10;
+pub(crate) const SEAL_EXEC: i32 = 0x20;
+
+/// A writer's seals, exactly: its size fixed, not executable, nothing
+/// else yet (review M5).
+pub(crate) const WRITER_SEALS: i32 = SEAL_GROW | SEAL_SHRINK | SEAL_EXEC;
+/// What a read-only region's seals must include.
+pub(crate) const READ_ONLY_SEALS: i32 = WRITER_SEALS | SEAL_WRITE | SEAL_SEAL;
+/// What a consumer region's seals must include.
+pub(crate) const CONSUMER_SEALS: i32 = WRITER_SEALS | SEAL_FUTURE_WRITE | SEAL_SEAL;
 
 /// The highest standard descriptor (stderr). Descriptors 0 to 2 are
 /// never handles: a process with a closed stdio slot could otherwise be
@@ -61,6 +88,12 @@ pub(crate) struct FdFacts {
     /// `SO_PEERCRED`'s pid: for a socket-pair end, the process that made
     /// the pair.
     pub(crate) peercred_pid: i32,
+    /// `fstat(2)`: `S_ISREG(st_mode)` (a memfd is a regular file).
+    pub(crate) is_regular: bool,
+    /// `st_size`.
+    pub(crate) size: i64,
+    /// `F_GET_SEALS`, or -1 for a file that cannot be sealed.
+    pub(crate) seals: i32,
 }
 
 /// Which sockets this process already holds, by `(st_dev, st_ino)`.
@@ -84,6 +117,10 @@ pub(crate) struct AcceptCtx<'a, H: Held> {
     pub(crate) cred_pid: Option<i32>,
     /// This process's held sockets.
     pub(crate) held: &'a H,
+    /// The broker's pid, the only process that may send a region writer:
+    /// the process that launched this one. `None` in the broker itself,
+    /// which receives no writer (D6 review M1).
+    pub(crate) broker_pid: Option<i32>,
 }
 
 /// Why a descriptor was refused.
@@ -105,6 +142,16 @@ pub(crate) enum Refusal {
     Duplicate,
     /// A bound sender not sent by the process that made it.
     NotByCreator,
+    /// Claimed as a region but not a sealable regular file.
+    NotRegion,
+    /// A region whose seals are not its kind's.
+    Seals,
+    /// A region whose size is not its declared length.
+    Size,
+    /// A region flag no Linux sender sets (`REGION_FILLER_TRUSTED`).
+    Flags,
+    /// A region writer from a process other than the broker.
+    WriterNotFromBroker,
 }
 
 /// The handle kind a claim maps to.
@@ -113,7 +160,59 @@ pub(crate) const fn handle_kind(claimed: WireKind) -> HandleKind {
         WireKind::Sender => HandleKind::ChannelSender,
         WireKind::BoundSender => HandleKind::BoundChannelSender,
         WireKind::Receiver => HandleKind::ChannelReceiver,
+        WireKind::RegionWriter => HandleKind::RegionWriter,
+        WireKind::ReadOnlyRegion => HandleKind::ReadOnlyRegion,
+        WireKind::ConsumerRegion => HandleKind::ConsumerRegion,
     }
+}
+
+/// Decides one descriptor claimed as a region (D6). In order:
+/// - not a standard descriptor;
+/// - a sealable regular file (only a memfd made with `MFD_ALLOW_SEALING`
+///   can carry the seals below, fact L7);
+/// - seals: a writer's exactly [`WRITER_SEALS`]; a read-only region's
+///   at least [`READ_ONLY_SEALS`]; a consumer's at least
+///   [`CONSUMER_SEALS`] (a consumer region claimed as read-only lacks
+///   `F_SEAL_WRITE` and is refused, so a changing region never passes as
+///   an unchanging one);
+/// - the size exactly the declared length (`desc.capacity`);
+/// - no flag but `REGION_IMMUTABLE`;
+/// - a writer only from the broker, as the record's credentials attest.
+///
+/// # Errors
+/// The [`Refusal`]; the caller then refuses the whole record.
+pub(crate) fn accept_region<H: Held>(
+    desc: &HandleDesc,
+    facts: &FdFacts,
+    ctx: &AcceptCtx<'_, H>,
+) -> Result<HandleKind, Refusal> {
+    if facts.fd <= LAST_STDIO_FD {
+        return Err(Refusal::Stdio);
+    }
+    if !facts.is_regular || facts.seals < 0 {
+        return Err(Refusal::NotRegion);
+    }
+    let seals_ok = match desc.kind {
+        WireKind::RegionWriter => facts.seals == WRITER_SEALS,
+        WireKind::ReadOnlyRegion => facts.seals & READ_ONLY_SEALS == READ_ONLY_SEALS,
+        WireKind::ConsumerRegion => facts.seals & CONSUMER_SEALS == CONSUMER_SEALS,
+        WireKind::Sender | WireKind::BoundSender | WireKind::Receiver => false,
+    };
+    if !seals_ok {
+        return Err(Refusal::Seals);
+    }
+    if i64::from(desc.capacity) != facts.size {
+        return Err(Refusal::Size);
+    }
+    if desc.sent & REGION_FILLER_TRUSTED != 0 {
+        return Err(Refusal::Flags);
+    }
+    if desc.kind == WireKind::RegionWriter
+        && !matches!((ctx.cred_pid, ctx.broker_pid), (Some(c), Some(b)) if c == b && b > 0)
+    {
+        return Err(Refusal::WriterNotFromBroker);
+    }
+    Ok(handle_kind(desc.kind))
 }
 
 /// Decides one descriptor. The checks run in a fixed order, so the
@@ -128,6 +227,10 @@ pub(crate) fn accept<H: Held>(
 ) -> Result<HandleKind, Refusal> {
     if facts.fd <= LAST_STDIO_FD {
         return Err(Refusal::Stdio);
+    }
+    // A region claim is decided by `accept_region`, never here.
+    if claimed.is_region() {
+        return Err(Refusal::NotRegion);
     }
     if !facts.is_socket {
         return Err(Refusal::NotSocket);
@@ -198,7 +301,73 @@ pub(crate) mod proofs {
             dev: kani::any(),
             ino: kani::any(),
             peercred_pid: kani::any(),
+            is_regular: kani::any(),
+            size: kani::any(),
+            seals: kani::any(),
         }
+    }
+
+    /// Any region claim, with a descriptor the codec accepts.
+    fn any_region_desc() -> HandleDesc {
+        let kind = match kani::any::<u8>() % 3 {
+            0 => WireKind::RegionWriter,
+            1 => WireKind::ReadOnlyRegion,
+            _ => WireKind::ConsumerRegion,
+        };
+        let len: u32 = kani::any();
+        let flags: u64 = kani::any();
+        kani::assume(len > 0 && flags <= 3);
+        HandleDesc::region(kind, len, flags)
+    }
+
+    /// D6: a region claim is accepted exactly when its stated rules hold
+    /// (review minor 3: a writer only from the broker; a consumer never
+    /// as read-only), for every fact, credential and broker.
+    #[kani::proof]
+    fn regions_accept_exactly_the_stated_set() {
+        let d = any_region_desc();
+        let f = any_facts();
+        let (cred_pid, broker_pid): (Option<i32>, Option<i32>) = (kani::any(), kani::any());
+        let answer = |_dev: u64, _ino: u64| false;
+        let ctx = AcceptCtx {
+            cred_pid,
+            held: &answer,
+            broker_pid,
+        };
+        let got = accept_region(&d, &f, &ctx);
+        let seals = match d.kind {
+            WireKind::RegionWriter => f.seals == WRITER_SEALS,
+            WireKind::ReadOnlyRegion => f.seals & READ_ONLY_SEALS == READ_ONLY_SEALS,
+            _ => f.seals & CONSUMER_SEALS == CONSUMER_SEALS,
+        };
+        let from_broker = matches!((cred_pid, broker_pid), (Some(c), Some(b)) if c == b && b > 0);
+        let spec = f.fd > 2
+            && f.is_regular
+            && f.seals >= 0
+            && seals
+            && i64::from(d.capacity) == f.size
+            && d.sent & REGION_FILLER_TRUSTED == 0
+            && (d.kind != WireKind::RegionWriter || from_broker);
+        assert!(got.is_ok() == spec);
+        if let Ok(k) = got {
+            assert!(k == handle_kind(d.kind));
+        }
+        // A consumer region (no write seal) never passes as read-only.
+        if d.kind == WireKind::ReadOnlyRegion && f.seals & SEAL_WRITE == 0 {
+            assert!(got.is_err());
+        }
+        kani::cover!(
+            got.is_ok() && d.kind == WireKind::RegionWriter,
+            "a writer from the broker"
+        );
+        kani::cover!(
+            got == Err(Refusal::WriterNotFromBroker),
+            "a writer from anyone else"
+        );
+        kani::cover!(
+            got.is_ok() && d.kind == WireKind::ConsumerRegion,
+            "a consumer"
+        );
     }
 
     /// For every claim, every combination of kernel facts (every mode,
@@ -215,6 +384,7 @@ pub(crate) mod proofs {
         let ctx = AcceptCtx {
             cred_pid,
             held: &answer,
+            broker_pid: kani::any(),
         };
         let got = accept(claimed, &f, &ctx);
         let spec = f.fd > 2
@@ -274,10 +444,122 @@ mod tests {
         dev: 1,
         ino: 99,
         peercred_pid: 500,
+        is_regular: false,
+        size: 0,
+        seals: -1,
     };
 
     fn none_held(_dev: u64, _ino: u64) -> bool {
         false
+    }
+
+    const BROKER: i32 = 300;
+
+    /// A sealed region's facts: a memfd of 4096 bytes.
+    const REGION: FdFacts = FdFacts {
+        fd: 8,
+        is_socket: false,
+        domain: -1,
+        sock_type: -1,
+        protocol: -1,
+        dev: 2,
+        ino: 7,
+        peercred_pid: -1,
+        is_regular: true,
+        size: 4096,
+        seals: READ_ONLY_SEALS,
+    };
+
+    fn region(kind: WireKind, flags: u64) -> HandleDesc {
+        HandleDesc::region(kind, 4096, flags)
+    }
+
+    #[test]
+    fn each_region_kind_is_accepted_with_its_seals() {
+        let c = ctx(Some(BROKER));
+        let ro = region(WireKind::ReadOnlyRegion, REGION_IMMUTABLE);
+        assert_eq!(
+            accept_region(&ro, &REGION, &c),
+            Ok(HandleKind::ReadOnlyRegion)
+        );
+        let mut consumer = REGION;
+        consumer.seals = CONSUMER_SEALS;
+        let cd = region(WireKind::ConsumerRegion, 0);
+        assert_eq!(
+            accept_region(&cd, &consumer, &c),
+            Ok(HandleKind::ConsumerRegion)
+        );
+        let mut writer = REGION;
+        writer.seals = WRITER_SEALS;
+        let wd = region(WireKind::RegionWriter, 0);
+        assert_eq!(
+            accept_region(&wd, &writer, &c),
+            Ok(HandleKind::RegionWriter)
+        );
+    }
+
+    #[test]
+    fn a_consumer_region_sent_as_read_only_is_refused() {
+        let c = ctx(Some(BROKER));
+        let mut consumer = REGION;
+        consumer.seals = CONSUMER_SEALS;
+        let ro = region(WireKind::ReadOnlyRegion, 0);
+        assert_eq!(accept_region(&ro, &consumer, &c), Err(Refusal::Seals));
+    }
+
+    #[test]
+    fn regions_with_wrong_facts_are_refused() {
+        let c = ctx(Some(BROKER));
+        let ro = region(WireKind::ReadOnlyRegion, 0);
+        let with = |f: fn(&mut FdFacts)| {
+            let mut x = REGION;
+            f(&mut x);
+            accept_region(&ro, &x, &c)
+        };
+        assert_eq!(with(|f| f.fd = 2), Err(Refusal::Stdio));
+        assert_eq!(with(|f| f.is_regular = false), Err(Refusal::NotRegion));
+        // Not sealable: F_GET_SEALS failed.
+        assert_eq!(with(|f| f.seals = -1), Err(Refusal::NotRegion));
+        assert_eq!(with(|f| f.seals = WRITER_SEALS), Err(Refusal::Seals));
+        assert_eq!(with(|f| f.size = 4095), Err(Refusal::Size));
+        assert_eq!(with(|f| f.size = 8192), Err(Refusal::Size));
+        // A writer must carry exactly its seals: one with WRITE is not one.
+        let wd = region(WireKind::RegionWriter, 0);
+        assert_eq!(accept_region(&wd, &REGION, &c), Err(Refusal::Seals));
+        // Filler-trust comes only from the Windows broker relay.
+        let trusted = region(WireKind::ReadOnlyRegion, REGION_FILLER_TRUSTED);
+        assert_eq!(accept_region(&trusted, &REGION, &c), Err(Refusal::Flags));
+    }
+
+    #[test]
+    fn a_writer_comes_only_from_the_broker() {
+        let mut writer = REGION;
+        writer.seals = WRITER_SEALS;
+        let wd = region(WireKind::RegionWriter, 0);
+        for cred in [Some(BROKER + 1), None] {
+            assert_eq!(
+                accept_region(&wd, &writer, &ctx(cred)),
+                Err(Refusal::WriterNotFromBroker)
+            );
+        }
+        // In the broker itself there is no broker to receive from.
+        let in_broker = AcceptCtx {
+            cred_pid: Some(BROKER),
+            held: &none_held,
+            broker_pid: None,
+        };
+        assert_eq!(
+            accept_region(&wd, &writer, &in_broker),
+            Err(Refusal::WriterNotFromBroker)
+        );
+    }
+
+    #[test]
+    fn a_region_claim_on_the_channel_path_is_refused() {
+        assert_eq!(
+            accept(WireKind::ReadOnlyRegion, &REGION, &ctx(Some(BROKER))),
+            Err(Refusal::NotRegion)
+        );
     }
 
     fn ctx(cred_pid: Option<i32>) -> AcceptCtx<'static, fn(u64, u64) -> bool> {
@@ -285,6 +567,7 @@ mod tests {
         AcceptCtx {
             cred_pid,
             held: &NONE,
+            broker_pid: Some(BROKER),
         }
     }
 
@@ -337,6 +620,7 @@ mod tests {
         let held = AcceptCtx {
             cred_pid: None,
             held: &ours,
+            broker_pid: None,
         };
         assert_eq!(
             accept(WireKind::Receiver, &GOOD, &held),

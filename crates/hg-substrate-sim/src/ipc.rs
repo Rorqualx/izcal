@@ -32,12 +32,14 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use hg_substrate::ipc::{
-    Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, FaultKind, Flow, Handle,
-    HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES,
-    OsPeer, Sink, Transfer,
+    Bootstrap, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, FaultKind, Flow,
+    Handle, HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES,
+    MAX_MESSAGE_HANDLES, Mapping, OsPeer, ProducerRegion, ReadOnlyRegion, RegionRefused,
+    RegionWriter, Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
+use crate::region::Regions;
 use crate::world::{ProcessId, SEQUENCE_CAPACITY, Shared, State};
 
 /// Which end of a channel.
@@ -47,9 +49,9 @@ pub(crate) enum Side {
     Receiver,
 }
 
-/// Who holds an end.
+/// Who holds an end or a region handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Owner {
+pub(crate) enum Owner {
     Proc(ProcessId, u32),
     /// Inside a queued message.
     Transit,
@@ -172,6 +174,7 @@ impl Channels {
             }
         }
         st.ipc.boot.remove(&pid);
+        Regions::owner_gone(st, pid);
     }
 
     /// Everything, for the world's teardown.
@@ -311,6 +314,26 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
                     sender: Some(p.0),
                 })
             }
+            // A writer from anyone but the broker (D6 review M1).
+            Some(_) | None
+                if handles.iter().any(Regions::is_writer)
+                    && !matches!(from, Owner::Proc(p, g) if st.proc(p, g).is_some_and(|x| !x.launched)) =>
+            {
+                stray = handles;
+                for (_, h, _) in c_queue_drain(&mut st, id) {
+                    stray.extend(h);
+                }
+                if let Some(c) = st.ipc.chans.get_mut(&id) {
+                    c.closed_delivered = true;
+                }
+                Delivery::Violation(Fault {
+                    kind: FaultKind::BadHandle,
+                    sender: match from {
+                        Owner::Proc(p, _) => Some(p.0),
+                        Owner::Transit => None,
+                    },
+                })
+            }
             _ => Delivery::Message { bytes, handles },
         }
     } else if let Some(fault) = c.fault.take() {
@@ -326,12 +349,14 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
     let refused = matches!(delivery, Delivery::Violation(_));
     let what = match &delivery {
         Delivery::Message { bytes, handles } => {
+            let os = st.config.region_os;
             for h in handles {
                 if let Some(e) = h.object().downcast_ref::<SimEnd>()
                     && let Some(hc) = st.ipc.chans.get_mut(&e.chan)
                 {
                     hc.end_mut(e.side).owner = Owner::Proc(pid, generation);
                 }
+                Regions::arrive(&mut st, h, Owner::Proc(pid, generation), os);
             }
             format!("{} bytes {} handles", bytes.len(), handles.len())
         }
@@ -351,6 +376,15 @@ fn deliver(shared: &Arc<Shared>, id: u64) {
     }
     drop(st);
     drop(out);
+}
+
+/// Takes every message still queued on channel `id`.
+fn c_queue_drain(st: &mut State, id: u64) -> Vec<(Vec<u8>, Vec<Handle>, Owner)> {
+    st.ipc
+        .chans
+        .get_mut(&id)
+        .map(|c| c.queue.drain(..).collect())
+        .unwrap_or_default()
 }
 
 /// A channel end this transport made.
@@ -421,7 +455,7 @@ pub(crate) struct SimIpc {
 }
 
 impl SimIpc {
-    fn me(&self) -> Owner {
+    pub(crate) fn me(&self) -> Owner {
         Owner::Proc(self.pid, self.generation)
     }
 
@@ -485,7 +519,17 @@ impl Ipc for SimIpc {
         // Every handle: ours, held, and a bound sender only from its maker,
         // once.
         let mut moved = Vec::with_capacity(handles.len());
+        let broker = self.is_broker(&st);
         for h in &handles {
+            if h.region().is_some() {
+                // A region: held, a writer only from the broker, a
+                // producer never (D6).
+                if !Regions::may_send(&st, h, self.me(), broker) {
+                    drop(st);
+                    return Err(IpcError::Refused);
+                }
+                continue;
+            }
             let Some((hid, side)) = self.held(&st, h) else {
                 drop(st);
                 return Err(IpcError::Refused);
@@ -536,6 +580,9 @@ impl Ipc for SimIpc {
             drop(handles);
             return Ok(());
         }
+        for h in handles.iter().filter(|h| h.region().is_some()) {
+            Regions::send(&mut st, h);
+        }
         for (hid, side) in moved {
             if let Some(hc) = st.ipc.chans.get_mut(&hid) {
                 hc.end_mut(side).owner = Owner::Transit;
@@ -578,6 +625,30 @@ impl Ipc for SimIpc {
         let owner = Owner::Proc(ProcessId(peer.pid()), generation);
         self.start_listening(from, Some(owner), seq, sink)
     }
+    fn allocate_region(&self, len: usize, owner: OsPeer) -> Result<RegionWriter, IpcError> {
+        self.region_allocate(len, owner)
+    }
+
+    fn release_owner(&self, owner: OsPeer) {
+        self.region_release_owner(owner);
+    }
+
+    fn map_region(&self, region: &Handle) -> Result<Mapping, IpcError> {
+        self.region_map(region)
+    }
+
+    fn seal_region(&self, writer: RegionWriter) -> Result<ReadOnlyRegion, RegionRefused> {
+        self.region_seal(writer)
+    }
+
+    fn share_region(&self, writer: RegionWriter) -> Result<ProducerRegion, RegionRefused> {
+        self.region_share(writer)
+    }
+
+    fn consumer_of(&self, producer: &ProducerRegion) -> Result<ConsumerRegion, IpcError> {
+        self.region_consumer(producer)
+    }
+
     fn bootstrap(&self) -> Option<Bootstrap> {
         let mut st = self.shared.lock();
         let (up, down, parent) = *st.ipc.boot.get(&self.pid)?;
@@ -686,6 +757,11 @@ pub(crate) fn link(
         .get(usize::try_from(child.0).ok()?)
         .filter(|p| p.alive)?
         .generation;
+    if let Some(p) = st.procs.get_mut(usize::try_from(child.0).ok()?) {
+        // A launched process is never the broker (D6: only the broker
+        // allocates regions and sends writers).
+        p.launched = true;
+    }
     let (p, c) = (Owner::Proc(parent, pgen), Owner::Proc(child, cgen));
     let up = st.ipc.new_chan(capacity, Transfer::Free, c, p, parent);
     let down = st.ipc.new_chan(capacity, Transfer::Free, p, c, parent);

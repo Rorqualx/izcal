@@ -19,6 +19,11 @@
 #![expect(unsafe_code, reason = "G5: ipc::macos::sys (Mach message FFI)")]
 
 use core::ffi::{c_char, c_int, c_void};
+use core::ptr::NonNull;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use crate::ipc::shm::{OsMapping, Raw};
 
 use crate::ipc::mach::accept::SlotFacts;
 use crate::ipc::mach::wire::{
@@ -96,6 +101,28 @@ unsafe extern "C" {
         rcv_limit: u32,
     ) -> KernReturn;
     fn mach_vm_deallocate(task: PortName, address: u64, size: u64) -> KernReturn;
+    fn mach_vm_allocate(task: PortName, address: *mut u64, size: u64, flags: c_int) -> KernReturn;
+    fn mach_make_memory_entry_64(
+        task: PortName,
+        size: *mut u64,
+        offset: u64,
+        permission: c_int,
+        object_handle: *mut PortName,
+        parent_entry: PortName,
+    ) -> KernReturn;
+    fn mach_vm_map(
+        task: PortName,
+        address: *mut u64,
+        size: u64,
+        mask: u64,
+        flags: c_int,
+        object: PortName,
+        offset: u64,
+        copy: c_int,
+        cur_protection: c_int,
+        max_protection: c_int,
+        inheritance: c_int,
+    ) -> KernReturn;
     fn task_get_special_port(task: PortName, which: c_int, port: *mut PortName) -> KernReturn;
     #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
     fn task_name_for_pid(target: PortName, pid: c_int, name: *mut PortName) -> KernReturn;
@@ -144,6 +171,12 @@ pub(crate) fn allocate_set() -> Result<PortName, Kr> {
 pub(crate) fn make_send(name: PortName) -> Result<(), Kr> {
     // SAFETY: plain values; the kernel checks `name` holds a receive right.
     kr(unsafe { mach_port_insert_right(task(), name, name, u32::from(MAKE_SEND)) })
+}
+
+/// Adds one send reference to `name`, which holds a send right.
+pub(crate) fn add_send_ref(name: PortName) -> Result<(), Kr> {
+    // SAFETY: plain values; the kernel checks `name` holds a send right.
+    kr(unsafe { mach_port_mod_refs(task(), name, RIGHT_SEND, 1) })
 }
 
 /// Drops one send (or send-once, or dead-name) reference.
@@ -628,6 +661,151 @@ pub(crate) fn release_outgoing(bytes: &[u8]) {
             release_right(name, disposition);
         }
     }
+}
+
+// ---- memory entries (D6), from the developer.apple.com kernel pages for
+// mach_make_memory_entry_64, mach_vm_allocate, mach_vm_map and
+// mach_vm_deallocate, and the D6 probes (facts M1 to M10) -------------
+
+/// `VM_PROT_READ`, `VM_PROT_READ | VM_PROT_WRITE`.
+const PROT_READ: c_int = 1;
+const PROT_RW: c_int = 3;
+/// `VM_FLAGS_ANYWHERE`.
+const FLAGS_ANYWHERE: c_int = 1;
+/// `VM_INHERIT_NONE`: no child inherits a mapping (none forks anyway).
+const INHERIT_NONE: c_int = 2;
+
+/// The VM page size (16 KiB on Apple silicon, fact M3).
+pub(crate) fn page_size() -> u64 {
+    // SAFETY: sysconf takes a constant and reads nothing of ours.
+    let p = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    u64::try_from(p).ok().filter(|&p| p > 0).unwrap_or(16384)
+}
+
+/// `len` rounded up to whole pages, or `None` past `u64`.
+pub(crate) fn pages(len: u64) -> Option<u64> {
+    let p = page_size();
+    len.checked_add(p - 1).map(|n| n / p * p)
+}
+
+/// A new read-write memory entry of at least `len` bytes, zeroed: made
+/// from a fresh anonymous range, which is then released (the entry keeps
+/// the memory; fact M5).
+pub(crate) fn new_entry(len: u64) -> Result<PortName, Kr> {
+    let size = pages(len).ok_or(Kr(-1))?;
+    let mut addr = 0u64;
+    // SAFETY: a valid out-pointer; the kernel picks the address.
+    kr(unsafe { mach_vm_allocate(task(), &raw mut addr, size, FLAGS_ANYWHERE) })?;
+    let mut got = size;
+    let mut name: PortName = NAME_NULL;
+    // SAFETY: valid out-pointers; `addr`/`size` is the range just made.
+    let made = kr(unsafe {
+        mach_make_memory_entry_64(
+            task(),
+            &raw mut got,
+            addr,
+            PROT_RW,
+            &raw mut name,
+            NAME_NULL,
+        )
+    });
+    // SAFETY: the range made above, which nothing else uses.
+    let _ = unsafe { mach_vm_deallocate(task(), addr, size) };
+    made?;
+    if got < size {
+        deallocate(name);
+        return Err(Kr(-1));
+    }
+    Ok(name)
+}
+
+/// A sub-entry of `parent` covering its first `len` bytes (rounded to
+/// pages), read-write or read-only. Fails with 0x2 for a read-write one
+/// of a read-only entry (fact M2) and with 0x4 past the entry's size
+/// (fact M3).
+pub(crate) fn sub_entry(parent: PortName, len: u64, writable: bool) -> Result<PortName, Kr> {
+    let mut size = pages(len).ok_or(Kr(-1))?;
+    let mut name: PortName = NAME_NULL;
+    let perm = if writable { PROT_RW } else { PROT_READ };
+    // SAFETY: valid out-pointers; the kernel checks `parent`.
+    kr(unsafe {
+        mach_make_memory_entry_64(task(), &raw mut size, 0, perm, &raw mut name, parent)
+    })?;
+    Ok(name)
+}
+
+/// What a received entry allows, for `ipc::mach::accept::region_rule`:
+/// whether a read-write sub-entry of the declared length can be made, and
+/// whether a read-only one can (the entry is at least that long). Both
+/// probes are released at once.
+pub(crate) fn probe_entry(name: PortName, len: u64) -> (bool, bool) {
+    let rw = sub_entry(name, len, true).map(deallocate).is_ok();
+    let fits = sub_entry(name, len, false).map(deallocate).is_ok();
+    (rw, fits)
+}
+
+/// A live `mach_vm_map` range, released when dropped; it counts itself in
+/// `live` while it exists.
+#[derive(Debug)]
+pub(crate) struct VmRange {
+    addr: u64,
+    size: u64,
+    live: Option<Arc<AtomicUsize>>,
+}
+
+impl Drop for VmRange {
+    fn drop(&mut self) {
+        // SAFETY: the one range `map_entry` mapped; the `OsMapping` that
+        // owns this guard has dropped its `Raw` first, so nothing uses it.
+        let _ = unsafe { mach_vm_deallocate(task(), self.addr, self.size) };
+        if let Some(l) = &self.live {
+            l.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
+}
+
+/// Maps `entry`'s first `len` bytes: read-write and shared, read-only and
+/// shared, or (`copy`) a read-only snapshot of this moment (fact M4).
+pub(crate) fn map_entry(
+    entry: PortName,
+    len: usize,
+    writable: bool,
+    copy: bool,
+    live: Option<Arc<AtomicUsize>>,
+) -> Result<OsMapping<VmRange>, Kr> {
+    let size = pages(u64::try_from(len).map_err(|_e| Kr(-1))?).ok_or(Kr(-1))?;
+    let prot = if writable { PROT_RW } else { PROT_READ };
+    let mut addr = 0u64;
+    // SAFETY: a valid out-pointer; a new mapping the kernel places, of an
+    // entry the kernel checks.
+    kr(unsafe {
+        mach_vm_map(
+            task(),
+            &raw mut addr,
+            size,
+            0,
+            FLAGS_ANYWHERE,
+            entry,
+            0,
+            c_int::from(copy),
+            prot,
+            prot,
+            INHERIT_NONE,
+        )
+    })?;
+    if let Some(l) = &live {
+        l.fetch_add(1, Ordering::AcqRel);
+    }
+    let guard = VmRange { addr, size, live };
+    let base = usize::try_from(addr)
+        .ok()
+        .and_then(|a| NonNull::new(core::ptr::with_exposed_provenance_mut::<u8>(a)))
+        .ok_or(Kr(-1))?;
+    // SAFETY: `base` is a fresh page-aligned mapping of `size >= len`
+    // bytes, readable, and writable if asked; `guard` releases it only
+    // after the `OsMapping` (and its `Raw`) is dropped.
+    let raw = unsafe { Raw::new(base, len, writable) };
+    Ok(OsMapping::new(raw, guard))
 }
 
 // ---- processes ----

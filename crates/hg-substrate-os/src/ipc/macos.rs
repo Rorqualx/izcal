@@ -59,6 +59,7 @@
 //! state; nothing that may own a handle is dropped, and no sink runs,
 //! with it held.
 
+mod region;
 pub(crate) mod sys;
 
 use core::any::Any;
@@ -67,9 +68,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant as StdInstant};
 
 use hg_substrate::ipc::{
-    Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, FaultKind, Flow, Handle,
-    HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES,
-    OsPeer, Sink, Transfer,
+    Bootstrap, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, FaultKind, Flow,
+    Handle, HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES,
+    MAX_MESSAGE_HANDLES, Mapping, OsPeer, ProducerRegion, ReadOnlyRegion, RegionRefused,
+    RegionWriter, Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
@@ -78,7 +80,8 @@ use crate::ipc::common::codec::{
     Credit, HandleDesc, WireKind, decode_credit, encode_credit, encode_data,
 };
 use crate::ipc::common::flow::{ReceiverFlow, SenderFlow};
-use crate::ipc::mach::accept::{Held, SlotFacts};
+use crate::ipc::common::quota::Ledger;
+use crate::ipc::mach::accept::{Held, MapMode, SlotFacts, region_rule, slots};
 use crate::ipc::mach::decide::{Arrival, Binding, Decision, decide, decide_launch};
 use crate::ipc::mach::notify::{Kind, classify};
 use crate::ipc::mach::wire::{
@@ -386,6 +389,12 @@ pub(crate) struct Inner {
     state: Mutex<State>,
     token: Token,
     boot: Mutex<Option<Boot>>,
+    /// The broker, for a launched process: its launcher, as the hello's
+    /// token attests. `None` in the broker itself, the one process not
+    /// launched.
+    broker: Option<Token>,
+    /// The broker's region charges (D6 review M4).
+    ledger: Mutex<Ledger>,
     /// Tests only: the transfer deadline's stand-in cannot be built.
     #[cfg(test)]
     fail_stand_in: std::sync::atomic::AtomicBool,
@@ -412,6 +421,15 @@ struct Boot {
 impl Inner {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Whether this process is the broker (it was not launched).
+    const fn is_broker(&self) -> bool {
+        self.broker.is_none()
+    }
+
+    fn ledger(&self) -> MutexGuard<'_, Ledger> {
+        self.ledger.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn wake_io(&self) {
@@ -606,7 +624,10 @@ impl Inner {
             sys::release_received(buf);
             return;
         }
-        let binding = Binding { peer: lis.peer };
+        let binding = Binding {
+            peer: lis.peer,
+            broker: self.broker,
+        };
         let mut flow_now = *flow;
         let decision = {
             let held: &State = &st;
@@ -617,12 +638,46 @@ impl Inner {
                 let kinds: Vec<HandleKind> = decision.kinds().to_vec();
                 let descs: Vec<HandleDesc> = view.descs().to_vec();
                 let payload = view.payload.to_vec();
+                // Regions (D6): what each entry allows, asked of the
+                // kernel and decided by `region_rule`; one refused
+                // refuses the message, blamed on its attested sender.
+                let mut modes: Vec<Option<MapMode>> = Vec::with_capacity(descs.len());
+                let mut at = 0usize;
+                for d in &descs {
+                    let (_, n) = slots(d.kind);
+                    let mode = match facts.get(at) {
+                        Some(f) if d.kind.is_region() => {
+                            let (rw, fits) = sys::probe_entry(f.name, u64::from(d.capacity));
+                            match region_rule(d, rw, fits) {
+                                Ok(m) => Some(m),
+                                Err(_) => {
+                                    let fault = Fault {
+                                        kind: FaultKind::BadHandle,
+                                        sender: l.token.ok().map(|t| t.pid).filter(|&p| p != 0),
+                                    };
+                                    self.end_listener(&mut st, id, Item::Violation(fault));
+                                    drop(st);
+                                    sys::release_received(buf);
+                                    return;
+                                }
+                            }
+                        }
+                        _ => None,
+                    };
+                    modes.push(mode);
+                    at = at.saturating_add(n);
+                }
                 let mut handles = Vec::with_capacity(kinds.len());
+                // A handle the accepted message names but this process
+                // could not make: the message is not delivered short; the
+                // channel ends instead.
+                let mut short = false;
                 let mut slot = facts.iter();
-                for (kind, desc) in kinds.iter().zip(&descs) {
+                for ((kind, desc), mode) in kinds.iter().zip(&descs).zip(&modes) {
                     let role = match kind {
                         HandleKind::ChannelSender | HandleKind::BoundChannelSender => {
                             let Ok(flow) = SenderFlow::from_transfer(desc) else {
+                                short = true;
                                 break;
                             };
                             let (d, c) = (slot.next(), slot.next());
@@ -630,6 +685,7 @@ impl Inner {
                                 for f in d.into_iter().chain(c) {
                                     sys::release_right(f.name, f.disposition);
                                 }
+                                short = true;
                                 break;
                             };
                             Role::Sender {
@@ -646,11 +702,38 @@ impl Inner {
                                 carried: false,
                             }
                         }
+                        HandleKind::RegionWriter
+                        | HandleKind::ReadOnlyRegion
+                        | HandleKind::ConsumerRegion => {
+                            let (Some(f), Some(mode)) = (slot.next(), mode) else {
+                                short = true;
+                                break;
+                            };
+                            match region::received(self, f.name, *kind, desc.capacity, *mode) {
+                                Ok(h) => handles.push(h),
+                                Err(name) => {
+                                    sys::deallocate(name);
+                                    short = true;
+                                    break;
+                                }
+                            }
+                            continue;
+                        }
+                        // The accept step makes no other kind.
+                        HandleKind::ProducerRegion
+                        | HandleKind::GpuIoSurface
+                        | HandleKind::GpuDmaBuf
+                        | HandleKind::GpuDxgiShared => {
+                            short = true;
+                            break;
+                        }
                         HandleKind::ChannelReceiver => {
                             let Ok(flow) = ReceiverFlow::from_transfer(desc) else {
+                                short = true;
                                 break;
                             };
                             let Some(d) = slot.next() else {
+                                short = true;
                                 break;
                             };
                             // A moved receive right keeps its queue limit
@@ -680,6 +763,15 @@ impl Inner {
                 // were, its right would still be ours.
                 for f in slot {
                     sys::release_right(f.name, f.disposition);
+                }
+                if short {
+                    self.end_listener(&mut st, id, Item::Closed);
+                    drop(st);
+                    drop(handles);
+                    sys::deallocate(l.header.remote);
+                    sys::deallocate(l.header.voucher);
+                    buf.adopted();
+                    return;
                 }
                 if let Some(Role::Receiver {
                     flow,
@@ -1314,6 +1406,7 @@ impl MacIpc {
         sys::insert_member(wake, set).map_err(os_err)?;
         let notify = sys::allocate_receive().map_err(os_err)?;
         sys::insert_member(notify, set).map_err(os_err)?;
+        let broker = boot.as_ref().map(|b| b.parent);
         let inner = Arc::new(Inner {
             exec,
             set,
@@ -1322,6 +1415,8 @@ impl MacIpc {
             state: Mutex::new(State::default()),
             token,
             boot: Mutex::new(boot),
+            broker,
+            ledger: Mutex::new(Ledger::default()),
             #[cfg(test)]
             fail_stand_in: std::sync::atomic::AtomicBool::new(false),
         });
@@ -1713,8 +1808,19 @@ impl Ipc for MacIpc {
         let Some(to_id) = self.held_end(to.handle()) else {
             return Err(IpcError::Refused);
         };
+        // Each carried handle is a channel end (its ID) or a region (its
+        // entry's name, copied, and record entry), in the record's order.
         let mut ids = Vec::with_capacity(handles.len());
+        let mut regions: Vec<Option<(u32, HandleDesc)>> = Vec::with_capacity(handles.len());
         for h in &handles {
+            if let Some(r) = self.region_to_send(h)? {
+                // One entry twice would be one name twice: refused there.
+                if regions.iter().flatten().any(|(n, _)| *n == r.0) {
+                    return Err(IpcError::Refused);
+                }
+                regions.push(Some(r));
+                continue;
+            }
             let Some(id) = self.held_end(h) else {
                 return Err(IpcError::Refused);
             };
@@ -1722,6 +1828,7 @@ impl Ipc for MacIpc {
                 return Err(IpcError::Refused);
             }
             ids.push(id);
+            regions.push(None);
         }
         let mut st = self.inner.lock();
         // Credits first, so Full is exact.
@@ -1745,10 +1852,21 @@ impl Ipc for MacIpc {
         // Every carried handle: a bound receiver, or one already
         // listening, never moves; a bound sender moves once, from the
         // process that made it (IPC-R2 (a)).
-        let mut descs = Vec::with_capacity(ids.len());
-        let mut ports: Vec<(u32, u8)> = Vec::with_capacity(ids.len().saturating_mul(2));
+        let mut descs = Vec::with_capacity(handles.len());
+        let mut ports: Vec<(u32, u8)> = Vec::with_capacity(handles.len().saturating_mul(2));
         let mut after = Vec::new();
-        for (&id, h) in ids.iter().zip(&handles) {
+        let mut end_ids = ids.iter();
+        for (h, region) in handles.iter().zip(&regions) {
+            if let Some((name, d)) = region {
+                // Copied: the handle keeps its own reference until it is
+                // dropped below.
+                ports.push((*name, COPY_SEND));
+                descs.push(*d);
+                continue;
+            }
+            let Some(&id) = end_ids.next() else {
+                return Err(IpcError::Refused);
+            };
             let d = match st.ends.get_mut(&id) {
                 Some(
                     Role::Receiver { bound: true, .. }
@@ -1905,6 +2023,30 @@ impl Ipc for MacIpc {
             self.inner.wake_io();
         }
         Ok(())
+    }
+
+    fn allocate_region(&self, len: usize, owner: OsPeer) -> Result<RegionWriter, IpcError> {
+        self.allocate(len, owner)
+    }
+
+    fn release_owner(&self, owner: OsPeer) {
+        self.release(owner);
+    }
+
+    fn map_region(&self, region: &Handle) -> Result<Mapping, IpcError> {
+        self.map(region)
+    }
+
+    fn seal_region(&self, writer: RegionWriter) -> Result<ReadOnlyRegion, RegionRefused> {
+        self.seal(writer)
+    }
+
+    fn share_region(&self, writer: RegionWriter) -> Result<ProducerRegion, RegionRefused> {
+        self.share(writer)
+    }
+
+    fn consumer_of(&self, producer: &ProducerRegion) -> Result<ConsumerRegion, IpcError> {
+        self.consumer(producer)
     }
 
     fn listen(

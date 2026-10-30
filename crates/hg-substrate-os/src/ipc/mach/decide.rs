@@ -86,6 +86,10 @@ pub(crate) struct Binding {
     /// For a bound channel, the one process that may send on it; `None`
     /// for a free one.
     pub(crate) peer: Option<Token>,
+    /// The broker's token, in a launched process: the only sender of a
+    /// region writer (D6 review M1). `None` in the broker itself, which
+    /// never receives one.
+    pub(crate) broker: Option<Token>,
 }
 
 /// Why a message was a violation.
@@ -125,6 +129,7 @@ impl Reason {
             | Self::NoReply
             | Self::OutOfLine
             | Self::Codec(_) => FaultKind::Malformed,
+            Self::Handle(Refusal::WriterNotFromBroker) => FaultKind::Identity,
             Self::CountMismatch | Self::Handle(_) => FaultKind::BadHandle,
             Self::WrongPeer => FaultKind::Identity,
             Self::Counters(_) | Self::Sequence(_) => FaultKind::Sequence,
@@ -185,6 +190,8 @@ fn counters(d: &HandleDesc) -> Result<(), FlowError> {
     match d.kind {
         WireKind::Sender | WireKind::BoundSender => SenderFlow::from_transfer(d).map(|_f| ()),
         WireKind::Receiver => ReceiverFlow::from_transfer(d).map(|_f| ()),
+        // A region carries no counters (the codec checked its fields).
+        WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => Ok(()),
     }
 }
 
@@ -287,6 +294,10 @@ where
     for (k, d) in kinds.iter_mut().zip(descs) {
         if let Err(e) = counters(d) {
             return refuse(Reason::Counters(e));
+        }
+        // A writer only from the broker, as the kernel attests it.
+        if d.kind == WireKind::RegionWriter && binding.broker.is_none_or(|b| b != token) {
+            return refuse(Reason::Handle(Refusal::WriterNotFromBroker));
         }
         // A carried sender's credit port: its send-once rights are the
         // reply rights of its messages not yet credited (R8), no more.
@@ -428,15 +439,19 @@ mod proofs {
         } else {
             Err(CodecError::BadMagic)
         };
-        let binding = Binding {
-            peer: if kani::any() {
+        let any_peer = || {
+            if kani::any() {
                 Some(Token {
                     pid: kani::any(),
                     version: kani::any(),
                 })
             } else {
                 None
-            },
+            }
+        };
+        let binding = Binding {
+            peer: any_peer(),
+            broker: any_peer(),
         };
         let capacity: u32 = kani::any_where(|&c: &u32| c <= 4);
         let received: u64 = kani::any_where(|&r: &u64| r <= 4);
@@ -483,6 +498,10 @@ mod proofs {
                 let mut at = 0usize;
                 for i in 0..ND {
                     assert!(kinds[i] == handle_kind(table_kinds[i]));
+                    // A writer only with the broker's token (review M1).
+                    if table_kinds[i] == WireKind::RegionWriter {
+                        assert!(binding.broker.is_some() && binding.broker == token.ok());
+                    }
                     let (_, n) = slots(table_kinds[i]);
                     if n == 2 {
                         assert!(
@@ -653,6 +672,12 @@ mod tests {
                         slots.push(recv_fact(name | 1));
                     }
                     WireKind::Receiver => slots.push(recv_fact(name)),
+                    WireKind::RegionWriter
+                    | WireKind::ReadOnlyRegion
+                    | WireKind::ConsumerRegion => {
+                        // No case here sends a region; D6's macOS step adds them.
+                        slots.push(send_fact(name));
+                    }
                 }
                 name = name.wrapping_add(0x10);
             }
@@ -672,7 +697,10 @@ mod tests {
                 walk: Ok(()),
                 count: u32::try_from(slots.len()).unwrap(),
                 slots,
-                binding: Binding { peer: None },
+                binding: Binding {
+                    peer: None,
+                    broker: None,
+                },
                 flow: ReceiverFlow::new(8),
             }
         }
@@ -806,7 +834,10 @@ mod tests {
     #[test]
     fn a_bound_receiver_hears_only_its_peer() {
         let mut c = Case::new(&[]);
-        c.binding = Binding { peer: Some(PEER) };
+        c.binding = Binding {
+            peer: Some(PEER),
+            broker: None,
+        };
         assert!(matches!(c.run(), Decision::Accept { .. }));
         // Another process, or the same pid after exec: blamed on the bound
         // peer.
@@ -818,13 +849,19 @@ mod tests {
             },
         ] {
             let mut c = Case::new(&[]);
-            c.binding = Binding { peer: Some(PEER) };
+            c.binding = Binding {
+                peer: Some(PEER),
+                broker: None,
+            };
             c.token = Ok(other);
             assert_eq!(c.violation(), (Reason::WrongPeer, Some(4242)));
             // A wrong process's unreadable message is still the bound
             // peer's fault, not the sender's to be blamed for.
             let mut c = Case::new(&[]);
-            c.binding = Binding { peer: Some(PEER) };
+            c.binding = Binding {
+                peer: Some(PEER),
+                broker: None,
+            };
             c.token = Ok(other);
             c.walk = Err(WireError::UnknownDescriptor);
             assert_eq!(c.violation(), (Reason::WrongPeer, Some(4242)));

@@ -1,0 +1,12 @@
+[package]
+name = "d6-linux-probes"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "M1 D6 black-box probes of memfd sealing and SCM_RIGHTS on Linux (man pages only)"
+
+[dependencies]
+libc = "0.2"
+
+# Standalone: not a member of the repository's workspace.
+[workspace]

@@ -89,6 +89,9 @@ pub(crate) struct Held {
     /// The ends, in the record's descriptor order, with the kind each
     /// travels as.
     pub(crate) ends: Vec<(PipeKey, End, WireKind)>,
+    /// The regions (D6), each with its index in the record's descriptor
+    /// order; the ends fill the other indices, in order.
+    pub(crate) regions: Vec<(usize, super::regions::Grant)>,
 }
 
 /// A bound receiver whose sender has left its peer: the binder's
@@ -532,6 +535,7 @@ mod tests {
                     (pipe(A, 1), End::Sender, WireKind::Sender),
                     (pipe(A, 1), End::Receiver, WireKind::Receiver),
                 ],
+                regions: Vec::new(),
             },
         )
         .unwrap();
@@ -570,6 +574,7 @@ mod tests {
                 carrier,
                 from: A,
                 ends: vec![(pipe(A, 1), End::Receiver, WireKind::Receiver)],
+                regions: Vec::new(),
             },
         )
         .unwrap();
@@ -611,6 +616,7 @@ mod tests {
                 carrier: to_a,
                 from: BROKER,
                 ends: vec![(ch, End::Sender, WireKind::BoundSender)],
+                regions: Vec::new(),
             },
         )
         .unwrap();
@@ -629,6 +635,7 @@ mod tests {
                 carrier: a_to_b,
                 from: A,
                 ends: vec![(ch, End::Sender, WireKind::Sender)],
+                regions: Vec::new(),
             },
         )
         .unwrap();
@@ -661,6 +668,7 @@ mod tests {
                 carrier,
                 from: B,
                 ends: vec![(ch, End::Sender, WireKind::Sender)],
+                regions: Vec::new(),
             },
         )
         .unwrap();
@@ -694,6 +702,7 @@ mod tests {
                 carrier,
                 from: B,
                 ends: vec![(pipe(B, 1), End::Sender, WireKind::Sender)],
+                regions: Vec::new(),
             },
         )
         .unwrap();
@@ -725,6 +734,7 @@ mod tests {
                 carrier: pipe(A, 9),
                 from: B,
                 ends: vec![(carried, End::Sender, WireKind::Sender)],
+                regions: Vec::new(),
             },
         )
         .unwrap();
@@ -746,6 +756,7 @@ mod tests {
             carrier: pipe(A, 9),
             from: B,
             ends: vec![(carried, End::Sender, WireKind::Sender)],
+            regions: Vec::new(),
         };
         l.relay([5; 16], held).unwrap();
         let (held, _) = l.redeem(A, &[5; 16], pipe(A, 9)).unwrap();
@@ -766,6 +777,7 @@ mod tests {
                 carrier,
                 from: BROKER,
                 ends: Vec::new(),
+                regions: Vec::new(),
             },
         )
         .unwrap();
@@ -852,6 +864,7 @@ mod tests {
                     carrier,
                     from: A,
                     ends: Vec::new(),
+                    regions: Vec::new(),
                 },
             )
             .unwrap();
@@ -864,6 +877,7 @@ mod tests {
                     carrier,
                     from: A,
                     ends: Vec::new(),
+                    regions: Vec::new(),
                 },
             ),
             Err(LedgerError::Quota)
@@ -877,6 +891,7 @@ mod tests {
                     carrier: pipe(BROKER, 10),
                     from: A,
                     ends: Vec::new(),
+                    regions: Vec::new(),
                 },
             )
             .is_ok()
@@ -900,6 +915,7 @@ mod tests {
                         carrier: pipe(BROKER, carrier_n),
                         from: A,
                         ends: Vec::new(),
+                        regions: Vec::new(),
                     },
                 )
                 .unwrap();
@@ -914,6 +930,7 @@ mod tests {
                     carrier: pipe(BROKER, u8::MAX),
                     from: A,
                     ends: Vec::new(),
+                    regions: Vec::new(),
                 },
             ),
             Err(LedgerError::Quota)

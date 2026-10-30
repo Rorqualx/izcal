@@ -149,6 +149,8 @@ pub(crate) enum Refusal {
     Quota,
     /// The broker had no randomness to make a ticket.
     NoTicket,
+    /// A region the registry refuses (D6, `super::regions::relay_rule`).
+    Region,
 }
 
 impl Refusal {
@@ -173,6 +175,7 @@ impl Refusal {
             Self::Quota => 16,
             Self::NoTicket => 17,
             Self::NoWait => 18,
+            Self::Region => 19,
         }
     }
 }
@@ -196,7 +199,12 @@ pub(crate) const fn check_value(raw: u64) -> Result<(), Refusal> {
 pub(crate) const fn end_for(claimed: WireKind) -> End {
     match claimed {
         WireKind::Sender | WireKind::BoundSender => End::Sender,
-        WireKind::Receiver => End::Receiver,
+        // A region is no pipe end: `accept` refuses it, the broker's
+        // region registry decides it (`super::regions`).
+        WireKind::Receiver
+        | WireKind::RegionWriter
+        | WireKind::ReadOnlyRegion
+        | WireKind::ConsumerRegion => End::Receiver,
     }
 }
 
@@ -207,6 +215,10 @@ pub(crate) const fn end_for(claimed: WireKind) -> End {
 /// The [`Refusal`]; the broker then refuses the whole relay.
 pub(crate) fn accept(claimed: WireKind, f: &Facts, ctx: &Ctx) -> Result<(PipeKey, End), Refusal> {
     check_value(f.raw)?;
+    if claimed.is_region() {
+        // Not a pipe end: the broker's region registry decides regions.
+        return Err(Refusal::NotPipe);
+    }
     if !f.pulled {
         return Err(Refusal::PullFailed);
     }
@@ -258,6 +270,9 @@ pub(crate) fn accept(claimed: WireKind, f: &Facts, ctx: &Ctx) -> Result<(PipeKey
             if view.bound || view.bound_receiver {
                 return Err(Refusal::BoundReceiver);
             }
+        }
+        WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {
+            return Err(Refusal::NotPipe);
         }
     }
     Ok((pipe, end))
@@ -337,10 +352,13 @@ mod proofs {
     use super::*;
 
     fn any_kind() -> WireKind {
-        match kani::any::<u8>() % 3 {
+        match kani::any::<u8>() % 6 {
             0 => WireKind::Sender,
             1 => WireKind::BoundSender,
-            _ => WireKind::Receiver,
+            2 => WireKind::Receiver,
+            3 => WireKind::RegionWriter,
+            4 => WireKind::ReadOnlyRegion,
+            _ => WireKind::ConsumerRegion,
         }
     }
 
@@ -411,10 +429,14 @@ mod proofs {
             assert!(holder == Some(ctx.relayer));
             let bound = ctx.view.is_some_and(|v| v.bound);
             let bound_rx = ctx.view.is_some_and(|v| v.bound_receiver);
+            // A region is never a pipe end: the broker's registry decides
+            // regions (D6), so `accept` refuses every region claim.
+            assert!(!claimed.is_region());
             match claimed {
                 WireKind::BoundSender => assert!(!bound && pipe.creator == ctx.relayer),
                 WireKind::Sender => assert!(!bound),
                 WireKind::Receiver => assert!(!bound && !bound_rx),
+                WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {}
             }
         }
         kani::cover!(r.is_ok(), "a handle is accepted");
@@ -691,6 +713,7 @@ mod tests {
             Refusal::Quota,
             Refusal::NoTicket,
             Refusal::NoWait,
+            Refusal::Region,
         ];
         for (i, a) in all.iter().enumerate() {
             assert_ne!(a.code(), 0);

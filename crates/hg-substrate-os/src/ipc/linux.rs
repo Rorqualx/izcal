@@ -65,18 +65,19 @@
 //! again. Such values are moved out and dropped after the lock is
 //! released.
 
+mod region;
 pub(crate) mod sys;
 
 use core::any::Any;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::os::fd::{AsFd, OwnedFd, RawFd};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant as StdInstant};
 
 use hg_substrate::ipc::{
-    Bootstrap, ChannelReceiver, ChannelSender, Delivery, Fault, Flow, Handle, HandleKind,
-    HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES, OsPeer, Sink,
-    Transfer,
+    Bootstrap, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, Flow, Handle,
+    HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES,
+    Mapping, OsPeer, ProducerRegion, ReadOnlyRegion, RegionRefused, RegionWriter, Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
@@ -86,6 +87,7 @@ use crate::ipc::common::codec::{
     encode_data,
 };
 use crate::ipc::common::flow::{PendingCredit, ReceiverFlow, SenderFlow};
+use crate::ipc::common::quota::Ledger;
 use crate::ipc::unix::accept::FdFacts;
 use crate::ipc::unix::decide::{Binding, Decision, Record, decide};
 use sys::{Interest, RecvOutcome, SendOutcome};
@@ -210,11 +212,28 @@ pub(crate) struct Inner {
     /// Open descriptors when the transport started, for the headroom.
     baseline_fds: usize,
     boot: Mutex<Option<(OwnedFd, OwnedFd)>>,
+    /// The broker, for a launched process: the creator of its launch
+    /// channels (`SO_PEERCRED`). `None` in the broker itself, the one
+    /// process started without them.
+    broker_pid: Option<i32>,
+    /// The broker's region charges (D6 review M4).
+    ledger: Mutex<Ledger>,
+    /// The region self-test's result, run before the first allocation.
+    regions_ok: OnceLock<bool>,
 }
 
 impl Inner {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Whether this process is the broker (it was not launched).
+    const fn is_broker(&self) -> bool {
+        self.broker_pid.is_none()
+    }
+
+    fn ledger(&self) -> MutexGuard<'_, Ledger> {
+        self.ledger.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Registers an end; returns its ID.
@@ -512,7 +531,10 @@ impl Inner {
                 drop(owned);
                 return;
             };
-            let binding = Binding { peer: l.peer };
+            let binding = Binding {
+                peer: l.peer,
+                broker: self.broker_pid,
+            };
             let verdict = decide(&record, binding, flow, &|dev: u64, ino: u64| {
                 held.contains(&(dev, ino))
             });
@@ -522,13 +544,19 @@ impl Inner {
                     let payload = view.payload.to_vec();
                     let descs: Vec<HandleDesc> = view.descs().to_vec();
                     let mut handles = Vec::with_capacity(kinds.len());
+                    // A handle the accepted record names but this process
+                    // could not make (its own bug): the message is not
+                    // delivered short; the channel ends instead.
+                    let mut short = false;
                     for ((raw, kind), desc) in parsed.fds().iter().zip(&kinds).zip(&descs) {
                         let Some(fd) = owned.remove(raw) else {
+                            short = true;
                             continue;
                         };
                         let role = match kind {
                             HandleKind::ChannelSender | HandleKind::BoundChannelSender => {
                                 let Ok(flow) = SenderFlow::from_transfer(desc) else {
+                                    short = true;
                                     continue;
                                 };
                                 Role::Sender {
@@ -542,8 +570,23 @@ impl Inner {
                                     broken: false,
                                 }
                             }
+                            HandleKind::RegionWriter
+                            | HandleKind::ReadOnlyRegion
+                            | HandleKind::ConsumerRegion => {
+                                handles.push(region::received(self, fd, *kind, desc.capacity));
+                                continue;
+                            }
+                            // The accept step makes no other kind.
+                            HandleKind::ProducerRegion
+                            | HandleKind::GpuIoSurface
+                            | HandleKind::GpuDmaBuf
+                            | HandleKind::GpuDxgiShared => {
+                                short = true;
+                                continue;
+                            }
                             HandleKind::ChannelReceiver => {
                                 let Ok(flow) = ReceiverFlow::from_transfer(desc) else {
+                                    short = true;
                                     continue;
                                 };
                                 // A received receiver keeps its credentials
@@ -564,7 +607,16 @@ impl Inner {
                                 kind: *kind,
                                 armed: true,
                             })));
+                        } else {
+                            short = true;
                         }
+                    }
+                    if short {
+                        drop(st);
+                        drop(handles);
+                        self.end_listener(id, Item::Closed);
+                        taken.push(Box::new(owned));
+                        return;
                     }
                     if let Some(End {
                         role:
@@ -955,6 +1007,10 @@ impl LinuxIpc {
             .add(waker.fd(), Interest::WAKER, WAKER_TOKEN)
             .map_err(StartError::Os)?;
         let limit = sys::fd_limit();
+        let broker_pid = match &bootstrap {
+            Some((up, _)) => Some(sys::creator_pid(up.as_fd()).ok_or(StartError::Bootstrap)?),
+            None => None,
+        };
         let inner = Arc::new(Inner {
             exec,
             epoll,
@@ -963,6 +1019,9 @@ impl LinuxIpc {
             pid: i32::try_from(std::process::id()).unwrap_or(0),
             baseline_fds: sys::count_open(limit.min(4096)),
             boot: Mutex::new(bootstrap),
+            broker_pid,
+            ledger: Mutex::new(Ledger::default()),
+            regions_ok: OnceLock::new(),
         });
         let io = Arc::clone(&inner);
         crate::thread::spawn("hg-ipc-io", move || io.io_loop()).map_err(StartError::Os)?;
@@ -1070,8 +1129,16 @@ impl Ipc for LinuxIpc {
         let Some(to_id) = self.held_end(to.handle()) else {
             return Err(IpcError::Refused);
         };
+        // Each carried handle is a channel end (its ID) or a region (its
+        // descriptor and record entry), in the record's order.
         let mut ids = Vec::with_capacity(handles.len());
+        let mut regions: Vec<Option<(Arc<OwnedFd>, HandleDesc)>> =
+            Vec::with_capacity(handles.len());
         for h in &handles {
+            if let Some(r) = self.region_to_send(h)? {
+                regions.push(Some(r));
+                continue;
+            }
             let Some(id) = self.held_end(h) else {
                 return Err(IpcError::Refused);
             };
@@ -1079,6 +1146,7 @@ impl Ipc for LinuxIpc {
                 return Err(IpcError::Refused);
             }
             ids.push(id);
+            regions.push(None);
         }
         let mut st = self.inner.lock();
         // Credits first, so Full is exact.
@@ -1106,9 +1174,17 @@ impl Ipc for LinuxIpc {
         }
         // Every carried handle: a bound receiver never moves; a bound
         // sender moves once, from the process that made it (IPC-R2 (a)).
-        let mut descs = Vec::with_capacity(ids.len());
+        let mut descs = Vec::with_capacity(handles.len());
         let mut after = Vec::new();
-        for (&id, h) in ids.iter().zip(&handles) {
+        let mut end_ids = ids.iter();
+        for (h, region) in handles.iter().zip(&regions) {
+            if let Some((_, d)) = region {
+                descs.push(*d);
+                continue;
+            }
+            let Some(&id) = end_ids.next() else {
+                return Err(IpcError::Refused);
+            };
             let Some(end) = st.ends.get(&id) else {
                 return Err(IpcError::Refused);
             };
@@ -1169,10 +1245,19 @@ impl Ipc for LinuxIpc {
         // The carried ends: kept open until the record is in the kernel,
         // then this process's descriptors close (the kernel holds its
         // own references while the record is in flight).
-        let carried: Vec<Arc<OwnedFd>> = ids
+        let mut end_ids = ids.iter();
+        let carried: Vec<Arc<OwnedFd>> = regions
             .iter()
-            .filter_map(|id| st.ends.get(id).map(|e| Arc::clone(&e.fd)))
+            .filter_map(|region| match region {
+                Some((fd, _)) => Some(Arc::clone(fd)),
+                None => end_ids
+                    .next()
+                    .and_then(|id| st.ends.get(id).map(|e| Arc::clone(&e.fd))),
+            })
             .collect();
+        if carried.len() != handles.len() {
+            return Err(IpcError::Refused);
+        }
         let outcome = if queue_first {
             SendOutcome::WouldBlock
         } else {
@@ -1268,6 +1353,30 @@ impl Ipc for LinuxIpc {
             return Err(IpcError::Refused);
         };
         self.start_listening(from, Some(pid), seq, sink)
+    }
+
+    fn allocate_region(&self, len: usize, owner: OsPeer) -> Result<RegionWriter, IpcError> {
+        self.allocate(len, owner)
+    }
+
+    fn release_owner(&self, owner: OsPeer) {
+        self.release(owner);
+    }
+
+    fn map_region(&self, region: &Handle) -> Result<Mapping, IpcError> {
+        self.map(region)
+    }
+
+    fn seal_region(&self, writer: RegionWriter) -> Result<ReadOnlyRegion, RegionRefused> {
+        self.seal(writer)
+    }
+
+    fn share_region(&self, writer: RegionWriter) -> Result<ProducerRegion, RegionRefused> {
+        self.share(writer)
+    }
+
+    fn consumer_of(&self, producer: &ProducerRegion) -> Result<ConsumerRegion, IpcError> {
+        self.consumer(producer)
     }
 
     fn bootstrap(&self) -> Option<Bootstrap> {

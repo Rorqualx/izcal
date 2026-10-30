@@ -28,8 +28,10 @@
 
 use hg_substrate::ipc::{FaultKind, HandleKind, MAX_MESSAGE_HANDLES};
 
-use super::frame::{FrameError, NO_TICKET, Ticket, split_data};
-use crate::ipc::common::codec::{CodecError, DataView, HandleDesc, WireKind, decode_data};
+use super::frame::{FrameError, Item, NO_TICKET, Ticket, split_data};
+use crate::ipc::common::codec::{
+    CodecError, DataView, HandleDesc, REGION_FILLER_TRUSTED, WireKind, decode_data,
+};
 use crate::ipc::common::flow::{FlowError, ReceiverFlow, SenderFlow};
 
 /// Why a message was a violation.
@@ -88,6 +90,15 @@ fn counters(d: &HandleDesc) -> Result<(), FlowError> {
     match d.kind {
         WireKind::Sender | WireKind::BoundSender => SenderFlow::from_transfer(d).map(|_f| ()),
         WireKind::Receiver => ReceiverFlow::from_transfer(d).map(|_f| ()),
+        // A region carries no counters; filler-trust is the broker's to
+        // say, in what it hands over, never the sender's.
+        WireKind::RegionWriter | WireKind::ReadOnlyRegion | WireKind::ConsumerRegion => {
+            if d.sent & REGION_FILLER_TRUSTED == 0 {
+                Ok(())
+            } else {
+                Err(FlowError::BadTransfer)
+            }
+        }
     }
 }
 
@@ -142,30 +153,45 @@ pub(crate) const fn handle_kind(k: WireKind) -> HandleKind {
         WireKind::Sender => HandleKind::ChannelSender,
         WireKind::BoundSender => HandleKind::BoundChannelSender,
         WireKind::Receiver => HandleKind::ChannelReceiver,
+        WireKind::RegionWriter => HandleKind::RegionWriter,
+        WireKind::ReadOnlyRegion => HandleKind::ReadOnlyRegion,
+        WireKind::ConsumerRegion => HandleKind::ConsumerRegion,
     }
 }
 
+/// One handle as received: its kind, and for a region whether this
+/// process attests it immutable.
+pub(crate) type Received = (HandleKind, bool);
+
 /// Compares what the broker handed over for a ticket with the record's
-/// descriptors: as many, in order, each of the kind described. Returns
-/// the handle kinds.
+/// descriptors: as many, in order, each of the kind described, and each
+/// region of exactly the length described (D6 review minor 1: the broker
+/// gives the registered size, which the receiver cannot learn itself,
+/// fact S2). A read-only region is immutable unless the broker says it
+/// is filler-trusted.
 ///
 /// # Errors
 /// [`Reason::Redeem`].
 pub(crate) fn check_redeemed(
     descs: &[HandleDesc],
-    got: &[WireKind],
-) -> Result<[HandleKind; MAX_MESSAGE_HANDLES], Reason> {
+    got: &[Item],
+) -> Result<[Received; MAX_MESSAGE_HANDLES], Reason> {
     if descs.len() != got.len() || descs.len() > MAX_MESSAGE_HANDLES {
         return Err(Reason::Redeem);
     }
-    let mut kinds = [HandleKind::ChannelReceiver; MAX_MESSAGE_HANDLES];
-    for ((slot, d), g) in kinds.iter_mut().zip(descs).zip(got) {
-        if d.kind != *g {
+    let mut out = [(HandleKind::ChannelReceiver, false); MAX_MESSAGE_HANDLES];
+    for ((slot, d), g) in out.iter_mut().zip(descs).zip(got) {
+        if d.kind != g.kind {
             return Err(Reason::Redeem);
         }
-        *slot = handle_kind(*g);
+        if g.kind.is_region() && d.capacity != g.len {
+            return Err(Reason::Redeem);
+        }
+        let immutable =
+            g.kind == WireKind::ReadOnlyRegion && u64::from(g.flags) & REGION_FILLER_TRUSTED == 0;
+        *slot = (handle_kind(g.kind), immutable);
     }
-    Ok(kinds)
+    Ok(out)
 }
 
 /// VER-1 for the Windows receive decision.
@@ -305,14 +331,39 @@ mod tests {
         };
         assert_eq!(ticket, [1; 16]);
         assert_eq!(
-            check_redeemed(view.descs(), &[WireKind::Sender]).unwrap()[0],
-            HandleKind::ChannelSender
+            check_redeemed(view.descs(), &[Item::end(4, WireKind::Sender)]).unwrap()[0],
+            (HandleKind::ChannelSender, false)
         );
         assert_eq!(
-            check_redeemed(view.descs(), &[WireKind::Receiver]),
+            check_redeemed(view.descs(), &[Item::end(4, WireKind::Receiver)]),
             Err(Reason::Redeem)
         );
         assert_eq!(check_redeemed(view.descs(), &[]), Err(Reason::Redeem));
+    }
+
+    /// D6: a region's length is the broker's, exactly; immutability is
+    /// the broker's to deny.
+    #[test]
+    fn redeemed_regions_have_the_described_length() {
+        let d = [HandleDesc::region(WireKind::ReadOnlyRegion, 4096, 0)];
+        let item = |len, flags| Item {
+            value: 8,
+            kind: WireKind::ReadOnlyRegion,
+            len,
+            flags,
+        };
+        assert_eq!(
+            check_redeemed(&d, &[item(4096, 0)]).unwrap()[0],
+            (HandleKind::ReadOnlyRegion, true)
+        );
+        assert_eq!(
+            check_redeemed(&d, &[item(4096, 2)]).unwrap()[0],
+            (HandleKind::ReadOnlyRegion, false)
+        );
+        assert_eq!(check_redeemed(&d, &[item(8192, 0)]), Err(Reason::Redeem));
+        // A sender's descriptor never claims filler-trust.
+        let trusted = HandleDesc::region(WireKind::ReadOnlyRegion, 4096, 2);
+        assert!(counters(&trusted).is_err());
     }
 
     #[test]

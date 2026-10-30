@@ -25,8 +25,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
-    ChannelReceiver, ChannelSender, Delivery, Fault, Flow, Handle, HandleKind, Ipc, IpcError,
-    Listening, OsPeer, Sink, Transfer,
+    ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, Flow, Handle, HandleKind, Ipc,
+    IpcError, Listening, OsPeer, ReadOnlyRegion, RegionWriter, Sink, Transfer,
 };
 
 use crate::identity::{CallerIdentity, PeerBinding};
@@ -407,6 +407,105 @@ pub fn take_endpoint<T: FreeInterface>(
     Ok(Endpoint::from_receiver(ipc, rx))
 }
 
+/// Whether a region handle of `kind` and declared length `len` may fill a
+/// field of `want` kind bounded by `bound` bytes that does or does not
+/// require `immutable`, given whether this process's transport attests
+/// the region `immutable` (D6). The one rule the generated decoders use.
+pub fn region_fits(
+    kind: HandleKind,
+    want: HandleKind,
+    len: usize,
+    bound: u32,
+    attested: bool,
+    immutable: bool,
+) -> bool {
+    kind == want
+        && matches!(
+            want,
+            HandleKind::RegionWriter | HandleKind::ReadOnlyRegion | HandleKind::ConsumerRegion
+        )
+        && len > 0
+        && u32::try_from(len).is_ok_and(|l| l <= bound)
+        && (!immutable || attested)
+}
+
+fn region_parts(h: Option<Handle>) -> Result<(Handle, usize, bool), BadMessage> {
+    let h = h.ok_or(BadMessage::BadHandles)?;
+    let (len, attested) = h
+        .region()
+        .map(|r| (r.len(), r.immutable()))
+        .ok_or(BadMessage::BadHandles)?;
+    Ok((h, len, attested))
+}
+
+/// Takes the next handle as a `region<writer, N>`. For generated
+/// `from_wire`.
+///
+/// # Errors
+/// [`BadMessage::BadHandles`] if it is missing, another kind, or longer
+/// than `bound`.
+pub fn take_region_writer(h: Option<Handle>, bound: u32) -> Result<RegionWriter, BadMessage> {
+    let (h, len, attested) = region_parts(h)?;
+    if !region_fits(
+        h.kind(),
+        HandleKind::RegionWriter,
+        len,
+        bound,
+        attested,
+        false,
+    ) {
+        return Err(BadMessage::BadHandles);
+    }
+    RegionWriter::from_handle(h).map_err(|_other| BadMessage::BadHandles)
+}
+
+/// Takes the next handle as a `region<ro, N>`, or with `immutable` a
+/// `region<ro, N, immutable>`, which this process's transport must attest
+/// immutable. For generated `from_wire`.
+///
+/// # Errors
+/// [`BadMessage::BadHandles`] if it is missing, another kind, longer than
+/// `bound`, or not attested immutable where the field requires it.
+pub fn take_read_only_region(
+    h: Option<Handle>,
+    bound: u32,
+    immutable: bool,
+) -> Result<ReadOnlyRegion, BadMessage> {
+    let (h, len, attested) = region_parts(h)?;
+    if !region_fits(
+        h.kind(),
+        HandleKind::ReadOnlyRegion,
+        len,
+        bound,
+        attested,
+        immutable,
+    ) {
+        return Err(BadMessage::BadHandles);
+    }
+    ReadOnlyRegion::from_handle(h).map_err(|_other| BadMessage::BadHandles)
+}
+
+/// Takes the next handle as a `region<consumer, N>`. For generated
+/// `from_wire`.
+///
+/// # Errors
+/// [`BadMessage::BadHandles`] if it is missing, another kind, or longer
+/// than `bound`.
+pub fn take_consumer_region(h: Option<Handle>, bound: u32) -> Result<ConsumerRegion, BadMessage> {
+    let (h, len, attested) = region_parts(h)?;
+    if !region_fits(
+        h.kind(),
+        HandleKind::ConsumerRegion,
+        len,
+        bound,
+        attested,
+        false,
+    ) {
+        return Err(BadMessage::BadHandles);
+    }
+    ConsumerRegion::from_handle(h).map_err(|_other| BadMessage::BadHandles)
+}
+
 #[cfg(kani)]
 mod proofs {
     use super::*;
@@ -435,5 +534,37 @@ mod proofs {
         };
         let ok = expect_kinds(g.iter().copied(), w).is_ok();
         assert!(ok == (g == w));
+    }
+
+    fn any_kind(b: u8) -> HandleKind {
+        match b % 6 {
+            0 => HandleKind::ChannelSender,
+            1 => HandleKind::RegionWriter,
+            2 => HandleKind::ReadOnlyRegion,
+            3 => HandleKind::ConsumerRegion,
+            4 => HandleKind::ProducerRegion,
+            _ => HandleKind::GpuDmaBuf,
+        }
+    }
+
+    /// D6: a region fills a field only if it is that field's region kind
+    /// (never a producer or a GPU buffer), non-empty, within the bound,
+    /// and attested immutable where the field requires it.
+    #[kani::proof]
+    fn region_fits_exactly() {
+        let (k, w): (u8, u8) = (kani::any(), kani::any());
+        let (kind, want) = (any_kind(k), any_kind(w));
+        let (len, bound): (usize, u32) = (kani::any(), kani::any());
+        let (attested, immutable): (bool, bool) = (kani::any(), kani::any());
+        let ok = region_fits(kind, want, len, bound, attested, immutable);
+        if ok {
+            assert!(kind == want);
+            assert!(kind != HandleKind::ProducerRegion && kind != HandleKind::GpuDmaBuf);
+            assert!(kind != HandleKind::ChannelSender);
+            assert!(len > 0 && len as u64 <= u64::from(bound));
+            assert!(attested || !immutable);
+        }
+        kani::cover!(ok && immutable);
+        kani::cover!(!ok && kind == want && len as u64 > u64::from(bound));
     }
 }

@@ -1,0 +1,82 @@
+L0 kernel 6.8.0-147-generic; vm.memfd_noexec=0
+L0 constants (libc crate): F_ADD_SEALS=1033 F_GET_SEALS=1034 SEAL=1 SHRINK=2 GROW=4 WRITE=8 FUTURE_WRITE=16
+L1 F_SEAL_WRITE with a writable shared mapping: add=-1 errno 16 (Device or resource busy (os error 16))
+L1 ... after unmapping it (a read-only shared mapping still exists): add=-1 errno 16 (Device or resource busy (os error 16))
+L1 WRITE-sealed: mprotect(shared RO map -> RW): mprotect=0
+L1 WRITE-sealed: new shared RW mmap: mmap ok
+L1 WRITE-sealed: new private RW mmap: mmap ok
+L1 WRITE-sealed: mprotect(private RO map -> RW): mprotect=0
+L1 WRITE-sealed: pwrite: pwrite=16
+L1 WRITE-sealed: fallocate(PUNCH_HOLE): fallocate=0
+L1 WRITE-sealed: madvise(MADV_REMOVE) on the RO shared map: madvise=0
+L1b (a) RW shared map, unmapped, no other mapping: add WRITE=0
+L1b (b) only a PROT_READ shared map from the O_RDWR fd: add WRITE=-1 errno 16 (Device or resource busy (os error 16))
+L1b (b) ... after unmapping it: add WRITE=0
+L1b (c) only a PROT_READ shared map from an O_RDONLY fd: add WRITE=0
+L1b (d) only a private RW map: add WRITE=0
+L1b (e) WRITE|GROW|SHRINK|SEAL with no mapping: add=0 -> 0xf [SEAL|SHRINK|GROW|WRITE]
+L1b (e) sealed: RO shared map ok
+L1b (e) sealed: mprotect(shared RO map -> RW): mprotect=-1 errno 13 (Permission denied (os error 13))
+L1b (e) sealed: new shared RW mmap: mmap failed errno 1 (Operation not permitted (os error 1))
+L1b (e) sealed: new private RW mmap: mmap ok
+L1b (e) sealed: pwrite: pwrite=-1 errno 1 (Operation not permitted (os error 1))
+L1b (e) sealed: fallocate(PUNCH_HOLE): fallocate=-1 errno 1 (Operation not permitted (os error 1))
+L1b (e) sealed: madvise(MADV_REMOVE): madvise=-1 errno 13 (Permission denied (os error 13)) (first byte now 0x66)
+L1b (e) sealed: reopen O_RDWR -> 4; shared RW mmap through it: mmap failed errno 1 (Operation not permitted (os error 1))
+L1b (e) sealed: mprotect(RO shared -> R|X): mprotect=0
+L1b (f) MFD_NOEXEC_SEAL: mmap R|X shared: mmap ok
+L2 FUTURE_WRITE|GROW|SHRINK|SEAL with a writable shared mapping: add=0 -> seals 0x17 [SEAL|SHRINK|GROW|FUTURE_WRITE]
+L2 producer's earlier RW mapping still writes; a new RO mapping reads 0x5a
+L2 ... a later write is visible in the RO mapping: 0x5b
+L2 new shared RW mmap: mmap failed errno 1 (Operation not permitted (os error 1))
+L2 new private RW mmap: mmap ok
+L2 mprotect(shared RO map -> RW): mprotect=-1 errno 13 (Permission denied (os error 13))
+L2 pwrite: pwrite=-1 errno 1 (Operation not permitted (os error 1))
+L2 fallocate(PUNCH_HOLE): fallocate=-1 errno 1 (Operation not permitted (os error 1))
+L2 madvise(MADV_REMOVE) on the RO shared map: madvise=-1 errno 13 (Permission denied (os error 13)) (byte now 0x5b)
+L2 ftruncate shrink: ftruncate=-1 errno 1 (Operation not permitted (os error 1))
+L2 ftruncate grow: ftruncate=-1 errno 1 (Operation not permitted (os error 1))
+L2 add WRITE after SEAL: add=-1 errno 1 (Operation not permitted (os error 1))
+L2 reopen /proc/self/fd O_RDONLY -> 4, O_RDWR -> 5 (errno 1)
+L2 via the reopened O_RDWR fd: new shared RW mmap: mmap failed errno 1 (Operation not permitted (os error 1))
+L2 F_SETFL(O_RDWR) on an O_RDONLY fd: rc 0, access mode after: RDONLY
+L2 mprotect(RO shared -> R|X): mprotect=0
+L2 no SEAL: holder's O_RDONLY fd adds SEAL: add=-1 errno 1 (Operation not permitted (os error 1))
+L2 no SEAL: holder's reopened O_RDWR fd adds EXEC|SEAL: add=-1 errno 16 (Device or resource busy (os error 16)) -> 0x16 [SHRINK|GROW|FUTURE_WRITE]
+L5 memfd without ALLOW_SEALING: fstat=0 mode=0o100777 type=REG nlink=0 size=0 dev=0x1 ino=4520 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDWR | seals 0x1 [SEAL] | link /memfd:l3-noseal (deleted)
+L5 memfd ALLOW_SEALING, unsealed: fstat=0 mode=0o100777 type=REG nlink=0 size=65536 dev=0x1 ino=4521 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDWR | seals 0x0 [] | link /memfd:l3-seal (deleted)
+L5 memfd sealed WRITE|GROW|SHRINK|SEAL: fstat=0 mode=0o100777 type=REG nlink=0 size=65536 dev=0x1 ino=4521 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDWR | seals 0xf [SEAL|SHRINK|GROW|WRITE] | link /memfd:l3-seal (deleted)
+L5 same memfd, reopened O_RDONLY: fstat=0 mode=0o100777 type=REG nlink=0 size=65536 dev=0x1 ino=4521 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDONLY | seals 0xf [SEAL|SHRINK|GROW|WRITE] | link /memfd:l3-seal (deleted)
+L5 memfd MFD_NOEXEC_SEAL: fstat=0 mode=0o100666 type=REG nlink=0 size=0 dev=0x1 ino=4522 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDWR | seals 0x20 [EXEC] | link /memfd:l3-noexec (deleted)
+L5 memfd MFD_HUGETLB: fstat=0 mode=0o100777 type=REG nlink=0 size=0 dev=0x10 ino=33639696 | fstatfs=0 f_type=0x958458f6 | F_GETFL acc=RDWR | seals 0x0 [] | link /memfd:l3-huge (deleted)
+L5 shm_open file in /dev/shm: fstat=0 mode=0o100600 type=REG nlink=1 size=65536 dev=0x1b ino=7 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDWR | seals 0x1 [SEAL] | link /dev/shm/izcal-d6-probe
+L5 shm_open file after shm_unlink: fstat=0 mode=0o100600 type=REG nlink=0 size=65536 dev=0x1b ino=7 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDWR | seals 0x1 [SEAL] | link /dev/shm/izcal-d6-probe (deleted)
+L5 regular file in /tmp: fstat=0 mode=0o100600 type=REG nlink=1 size=0 dev=0x802 ino=25298491 | fstatfs=0 f_type=0xef53 | F_GETFL acc=RDWR | seals F_GET_SEALS=-1 errno 22 | link /tmp/izcal-d6-probe.bin
+L5 O_TMPFILE on /dev/shm (tmpfs): fstat=0 mode=0o100600 type=REG nlink=0 size=0 dev=0x1b ino=8 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDWR | seals 0x1 [SEAL] | link /dev/shm/#8 (deleted)
+L5 seqpacket socket: fstat=0 mode=0o140777 type=SOCK nlink=1 size=0 dev=0x8 ino=33639701 | fstatfs=0 f_type=0x534f434b | F_GETFL acc=RDWR | seals F_GET_SEALS=-1 errno 22 | link socket:[33639701]
+L5 O_PATH fd of the sealed memfd: fstat=0 mode=0o100777 type=REG nlink=0 size=65536 dev=0x1 ino=4521 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDONLY | seals F_GET_SEALS=-1 errno 9 | link /memfd:l3-seal (deleted)
+L5 O_PATH fd of the sealed memfd: mmap RO: mmap failed errno 9 (Bad file descriptor (os error 9))
+L5 received over SCM_RIGHTS: fstat=0 mode=0o100777 type=REG nlink=0 size=65536 dev=0x1 ino=15826 | fstatfs=0 f_type=0x1021994 | F_GETFL acc=RDONLY | seals 0x17 [SEAL|SHRINK|GROW|FUTURE_WRITE] | link /memfd:l7 (deleted)
+L7 consumer reads 0x1
+L7 after the producer's later write the consumer reads 0x2
+L7 consumer: shared RW mmap mmap failed errno 13 (Permission denied (os error 13))
+L7 consumer: reopen O_RDWR -> 6; shared RW mmap through it: mmap failed errno 1 (Operation not permitted (os error 1))
+L7 producer exited (status 0); consumer still reads 0x2
+L8 consumer reading past a shrink (no SHRINK seal): signalled=true sig=7
+L10 64 KiB: create+size+seal+close 4.07 µs; map+unmap 2.77 µs; map+read every page+unmap 9.27 µs; /proc/self/maps lines +1
+L10 4096 KiB: create+size+seal+close 4.25 µs; map+unmap 3.06 µs; map+read every page+unmap 271.64 µs; /proc/self/maps lines +1
+--- review round (25 Oct, 21:10): `d6-linux-probes l13`
+L13 MFD_NOEXEC_SEAL|ALLOW_SEALING: initial seals 0x20 [EXEC]
+L13 add GROW|SHRINK: add=0 -> 0x26 [SHRINK|GROW|EXEC]
+L13 writer seals with a live RW map: add WRITE|SEAL: add=-1 errno 16 (Device or resource busy (os error 16))
+L13 after unmapping: add WRITE|SEAL: add=0 -> 0x2f [SEAL|SHRINK|GROW|WRITE|EXEC]
+L13 sealed NOEXEC region: mmap PROT_READ|PROT_EXEC shared: mmap ok
+L13 fchmod(0755) under the EXEC seal: fchmod=-1 errno 1 (Operation not permitted (os error 1))
+L13 raw SYS_fstat: rc=0 mode=0o100666 size=65536 nlink=0
+--- `systemd-run --user --scope -p Delegate=yes`, leaves ctl/A/B, memory enabled: `d6-linux-probes l12 <scope>`
+L12 created 32 MiB memfd in A: A=256 KiB B=0 KiB
+L12 a process in B mapped it and wrote every page: A=408 KiB B=33024 KiB
+L12 the creator in A then read every page (sum 8192): A=408 KiB B=32912 KiB
+L12 B unmapped: A=408 KiB B=33104 KiB
+L12 B's process exited: A=324 KiB B=32848 KiB
+L12 the creator closed and unmapped: A=260 KiB B=92 KiB
