@@ -431,6 +431,47 @@ fn a_transfer_whose_stand_in_fails_still_carries_the_real_end() {
     expect_fault(&out, FaultKind::Sequence, None);
 }
 
+/// R14: a plain port's kobject value differs between releases (0 on
+/// macOS 15, 0xFFFFFFFF on 27). The running kernel's value is learned,
+/// reported as `KOBJECT_NONE`, and a kernel object never is.
+#[test]
+fn a_plain_port_is_told_from_kernel_objects_on_any_release() {
+    use wire::KOBJECT_NONE;
+    for plain in [0, KOBJECT_NONE] {
+        assert_eq!(sys::plain_as_none(plain, Some(plain)), KOBJECT_NONE);
+        for kernel_object in [1, 2, 3, 20, 28] {
+            assert_eq!(
+                sys::plain_as_none(kernel_object, Some(plain)),
+                kernel_object
+            );
+        }
+    }
+    // The other release's plain value is no plain port here.
+    assert_eq!(sys::plain_as_none(KOBJECT_NONE, Some(0)), 0);
+    assert_eq!(sys::plain_as_none(0, Some(KOBJECT_NONE)), 0);
+    // Without a measurement nothing is plain.
+    assert_eq!(sys::plain_as_none(KOBJECT_NONE, None), 0);
+    assert_eq!(sys::plain_as_none(0, None), 0);
+
+    assert!(
+        sys::plain_kobject().is_some(),
+        "this kernel says what a plain port is"
+    );
+    let p = test_support::port_with_send();
+    let f = sys::slot_facts(wire::Desc::Port {
+        name: p,
+        disposition: wire::PORT_SEND,
+    });
+    assert_eq!(f.kobject, KOBJECT_NONE);
+    sys::deallocate(p);
+    sys::destroy_receive(p);
+    let host = sys::slot_facts(wire::Desc::Port {
+        name: test_support::host_port(),
+        disposition: wire::PORT_SEND,
+    });
+    assert_ne!(host.kobject, KOBJECT_NONE);
+}
+
 /// Finding 8: a received buffer's rights are released once, and only a
 /// received buffer's.
 #[test]
