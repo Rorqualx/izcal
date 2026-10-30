@@ -1290,6 +1290,8 @@ pub(crate) mod spawn {
         if ok == 0 {
             return Err(io::Error::last_os_error());
         }
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("create_process");
         // SAFETY: new handles owned here.
         let process = unsafe { OwnedHandle::from_raw_handle(pi.hProcess.cast()) };
         // SAFETY: as above.
@@ -1301,6 +1303,8 @@ pub(crate) mod spawn {
                 unsafe { TerminateProcess(raw(&process), 1) };
                 return Err(io::Error::other(e));
             }
+            #[cfg(feature = "measure-launch")]
+            crate::launch::windows::timing::mark("job_assign");
         }
         Ok(Child {
             process: Process(process),
@@ -1321,6 +1325,16 @@ pub(crate) mod spawn {
             ));
         }
         Ok(())
+    }
+
+    /// A second handle to the child's primary thread (FP-27's phase
+    /// timestamps, measurement builds only).
+    ///
+    /// # Errors
+    /// The OS error.
+    #[cfg(feature = "measure-launch")]
+    pub(crate) fn thread_handle(c: &Child) -> io::Result<OwnedHandle> {
+        super::duplicate(&c.thread)
     }
 
     /// A second handle to the child's process, for the broker's table.

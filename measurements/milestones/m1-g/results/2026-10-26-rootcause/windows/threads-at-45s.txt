@@ -1,0 +1,14 @@
+hg-net-main.exe pid=28320 threads=6 private=1044 KiB
+   tid=19836 state=Wait wait=Unknown name='main'
+   tid=10552 state=Wait wait=Unknown name='hg-worker-0'
+   tid=27572 state=Wait wait=Unknown name='hg-worker-1'
+   tid=30308 state=Wait wait=Unknown name='hg-may-block-0'
+   tid=29868 state=Wait wait=Unknown name='hg-timers'
+   tid=28276 state=Wait wait=ExecutionDelay name='hg-ipc-io'
+hg-renderer-main.exe pid=29900 threads=6 private=1048 KiB
+   tid=26076 state=Wait wait=Unknown name='main'
+   tid=20904 state=Wait wait=Unknown name='hg-worker-0'
+   tid=5836 state=Wait wait=Unknown name='hg-worker-1'
+   tid=20012 state=Wait wait=Unknown name='hg-may-block-0'
+   tid=9916 state=Wait wait=Unknown name='hg-timers'
+   tid=27332 state=Wait wait=ExecutionDelay name='hg-ipc-io'

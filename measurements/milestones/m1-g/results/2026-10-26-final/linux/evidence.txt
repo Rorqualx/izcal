@@ -1,0 +1,4 @@
+floor: rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.18/cpu (1.47 / 8 cpus) | bookings: b-dcccd3 exclusive cpu by m1-substrate until 03:44 | game lock: free q0 | 2026-10-27T01:48:11-06:00
+memory: rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.06/cpu (0.51 / 8 cpus) | bookings: b-dcccd3 exclusive cpu by m1-substrate until 03:44 | game lock: free q0 | 2026-10-27T01:53:22-06:00
+spawn warm: rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.10/cpu (0.76 / 8 cpus) | bookings: b-dcccd3 exclusive cpu by m1-substrate until 03:44 | game lock: free q0 | 2026-10-27T01:59:46-06:00
+fp27-cold.sh dry run (stub sudo, no cache drop; not data): rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.16/cpu (1.25 / 8 cpus) | bookings: b-dcccd3 exclusive cpu by m1-substrate until 03:44 | game lock: free q0 | 2026-10-27T02:00:14-06:00

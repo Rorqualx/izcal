@@ -242,13 +242,21 @@ mod proofs {
         );
     }
 
-    /// A message of a symbolic ticket and any decoder result with `ND`
-    /// descriptors (fixed per harness, the rest symbolic: the D1
-    /// lesson): an accepted message has a ticket exactly when it has
-    /// descriptors, only possible counters, and is counted; a violation
-    /// changes nothing. Unwind 17: comparing the 16-byte ticket is a
-    /// loop in the prover's `memcmp`.
-    fn decisions_are_sound<const ND: usize>() -> bool {
+    /// A message of a symbolic ticket and a decoder that refuses the
+    /// record (`DECODES` false) or gives a view with `ND` descriptors
+    /// (both fixed per harness, the rest symbolic: the D1 lesson): an
+    /// accepted message has a ticket exactly when it has descriptors,
+    /// only possible counters, and is counted; a violation changes
+    /// nothing. Unwind 17: comparing the 16-byte ticket is a loop in the
+    /// prover's `memcmp`.
+    ///
+    /// The decoder's outcome is a constant, not `kani::any()`: a
+    /// symbolic choice merges `Ok(view)` and `Err(_)` into one value, the
+    /// view's descriptor count stops being the constant `ND`, and both
+    /// descriptor loops unroll to `MAX_MESSAGE_HANDLES` (16) iterations
+    /// for any `ND`. That formula grew past the 10 GiB cap when D6 added
+    /// the region kinds (measurements/milestones/m1-d5/README.md).
+    fn decisions_are_sound<const ND: usize, const DECODES: bool>() -> bool {
         // A symbolic ticket, and the trailer of a message with an empty
         // record (the decoder's answer stands for any record).
         let mut msg: [u8; MIN_MSG] = kani::any();
@@ -260,7 +268,7 @@ mod proofs {
         let mut table = [HandleDesc::EMPTY; MAX_MESSAGE_HANDLES];
         table[0] = any_desc();
         table[1] = any_desc();
-        let decoded: Result<DataView<'_>, CodecError> = if kani::any() {
+        let decoded: Result<DataView<'_>, CodecError> = if DECODES {
             Ok(DataView::for_proofs(kani::any(), table, ND, &msg[..0]))
         } else {
             Err(CodecError::BadMagic)
@@ -288,14 +296,17 @@ mod proofs {
     #[kani::proof]
     #[kani::unwind(17)]
     fn decisions_are_sound_0() {
-        kani::cover!(decisions_are_sound::<0>(), "a plain message is accepted");
+        kani::cover!(
+            decisions_are_sound::<0, true>(),
+            "a plain message is accepted"
+        );
     }
 
     #[kani::proof]
     #[kani::unwind(17)]
     fn decisions_are_sound_1() {
         kani::cover!(
-            decisions_are_sound::<1>(),
+            decisions_are_sound::<1, true>(),
             "a message with a handle is accepted"
         );
     }
@@ -304,9 +315,18 @@ mod proofs {
     #[kani::unwind(17)]
     fn decisions_are_sound_2() {
         kani::cover!(
-            decisions_are_sound::<2>(),
+            decisions_are_sound::<2, true>(),
             "a message with two handles is accepted"
         );
+    }
+
+    /// A record the decoder refuses is a violation and changes nothing.
+    #[kani::proof]
+    #[kani::unwind(17)]
+    fn decisions_are_sound_undecodable() {
+        let accepted = decisions_are_sound::<0, false>();
+        assert!(!accepted);
+        kani::cover!(!accepted, "an undecodable record is refused");
     }
 }
 

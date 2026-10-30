@@ -1,0 +1,52 @@
+# fp27-cold 2026-10-29T16:28:59-06:00 N=20 host=hueyj
+# rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.03/cpu (0.23 / 8 cpus) | bookings: none | game lock: free q0 | 2026-10-29T16:28:59-06:00
+run	kind	spawn_to_ready_ms
+# fp27-cold 2026-10-29T16:29:26-06:00 N=20 host=hueyj
+# rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.02/cpu (0.15 / 8 cpus) | bookings: none | game lock: free q0 | 2026-10-29T16:29:26-06:00
+run	kind	spawn_to_ready_ms
+# The two attempts above (16:28 and 16:29) ran no runs: sudo's prompt was held back by
+# the old script's pipe through tr and never shown, so sudo timed out (hueyj auth log:
+# "conversation failed" at 16:29:07 and 16:34:40). The script was fixed after them.
+# fp27-cold 2026-10-29T17:08:14-06:00 N=20 host=hueyj tree=izcal-m1int-g
+# rig check OK: hueyj kind=exclusive session=m1-substrate | load 0.27/cpu (2.19 / 8 cpus) | bookings: b-88b3b4 exclusive cpu by m1-substrate until 17:36 | game lock: free q0 | 2026-10-29T17:07:57-06:00
+run	kind	spawn_to_ready_ms
+1	NetworkPartition	15.338
+1	Renderer	15.285
+2	NetworkPartition	10.573
+2	Renderer	11.198
+3	NetworkPartition	11.201
+3	Renderer	11.025
+4	NetworkPartition	10.418
+4	Renderer	10.551
+5	NetworkPartition	10.714
+5	Renderer	10.266
+6	NetworkPartition	10.867
+6	Renderer	11.183
+7	NetworkPartition	11.327
+7	Renderer	10.467
+8	NetworkPartition	10.302
+8	Renderer	10.730
+9	NetworkPartition	12.198
+9	Renderer	11.308
+10	NetworkPartition	10.098
+10	Renderer	10.488
+11	NetworkPartition	10.544
+11	Renderer	10.524
+12	NetworkPartition	12.033
+12	Renderer	11.141
+13	NetworkPartition	10.309
+13	Renderer	10.679
+14	NetworkPartition	10.616
+14	Renderer	10.853
+15	NetworkPartition	11.811
+15	Renderer	10.869
+16	NetworkPartition	16.483
+16	Renderer	16.243
+17	NetworkPartition	10.468
+17	Renderer	10.280
+18	NetworkPartition	11.238
+18	Renderer	10.849
+19	NetworkPartition	10.816
+19	Renderer	10.795
+20	NetworkPartition	12.193
+20	Renderer	12.032

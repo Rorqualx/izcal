@@ -1,0 +1,35 @@
+======================================================================
+fp-m0-empty [93563]: 64-bit    Footprint: 4096 KB (16384 bytes per page)
+======================================================================
+
+  Dirty      Clean  Reclaimable    Regions    Category
+    ---        ---          ---        ---    ---
+2736 KB        0 B          0 B          4    Malloc Small
+ 480 KB        0 B          0 B          9    Malloc Metadata
+ 288 KB        0 B          0 B          1    page table
+ 115 KB        0 B          0 B         36    __DATA_DIRTY
+ 112 KB        0 B          0 B         71    __DATA
+  64 KB        0 B          0 B          1    Malloc Tiny
+  64 KB        0 B          0 B          6    Stack
+  48 KB        0 B          0 B         11    Untagged
+  47 KB        0 B          0 B        199    unused dyld shared cache area
+  32 KB        0 B          0 B          4    __TPRO_CONST
+  31 KB        0 B          0 B          1    __OBJC_RW
+  16 KB        0 B          0 B          1    Deferred Reclaim
+  16 KB        0 B          0 B         40    __DATA_CONST
+  16 KB        0 B          0 B          1    Malloc Nano
+  16 KB        0 B          0 B          1    OS Alloc Once
+  16 KB        0 B          0 B          1    Activity Tracing
+    0 B     208 KB          0 B         86    __TEXT
+    0 B      32 KB          0 B          2    __LINKEDIT
+    0 B        0 B          0 B         42    __AUTH_CONST
+    0 B        0 B          0 B         13    __AUTH
+    0 B        0 B          0 B          1    __OBJC_RO
+    0 B        0 B          0 B          1    mapped file
+    ---        ---          ---        ---    ---
+4096 KB     240 KB          0 B        534    TOTAL
+
+Auxiliary data:
+    phys_footprint: 4096 KB
+    phys_footprint_peak: 4096 KB
+

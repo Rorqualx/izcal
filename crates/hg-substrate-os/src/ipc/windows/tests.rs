@@ -1373,7 +1373,8 @@ fn region_child(case: &str, r: &Rig, up: &ChannelSender, from_parent: &Receiver<
             for (i, h) in hs.enumerate() {
                 let w = RegionWriter::from_handle(h).unwrap();
                 let m = r.ipc.map_region(w.handle()).unwrap();
-                let chunk: Vec<u8> = (0..1u32 << 20)
+                let step = u32::try_from(w.len().min(1 << 20)).unwrap();
+                let chunk: Vec<u8> = (0..step)
                     .map(|j| u8::try_from((j + u32::try_from(i).unwrap()) % 251).unwrap())
                     .collect();
                 for off in (0..w.len()).step_by(chunk.len()) {
@@ -1385,13 +1386,14 @@ fn region_child(case: &str, r: &Rig, up: &ChannelSender, from_parent: &Receiver<
                 out.push(ro.into_handle());
             }
             r.ipc.send(up, b"big".to_vec(), out).unwrap();
+            // The broker's copies take a while: wait well past them, or
+            // until the parent says to end.
+            let _ = from_parent.recv_timeout(Duration::from_secs(300));
             if case == "region-big-exit" {
-                // Dies while the broker copies.
-                std::thread::sleep(Duration::from_secs(10));
+                // Dies abruptly, when the parent says (while the broker
+                // holds its copies).
                 std::process::exit(0);
             }
-            // The broker's copies take a while: wait well past them.
-            let _ = from_parent.recv_timeout(Duration::from_secs(300));
             0
         }
         "region-forge" => {
@@ -1990,23 +1992,49 @@ fn copies_are_charged_when_planned_and_refunded_when_unused() {
     drop(st);
 }
 
-/// A child that dies while the broker copies its regions (review Q1 off
-/// the lock): no other child waits on it, and the copies are not kept
-/// (their charges are refunded with the relay that asked for them).
+/// The child that sent eight large regions for copying dies before its
+/// copies are made: they are refunded and dropped, and the copying
+/// stalls no other child. Each step waits for the one before it, so the
+/// order is fixed and no step depends on how fast the machine is: the
+/// broker plans and charges the copies while the child lives, then holds
+/// them; only then is the child told to die; the hold is let go once the
+/// broker has forgotten it; and the counts are read once the copies are
+/// refunded. Before, the child died on a 10 s fuse and the test gave the
+/// whole sequence 45 s, which a slow machine overran: the child's fill
+/// alone measured 5 to 8 s on rig253 with 32 CPUs and 21 to 29 s with
+/// one or two, so it could still be alive at 45 s (PR #54's CI run, 29
+/// Oct; reproduced on rig253 on one CPU shared with a busy loop, where
+/// the fill ended at 36.7 s). Before that, it relied on 8×64 MiB taking
+/// longer to copy than the fuse ("kept 16").
 #[test]
 fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
     const MIB64: usize = 64 << 20;
+    /// Fails a step that never comes rather than hanging; never reached
+    /// on a working broker, however slow the machine.
+    const STEP_MAX: Duration = Duration::from_secs(600);
+    /// Lets the held copies go however the test ends.
+    struct Release<'a>(&'a std::sync::atomic::AtomicBool);
+    impl Drop for Release<'_> {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::Release);
+        }
+    }
     let r = rig();
     let a = launch(&r, "region-big-exit", true);
     let b = launch(&r, "echo", true);
     let ws: Vec<Handle> = (0..8)
         .map(|_| r.ipc.allocate_region(MIB64, a.peer).unwrap().into_handle())
         .collect();
+    let inner = &r.ipc.inner;
+    inner.hold_copies.store(true, Ordering::Release);
+    let _release = Release(&inner.hold_copies);
+    let planned = inner.copies_planned.load(Ordering::Acquire);
+    let settled = inner.copies_settled.load(Ordering::Acquire);
     r.ipc.send(&a.to_child, b"fill".to_vec(), ws).unwrap();
-    let started = std::time::Instant::now();
     let mut max = Duration::ZERO;
     let mut n = 0u32;
-    while started.elapsed() < Duration::from_secs(45) {
+    // One round trip through `b`, timed.
+    let mut round_trip = || {
         let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
         let t = std::time::Instant::now();
         r.ipc
@@ -2015,6 +2043,33 @@ fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
         let _ = expect_msg(&b.from_child);
         max = max.max(t.elapsed());
         n += 1;
+    };
+    // Round trips until `done`, which must come within STEP_MAX.
+    let mut until = |what: &str, done: &dyn Fn() -> bool| {
+        let since = std::time::Instant::now();
+        while !done() {
+            assert!(since.elapsed() < STEP_MAX, "{what} never came");
+            round_trip();
+        }
+    };
+    // 1. The child's copies are planned and charged while it lives, and
+    // held.
+    until("the copies' plan", &|| {
+        inner.copies_planned.load(Ordering::Acquire) > planned
+    });
+    // 2. The child dies; the broker forgets it (only `b` is left).
+    r.ipc
+        .send(&a.to_child, b"die".to_vec(), Vec::new())
+        .unwrap();
+    until("the child's death", &|| children(&r) == 1);
+    // 3. The copies are made for a dead child, then refunded.
+    inner.hold_copies.store(false, Ordering::Release);
+    until("the copies' refund", &|| {
+        inner.copies_settled.load(Ordering::Acquire) > settled
+    });
+    // A few more, so the window after the copies is covered too.
+    for _ in 0..5 {
+        round_trip();
     }
     println!(
         "D6-STALL-EXIT round trips={n} max={:.1}ms",
@@ -2023,16 +2078,48 @@ fn a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy() {
     assert_eq!(a.exit_code(), Some(0));
     assert!(max < STALL_BOUND, "a round trip took {max:?}");
     // Only the eight sections the broker allocated: no copy was kept.
+    assert_eq!(owned_by(&r, a.peer), 8);
+}
+
+/// The other order, which the test above used to meet by chance: copies
+/// made while their child lives are registered as the sources' copies
+/// (charged to the owner until it is released), so they outlive it.
+#[test]
+fn copies_made_before_their_child_dies_are_kept() {
+    let r = rig();
+    let a = launch(&r, "region-big-exit", true);
+    let ws: Vec<Handle> = (0..8)
+        .map(|_| {
+            r.ipc
+                .allocate_region(64 << 10, a.peer)
+                .unwrap()
+                .into_handle()
+        })
+        .collect();
+    r.ipc.send(&a.to_child, b"fill".to_vec(), ws).unwrap();
+    let _ = expect_msg(&a.from_child);
+    r.ipc
+        .send(&a.to_child, b"die".to_vec(), Vec::new())
+        .unwrap();
+    assert_eq!(a.exit_code(), Some(0));
+    assert_eq!(owned_by(&r, a.peer), 16);
+}
+
+/// How many children the broker knows.
+fn children(r: &Rig) -> usize {
+    r.ipc.inner.lock().broker.as_ref().unwrap().children.len()
+}
+
+/// The registry entries charged to `peer`.
+fn owned_by(r: &Rig, peer: OsPeer) -> usize {
     let st = r.ipc.inner.lock();
-    let kept = st
-        .broker
+    st.broker
         .as_ref()
         .unwrap()
         .regions
         .values()
-        .filter(|e| e.owner == a.peer)
-        .count();
-    assert_eq!(kept, 8);
+        .filter(|e| e.owner == peer)
+        .count()
 }
 
 /// Review finding 3: the broker's live mappings are the section's, so a

@@ -1,0 +1,3 @@
+memory: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 24% (32 cpus) | bookings: b-d511b3 exclusive cpu by m1-substrate until 18:40 | game lock: free q0 | 2026-10-26T17:40:31-06:00
+memory (rerun, path quoted): rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 1% (32 cpus) | bookings: b-d511b3 exclusive cpu by m1-substrate until 18:40 | game lock: free q0 | 2026-10-26T17:41:15-06:00
+spawn warm: rig check OK: rig253 kind=exclusive session=m1-substrate | CPU% 0% (32 cpus) | bookings: b-d511b3 exclusive cpu by m1-substrate until 18:40 | game lock: free q0 | 2026-10-26T17:53:13-06:00

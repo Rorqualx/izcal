@@ -1,0 +1,4 @@
+floor: rig check OK: local kind=exclusive session=m1-substrate | load 0.27/cpu (3.22 / 12 cpus) | bookings: b-52bab4 exclusive cpu by m1-substrate until 18:56 | game lock: free q0 | 2026-10-26T17:26:13-06:00
+memory: rig check OK: local kind=exclusive session=m1-substrate | load 0.28/cpu (3.40 / 12 cpus) | bookings: b-52bab4 exclusive cpu by m1-substrate until 18:56 | game lock: free q0 | 2026-10-26T17:31:30-06:00
+regions and footprint: rig check OK: local kind=exclusive session=m1-substrate | load 0.33/cpu (4.02 / 12 cpus) | bookings: b-52bab4 exclusive cpu by m1-substrate until 18:56 | game lock: free q0 | 2026-10-26T17:37:55-06:00
+spawn warm: rig check OK: local kind=exclusive session=m1-substrate | load 0.30/cpu (3.61 / 12 cpus) | bookings: b-52bab4 exclusive cpu by m1-substrate until 18:56 | game lock: free q0 | 2026-10-26T17:39:54-06:00

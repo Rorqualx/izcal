@@ -25,7 +25,7 @@ use hg_substrate::launch::{
 };
 
 use crate::ipc::macos::{MacIpc, sys as mach};
-use crate::launch::ChildError;
+use crate::launch::{ChildError, MainThread};
 use crate::{Threads, sandbox};
 
 /// One executable the broker launches: held open from its start (DU
@@ -264,14 +264,17 @@ pub(crate) fn broker_with(
 ///
 /// # Errors
 /// [`ChildError`].
-pub(crate) fn child_start(threads: Threads) -> Result<(Substrate, SandboxReached), ChildError> {
+pub(crate) fn child_start(
+    threads: Threads,
+) -> Result<(Substrate, MainThread, SandboxReached), ChildError> {
     sandbox::macos::apply_empty_process_profile().map_err(ChildError::Sandbox)?;
     if !sandbox::macos::floor_holds() {
         return Err(ChildError::Sandbox(sandbox::macos::probe_line()));
     }
-    let s = crate::os_substrate_launched(threads).map_err(ChildError::Start)?;
+    let (s, main) = crate::os_substrate_launched(threads).map_err(ChildError::Start)?;
     Ok((
         s,
+        main,
         SandboxReached {
             tier: SandboxTier::MacosSbpl,
             missing: Vec::new(),

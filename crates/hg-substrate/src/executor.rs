@@ -70,6 +70,11 @@ pub enum PostError {
     UnknownSequence,
     /// The executor is shutting down.
     ShuttingDown,
+    /// The task needs a thread the executor starts on demand (a
+    /// `MayBlock` worker, the timer thread), none of its kind is alive,
+    /// and the OS would not start one. Nothing was queued; the caller
+    /// decides as for [`Self::QueueFull`].
+    NoThread,
 }
 
 impl core::fmt::Display for PostError {
@@ -78,6 +83,7 @@ impl core::fmt::Display for PostError {
             Self::QueueFull => "the sequence's task queue is full",
             Self::UnknownSequence => "no such sequence",
             Self::ShuttingDown => "the executor is shutting down",
+            Self::NoThread => "no thread could be started for the task",
         })
     }
 }

@@ -1,0 +1,6 @@
+run	kind	pid	settled_kb	peak_kb	switches_per_s	threads	vmas
+1	floor	3948852	148	148	2.000	3	41
+2	floor	3950411	144	144	2.000	3	41
+3	floor	3952458	148	148	2.000	3	41
+4	floor	3953784	152	152	2.000	3	41
+5	floor	3955143	148	148	2.000	3	41

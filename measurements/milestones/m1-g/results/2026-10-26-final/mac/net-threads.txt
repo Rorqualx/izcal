@@ -1,0 +1,3 @@
+USER       PID   TT   %CPU STAT PRI     STIME     UTIME COMMAND
+joederas 68394   ??    0.0 S    31T   0:00.00   0:00.00 /Users/joederas/Documents/Cline/code/izcal-wt/m1int/target/release/hg-net-main izk4
+         68394         0.0 S    31T   0:00.00   0:00.00 

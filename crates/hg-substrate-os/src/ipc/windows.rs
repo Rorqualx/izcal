@@ -759,6 +759,17 @@ pub(crate) struct Inner {
     /// Tests only: the next copy thread fails to start.
     #[cfg(test)]
     fail_copy_spawn: AtomicBool,
+    /// Tests only: a child's worker waits before making its copies.
+    #[cfg(test)]
+    hold_copies: AtomicBool,
+    /// Tests only: how many relays have planned and charged their copies
+    /// and reached the hold (whether or not it is on).
+    #[cfg(test)]
+    copies_planned: AtomicUsize,
+    /// Tests only: how many of those relays have since registered or
+    /// refunded their copies.
+    #[cfg(test)]
+    copies_settled: AtomicUsize,
 }
 
 impl Inner {
@@ -1368,10 +1379,21 @@ impl Inner {
         if jobs.is_empty() {
             return Ok(());
         }
+        // Tests only: say the copies are planned, then hold them until the
+        // test lets go (to order them against a child's death).
+        #[cfg(test)]
+        {
+            self.copies_planned.fetch_add(1, Ordering::AcqRel);
+            while self.hold_copies.load(Ordering::Acquire) {
+                std::thread::sleep(COPY_WAIT_POLL);
+            }
+        }
         let (made, failed) = Self::make_copies(jobs);
         let mut st = self.lock();
         let Some(b) = st.broker.as_mut() else {
             later.push(Box::new((made, failed)));
+            #[cfg(test)]
+            self.copies_settled.fetch_add(1, Ordering::AcqRel);
             return Err(Refusal::Quota);
         };
         let copies_ok = failed.is_empty();
@@ -1379,11 +1401,15 @@ impl Inner {
         if !alive(b) {
             // The relayer died while the copies were made.
             later.push(Box::new(Self::release_prepared(b, made)));
+            #[cfg(test)]
+            self.copies_settled.fetch_add(1, Ordering::AcqRel);
             return Err(Refusal::Quota);
         }
         // Registered now, so the in-progress mark lasts no longer than
         // the copy.
         later.push(Box::new(Self::register_made(b, made)));
+        #[cfg(test)]
+        self.copies_settled.fetch_add(1, Ordering::AcqRel);
         if copies_ok {
             Ok(())
         } else {
@@ -4301,8 +4327,12 @@ impl WindowsIpc {
         let container = sys::app_container_sid();
         let mut state = State::default();
         if let Some(link) = link {
+            #[cfg(feature = "measure-launch")]
+            crate::launch::windows::timing::mark("ipc_sid");
             let hello = sys::read_blocking(&link, MAX_CTL_LEN, HELLO_TIMEOUT_MS)
                 .map_err(|_e| StartError::Bootstrap)?;
+            #[cfg(feature = "measure-launch")]
+            crate::launch::windows::timing::mark("ipc_hello");
             let Ok(Ctl::Hello {
                 to_parent,
                 from_parent,
@@ -4345,6 +4375,12 @@ impl WindowsIpc {
             fail_region_handle: AtomicBool::new(false),
             #[cfg(test)]
             fail_copy_spawn: AtomicBool::new(false),
+            #[cfg(test)]
+            hold_copies: AtomicBool::new(false),
+            #[cfg(test)]
+            copies_planned: AtomicUsize::new(0),
+            #[cfg(test)]
+            copies_settled: AtomicUsize::new(0),
         });
         let io = Arc::clone(&inner);
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
@@ -4357,6 +4393,8 @@ impl WindowsIpc {
         })
         .map_err(StartError::Os)?;
         let _ = ready_rx.recv();
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("ipc_io_thread");
         if inner.lock().broker.is_some() {
             // The worker for the broker's own relays (W3): like a child's,
             // it ends once the transport is gone.
@@ -5164,6 +5202,8 @@ impl WindowsIpc {
         let (up_id, down_id) = (name()?, name()?);
         let (up_rx, up_tx) = sys::pipe_pair(None, &up_id)?;
         let (down_rx, down_tx) = sys::pipe_pair(None, &down_id)?;
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("pipes");
         // The launch channels are the broker's: keyed by their names.
         let up_key = PipeKey {
             creator: BROKER,
@@ -5224,6 +5264,8 @@ impl WindowsIpc {
         };
         drop(inherit);
         drop(link_client);
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("spawned");
         let started = (|| -> std::io::Result<(u64, u64)> {
             let v_up = sys::give(&child.process, &up_tx)
                 .map_err(|e| std::io::Error::from_raw_os_error(i32::try_from(e).unwrap_or(0)))?;
@@ -5240,6 +5282,8 @@ impl WindowsIpc {
             }
         };
         drop((up_tx, down_rx));
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("given");
         let process = match sys::spawn::process_handle(&child) {
             Ok(p) => p,
             Err(e) => {
@@ -5326,6 +5370,8 @@ impl WindowsIpc {
             sys::spawn::kill(&child);
             return Err(std::io::Error::other("no worker thread for the child"));
         }
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("worker");
         let hello = Ctl::Hello {
             to_parent: v_up,
             from_parent: v_down,
@@ -5371,6 +5417,8 @@ impl WindowsIpc {
         }
         drop(st);
         self.inner.wake();
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("hello");
         if let Err(e) = sys::spawn::resume(&child) {
             let mut st = self.inner.lock();
             let dropped = self.inner.abandon(&mut st, p, [Some(rx), Some(tx)]);
@@ -5379,6 +5427,8 @@ impl WindowsIpc {
             sys::spawn::kill(&child);
             return Err(e);
         }
+        #[cfg(feature = "measure-launch")]
+        crate::launch::windows::timing::mark("resumed");
         let from_child = ChannelReceiver::from_handle(self.handle(rx, HandleKind::ChannelReceiver))
             .map_err(|_e| std::io::Error::other("kind"))?;
         let to_child = ChannelSender::from_handle(self.handle(tx, HandleKind::ChannelSender))

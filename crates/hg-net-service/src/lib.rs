@@ -87,6 +87,18 @@ impl Ended {
 }
 
 impl Running {
+    /// Whether the bootstrap channel has ended. It is set in the
+    /// channel's delivery task, on the sequence this process serves it
+    /// on, so a `main` that runs the sequences checks it after each
+    /// task (FP-32: `main` runs them instead of parking).
+    pub fn ended(&self) -> bool {
+        *self
+            .ended
+            .done
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Blocks until the bootstrap channel ends (the browser closed it,
     /// told this process to exit, or broke the protocol): then the
     /// process has nothing left to do. For `main`.

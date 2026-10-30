@@ -1,0 +1,3 @@
+memory: rig check OK: local kind=exclusive session=m1-substrate | load 0.29/cpu (3.53 / 12 cpus) | bookings: b-b3f490 exclusive cpu by m1-substrate until 15:50 | game lock: free q0 | 2026-10-26T14:50:24-06:00 (exit 0)
+spawn warm: rig check OK: local kind=exclusive session=m1-substrate | load 0.20/cpu (2.39 / 12 cpus) | bookings: b-b3f490 exclusive cpu by m1-substrate until 15:50 | game lock: free q0 | 2026-10-26T14:56:46-06:00 (exit 0)
+spawn fresh: rig check OK: local kind=exclusive session=m1-substrate | load 0.20/cpu (2.39 / 12 cpus) | bookings: b-b3f490 exclusive cpu by m1-substrate until 15:50 | game lock: free q0 | 2026-10-26T14:56:46-06:00 (exit 0)

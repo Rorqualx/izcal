@@ -13,6 +13,11 @@ hg-substrate = { path = "../hg-substrate" }
 hg-substrate-os = { path = "../hg-substrate-os" }
 hg-types = { path = "../hg-types" }
 
+[features]
+# M1 phase G's Windows FP-27 breakdown: `measure-phases N` and the
+# substrate's launch stamps. Measurement builds only.
+measure-launch = ["hg-substrate-os/measure-launch"]
+
 [[test]]
 name = "it"
 path = "tests/it/main.rs"

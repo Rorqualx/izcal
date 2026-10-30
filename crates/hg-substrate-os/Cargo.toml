@@ -30,6 +30,11 @@ hg-substrate = { path = "../hg-substrate" }
 hg-types = { path = "../hg-types" }
 libc = "0.2"
 
+[features]
+# FP-27's per-phase launch timestamps on Windows (M1 phase G): measurement
+# builds only; nothing of it is compiled without the feature.
+measure-launch = []
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
@@ -44,6 +49,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Environment",
   "Win32_System_Memory",
   "Win32_System_SystemInformation",
+  "Win32_System_Performance",
   "Win32_Security_Cryptography",
   "Win32_Security_Authorization",
   "Wdk_Foundation",
