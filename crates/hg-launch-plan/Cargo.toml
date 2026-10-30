@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "The launch plan as data (L2, tier P): process kinds, their executables and sandbox floors, and the fixed-layout spawner request and reply (security scope 6.3, FP-D1; M1 phase E)"
+description = "The launch plan as data (L1, tier P): process kinds, their executables and sandbox floors, and the fixed-layout spawner request and reply (security scope 6.3, FP-D1; M1 phase E)"
 
 [[test]]
 name = "it"

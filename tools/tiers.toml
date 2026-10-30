@@ -1,0 +1,122 @@
+# Izcal crate tiers and layers: the normative file of coding standard 6.2
+# and CS-ST-10. hg-graph-lint (tools/checks.sh `graph`) fails when:
+#   - a workspace crate has no row here;
+#   - a crate's declared tier is laxer than the strictest tier of any
+#     binary that links it ("crate X is now linked by Y; declare tier P
+#     in its own PR"); O counts as strict as P (6.2: "Panics: as tier P");
+#   - a shipping binary (hg-*-main) links a tier T crate;
+#   - a crate depends on a higher layer (Stage 1 design 2.1; the order is
+#     in tools/graph-rules.toml).
+# Tiers: P shared, R per site, O the OS substrate, T tools and tests.
+# Layers: Stage 1 2.1's L0-L6 and sub-layers (L2s, L2e, ...), and `tools`.
+# A tier change is a gate-file change (CS-GA-1): review by the owner.
+#
+# Rows exist for today's crates only; the rows the standard's revision
+# notes list for crates that do not exist yet arrive with their crates.
+
+[crates.hg-types]
+tier = "P"
+layer = "L2"
+why = "Coding standard 6.2 names hg-types in tier P; Stage 1 2.1 puts it in L2 contracts (geometry, time, ids)"
+
+[crates.hg-substrate]
+tier = "P"
+layer = "L1"
+why = "6.2 names hg-substrate in tier P (every binary links the traits); Stage 1 2.1: L1 substrate (traits)"
+
+[crates.hg-substrate-os]
+tier = "O"
+layer = "L1"
+why = "6.2: tier O is hg-substrate-os only, the one crate allowed ambient OS effects (G3); Stage 1 2.1: L1"
+
+[crates.hg-substrate-sim]
+tier = "R"
+layer = "L1"
+why = "6.2 and 6.3: tier R with G3 wherever it ships (hg-replay-main), Q-CS-1; Stage 1 2.1: L1"
+
+[crates.hg-ipc]
+tier = "P"
+layer = "L1"
+why = "6.2 names hg-ipc in tier P; Stage 1 2.1: L1 (transport)"
+
+[crates.hg-ipc-gen]
+tier = "P"
+layer = "L2"
+why = "6.2 names hg-ipc-gen in tier P; Stage 1 2.1: L2 contracts (generated endpoints)"
+
+[crates.hg-ipc-codegen]
+tier = "T"
+layer = "tools"
+why = "6.2 names hg-ipc-codegen in tier T; Stage 1 2.1: tools"
+
+[crates.hg-dst]
+tier = "T"
+layer = "tools"
+why = "6.2 and 6.3: the hg-dst runner is tier T; Stage 1 2.1: tools. Since M1 phase E it links no simulator: the simulation binaries are hg-dst-sim's (E-R1, C7)"
+
+[crates.hg-dst-sim]
+tier = "T"
+layer = "tools"
+why = "M1 plan E-R1: the simulation binaries (dst-sim, dst-smoke), split out of hg-dst so Q-CS-1 can name them; tools, tier T"
+
+[crates.hg-graph-lint]
+tier = "T"
+layer = "tools"
+why = "6.2 names hg-graph-lint in tier T; Stage 1 2.1: tools"
+
+# --- M1 phase E (plan E-R1 and its design-review dispositions) -------------
+
+[crates.hg-launch-wire]
+tier = "P"
+layer = "L2s"
+why = "OS integration 6.x crate table: L2s, the IZLH codec, tier P with no dependencies (G232)"
+
+[crates.hg-os-types]
+tier = "R"
+layer = "L2"
+why = "OS integration crate table: L2, OsInput/OsCommand/OsRegistration generated from os.hgidl, tier R"
+
+[crates.hg-launch-plan]
+tier = "P"
+layer = "L1"
+why = "M1 plan E-R1 and review B2: the substrate's own launch vocabulary (the spawner's request/reply records and each kind's sandbox plan), with no project dependencies; hg-substrate-os (L1: the spawner and the launchers) and higher layers use it, so no edge goes upward. Stage 1 2.1 does not list the crate yet (C13 amendment, proposed)"
+
+[crates.hg-build-id]
+tier = "T"
+layer = "tools"
+why = "Distribution 13 item 5 (DU-M0a): the tool that computes a build's BuildId before compilation; its own docs: tools layer, tier T"
+
+[crates.hg-browser]
+tier = "P"
+layer = "L5"
+why = "M1 plan E-R1: broker logic, run(Substrate, BrowserConfig); L5, tier P (S1-M1a)"
+
+[crates.hg-renderer]
+tier = "R"
+layer = "L4"
+why = "M1 plan E-R1: renderer logic, run(Substrate, RendererConfig); L4, tier R"
+
+[crates.hg-net-service]
+tier = "P"
+layer = "L5"
+why = "M1 plan E-R1, layer L5; tier P by design-review disposition M5 (the partition-service split stays open)"
+
+[crates.hg-browser-main]
+tier = "P"
+layer = "L6"
+why = "M1 plan E-R1: a shipping main, as its library (hg-browser, P); S1-M1b"
+
+[crates.hg-renderer-main]
+tier = "R"
+layer = "L6"
+why = "M1 plan E-R1: a shipping main, as its library (hg-renderer, R); S1-M1b"
+
+[crates.hg-net-main]
+tier = "P"
+layer = "L6"
+why = "M1 plan E-R1, as its library; tier P by design-review disposition M5"
+
+[crates.hg-launch-tool]
+tier = "T"
+layer = "tools"
+why = "M1 plan E design review (minor, other): --measure-spawn lives in a tool binary, never in a main; also runs the OS round trip (E-R12); tools, tier T"

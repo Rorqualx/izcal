@@ -11,8 +11,9 @@ name = "hg-dst"
 path = "src/main.rs"
 
 # Tier T: the base table (coding standard A.1) with A.2's tier T changes.
+# unsafe_code is forbid, not deny: the crate is not in the inventory (G5).
 [lints.rust]
-unsafe_code = "deny"
+unsafe_code = "forbid"
 unsafe_op_in_unsafe_fn = "deny"
 missing_docs = "deny"
 
