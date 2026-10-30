@@ -9,3 +9,9 @@ mod ipc;
 
 #[cfg(test)]
 mod region;
+
+#[cfg(test)]
+mod os;
+
+#[cfg(test)]
+mod install;

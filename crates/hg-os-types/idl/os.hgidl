@@ -1,0 +1,551 @@
+/// The operating system as a recorded input (OS integration 6.1, OI-D1,
+/// OI-D26; Appendix C item 1). These are the frames that cross the
+/// broker's `OsPort` substrate trait: `OsInput` from the OS, `OsCommand`
+/// to it. Each arm is a message, so each gets the generated parser and
+/// Kani harness of any message and fits the 64 KiB message cap. M1 fixes
+/// the shapes; OI-M1 fills in the production half. `Media`,
+/// `Notification` and `Answer` inputs are reserved and join later.
+protocol os;
+
+/// Why a consumer could not take a frame. Closed (CS-ER-6).
+error OsFrameError {
+    /// The consumer is shutting down.
+    ShuttingDown,
+}
+
+/// A yes, no, or "unknown": the OS may not say.
+enum Tri {
+    /// Set.
+    Yes,
+    /// Not set.
+    No,
+    /// The OS gave no answer.
+    Unknown,
+}
+
+/// Where a launch came from.
+enum LaunchOrigin {
+    /// A command line, through the launcher's hand-off.
+    CommandLine,
+    /// An open the OS delivered (Apple Event, COM activation).
+    OsOpen,
+    /// A notification.
+    Notification,
+    /// A jump-list item.
+    JumpList,
+    /// The Dock menu.
+    DockMenu,
+}
+
+/// What a launch asks for (IZLH's intent; no automation intent exists).
+enum LaunchIntent {
+    /// Bring the browser forward.
+    Activate,
+    /// Open the operands.
+    Open,
+    /// Open a new window.
+    NewWindow,
+    /// Open a new private window.
+    NewPrivateWindow,
+}
+
+/// One URL or file path a launch opens.
+union Operand {
+    /// A URL.
+    Url {
+        /// At most 8,192 bytes (OS integration 6.2).
+        url: string<8192>,
+    },
+    /// An absolute file path.
+    Path {
+        /// At most 8,192 bytes.
+        path: string<8192>,
+    },
+}
+
+/// The launching build, when the launcher sent it.
+struct LaunchBuild {
+    /// Its `BuildId`.
+    build_id: u64,
+    /// Its release version.
+    version: string<512>,
+    /// Its channel.
+    channel: string<512>,
+}
+
+/// One web type whose default handler Izcal reads.
+enum WebType {
+    /// http URLs.
+    Http,
+    /// https URLs.
+    Https,
+    /// .html files.
+    Html,
+    /// .htm files.
+    Htm,
+    /// .xhtml files.
+    Xhtml,
+    /// .svg files.
+    Svg,
+    /// .pdf files.
+    Pdf,
+}
+
+/// Who opens a web type.
+enum Handler {
+    /// Izcal.
+    IsIzcal,
+    /// Another application.
+    IsOther,
+    /// The OS gave no answer yet.
+    Unknown,
+}
+
+/// One type's default handler.
+struct TypeDefault {
+    /// The type.
+    web_type: WebType,
+    /// Who opens it.
+    handler: Handler,
+}
+
+/// The OS colour scheme.
+enum ColorScheme {
+    /// Light.
+    Light,
+    /// Dark.
+    Dark,
+    /// The OS gave no answer.
+    Unknown,
+}
+
+/// The OS contrast preference.
+enum Contrast {
+    /// No preference.
+    Normal,
+    /// More contrast.
+    More,
+    /// Less contrast.
+    Less,
+    /// The OS gave no answer.
+    Unknown,
+}
+
+/// One named system colour of the forced-colours palette.
+struct SystemColor {
+    /// The CSS system colour's name.
+    name: string<32>,
+    /// Its value as 0xRRGGBBAA.
+    rgba: u32,
+}
+
+/// One point of the text-scale curve: a size in, a size out.
+struct ScalePoint {
+    /// The page's size, in thousandths of its default.
+    from_permille: u32,
+    /// The scaled size, in thousandths.
+    to_permille: u32,
+}
+
+/// A display rectangle in the OS's coordinates.
+struct Rect {
+    /// Left.
+    x: i32,
+    /// Top.
+    y: i32,
+    /// Width.
+    width: u32,
+    /// Height.
+    height: u32,
+}
+
+/// One monitor.
+struct Monitor {
+    /// The OS's identifier.
+    id: u32,
+    /// Its bounds.
+    bounds: Rect,
+    /// Its work area.
+    work_area: Rect,
+    /// The scale as the rational p/q (GR-D17): the numerator.
+    scale_num: u32,
+    /// The denominator.
+    scale_den: u32,
+    /// Refresh rate in millihertz.
+    refresh_mhz: u32,
+    /// The primary monitor.
+    primary: bool,
+}
+
+/// The instruction set.
+enum Isa {
+    /// x86-64 (`X8664`: the generator takes PascalCase only).
+    X8664,
+    /// AArch64.
+    Aarch64,
+    /// RISC-V 64.
+    Riscv64,
+    /// Another.
+    Other,
+}
+
+/// The thermal state.
+enum Thermal {
+    /// Nominal.
+    Nominal,
+    /// Fair.
+    Fair,
+    /// Serious.
+    Serious,
+    /// Critical.
+    Critical,
+    /// The OS gave no answer.
+    Unknown,
+}
+
+/// A power input. The three deadline inputs carry a reply token: the
+/// broker answers with `OsCommand.reply` before the deadline, or the
+/// per-OS module answers the OS with the platform's default at 80% of it.
+union PowerEvent {
+    /// The current state.
+    State {
+        /// On AC power.
+        ac: Tri,
+        /// Battery saver or Low Power Mode.
+        saver: Tri,
+        /// The thermal state.
+        thermal: Thermal,
+        /// The screen is locked.
+        locked: Tri,
+    },
+    /// The machine will sleep.
+    WillSleep {
+        /// Answer with this token.
+        token: u64,
+        /// Milliseconds the OS allows.
+        deadline_ms: u32,
+    },
+    /// The session will end.
+    SessionEnd {
+        /// Answer with this token.
+        token: u64,
+        /// Milliseconds the OS allows.
+        deadline_ms: u32,
+    },
+    /// The OS asks whether the session may end.
+    QueryEnd {
+        /// Answer with this token.
+        token: u64,
+        /// Milliseconds the OS allows.
+        deadline_ms: u32,
+    },
+    /// The machine woke.
+    DidWake,
+}
+
+/// What a query asks for; the answer arrives as the matching input,
+/// carrying the call's id.
+enum QueryKind {
+    /// `default_status`.
+    DefaultStatus,
+    /// `settings`.
+    Settings,
+    /// `locale`.
+    Locale,
+    /// `time_zone`.
+    TimeZone,
+    /// `hardware`.
+    Hardware,
+    /// `displays`.
+    Displays,
+    /// `power`.
+    Power,
+}
+
+/// What the broker asks the person through the OS.
+enum AskKind {
+    /// Make Izcal the default browser (OI-D7): only on the person's
+    /// request.
+    DefaultBrowser,
+}
+
+/// Whose registration.
+union RegistrationOwner {
+    /// The browser itself.
+    Browser,
+    /// An installed web app.
+    App {
+        /// Its id.
+        app_id: string<256>,
+    },
+}
+
+/// What a handler registration covers.
+union HandlerTarget {
+    /// A URL scheme.
+    Scheme {
+        /// The scheme.
+        scheme: string<64>,
+    },
+    /// A MIME type.
+    Mime {
+        /// The type.
+        mime: string<256>,
+    },
+    /// A file extension.
+    Extension {
+        /// The extension.
+        extension: string<64>,
+    },
+}
+
+/// What a registration creates (OI-D10).
+union RegistrationKind {
+    /// A scheme, type or extension handler.
+    Handler {
+        /// What it handles.
+        target: HandlerTarget,
+    },
+    /// A launcher.
+    Launcher {
+        /// Its name.
+        name: string<256>,
+        /// Its icon's path in the build.
+        icon: string<1024>,
+        /// What it starts.
+        target: string<8192>,
+    },
+    /// A jump-list task.
+    JumpTask {
+        /// Its id.
+        task: string<64>,
+        /// Its label.
+        label: string<256>,
+    },
+    /// The notification identity.
+    NotificationIdentity,
+    /// The badge.
+    Badge,
+    /// A login item.
+    LoginItem,
+}
+
+/// One OS registration record (OI-D10, 6.6).
+struct OsRegistration {
+    /// The record's id.
+    id: u64,
+    /// Whose it is.
+    owner: RegistrationOwner,
+    /// The profile.
+    profile: string<512>,
+    /// What it creates.
+    kind: RegistrationKind,
+    /// The version that made it.
+    created_by_version: string<64>,
+    /// The consent ledger entry, when a person approved it.
+    consent: option<u64>,
+}
+
+/// What a hold keeps awake.
+enum HoldKind {
+    /// The display and the system.
+    Display,
+    /// The system only.
+    System,
+}
+
+/// What an external launch opens (OI-D9): broker only.
+union LaunchTarget {
+    /// A URL with an allowed external scheme.
+    Url {
+        /// The URL.
+        url: string<8192>,
+    },
+    /// A file to open with its default application.
+    File {
+        /// The path.
+        path: string<8192>,
+    },
+}
+
+/// The broker's answer to a deadline input.
+enum Verdict {
+    /// Let the OS go ahead.
+    Allow,
+    /// Ask the OS to wait or refuse, where it allows that.
+    Refuse,
+}
+
+/// One launch, normalised (OS integration 6.1's `Launch` row).
+struct LaunchRequest {
+    /// Where it came from.
+    origin: LaunchOrigin,
+    /// What it asks for.
+    intent: LaunchIntent,
+    /// URLs and paths, at most 6 (6.2).
+    operands: vec<Operand, 6>,
+    /// To resolve relative paths.
+    working_dir: option<string<8192>>,
+    /// The profile id; absent means the default.
+    profile: option<string<512>>,
+    /// The xdg-activation token or startup id.
+    activation_token: option<string<512>>,
+    /// The launcher's build.
+    sender: option<LaunchBuild>,
+}
+
+/// Languages and regional formats (OS integration 6.1's `Locale` row).
+struct LocaleValues {
+    /// UI languages, BCP 47.
+    ui_languages: vec<string<35>, 16>,
+    /// Preferred content languages, BCP 47.
+    preferred_languages: vec<string<35>, 16>,
+    /// The regional format, BCP 47.
+    regional_format: string<35>,
+}
+
+/// The appearance and accessibility settings (OS integration 6.1's
+/// `Settings` row).
+struct SettingsValues {
+    /// Light or dark.
+    scheme: ColorScheme,
+    /// The accent colour, 0xRRGGBBAA; the shell's only.
+    accent: option<u32>,
+    /// The contrast preference.
+    contrast: Contrast,
+    /// Forced colours are on.
+    forced_colors: Tri,
+    /// The forced-colours palette.
+    system_colors: vec<SystemColor, 64>,
+    /// Reduced motion.
+    reduced_motion: Tri,
+    /// Reduced transparency.
+    reduced_transparency: Tri,
+    /// Inverted colours.
+    inverted_colors: Tri,
+    /// Differentiate without colour.
+    differentiate_without_color: Tri,
+    /// The text-scale curve.
+    text_scale: vec<ScalePoint, 16>,
+    /// The caret width in pixels.
+    caret_width_px: option<u16>,
+    /// The focus-ring width in pixels.
+    focus_ring_width_px: option<u16>,
+}
+
+/// The OS to the broker: every OS-sourced value, recorded at the
+/// `OsPort` boundary.
+interface OsInput free capacity 1024 overflow drop {
+    /// A launch: a decoded IZLH request or an OS-delivered open,
+    /// normalised to one record.
+    launch(
+        /// The record.
+        request: LaunchRequest,
+    );
+    /// Who opens each web type.
+    default_status(
+        /// The query this answers, if any.
+        call: option<u64>,
+        /// One entry per type read.
+        types: vec<TypeDefault, 7>,
+    );
+    /// Appearance and accessibility settings (a superset of AX 6.11's).
+    settings(
+        /// The query this answers, if any.
+        call: option<u64>,
+        /// The values.
+        values: SettingsValues,
+    );
+    /// Languages and regional formats.
+    locale(
+        /// The query this answers, if any.
+        call: option<u64>,
+        /// The values.
+        values: LocaleValues,
+    );
+    /// The time zone, at start and on every change.
+    time_zone(
+        /// The query this answers, if any.
+        call: option<u64>,
+        /// The zone id.
+        zone: string<64>,
+    );
+    /// The hardware class.
+    hardware(
+        /// The query this answers, if any.
+        call: option<u64>,
+        /// Logical cores.
+        logical_cores: u16,
+        /// Memory, in GiB, rounded down.
+        memory_gib: u16,
+        /// The instruction set.
+        isa: Isa,
+    );
+    /// The monitors.
+    displays(
+        /// The query this answers, if any.
+        call: option<u64>,
+        /// Every monitor.
+        monitors: vec<Monitor, 16>,
+    );
+    /// Power state and the power deadline inputs.
+    power(
+        /// The query this answers, if any.
+        call: option<u64>,
+        /// The event.
+        event: PowerEvent,
+    );
+}
+
+/// The broker to the OS: what it asks the OS to do. `command` returns
+/// the call's id; an answer arrives as an input carrying it.
+interface OsCommand free capacity 1024 overflow drop {
+    /// Read a value now.
+    query(
+        /// Which.
+        what: QueryKind,
+    );
+    /// Ask the person something through the OS.
+    ask(
+        /// What.
+        what: AskKind,
+    );
+    /// Create or update an OS registration.
+    register(
+        /// The record.
+        registration: OsRegistration,
+    );
+    /// Keep the display or system awake until released.
+    hold(
+        /// What to keep awake.
+        what: HoldKind,
+        /// The hold's id, to release it.
+        hold_id: u64,
+        /// The localised reason the OS shows.
+        reason: string<256>,
+        /// Take it (true) or release it (false).
+        take: bool,
+    );
+    /// Post an OS notification (G233: title at most 256, body at most
+    /// 1,024 code points, after the display formatter).
+    post(
+        /// Izcal's opaque id for it.
+        notification: u64,
+        /// The title.
+        title: string<1024>,
+        /// The body.
+        body: string<4096>,
+    );
+    /// Open a URL or file outside Izcal (broker only, OI-D9).
+    launch(
+        /// What to open.
+        target: LaunchTarget,
+    );
+    /// Answer a deadline input.
+    reply(
+        /// The input's token.
+        token: u64,
+        /// The answer.
+        verdict: Verdict,
+    );
+}

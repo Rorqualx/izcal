@@ -22,7 +22,8 @@ enum ProcessKind {
 
 /// Identifies a build; a child from another build is refused.
 struct BuildId {
-    /// The build's identifier, from the release process.
+    /// The truncated digest of the build's inputs, compiled into every
+    /// binary of the build (`hg_types::BUILD_ID`; distribution 13 item 5).
     id: u64,
 }
 

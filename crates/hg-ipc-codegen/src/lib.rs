@@ -7,6 +7,7 @@
 
 pub mod check;
 pub mod emit;
+pub mod shape;
 pub mod syntax;
 
 use std::io::Write as _;

@@ -24,9 +24,16 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use hg_substrate::prng::{Xoshiro256StarStar, splitmix64};
 use hg_substrate::{Memory, MemoryKind, Priority, RandomStream, Region, Substrate, Task};
-use hg_types::{Duration, Instant, SystemTime};
+use hg_types::{
+    Common, DecisionLogRef, Duration, HeaderError, Instant, NO_POLICY, ProcessKind,
+    ProfileIdentity, RecordingHeader, SandboxTier, SystemTime, Text,
+};
 
 use crate::trace::Trace;
+
+/// Mixed into the seed for the recording's profile identity, so it is
+/// drawn from a stream the run itself never uses.
+const PROFILE_STREAM: u64 = 0x5052_4f46_494c_4531;
 
 /// Pending tasks a sequence may hold, queued and delayed together, as in
 /// the OS executor (CS-AS-6 (c)): 1024†.
@@ -229,6 +236,10 @@ pub(crate) struct State {
     pub(crate) regions: crate::region::Regions,
     /// The world itself, for tasks the state makes (IPC deliveries).
     pub(crate) ipc_self: Weak<Shared>,
+    /// The scripted OS of each process that has one (the broker).
+    pub(crate) os: BTreeMap<ProcessId, crate::os::OsModel>,
+    /// The install tree every process shares.
+    pub(crate) install: crate::install::InstallTree,
 }
 
 pub(crate) struct Shared {
@@ -395,6 +406,8 @@ impl World {
                 tag::REGION,
             ]))),
             ipc_self: Weak::new(),
+            os: BTreeMap::new(),
+            install: crate::install::InstallTree::default(),
         };
         Self {
             shared: Arc::new_cyclic(|me| {
@@ -419,13 +432,41 @@ impl World {
         restart: bool,
         entry: impl Fn(Substrate) + Send + Sync + 'static,
     ) -> ProcessId {
+        self.spawn_inner(name, backing, restart, Arc::new(entry), None)
+    }
+
+    /// As [`World::spawn`], for the broker: its substrate's `os` is the
+    /// scripted OS `script` (OS integration 6.1). The script survives
+    /// restarts; inputs not yet delivered wait for the next listener.
+    pub fn spawn_broker(
+        &self,
+        name: &'static str,
+        backing: Arc<dyn Memory>,
+        restart: bool,
+        entry: impl Fn(Substrate) + Send + Sync + 'static,
+        script: crate::os::OsScript,
+    ) -> ProcessId {
+        self.spawn_inner(name, backing, restart, Arc::new(entry), Some(script))
+    }
+
+    fn spawn_inner(
+        &self,
+        name: &'static str,
+        backing: Arc<dyn Memory>,
+        restart: bool,
+        entry: Entry,
+        script: Option<crate::os::OsScript>,
+    ) -> ProcessId {
         let mut st = self.shared.lock();
         let pid = ProcessId(u32::try_from(st.procs.len()).unwrap_or(u32::MAX));
+        if let Some(script) = script {
+            st.os.insert(pid, crate::os::OsModel::new(script));
+        }
         st.procs.push(Proc {
             name,
             generation: 0,
             alive: false,
-            entry: Arc::new(entry),
+            entry,
             restart,
             backing,
             seqs: Vec::new(),
@@ -455,11 +496,13 @@ impl World {
             delayed: 0,
             posted: 1,
         }];
+        let has_os = st.os.contains_key(&pid);
         let substrate = crate::substrate_for(
             &self.shared,
             pid,
             generation,
             derive(&[seed, tag::PROCESS, u64::from(pid.0), u64::from(generation)]),
+            has_os,
         );
         let entry = Arc::clone(&p.entry);
         if let Some(main) = p.seqs.first_mut() {
@@ -723,6 +766,52 @@ impl World {
     /// The trace's text, if the config kept it.
     pub fn trace_text(&self) -> Option<String> {
         self.shared.lock().trace.text().map(str::to_owned)
+    }
+
+    /// The world's install device: one in-memory install tree that every
+    /// simulated process shares (distribution 13 item 3), so a scenario
+    /// can replace a child binary or a build between two launches.
+    pub fn install_device(&self) -> Arc<dyn hg_substrate::InstallDevice> {
+        Arc::new(crate::install::SimInstallDevice {
+            shared: Arc::clone(&self.shared),
+        })
+    }
+
+    /// This run as M1's recording (Stage 1 8.1: "recordings carry the
+    /// engine build ID, the data versions and the decision-point log"):
+    /// the shared header ([`RecordingHeader`]) for a simulation of every
+    /// process, whose decision-point log is this run's trace (its hash and
+    /// its number of records). The simulator uses no data sets, M1 has no
+    /// policy sources ([`NO_POLICY`]), and the profile identity is drawn
+    /// from the seed, so the header is a function of the run.
+    ///
+    /// # Errors
+    /// None in practice: the header has no data versions to bound.
+    pub fn recording_header(&self) -> Result<RecordingHeader, HeaderError> {
+        let st = self.shared.lock();
+        let log = DecisionLogRef {
+            trace_hash: st.trace.hash(),
+            entries: st.trace.entries(),
+        };
+        // A stream of its own, so drawing it changes nothing in the run.
+        let mut rng = Xoshiro256StarStar::from_seed(st.config.seed ^ PROFILE_STREAM);
+        drop(st);
+        let mut profile = [0u8; 16];
+        let (lo, hi) = profile.split_at_mut(8);
+        lo.copy_from_slice(&rng.next_u64().to_le_bytes());
+        hi.copy_from_slice(&rng.next_u64().to_le_bytes());
+        RecordingHeader::recording(
+            Common {
+                build_id: hg_types::BUILD_ID,
+                data_versions: Vec::new(),
+                os_version: Text::new("simulated")?,
+                process: ProcessKind::Simulation,
+                sandbox: SandboxTier::Simulated,
+            },
+            log,
+            NO_POLICY,
+            ProfileIdentity(profile),
+        )
     }
 }
 

@@ -345,6 +345,18 @@ fn sample_tagged(o: &mut Out, name: &str, cases: &[(String, &[Field])]) {
     if cases.iter().any(|(_, fields)| !fields.is_empty()) {
         o.line("use crate::sample::Sample;");
     }
+    // One case: no choice to make, and a match with only a wildcard arm
+    // would be clippy's match_single_binding.
+    if let [(case, fields)] = cases {
+        if fields.is_empty() {
+            o.line(&format!("let _ = g; Self::{case}"));
+        } else {
+            o.line(&format!("Self::{case} {{ {} }}", sample_fields(fields)));
+        }
+        o.line("}");
+        o.line("}");
+        return;
+    }
     o.line(&format!("match g.below({}) {{", cases.len()));
     let last = cases.len().saturating_sub(1);
     for (i, (case, fields)) in cases.iter().enumerate() {
@@ -959,16 +971,15 @@ fn snake_of(pascal: &str) -> String {
 fn validator_harness(
     o: &mut Out,
     protocol: &str,
-    iface: &str,
-    snake: &str,
-    name: &str,
-    body_fn: &str,
+    rt: &RoundTrip<'_>,
     facts: &crate::check::MessageFacts,
+    checked: &Checked,
 ) {
+    let (iface, snake, name, body_fn, m) = (rt.iface, rt.snake, rt.name, rt.body_fn, rt.m);
     let size = facts.size;
     let k = KANI_VALIDATE_BYTES.max(size.min).min(size.max);
     let body = k.saturating_sub(2);
-    let unwind = facts.max_loop + 2;
+    let unwind = crate::shape::unwind_for(checked, m.fields.iter().map(|f| &f.ty), body);
     let _ = writeln!(
         o.s,
         "/// VER-1 for `{protocol}.{iface}.{name}` (IPC-R5): validating never\n\
@@ -990,6 +1001,119 @@ fn validator_harness(
         "let checked = {iface}::validate_{body_fn}(&mut r).and_then(|()| r.finish());"
     ));
     o.line("kani::cover!(checked.is_ok(), \"some input is accepted\");");
+    o.line("}");
+    o.line("");
+}
+
+/// What a message's round-trip harnesses need.
+struct RoundTrip<'a> {
+    snake: &'a str,
+    iface: &'a str,
+    name: &'a str,
+    body_fn: &'a str,
+    m: &'a Case,
+    ordinal: usize,
+    o0: u8,
+    o1: u8,
+    unwind: u128,
+}
+
+impl RoundTrip<'_> {
+    fn header(&self, o: &mut Out, suffix: &str) {
+        o.line("#[cfg(kani)]");
+        o.line("#[kani::proof]");
+        o.line(&format!("#[kani::unwind({})]", self.unwind));
+        o.line(&format!(
+            "fn verify_{}_{}_{suffix}() {{",
+            self.snake, self.name
+        ));
+    }
+
+    fn decode(&self, o: &mut Out, input: &str) {
+        o.line(&format!("let mut r = Reader::new({input});"));
+        o.line(&format!(
+            "let decoded = {}::decode_{}(&mut r).and_then(|f| r.finish().map(|()| f));",
+            self.iface, self.body_fn
+        ));
+    }
+
+    /// Re-encodes `decoded`, and checks the ordinal and the length.
+    fn encode(&self, o: &mut Out, len: &str) {
+        let names = field_names(&self.m.fields);
+        let args: String = names.iter().map(|n| format!(", &{n}")).collect();
+        o.line(&format!("if let Ok({}) = decoded {{", tuple(&names)));
+        o.line("let mut w = Writer::new();");
+        o.line(&format!("{}u16.encode(&mut w);", self.ordinal));
+        o.line(&format!(
+            "{}::encode_{}(&mut w{args});",
+            self.iface, self.body_fn
+        ));
+        o.line("let out = w.into_bytes();");
+        o.line(&format!("assert!(out.len() == {len} + 2);"));
+        // Byte by byte: a slice comparison is a `memcmp` loop.
+        o.line(&format!("assert!(out.first() == Some(&{}));", self.o0));
+        o.line(&format!("assert!(out.get(1) == Some(&{}));", self.o1));
+    }
+}
+
+/// Decoding any input of at most `body` bytes never panics.
+fn decode_harness(o: &mut Out, rt: &RoundTrip<'_>, body: u128) {
+    rt.header(o, "decodes");
+    o.line(&format!("let bytes: [u8; {body}] = kani::any();"));
+    o.line(&format!(
+        "let len: usize = kani::any_where(|&n: &usize| n <= {body});"
+    ));
+    o.line("let Some(input) = bytes.get(..len) else { return };");
+    rt.decode(o, "input");
+    o.line("kani::cover!(decoded.is_ok(), \"some input is accepted\");");
+    o.line("}");
+    o.line("");
+}
+
+/// Every accepted input of one layout re-encodes to the same bytes.
+fn shape_harness(o: &mut Out, rt: &RoundTrip<'_>, i: usize, shape: &crate::shape::Shape) {
+    let len = shape.len;
+    rt.header(o, &format!("round_trip_{i}"));
+    if shape.fixed.is_empty() {
+        o.line(&format!("let bytes: [u8; {len}] = kani::any();"));
+    } else {
+        o.line(&format!("let mut bytes: [u8; {len}] = kani::any();"));
+        for (at, v) in &shape.fixed {
+            o.line(&format!(
+                "if let Some(b) = bytes.get_mut({at}) {{ *b = {v}; }}"
+            ));
+        }
+    }
+    rt.decode(o, "&bytes");
+    o.line("kani::cover!(decoded.is_ok(), \"this layout is accepted\");");
+    rt.encode(o, &len.to_string());
+    for i in 0..len {
+        o.line(&format!("assert!(out.get({}) == bytes.get({i}));", i + 2));
+    }
+    o.line("}");
+    o.line("}");
+    o.line("");
+}
+
+/// The single round-trip harness, over every input of at most `body`
+/// bytes (for messages with handles, or too many layouts).
+fn whole_round_trip(o: &mut Out, rt: &RoundTrip<'_>, body: u128) {
+    rt.header(o, "round_trip");
+    o.line(&format!("let bytes: [u8; {body}] = kani::any();"));
+    o.line(&format!(
+        "let len: usize = kani::any_where(|&n: &usize| n <= {body});"
+    ));
+    o.line("let Some(input) = bytes.get(..len) else { return };");
+    rt.decode(o, "input");
+    o.line("kani::cover!(decoded.is_ok(), \"some input is accepted\");");
+    rt.encode(o, "len");
+    for i in 0..body {
+        o.line(&format!(
+            "if len > {i} {{ assert!(out.get({}) == bytes.get({i})); }}",
+            i + 2
+        ));
+    }
+    o.line("}");
     o.line("}");
     o.line("");
 }
@@ -1016,7 +1140,26 @@ fn kani(o: &mut Out, protocol: &str, iface: &str, messages: &[Case], checked: &C
         let size = facts.size;
         let name = &m.id.name;
         let body_fn = snake_of(&pascal_of(name));
-        validator_harness(o, protocol, iface, &snake, name, &body_fn, facts);
+        // The harness feeds the body only; the ordinal is the dispatcher's.
+        let k = KANI_INPUT_BYTES.max(size.min).min(size.max);
+        let body = k.saturating_sub(2);
+        // The comparison below is unrolled here rather than looped; every
+        // other loop is bounded as `shape::loop_need` says.
+        let unwind = crate::shape::unwind_for(checked, m.fields.iter().map(|f| &f.ty), body);
+        let [o0, o1] = u16::try_from(ordinal).unwrap_or(u16::MAX).to_le_bytes();
+        let types: Vec<&Type> = m.fields.iter().map(|f| &f.ty).collect();
+        let rt = RoundTrip {
+            snake: &snake,
+            iface,
+            name,
+            body_fn: &body_fn,
+            m,
+            ordinal,
+            o0,
+            o1,
+            unwind,
+        };
+        validator_harness(o, protocol, &rt, facts, checked);
         if facts.heap_depth > 1 {
             let _ = writeln!(
                 o.s,
@@ -1027,68 +1170,77 @@ fn kani(o: &mut Out, protocol: &str, iface: &str, messages: &[Case], checked: &C
             );
             continue;
         }
-        // The harness feeds the body only; the ordinal is the dispatcher's.
-        let k = KANI_INPUT_BYTES.max(size.min).min(size.max);
-        let body = k.saturating_sub(2);
-        // Every loop runs at most `max_loop` times (bounded types), and
-        // the comparison below is unrolled here rather than looped, so
-        // nothing needs an unwind bound set by the input length.
-        let unwind = facts.max_loop + 2;
-        let [o0, o1] = u16::try_from(ordinal).unwrap_or(u16::MAX).to_le_bytes();
-        let _ = writeln!(
-            o.s,
-            "/// VER-1 for `{protocol}.{iface}.{name}` (IPC-R5, IPC-R6): decoding\n\
-             /// never panics, and every accepted input re-encodes to the same\n\
-             /// bytes. Bounds: messages of 2 to {k} bytes (its encodings are {}\n\
-             /// to {}); loops unwound {unwind} times.",
-            size.min, size.max
-        );
-        o.line("#[cfg(kani)]");
-        o.line("#[kani::proof]");
-        o.line(&format!("#[kani::unwind({unwind})]"));
-        o.line(&format!("fn verify_{snake}_{name}_round_trip() {{"));
-        o.line(&format!("let bytes: [u8; {body}] = kani::any();"));
-        o.line(&format!(
-            "let len: usize = kani::any_where(|&n: &usize| n <= {body});"
-        ));
-        o.line("let Some(input) = bytes.get(..len) else { return };");
-        o.line("let mut r = Reader::new(input);");
-        o.line(&format!(
-            "let decoded = {iface}::decode_{body_fn}(&mut r).and_then(|f| r.finish().map(|()| f));"
-        ));
-        o.line("kani::cover!(decoded.is_ok(), \"some input is accepted\");");
-        let names = field_names(&m.fields);
-        let args: String = names.iter().map(|n| format!(", &{n}")).collect();
-        o.line(&format!("if let Ok({}) = decoded {{", tuple(&names)));
-        o.line("let mut w = Writer::new();");
-        o.line(&format!("{ordinal}u16.encode(&mut w);"));
-        o.line(&format!("{iface}::encode_{body_fn}(&mut w{args});"));
-        o.line("let out = w.into_bytes();");
-        o.line("assert!(out.len() == len + 2);");
-        // Byte by byte: a slice comparison is a `memcmp` loop.
-        o.line(&format!("assert!(out.first() == Some(&{o0}));"));
-        o.line(&format!("assert!(out.get(1) == Some(&{o1}));"));
-        for i in 0..body {
-            o.line(&format!(
-                "if len > {i} {{ assert!(out.get({}) == bytes.get({i})); }}",
-                i + 2
-            ));
+        match crate::shape::shapes(checked, &types, body) {
+            Some(shapes) if !shapes.is_empty() => {
+                let _ = writeln!(
+                    o.s,
+                    "/// VER-1 for `{protocol}.{iface}.{name}` (IPC-R5): decoding never\n\
+                     /// panics. Bounds: messages of 2 to {k} bytes (its encodings are\n\
+                     /// {} to {}); loops unwound {unwind} times. Its round trip is\n\
+                     /// proved per layout below ({} layouts).",
+                    size.min,
+                    size.max,
+                    shapes.len()
+                );
+                decode_harness(o, &rt, body);
+                for (i, shape) in shapes.iter().enumerate() {
+                    let _ = writeln!(
+                        o.s,
+                        "/// VER-1 for `{protocol}.{iface}.{name}` (IPC-R6): every accepted\n\
+                         /// input of layout {i} ({} bytes) re-encodes to the same bytes.",
+                        shape.len
+                    );
+                    shape_harness(o, &rt, i, shape);
+                }
+            }
+            _ => {
+                let _ = writeln!(
+                    o.s,
+                    "/// VER-1 for `{protocol}.{iface}.{name}` (IPC-R5, IPC-R6): decoding\n\
+                     /// never panics, and every accepted input re-encodes to the same\n\
+                     /// bytes. Bounds: messages of 2 to {k} bytes (its encodings are {}\n\
+                     /// to {}); loops unwound {unwind} times.",
+                    size.min, size.max
+                );
+                whole_round_trip(o, &rt, body);
+            }
         }
-        o.line("}");
-        o.line("}");
-        o.line("");
     }
     if messages.len() <= usize::from(u16::MAX) {
         let count = messages.len();
+        // Each message's validator is replaced by one that may return
+        // anything: the dispatcher alone decides this property, and with
+        // the real validators in place the solver explores every one of
+        // them on paths the ordinal rules out (OsInput's timed out at 15
+        // minutes; stubbed, it takes under a second). The stubs allow
+        // every result the real validators can give, so the assertion
+        // holds for the real code: it holds only if no message's
+        // validator runs. Needs `-Z stubbing`.
+        let _ = writeln!(
+            o.s,
+            "/// For [`verify_{snake}_unknown_ordinal`]: a message validator that\n\
+             /// may accept or refuse anything.\n\
+             #[cfg(kani)]\n\
+             fn kani_any_{snake}_validation(_r: &mut Reader<'_>) -> Result<(), BadMessage> {{\n\
+             if kani::any() {{ Ok(()) }} else {{ Err(BadMessage::Truncated) }}\n\
+             }}\n"
+        );
         let _ = writeln!(
             o.s,
             "/// VER-1 for `{protocol}.{iface}`: an ordinal no message has is\n\
              /// refused by the validator, which `decode_exact` runs first,\n\
-             /// whatever follows it (bounds: 2 to 4 bytes)."
+             /// whatever follows it (bounds: 2 to 4 bytes). The message\n\
+             /// validators are stubbed: none may run."
         );
         o.line("#[cfg(kani)]");
         o.line("#[kani::proof]");
         o.line("#[kani::unwind(6)]");
+        for m in messages {
+            let body_fn = snake_of(&pascal_of(&m.id.name));
+            o.line(&format!(
+                "#[kani::stub({iface}::validate_{body_fn}, kani_any_{snake}_validation)]"
+            ));
+        }
         o.line(&format!("fn verify_{snake}_unknown_ordinal() {{"));
         o.line(&format!(
             "let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= {count});"

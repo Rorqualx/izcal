@@ -343,3 +343,100 @@ fn limits_stop_the_run() {
     assert_eq!(w.run(LIMITS), RunEnd::Idle);
     assert_eq!(w.now().as_nanos(), 10_000_000_000);
 }
+
+/// M1's recording: a run's header carries this build's ID, its data
+/// versions (none) and its decision-point log (the trace), and decodes
+/// back; a header without the log is refused.
+#[test]
+fn a_run_is_a_recording_with_the_shared_header() {
+    let run = |seed| {
+        let w = workload(seed, false);
+        let _ = w.run(LIMITS);
+        (w.summary(), w.recording_header().unwrap())
+    };
+    let (summary, h) = run(5);
+    assert_eq!(h.build_id(), hg_types::BUILD_ID);
+    assert!(h.data_versions().is_empty());
+    let log = h.decision_log().unwrap();
+    assert_eq!(log.trace_hash, summary.trace_hash);
+    assert!(log.entries > 0);
+    assert_eq!(
+        h.policy(),
+        hg_types::HeaderPolicy::Digest(hg_types::NO_POLICY)
+    );
+    assert_eq!(h.process(), hg_types::ProcessKind::Simulation);
+    assert_eq!(
+        hg_types::RecordingHeader::decode(&h.encode()),
+        Ok(h.clone())
+    );
+    // A function of the run: the same seed gives the same header.
+    assert_eq!(run(5).1, h);
+    assert_ne!(run(6).1.profile(), h.profile());
+}
+
+/// DU-M0a's install model, the device half of the "child binary replaced
+/// between two launches" scenario: a handle opened before an update keeps
+/// the old binary while a fresh open sees the new one, and locks never
+/// wait. The launcher half (the BuildId check and DU-3's restart-required
+/// state) is phase E's.
+#[test]
+fn the_install_model_keeps_open_files_across_an_update() {
+    use hg_substrate::install::{InstallError, InstallPath, LockMode};
+    let p = |s: &str| InstallPath::new(s).unwrap();
+    let w = World::new(SimConfig::new(9));
+    let d = w.install_device();
+    d.write_new(&p("builds/1/renderer"), b"build 1").unwrap();
+    let held = d.open_inventory(&[p("builds/1/renderer")]).unwrap();
+    // The update stages a new binary and renames it over the old path.
+    d.write_new(&p("staging/renderer"), b"build 2").unwrap();
+    d.rename(&p("staging/renderer"), &p("builds/1/renderer"))
+        .unwrap();
+    assert_eq!(held[0].read_all().unwrap(), b"build 1");
+    assert_eq!(
+        d.open_read(&p("builds/1/renderer"))
+            .unwrap()
+            .read_all()
+            .unwrap(),
+        b"build 2"
+    );
+    // A new build is renamed into a new directory; renaming over an
+    // existing build is refused, as on the OS, and a path renamed to
+    // itself is unchanged.
+    d.write_new(&p("staging2/renderer"), b"build 3").unwrap();
+    assert_eq!(
+        d.rename(&p("staging2"), &p("builds/1")).err(),
+        Some(InstallError::Invalid)
+    );
+    d.rename(&p("staging2"), &p("builds/2")).unwrap();
+    d.rename(&p("builds/2"), &p("builds/2")).unwrap();
+    assert_eq!(
+        d.open_read(&p("builds/2/renderer"))
+            .unwrap()
+            .read_all()
+            .unwrap(),
+        b"build 3"
+    );
+    assert_eq!(d.open_read(&p("builds")).err(), Some(InstallError::Invalid));
+    assert_eq!(
+        d.write_new(&p("builds/1/renderer"), b"x").err(),
+        Some(InstallError::AlreadyExists)
+    );
+    let shared = d.lock(&p("build.lock"), LockMode::Shared).unwrap();
+    assert_eq!(
+        d.lock(&p("build.lock"), LockMode::Exclusive).err(),
+        Some(InstallError::WouldBlock)
+    );
+    drop(shared);
+    let _x = d.lock(&p("build.lock"), LockMode::Exclusive).unwrap();
+    d.delete_tree(&p("builds")).unwrap();
+    assert_eq!(
+        d.open_read(&p("builds/1/renderer")).err(),
+        Some(InstallError::NotFound)
+    );
+    // Every operation is in the trace, so the same steps give the same
+    // hash.
+    assert_ne!(
+        w.summary().trace_hash,
+        World::new(SimConfig::new(9)).summary().trace_hash
+    );
+}

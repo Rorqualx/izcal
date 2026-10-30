@@ -1,0 +1,197 @@
+/// Policy adapter to broker (enterprise policy spec 6.6, EP-D7). Reserved
+/// at M1's exit; the `Policy*` unions are emitted by hg-policy-gen from the
+/// catalogue, and the stand-in cases here show the largest shapes.
+protocol policy;
+
+/// Why the adapter could not serve a request. Closed (CS-ER-6).
+error PolicyError {
+    /// The source does not exist on this machine.
+    NoSource,
+    /// The adapter is shutting down.
+    ShuttingDown,
+}
+
+/// Which source a snapshot came from. Closed; the order is not precedence.
+enum PolicySource {
+    /// HKLM policy key, mandatory.
+    WindowsMachine,
+    /// HKLM policy key, Recommended subkey.
+    WindowsMachineRecommended,
+    /// HKCU policy key, mandatory.
+    WindowsUser,
+    /// HKCU policy key, Recommended subkey.
+    WindowsUserRecommended,
+    /// macOS device-channel forced values.
+    MacDeviceForced,
+    /// macOS device-channel managed defaults.
+    MacDeviceDefault,
+    /// macOS user-channel forced values.
+    MacUserForced,
+    /// macOS user-channel managed defaults.
+    MacUserDefault,
+    /// Linux managed directory.
+    LinuxManaged,
+    /// Linux recommended directory.
+    LinuxRecommended,
+    /// Flatpak host extension, managed.
+    FlatpakManaged,
+    /// Flatpak host extension, recommended.
+    FlatpakRecommended,
+    /// Signed remote document, mandatory part.
+    RemoteMandatory,
+    /// Signed remote document, recommended part.
+    RemoteRecommended,
+}
+
+/// Why a whole source did not apply. Closed.
+enum SourceStatus {
+    /// Read and parsed.
+    Read,
+    /// Writable by a non-administrator: refused (EP-D3).
+    WritableByUser,
+    /// Could not be read.
+    Unreadable,
+    /// Could not be parsed.
+    Unparsable,
+    /// The remote signature did not verify.
+    SignatureInvalid,
+    /// The remote document is past its expiry.
+    Expired,
+    /// The remote document is older than one already accepted.
+    RolledBack,
+}
+
+/// Why the broker asks for a re-read. Closed.
+enum RereadReason {
+    /// The person pressed Reload policies.
+    UserReload,
+    /// An OS change notification fired.
+    OsChange,
+    /// A remote document or site list arrived.
+    RemoteArrived,
+    /// The broker started.
+    Startup,
+}
+
+/// Stand-in for a generated scalar or small-record case.
+struct UrlEntry {
+    /// One URL or URL pattern, in the catalogue's bound.
+    url: string<2048>,
+}
+
+/// Stand-in for a flattened tree node (ManagedBookmarks).
+struct BookmarkNode {
+    /// Index of the parent node; 0 is the root folder.
+    parent: u32,
+    /// The display name.
+    name: string<256>,
+    /// The URL, absent for a folder.
+    url: option<string<2048>>,
+}
+
+/// One policy's small value (generated; at most 4 KiB per case).
+union PolicyScalar {
+    /// Stand-in: a boolean policy.
+    AiEnabled {
+        /// The value.
+        value: bool,
+    },
+    /// Stand-in: a URL policy.
+    HomepageUrl {
+        /// The value.
+        value: UrlEntry,
+    },
+}
+
+/// A part of one list-valued policy (generated; each case sized to fit).
+union PolicyListPart {
+    /// Stand-in: part of a URL-pattern list.
+    UrlBlocklist {
+        /// Up to 30 entries.
+        items: vec<UrlEntry, 30>,
+    },
+    /// Stand-in: part of a flattened bookmark tree.
+    ManagedBookmarks {
+        /// Up to 20 nodes.
+        items: vec<BookmarkNode, 20>,
+    },
+}
+
+/// Adapter to broker. Bound: served only to the adapter the broker launched.
+interface PolicyHost bound capacity 64 overflow terminate {
+    /// Starts one source's snapshot.
+    begin(
+        /// The source.
+        source: PolicySource,
+        /// The catalogue version the adapter validated against.
+        catalogue: u32,
+        /// The snapshot's sequence number.
+        seq: u64,
+    );
+    /// One small value.
+    scalar(
+        /// The source.
+        source: PolicySource,
+        /// The snapshot.
+        seq: u64,
+        /// The value.
+        value: PolicyScalar,
+    );
+    /// Part of one list value; parts of one policy arrive in order.
+    list_part(
+        /// The source.
+        source: PolicySource,
+        /// The snapshot.
+        seq: u64,
+        /// The part.
+        part: PolicyListPart,
+    );
+    /// Ends the snapshot; the broker applies it atomically only here.
+    end(
+        /// The source.
+        source: PolicySource,
+        /// The snapshot.
+        seq: u64,
+        /// How many messages the snapshot held, for a completeness check.
+        count: u32,
+    );
+    /// The source's state, sent with every snapshot and on failure.
+    status(
+        /// The source.
+        source: PolicySource,
+        /// Its state.
+        state: SourceStatus,
+    );
+}
+
+/// Broker to adapter.
+interface PolicyControl bound capacity 16 overflow terminate {
+    /// Re-read every source.
+    reread(
+        /// Why.
+        reason: RereadReason,
+    );
+    /// Part of a fetched remote document (IPC-R16 entry; at most 1 MiB in all).
+    remote_part(
+        /// Byte offset of this part.
+        offset: u32,
+        /// The bytes.
+        chunk: bytes<60000>,
+        /// Whether this is the last part.
+        last: bool,
+    );
+    /// The remote document's detached Ed25519 signature.
+    remote_signature(
+        /// Exactly 64 bytes; the adapter refuses another length.
+        sig: bytes<64>,
+    );
+    /// Part of a fetched or file-read site list (IPC-R16 entry; at most 4 MiB).
+    site_list_part(
+        /// Byte offset of this part.
+        offset: u32,
+        /// The bytes.
+        chunk: bytes<60000>,
+        /// Whether this is the last part.
+        last: bool,
+    );
+}
