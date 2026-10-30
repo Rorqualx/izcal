@@ -13,8 +13,11 @@
 //!    The buffer holds the longest legal message.
 //! 2. An empty message: Violation. Every data message has a ticket and a
 //!    header.
-//! 3. A message that does not split into a ticket and a record, or a
-//!    record that does not decode: Violation.
+//! 3. A message that does not split into a ticket, a record and a
+//!    trailer stating the message's own length, or a record that does
+//!    not decode: Violation (Malformed). A message whose trailer states
+//!    another length is the rest of one whose head a stale read took
+//!    (probe W13c).
 //! 4. Handles without a ticket, or a ticket without handles: Violation.
 //! 5. A descriptor whose counters no honest holder has: Violation.
 //! 6. `seq` not the next expected, or a record over capacity: Violation.
@@ -199,7 +202,10 @@ pub(crate) fn check_redeemed(
 mod proofs {
     use super::*;
     use crate::ipc::common::codec::proofs::any_desc;
-    use crate::ipc::win::frame::TICKET_LEN;
+    use crate::ipc::win::frame::{TICKET_LEN, TRAILER_LEN};
+
+    /// The shortest data message: a ticket and the trailer.
+    const MIN_MSG: usize = TICKET_LEN + TRAILER_LEN;
 
     /// The receiver's counters before a decision: any state within a
     /// small capacity.
@@ -215,12 +221,13 @@ mod proofs {
     }
 
     /// The rules before the decoder: a message too long, empty or
-    /// shorter than a ticket is refused and changes nothing.
+    /// shorter than a ticket and a trailer is refused and changes
+    /// nothing.
     #[kani::proof]
     #[kani::unwind(4)]
     fn decisions_are_sound_early() {
-        let bytes = [0u8; TICKET_LEN];
-        let n: usize = kani::any_where(|&n: &usize| n < TICKET_LEN);
+        let bytes = [0u8; MIN_MSG];
+        let n: usize = kani::any_where(|&n: &usize| n < MIN_MSG);
         let too_long: bool = kani::any();
         let mut flow = any_flow();
         let before = flow;
@@ -231,7 +238,7 @@ mod proofs {
         assert!(flow == before);
         kani::cover!(
             d == Decision::Violation(Reason::Frame(FrameError::Short)),
-            "a message shorter than a ticket is refused"
+            "a message shorter than a ticket and a trailer is refused"
         );
     }
 
@@ -242,7 +249,14 @@ mod proofs {
     /// changes nothing. Unwind 17: comparing the 16-byte ticket is a
     /// loop in the prover's `memcmp`.
     fn decisions_are_sound<const ND: usize>() -> bool {
-        let msg: [u8; TICKET_LEN] = kani::any();
+        // A symbolic ticket, and the trailer of a message with an empty
+        // record (the decoder's answer stands for any record).
+        let mut msg: [u8; MIN_MSG] = kani::any();
+        let [t0, t1, t2, t3] = u32::try_from(MIN_MSG).unwrap_or(0).to_le_bytes();
+        msg[TICKET_LEN] = t0;
+        msg[TICKET_LEN + 1] = t1;
+        msg[TICKET_LEN + 2] = t2;
+        msg[TICKET_LEN + 3] = t3;
         let mut table = [HandleDesc::EMPTY; MAX_MESSAGE_HANDLES];
         table[0] = any_desc();
         table[1] = any_desc();
@@ -351,6 +365,7 @@ mod tests {
             kind: WireKind::ReadOnlyRegion,
             len,
             flags,
+            drains: false,
         };
         assert_eq!(
             check_redeemed(&d, &[item(4096, 0)]).unwrap()[0],

@@ -60,22 +60,51 @@
 //! design review B3). `OsPeer` generations are 0: Windows process IDs
 //! carry none.
 //!
-//! **A compromised holder can keep reading an end it gives away.** The
-//! move protocol has the giving transport cancel the carried end's
-//! reads and wait for them to abort before the broker pulls it (M9,
-//! probe W3), which a well-behaved process does. A compromised process,
-//! though, drives its own transport: it can ask the broker to relay an
-//! end while it still has a `ReadFile` pending on that end. A pending
-//! read is not cancelled by the broker's `DUPLICATE_CLOSE_SOURCE` pull
-//! and keeps completing with messages the new holder should receive
-//! (probe W3), and the broker cannot cancel another process's read
-//! (probe W8b, `ERROR_NOT_FOUND`). `HandleCount == 1` does not catch
-//! this, because a pending read is not a handle. So a process that gives
-//! away an end of a channel it was already part of can keep stealing
-//! records sent on that channel afterwards. It is confined to channels
-//! that process already held; it reaches no other. This limit is
-//! accepted for M1 and recorded for the design review (D5 item 6); the
-//! m1-d5 measurement README lists the options considered.
+//! **A fresh pipe per move (W3).** A process can ask the broker to relay
+//! an end while it still has reads pending on it. The broker's
+//! `DUPLICATE_CLOSE_SOURCE` pull does not cancel them, the broker cannot
+//! cancel another process's reads (probes W8b, W13d), and pending reads
+//! on one end complete in the order they were issued, across processes
+//! (W10). So after every move the moved end and its peer are on a new
+//! pipe the broker makes, and nothing is written to the old pipe after
+//! the switch:
+//! - the broker peeks the moving end (no close-source), claims its
+//!   channel (one relay per channel at a time), and switches the peer
+//!   first: in the broker or in a ticket at once; with a child by
+//!   `RebindValue`/`RebindId`, waiting for its `Rebound` at most
+//!   [`REBIND_DEADLINE`]. Only then does it pull the moving end and
+//!   check, with `CompareObjectHandles`, that it is the object peeked;
+//! - a receiver reads each old pipe to its end (109) before its current
+//!   one, so records keep their order and `seq`. A moving receiver's old
+//!   pipe stays with the broker until its next holder listens and asks
+//!   for it (`TakeDrains`); a receiver already listening keeps its old
+//!   pipe as a local drain. At most 16† old pipes are queued or owed per
+//!   channel ([`crate::ipc::win::ledger::MAX_OLD_PIPES`]); the move that
+//!   would make the 17th is refused and the channel ends in `Closed`;
+//! - every data message ends with its own length (a trailer), so a stale
+//!   read that takes only the head of a record leaves a suffix the reader
+//!   refuses.
+//!
+//! The bound: a former holder's pending reads can take records written
+//! before the switch, any number, never one after; a whole record taken
+//! gives `Violation(Sequence)`, a split one `Malformed`; both
+//! unattributed (probe W13). († set from first principles, not
+//! measured.)
+//!
+//! **No relay holds a channel across a query that can wait.** The
+//! kernel's queries on a synchronous file object wait behind a pending
+//! read (W8), and a child chooses its own pipes' flags. Every query that
+//! can wait runs at the peek, on the child's own worker, before the
+//! channel is claimed, and an end whose file object does synchronous I/O
+//! is refused there (`Refusal::Synchronous`). After the pull only the
+//! object peeked is queried again: it is overlapped, its mode cannot be
+//! changed, and an overlapped end's queries return at once (W14). A
+//! pulled value that names another object is refused unqueried.
+//!
+//! **Kernel memory.** Each pending read pins about 430 bytes of nonpaged
+//! pool, and a job's memory limits do not bound it (W13e: 113 MB from
+//! one process). A sandboxed child can do this on any pipe end it holds;
+//! there is no Izcal-side cap (a residual, m1-d5 README).
 //!
 //! **`Closed` is eventual**, as on Linux: a write accepted while any
 //! handle to the reading end exists (one in flight in a ticket, or a
@@ -89,9 +118,12 @@
 //!
 //! **Threads.** Every process runs one transport thread, its IO thread.
 //! A broker also runs one worker per live child (M8), started when the
-//! child is launched and ended when the broker forgets it: a broker with
-//! *n* children runs *n* + 1 transport threads, each with the platform's
-//! default stack. Every one of them waits with no timeout when idle, so
+//! child is launched and ended when the broker forgets it, and one worker
+//! for its own relays, which may wait for a child's `Rebound` (W3): a
+//! broker with *n* children runs *n* + 2 transport threads, each with the
+//! platform's default stack. A relay that waits for a `Rebound` holds its
+//! channels' claims for at most [`REBIND_DEADLINE`]; the holder that is
+//! asked answers on its IO thread. Every one of them waits with no timeout when idle, so
 //! idle threads cost memory, not wakeups (FP-18). A child's worker
 //! handles its relays, redemptions, binds and unbinds one at a time, in
 //! the order the child sent them: the pulls and kernel queries run there,
@@ -113,7 +145,7 @@ use core::any::Any;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::os::windows::io::OwnedHandle;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak, mpsc};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError, Weak, mpsc};
 use std::time::{Duration, Instant as StdInstant};
 
 use hg_substrate::ipc::{
@@ -127,20 +159,21 @@ use hg_substrate::{SequenceHandle, Task};
 use crate::executor::OsExecutor;
 use crate::ipc::common::attest;
 use crate::ipc::common::codec::{
-    CREDIT_LEN, HandleDesc, REGION_FILLER_TRUSTED, REGION_IMMUTABLE, WireKind, decode_credit,
-    encode_credit, encode_data,
+    CREDIT_LEN, Credit, HandleDesc, REGION_FILLER_TRUSTED, REGION_IMMUTABLE, WireKind,
+    decode_credit, encode_credit, encode_data,
 };
 use crate::ipc::common::flow::{PendingCredit, ReceiverFlow, SenderFlow};
 use crate::ipc::common::quota::Ledger as Quota;
 use crate::ipc::win::accept::{
-    End as PipeEnd, Facts, PipeKey, Proc, Refusal, accept, check_value, distinct, parse_name,
+    End as PipeEnd, Facts, PipeKey, Proc, Refusal, accept, check_value, distinct, end_for,
+    parse_name,
 };
 use crate::ipc::win::decide::{Decision, Reason, check_redeemed, decide};
 use crate::ipc::win::frame::{
     Ctl, Item as CtlItem, Items, MAX_CTL_LEN, MAX_PIPE_DATA, NO_TICKET, Ticket, decode_ctl,
     encode_ctl, join_data,
 };
-use crate::ipc::win::ledger::{BindEvent, Held, Ledger};
+use crate::ipc::win::ledger::{BindEvent, Held, Ledger, Where};
 use crate::ipc::win::regions::{Grant, Pulled as RegionPulled, State as RState, relay_rule};
 
 /// The capacity of a process's launch channels (Stage 1 4.1): the
@@ -150,6 +183,12 @@ pub const BOOTSTRAP_CAPACITY: u32 = 64;
 /// How long a message carrying a sender end waits for that end's own
 /// queued messages before the transport gives up on them.
 const TRANSFER_DEADLINE: Duration = Duration::from_secs(5);
+
+/// How long the broker waits for the holder of a moving end's peer to
+/// answer a `Rebind` before it refuses the move (W3). The peer's holder
+/// is the only party that can stall it, and it can already stall its own
+/// channel.
+const REBIND_DEADLINE: Duration = Duration::from_secs(5);
 
 /// How long a child waits for its broker's `Hello`.
 const HELLO_TIMEOUT_MS: u32 = 10_000;
@@ -183,6 +222,12 @@ const COPY_WAIT_POLL: Duration = Duration::from_millis(10);
 /// refused. A copy is registered as soon as it is made, so this bounds
 /// the copy itself: eight 64 MiB copies took about 20 s on rig253.
 const COPY_WAIT_MAX: Duration = Duration::from_secs(300);
+
+/// A handle a redemption handed over (`None` if it could not be
+/// adopted), its item as the broker sent it (the kind it travels as, a
+/// region's length and flags, and whether the broker holds old pipes of
+/// its channel for it, W3), and, in the broker, its channel end.
+type Got = (Option<OwnedHandle>, CtlItem, Option<(PipeKey, PipeEnd)>);
 
 /// One item for a listener.
 enum Item {
@@ -237,6 +282,9 @@ struct Listener {
     /// Set for a `listen_bound` listener: the ledger has a binding to
     /// drop when this receiver closes (item 8).
     bound_peer: Option<u32>,
+    /// A `TakeDrains` request is out (W3): nothing is read until the old
+    /// pipes arrive, so they are read first.
+    taking: Option<u64>,
 }
 
 /// What an end is.
@@ -257,6 +305,12 @@ enum Role {
         bound: bool,
         listener: Option<Listener>,
         in_transit: bool,
+        /// W3: old pipes this listener reads to their end, oldest first,
+        /// before its current pipe `End::h`.
+        drains: VecDeque<Arc<OwnedHandle>>,
+        /// W3: the broker holds old pipes of this receiver's channel;
+        /// listening takes them first.
+        old_queued: bool,
     },
     /// A control link: in a child, to its broker; in the broker, to
     /// child `proc`.
@@ -347,12 +401,31 @@ struct RegEntry {
 }
 
 struct End {
+    /// The end's current pipe.
     h: Arc<OwnedHandle>,
     role: Role,
-    /// A read is in flight.
+    /// A read is in flight: on `h`, or on a receiver's first drain.
     reading: bool,
-    /// A write is in flight.
+    /// A write is in flight on `h`.
     writing: bool,
+    /// W3: a sender's previous pipes, each kept only while an operation
+    /// on it is still running; each closes once both are done, so its
+    /// reader sees the pipe end.
+    old: Vec<OldPipe>,
+    /// The id in the name of the pipe this process made the channel with
+    /// (both ends), so a `RebindId` can name the end. `None` for an end
+    /// that came from elsewhere.
+    pipe_id: Option<[u8; 16]>,
+}
+
+/// A sender's previous pipe after a switch (W3).
+struct OldPipe {
+    h: Arc<OwnedHandle>,
+    /// Its last write is still pending; it completes when the reader
+    /// drains the pipe, and is never cancelled (no record is lost).
+    writing: bool,
+    /// Its credit read is being cancelled.
+    reading: bool,
 }
 
 /// A child, as its broker knows it.
@@ -405,9 +478,85 @@ struct Broker {
     next_region: u64,
     /// Region charges per owner (D6 review M4).
     quota: Quota,
+    /// W3: the server ends of old pipes queued for their channels'
+    /// receivers, by pipe key. Which channel and in what order is the
+    /// ledger's; this holds the handles.
+    old: BTreeMap<PipeKey, OwnedHandle>,
+    /// W3: replacement ends for channel ends that were in transit when
+    /// their peer moved, applied when their own relay pulls them.
+    pending: BTreeMap<(PipeKey, PipeEnd), Pending>,
+    /// W3: channels with a relay in progress; one relay per channel at a
+    /// time, so two ends moving at once settle in turn.
+    busy: BTreeSet<PipeKey>,
+    /// W3: rebind requests awaiting a `Rebound`: the holder asked, and
+    /// where its answer goes.
+    waiters: BTreeMap<u64, (Proc, mpsc::SyncSender<(u64, Rebind)>)>,
+    next_rebind: u64,
+    /// The broker's own relays run on a worker of their own, like a
+    /// child's, because a relay may wait for another process's
+    /// `Rebound` (W3).
+    own_jobs: Option<mpsc::SyncSender<Job>>,
+    /// Relays refused, by reason code ([`Refusal::code`]): the broker's
+    /// record of why moves failed (a child also gets the code in its
+    /// `RelayRefused`).
+    refused: BTreeMap<u8, u64>,
+}
+
+/// A replacement end the broker made for an end in transit (W3).
+struct Pending {
+    /// The end on the channel's new pipe, for whoever redeems the end.
+    handle: OwnedHandle,
+    /// The pipe the end in transit is on; its alias is kept until then.
+    old_key: PipeKey,
+}
+
+/// What a switch to a new pipe did to an end (W3).
+enum Switch {
+    /// Not switched: no such end here, or it is on its way elsewhere.
+    No,
+    /// Switched.
+    Done,
+    /// Switched an unlistened receiver: its old pipe's server end, for
+    /// the broker to keep until the receiver is listened to.
+    Park(OwnedHandle),
+}
+
+/// A holder's answer to a rebind (W3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Rebind {
+    /// Its end is on the new pipe; with `park`, its old pipe follows.
+    Switched { park: bool },
+    /// It no longer holds the end, or the end is on its way elsewhere.
+    NotSwitched,
+    /// It ended.
+    Gone,
 }
 
 impl Broker {
+    /// A broker with `ledger`, whose next child is process `next_proc`.
+    fn new(ledger: Ledger, next_proc: Proc) -> Self {
+        Self {
+            ledger,
+            held: BTreeMap::new(),
+            children: BTreeMap::new(),
+            reserved_sids: BTreeSet::new(),
+            creator_sids: BTreeMap::new(),
+            given: BTreeMap::new(),
+            own: BTreeMap::new(),
+            next_proc,
+            old: BTreeMap::new(),
+            pending: BTreeMap::new(),
+            busy: BTreeSet::new(),
+            waiters: BTreeMap::new(),
+            next_rebind: 0,
+            own_jobs: None,
+            refused: BTreeMap::new(),
+            regions: BTreeMap::new(),
+            next_region: 0,
+            quota: Quota::default(),
+        }
+    }
+
     /// Records that `who` was given `end` of `pipe` at handle value
     /// `value`, appending to that value's FIFO so a later reuse of the
     /// value queues behind an end still awaiting its `Closed` (items 2,
@@ -417,6 +566,12 @@ impl Broker {
             .entry((who, value))
             .or_default()
             .push((pipe, end));
+    }
+
+    /// Counts a refused relay by its reason.
+    fn count(&mut self, r: Refusal) {
+        let n = self.refused.entry(r.code()).or_insert(0);
+        *n = n.saturating_add(1);
     }
 
     /// Removes and returns the oldest grant `who` holds at handle value
@@ -449,6 +604,24 @@ impl Broker {
                 self.creator_sids.retain(|_, p| *p != creator);
             }
         }
+        // W3: old pipes released (their receiver ended, or their holder or
+        // creator died) are closed, and so are replacements for ends that
+        // are gone.
+        for k in self.ledger.take_released() {
+            self.old.remove(&k);
+        }
+        let ledger = &self.ledger;
+        let gone: Vec<(PipeKey, PipeEnd)> = self
+            .pending
+            .keys()
+            .filter(|(c, e)| !ledger.knows(*c) || ledger.where_is(*c, *e) == Where::Gone)
+            .copied()
+            .collect();
+        for k in gone {
+            if let Some(p) = self.pending.remove(&k) {
+                self.ledger.let_go(p.old_key);
+            }
+        }
     }
 }
 
@@ -469,23 +642,76 @@ enum Job {
     /// `Ctl::Unbind`: queued behind the child's earlier Binds, so an
     /// Unbind is never handled before the Bind it undoes.
     Unbind { rx_id: u64 },
+    /// `Ctl::Park`: an unlistened receiver's old pipe, handed back (W3).
+    Park { old: u64 },
+    /// `Ctl::TakeDrains` (W3).
+    TakeDrains { req: u64, rx: u64 },
+    /// A relay of the broker's own ends, on its own worker (W3): the
+    /// carrier end's id and facts, and the handles taken out of its
+    /// table, each with its kind and, for a region (D6), its declared
+    /// length and flags.
+    OwnRelay {
+        req: u64,
+        carrier: u64,
+        carrier_facts: Box<sys::RawFacts>,
+        taken: Vec<(OwnedHandle, WireKind, u32, u8)>,
+    },
 }
 
-/// One pulled handle for a relay: the value the child named, the kind it
-/// claims, the handle itself (pulled with close-source, kept on success
-/// and dropped on refusal), and what the kernel says about it. The pull
-/// and the kernel queries run off the IO thread (M8), so this is the
-/// only blocking relay work and it never holds the lock.
-struct Pulled {
+/// One end in a relay, from the peek to the ticket (W3). The pulls and
+/// the kernel queries run off the IO thread (M8) and never under the
+/// lock.
+struct Cand {
+    /// The value the relayer named (the broker's own: its value here).
     value: u64,
+    /// The kind it claims.
     kind: WireKind,
-    handle: Option<OwnedHandle>,
-    raw: sys::RawFacts,
-    /// For a region: its declared length and flags, and the kernel's
-    /// facts on it as a section.
+    /// A child's end: the broker's peek (a copy, no close-source) until
+    /// the pull, then the pulled end. The broker's own end: the end.
+    held: Option<OwnedHandle>,
+    /// The broker's own end: nothing to pull.
+    own: bool,
+    /// What the kernel says about it: from the peek, then from the pull.
+    facts: sys::RawFacts,
+    /// Its channel, and the pipe it is on, by the peek's name.
+    chan: Option<PipeKey>,
+    pipe: Option<PipeKey>,
+    /// What the ticket holds in its place: the end of the channel's new
+    /// pipe, or a replacement made earlier. `None`: the end itself.
+    ticket_end: Option<OwnedHandle>,
+    /// Its pipe's server end joins the channel's old pipes.
+    queue_old: bool,
+    /// A pipe alias kept for its replacement, let go once decided.
+    let_go: Option<PipeKey>,
+    /// The pulled end is not the object peeked.
+    changed: bool,
+    /// For a region (D6): its declared length and flags, and the
+    /// kernel's facts on it as a section. A region has no peer to move
+    /// first, so a child's is pulled with close-source at once.
     len: u32,
     flags: u8,
     section: sys::SectionFacts,
+}
+
+/// A `Rebind` sent for a relay, awaiting its `Rebound` (W3).
+struct RebindWait {
+    req: u64,
+    /// The process asked.
+    holder: Proc,
+    chan: PipeKey,
+    /// The end it holds.
+    f: PipeEnd,
+    /// The pipe that end was on.
+    prev: PipeKey,
+    /// The new end's value in the holder.
+    value: u64,
+    /// The value the broker gave the end at, if it did.
+    by_value: Option<u64>,
+    /// The broker's copy of the new end.
+    mine: OwnedHandle,
+    /// The holder's process, to take the new end back if it does not
+    /// switch.
+    process: Option<sys::Process>,
 }
 
 #[derive(Default)]
@@ -498,10 +724,15 @@ struct State {
     relays: BTreeMap<u64, u64>,
     /// Redemptions: request to receiver end.
     redeems: BTreeMap<u64, u64>,
+    /// `TakeDrains` requests: request to receiver end (W3).
+    takes: BTreeMap<u64, u64>,
     broker: Option<Broker>,
     /// This process's link to its broker (a child).
     link: Option<u64>,
     boot: Option<(OwnedHandle, OwnedHandle, u32)>,
+    /// A test's child that ignores rebinds, for the rebind deadline.
+    #[cfg(test)]
+    deaf: bool,
 }
 
 impl State {
@@ -515,6 +746,8 @@ impl State {
 pub(crate) struct Inner {
     exec: Arc<OsExecutor>,
     state: Mutex<State>,
+    /// Signalled when a relay releases its channels (W3).
+    settled: Condvar,
     /// The IO thread, once it runs.
     thread: OnceLock<sys::ThreadRef>,
     wake_pending: AtomicBool,
@@ -552,6 +785,8 @@ impl Inner {
                 role,
                 reading: false,
                 writing: false,
+                old: Vec::new(),
+                pipe_id: None,
             },
         );
         Some(id)
@@ -565,8 +800,23 @@ impl Inner {
         if let Some(b) = st.broker.as_mut() {
             b.own.remove(&id);
         }
-        sys::cancel(&end.h);
+        Self::cancel_all(&end);
         Some(end)
+    }
+
+    /// Cancels every operation of an end: on its pipe, its old pipe's
+    /// credit read (a pending write there is left to finish, so no record
+    /// is lost), and its drains.
+    fn cancel_all(end: &End) {
+        sys::cancel(&end.h);
+        for o in end.old.iter().filter(|o| !o.writing) {
+            sys::cancel(&o.h);
+        }
+        if let Role::Receiver { drains, .. } = &end.role {
+            for d in drains {
+                sys::cancel(d);
+            }
+        }
     }
 
     /// If end `id` is a bound listener, drops its binding: in a child, a
@@ -748,15 +998,21 @@ impl Inner {
     fn end_listener(self: &Arc<Self>, st: &mut State, id: u64, last: Item) {
         if let Some(End {
             h,
-            role: Role::Receiver {
-                listener: Some(l), ..
-            },
+            role:
+                Role::Receiver {
+                    listener: Some(l),
+                    drains,
+                    ..
+                },
             ..
         }) = st.ends.get_mut(&id)
             && !l.ended
         {
             l.ended = true;
             sys::cancel(h);
+            for d in drains.iter() {
+                sys::cancel(d);
+            }
             // Pending redemptions will never complete into a message.
             l.queue.retain(|i| !matches!(i, Item::Pending { .. }));
             l.queue.push_back(last);
@@ -764,8 +1020,15 @@ impl Inner {
         self.kick(st, id);
     }
 
-    /// The pipe key of a handle, as this process's broker sees it.
+    /// The channel of a handle, as this process's broker sees it: its
+    /// pipe's key, resolved to the channel's own key if the pipe is a
+    /// later one (W3).
     fn key_of(b: &Broker, f: &sys::RawFacts) -> Option<PipeKey> {
+        Self::pipe_key_of(b, f).map(|k| b.ledger.canonical(k))
+    }
+
+    /// The key of the pipe a handle is an end of, by its name.
+    fn pipe_key_of(b: &Broker, f: &sys::RawFacts) -> Option<PipeKey> {
         let (sid, id) = parse_name(f.name.as_deref()?)?;
         let creator = match sid {
             None => BROKER,
@@ -779,121 +1042,666 @@ impl Inner {
 
     // ---- the broker's side of the control protocol --------------------
 
-    /// A relay: takes `items` (values in process `from`, or this
-    /// process's own handles when `from` is the broker) into a ticket
-    /// for a record on `carrier`.
-    /// Pulls a relay's carrier and items out of `process` and asks the
-    /// kernel about them, off the lock (M8). The carrier is peeked (no
-    /// close-source) and its copy dropped; the items are taken with
-    /// close-source. A crafted synchronous handle can make the kernel
-    /// queries block here (probe W8); this runs on the child's worker, so
-    /// only that child's requests wait.
-    fn classify_relay(
-        process: &sys::Process,
-        carrier: u64,
-        items: &Items,
-    ) -> (sys::RawFacts, Vec<Pulled>) {
-        let carrier_raw = check_value(carrier)
-            .ok()
-            .and_then(|()| sys::pull(process, carrier, false).ok())
-            .map(|h| sys::facts(&h))
-            .unwrap_or_default();
-        let pulled = items
-            .as_slice()
-            .iter()
-            .map(|i| {
-                let handle = check_value(i.value)
-                    .ok()
-                    .and_then(|()| sys::pull(process, i.value, true).ok());
-                let (raw, section) = if i.kind.is_region() {
-                    let s = handle.as_ref().map(sys::section_facts).unwrap_or_default();
-                    (sys::RawFacts::default(), s)
-                } else {
-                    let r = handle.as_ref().map(sys::facts).unwrap_or_default();
-                    (r, sys::SectionFacts::default())
-                };
-                Pulled {
-                    value: i.value,
-                    kind: i.kind,
-                    handle,
-                    raw,
-                    len: i.len,
-                    flags: i.flags,
-                    section,
+    // ---- relays: a fresh pipe per move (W3) ------------------------------
+
+    /// A relay: carries `cands` (a child's values, peeked; or the broker's
+    /// own ends) into a ticket for a record on the carrier.
+    ///
+    /// Each moving end's channel gets a new pipe the broker makes, and the
+    /// peer end moves to it *before* the moving end is pulled, so nothing
+    /// written after the move reaches a pipe its former holder had (probes
+    /// W10, W13). In order:
+    /// 1. under the lock, the channels are resolved and claimed (one relay
+    ///    per channel at a time, so two ends moving at once settle in
+    ///    turn);
+    /// 2. for each moving end, the peer is found and switched: in a ticket
+    ///    or in the broker, at once; with a child, by `Rebind`, whose
+    ///    `Rebound` the IO thread routes here; on its way elsewhere, by a
+    ///    replacement applied when its own relay pulls it; gone, not at
+    ///    all;
+    /// 3. off the lock, this worker waits for the `Rebound`s (at most
+    ///    [`REBIND_DEADLINE`]), then pulls the moving ends with
+    ///    close-source and checks each is the object it peeked;
+    /// 4. under the lock, `accept` and the ledger decide, and the ticket
+    ///    holds the new pipe's ends. A moving receiver's old pipe is
+    ///    queued for whoever listens to it next; a moving sender's is
+    ///    closed, so its reader drains it to its end.
+    ///
+    /// Runs on the relayer's worker (a child's, or the broker's own),
+    /// never on the IO thread: it waits for other processes and, for a
+    /// child's ends, for kernel queries that can block (probe W8).
+    fn relay(
+        self: &Arc<Self>,
+        from: Proc,
+        process: Option<&sys::Process>,
+        carrier_facts: &sys::RawFacts,
+        mut cands: Vec<Cand>,
+    ) -> Result<Ticket, Refusal> {
+        let mut later: Vec<Box<dyn Any + Send>> = Vec::new();
+        // Every kernel query that can wait (probe W8) runs before a
+        // channel is claimed, so a child can stall only its own worker,
+        // never another relay of the same channel. Its peeked ends were
+        // queried already (on its own worker); one whose file object does
+        // synchronous I/O is refused here. After the pull only the object
+        // peeked is queried again: it is overlapped, and its mode cannot
+        // change (probe W14). A pulled end that is another object is
+        // refused unqueried.
+        if process.is_some() && cands.iter().any(|c| !c.own && c.facts.synchronous) {
+            Self::discard(process, cands);
+            if let Some(b) = self.lock().broker.as_mut() {
+                b.count(Refusal::Synchronous);
+            }
+            return Err(Refusal::Synchronous);
+        }
+        // 0. The copies its regions need (D6 review Q1), made before any
+        // channel is claimed: a copy, or a wait for another relay's copy
+        // of the same section, stalls only this worker.
+        if let Err(r) = self.region_copies(from, &cands, &mut later) {
+            Self::discard(process, cands);
+            if let Some(b) = self.lock().broker.as_mut() {
+                b.count(r);
+            }
+            return Err(r);
+        }
+        // 1. Resolve and claim the channels.
+        let mut st = self.lock();
+        let (carrier, chans) = {
+            let Some(b) = st.broker.as_mut() else {
+                drop(st);
+                Self::discard(process, cands);
+                return Err(Refusal::Carrier);
+            };
+            let Some(carrier) = Self::key_of(b, carrier_facts) else {
+                drop(st);
+                Self::discard(process, cands);
+                return Err(Refusal::Carrier);
+            };
+            for c in &mut cands {
+                c.pipe = Self::pipe_key_of(b, &c.facts);
+                c.chan = c.pipe.map(|k| b.ledger.canonical(k));
+                // The moving end's pipe stays an alias of its channel
+                // until the relay is decided: the switch below makes it a
+                // former pipe, and the pulled end is still on it.
+                if let (Some(chan), Some(pipe)) = (c.chan, c.pipe) {
+                    b.ledger.keep(chan, pipe);
                 }
+            }
+            let chans: BTreeSet<PipeKey> = cands.iter().filter_map(|c| c.chan).collect();
+            (carrier, chans)
+        };
+        loop {
+            match st.broker.as_ref() {
+                Some(b) if chans.iter().any(|k| b.busy.contains(k)) => {
+                    st = self
+                        .settled
+                        .wait(st)
+                        .unwrap_or_else(PoisonError::into_inner);
+                }
+                _ => break,
+            }
+        }
+        if let Some(b) = st.broker.as_mut() {
+            b.busy.extend(chans.iter().copied());
+        }
+        drop(st);
+        // The new pipes, made off the lock: one per moving end; a peer
+        // that turns out to be gone needs none.
+        let mut fresh: Vec<Option<([u8; 16], OwnedHandle, OwnedHandle)>> = cands
+            .iter()
+            .map(|c| {
+                c.chan.and_then(|_| {
+                    let id = Self::random16()?;
+                    let (server, client) = sys::pipe_pair(None, &id).ok()?;
+                    Some((id, server, client))
+                })
             })
             .collect();
-        (carrier_raw, pulled)
+        // 2. Switch each moving end's peer.
+        // At most one rebind per carried end.
+        let (tx, rx) = mpsc::sync_channel::<(u64, Rebind)>(MAX_MESSAGE_HANDLES);
+        let mut waits: Vec<RebindWait> = Vec::new();
+        let mut refusal: Option<Refusal> = None;
+        let mut st = self.lock();
+        let mut paired: BTreeSet<PipeKey> = BTreeSet::new();
+        for i in 0..cands.len() {
+            if refusal.is_some() {
+                break;
+            }
+            let Some((chan, pipe, kind)) =
+                cands.get(i).and_then(|c| Some((c.chan?, c.pipe?, c.kind)))
+            else {
+                continue;
+            };
+            if paired.contains(&chan) {
+                continue;
+            }
+            let e = end_for(kind);
+            let f = Self::other(e);
+            let r = self.plan_one(
+                &mut st,
+                i,
+                chan,
+                pipe,
+                e,
+                f,
+                &mut cands,
+                &mut fresh,
+                &tx,
+                &mut waits,
+                &mut paired,
+                &mut later,
+            );
+            if let Err(r) = r {
+                refusal = Some(r);
+            }
+        }
+        drop(st);
+        drop(fresh);
+        // The rebinds are queued on the holders' links: the IO thread
+        // writes them, and must be woken to.
+        self.wake();
+        // 3. Wait for the Rebounds, then pull.
+        let due = StdInstant::now()
+            .checked_add(REBIND_DEADLINE)
+            .unwrap_or_else(StdInstant::now);
+        let mut answers: BTreeMap<u64, Rebind> = BTreeMap::new();
+        while answers.len() < waits.len() {
+            let left = due.saturating_duration_since(StdInstant::now());
+            match rx.recv_timeout(left) {
+                Ok((req, a)) => {
+                    answers.insert(req, a);
+                }
+                Err(_) => break,
+            }
+        }
+        for w in &waits {
+            // A holder that did not switch must not keep the new end: it
+            // is taken back (close-source) and checked.
+            if answers.get(&w.req) == Some(&Rebind::NotSwitched)
+                && let Some(p) = &w.process
+                && let Ok(back) = sys::pull(p, w.value, true)
+            {
+                later.push(Box::new(back));
+            }
+        }
+        for c in &mut cands {
+            // A child's regions were pulled with close-source already.
+            if let (Some(p), false, false) = (process, c.own, c.kind.is_region()) {
+                let pulled = check_value(c.value)
+                    .ok()
+                    .and_then(|()| sys::pull(p, c.value, true).ok());
+                let peek = c.held.take();
+                // A value that names another object than the peek did (or
+                // one where the peek found nothing) is not queried at all:
+                // it may be a synchronous end with a read pending.
+                c.changed = match (&pulled, &peek) {
+                    (Some(a), Some(b)) => !sys::same_object(a, b),
+                    (Some(_), None) => true,
+                    (None, _) => false,
+                };
+                // The peek's copy goes before the count is taken.
+                drop(peek);
+                c.facts = match (&pulled, c.changed) {
+                    (Some(h), false) => sys::facts(h),
+                    _ => sys::RawFacts::default(),
+                };
+                c.held = pulled;
+            }
+        }
+        // 4. Decide.
+        let mut st = self.lock();
+        let Some(b) = st.broker.as_mut() else {
+            return Err(Refusal::Carrier);
+        };
+        for k in &chans {
+            b.busy.remove(k);
+        }
+        self.settled.notify_all();
+        for w in waits {
+            let a = answers.get(&w.req).copied();
+            if a.is_none() {
+                b.waiters.remove(&w.req);
+                refusal.get_or_insert(Refusal::Rebind);
+            }
+            if w.f == PipeEnd::Receiver && a != Some(Rebind::Switched { park: true }) {
+                b.ledger.cancel_park(w.chan, w.holder, w.prev);
+            }
+            match a {
+                Some(Rebind::Switched { .. }) => {
+                    if let Some(v) = w.by_value
+                        && let Some(g) = b.given.get_mut(&(w.holder, v))
+                        && let Some(pos) = g.iter().position(|x| *x == (w.chan, w.f))
+                    {
+                        g.remove(pos);
+                        if g.is_empty() {
+                            b.given.remove(&(w.holder, v));
+                        }
+                    }
+                    b.grant(w.holder, w.value, w.chan, w.f);
+                    later.push(Box::new(w.mine));
+                }
+                Some(Rebind::NotSwitched)
+                    if b.ledger.knows(w.chan) && b.ledger.where_is(w.chan, w.f) != Where::Gone =>
+                {
+                    b.ledger.keep(w.chan, w.prev);
+                    if let Some(old) = b.pending.insert(
+                        (w.chan, w.f),
+                        Pending {
+                            handle: w.mine,
+                            old_key: w.prev,
+                        },
+                    ) {
+                        b.ledger.let_go(old.old_key);
+                        later.push(Box::new(old.handle));
+                    }
+                }
+                _ => later.push(Box::new(w.mine)),
+            }
+        }
+        let result = Self::commit(b, from, carrier, &mut cands, refusal, &mut later);
+        if let Err(r) = result {
+            b.count(r);
+        }
+        for c in &mut cands {
+            if let Some(k) = c.let_go.take() {
+                b.ledger.let_go(k);
+            }
+            if let (Some(_), Some(pipe)) = (c.chan, c.pipe) {
+                b.ledger.let_go(pipe);
+            }
+        }
+        b.sweep();
+        drop(st);
+        drop(cands);
+        drop(later);
+        result
     }
 
-    /// Decides a relay from already-pulled, already-classified handles,
-    /// under the lock (M8): resolves the channel keys, runs
-    /// [`accept`] on each, and on success moves the handles into a
-    /// ticket. Returns the ticket or the refusal, plus any handles to
-    /// drop outside the lock (the pulled copies, kept only on success).
-    fn relay_decide(
+    /// Step 0 of [`Inner::relay`]: the copies a relay's regions need
+    /// (review Q1), planned and charged under the lock, made here with no
+    /// lock held (D5 review M8), and registered as their sources' one
+    /// copy, which the decision then reuses. A copy another relay is
+    /// making is waited for, then reused. The broker's own records had
+    /// theirs made by `copies_ready`, so for them this finds them made.
+    ///
+    /// # Errors
+    /// [`Refusal::Quota`] if a charge does not fit, a copy fails, the wait
+    /// exceeds [`COPY_WAIT_MAX`], or the relayer died meanwhile (its
+    /// copies are then refunded).
+    fn region_copies(
+        self: &Arc<Self>,
+        from: Proc,
+        cands: &[Cand],
+        later: &mut Vec<Box<dyn Any + Send>>,
+    ) -> Result<(), Refusal> {
+        if !cands.iter().any(|c| c.kind.is_region()) {
+            return Ok(());
+        }
+        let items = || {
+            cands.iter().filter(|c| c.kind.is_region()).filter_map(|c| {
+                c.held
+                    .as_ref()
+                    .map(|h| (h, c.kind, c.len, c.flags, c.section))
+            })
+        };
+        let alive = |b: &Broker| from == BROKER || b.children.contains_key(&from);
+        let deadline = StdInstant::now().checked_add(COPY_WAIT_MAX);
+        let plan = loop {
+            let p = {
+                let mut st = self.lock();
+                match st.broker.as_mut() {
+                    Some(b) if alive(b) => Self::plan_copies(b, from, items()),
+                    _ => Ok(Vec::new()),
+                }
+            };
+            if !matches!(p, Err(Plan::Wait)) {
+                break p;
+            }
+            // A copy that takes longer than this refuses the relay rather
+            // than pin this worker.
+            if deadline.is_none_or(|d| StdInstant::now() >= d) {
+                break Err(Plan::Quota);
+            }
+            std::thread::sleep(COPY_WAIT_POLL);
+        };
+        let jobs = plan.map_err(|_p| Refusal::Quota)?;
+        if jobs.is_empty() {
+            return Ok(());
+        }
+        let (made, failed) = Self::make_copies(jobs);
+        let mut st = self.lock();
+        let Some(b) = st.broker.as_mut() else {
+            later.push(Box::new((made, failed)));
+            return Err(Refusal::Quota);
+        };
+        let copies_ok = failed.is_empty();
+        Self::release_jobs(b, failed);
+        if !alive(b) {
+            // The relayer died while the copies were made.
+            later.push(Box::new(Self::release_prepared(b, made)));
+            return Err(Refusal::Quota);
+        }
+        // Registered now, so the in-progress mark lasts no longer than
+        // the copy.
+        later.push(Box::new(Self::register_made(b, made)));
+        if copies_ok {
+            Ok(())
+        } else {
+            Err(Refusal::Quota)
+        }
+    }
+
+    /// Plans the move of `cands[i]`, end `e` of `chan` (now on `pipe`),
+    /// whose peer is end `f`: see [`Inner::relay`], step 2.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one step of `relay`, split out for reading"
+    )]
+    fn plan_one(
+        &self,
+        st: &mut State,
+        i: usize,
+        chan: PipeKey,
+        pipe: PipeKey,
+        e: PipeEnd,
+        f: PipeEnd,
+        cands: &mut [Cand],
+        fresh: &mut [Option<([u8; 16], OwnedHandle, OwnedHandle)>],
+        tx: &mpsc::SyncSender<(u64, Rebind)>,
+        waits: &mut Vec<RebindWait>,
+        paired: &mut BTreeSet<PipeKey>,
+        later: &mut Vec<Box<dyn Any + Send>>,
+    ) -> Result<(), Refusal> {
+        let Some(b) = st.broker.as_mut() else {
+            return Err(Refusal::Carrier);
+        };
+        b.ledger.touch(chan).map_err(|_e| Refusal::Quota)?;
+        let old_room = |r: crate::ipc::win::ledger::LedgerError| match r {
+            crate::ipc::win::ledger::LedgerError::OldPipes => Refusal::OldPipes,
+            _ => Refusal::Quota,
+        };
+        // An end whose peer moved while it was in transit already has its
+        // replacement: a broker-made end no process ever held.
+        if let Some(p) = b.pending.remove(&(chan, e)) {
+            if e == PipeEnd::Receiver
+                && let Err(r) = b.ledger.queue_old(chan, pipe)
+            {
+                b.pending.insert((chan, e), p);
+                return Err(old_room(r));
+            }
+            if let Some(c) = cands.get_mut(i) {
+                c.ticket_end = Some(p.handle);
+                c.queue_old = e == PipeEnd::Receiver;
+                c.let_go = Some(p.old_key);
+            }
+            return Ok(());
+        }
+        let partner = cands
+            .iter()
+            .position(|c| c.chan == Some(chan) && end_for(c.kind) == f);
+        let peer = if partner.is_some() {
+            None
+        } else {
+            Some(b.ledger.where_is(chan, f))
+        };
+        if peer == Some(Where::Gone) {
+            // Nothing can write into or read from the old pipe any more:
+            // the end moves as it is.
+            return Ok(());
+        }
+        let Some((id, server, client)) = fresh.get_mut(i).and_then(Option::take) else {
+            return Err(Refusal::NoTicket);
+        };
+        let (mine_e, mine_f) = if e == PipeEnd::Receiver {
+            (server, client)
+        } else {
+            (client, server)
+        };
+        // The moving receiver's pipe is queued for whoever listens next.
+        if e == PipeEnd::Receiver {
+            b.ledger.queue_old(chan, pipe).map_err(old_room)?;
+        }
+        let prev = b.ledger.switch_pipe(
+            chan,
+            PipeKey {
+                creator: BROKER,
+                id,
+            },
+        );
+        if let Some(c) = cands.get_mut(i) {
+            c.ticket_end = Some(mine_e);
+            c.queue_old = e == PipeEnd::Receiver;
+        }
+        match peer {
+            // Both ends in this relay: the new holder gets both new ends.
+            None => {
+                if let Some(c) = partner.and_then(|j| cands.get_mut(j)) {
+                    c.ticket_end = Some(mine_f);
+                    c.queue_old = f == PipeEnd::Receiver;
+                    if f == PipeEnd::Receiver {
+                        b.ledger.queue_old(chan, pipe).map_err(old_room)?;
+                    }
+                }
+                paired.insert(chan);
+            }
+            Some(Where::Gone) => later.push(Box::new(mine_f)),
+            Some(Where::Ticket(t)) => {
+                let slot = b
+                    .ledger
+                    .ticket_index(&t, chan, f)
+                    .and_then(|n| b.held.get_mut(&t).and_then(|hs| hs.get_mut(n)));
+                let Some(slot) = slot else {
+                    later.push(Box::new(mine_f));
+                    return Err(Refusal::Rebind);
+                };
+                let old = core::mem::replace(slot, mine_f);
+                Self::keep_or_close(b, chan, f, prev, old, later).map_err(old_room)?;
+            }
+            Some(Where::Proc(BROKER)) => {
+                let own = b
+                    .own
+                    .iter()
+                    .find(|(_, v)| **v == (chan, f))
+                    .map(|(id, _)| *id)
+                    .filter(|id| st.ends.get(id).is_some_and(Self::movable));
+                match own {
+                    Some(id) => match Self::switch_end(st, id, mine_f, later) {
+                        Switch::Park(h) => {
+                            let Some(b) = st.broker.as_mut() else {
+                                return Err(Refusal::Carrier);
+                            };
+                            Self::keep_or_close(b, chan, f, prev, h, later).map_err(old_room)?;
+                            if let Some(End {
+                                role: Role::Receiver { old_queued, .. },
+                                ..
+                            }) = st.ends.get_mut(&id)
+                            {
+                                *old_queued = true;
+                            }
+                        }
+                        Switch::Done | Switch::No => {}
+                    },
+                    // On its way through the broker's own relay.
+                    None => {
+                        b.ledger.keep(chan, prev);
+                        b.pending.insert(
+                            (chan, f),
+                            Pending {
+                                handle: mine_f,
+                                old_key: prev,
+                            },
+                        );
+                    }
+                }
+            }
+            Some(Where::Proc(h)) => {
+                let by_value = b
+                    .given
+                    .iter()
+                    .find(|((p, _), g)| *p == h && g.contains(&(chan, f)))
+                    .map(|((_, v), _)| *v);
+                let target = match by_value {
+                    Some(v) => Ok(v),
+                    None if chan.creator == h && prev == chan => Err(chan.id),
+                    None => {
+                        later.push(Box::new(mine_f));
+                        return Err(Refusal::Rebind);
+                    }
+                };
+                let Some(child) = b.children.get(&h) else {
+                    later.push(Box::new(mine_f));
+                    return Err(Refusal::Rebind);
+                };
+                let process = sys::duplicate(&child.process.0).ok().map(sys::Process);
+                if f == PipeEnd::Receiver
+                    && let Err(r) = b.ledger.expect_park(chan, h, prev)
+                {
+                    later.push(Box::new(mine_f));
+                    return Err(old_room(r));
+                }
+                let value = match sys::give(&child.process, &mine_f) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        if f == PipeEnd::Receiver {
+                            b.ledger.cancel_park(chan, h, prev);
+                        }
+                        later.push(Box::new(mine_f));
+                        return Err(Refusal::Rebind);
+                    }
+                };
+                b.next_rebind = b.next_rebind.wrapping_add(1);
+                let req = b.next_rebind;
+                b.waiters.insert(req, (h, tx.clone()));
+                let ctl = match target {
+                    Ok(end) => Ctl::RebindValue {
+                        req,
+                        end,
+                        new: value,
+                    },
+                    Err(id) => Ctl::RebindId {
+                        req,
+                        id,
+                        new: value,
+                    },
+                };
+                self.send_ctl(st, Some(h), &ctl);
+                waits.push(RebindWait {
+                    req,
+                    holder: h,
+                    chan,
+                    f,
+                    prev,
+                    value,
+                    by_value,
+                    mine: mine_f,
+                    process,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// The other end of a channel.
+    const fn other(e: PipeEnd) -> PipeEnd {
+        match e {
+            PipeEnd::Sender => PipeEnd::Receiver,
+            PipeEnd::Receiver => PipeEnd::Sender,
+        }
+    }
+
+    /// An old pipe end the broker took from a peer that switched: a
+    /// receiver's server end is queued for its next listener, a sender's
+    /// client end closed.
+    fn keep_or_close(
+        b: &mut Broker,
+        chan: PipeKey,
+        end: PipeEnd,
+        key: PipeKey,
+        h: OwnedHandle,
+        later: &mut Vec<Box<dyn Any + Send>>,
+    ) -> Result<(), crate::ipc::win::ledger::LedgerError> {
+        if end == PipeEnd::Receiver {
+            match b.ledger.queue_old(chan, key) {
+                Ok(()) => {
+                    b.old.insert(key, h);
+                }
+                Err(r) => {
+                    later.push(Box::new(h));
+                    return Err(r);
+                }
+            }
+        } else {
+            later.push(Box::new(h));
+        }
+        Ok(())
+    }
+
+    /// Step 4 of [`Inner::relay`]: accepts each pulled end against the
+    /// kernel's facts and the ledger, and on success holds the ticket's
+    /// ends (the new pipe's where there is one) and queues the moving
+    /// receivers' old pipes. On refusal every pulled end is closed and
+    /// counted gone.
+    fn commit(
         b: &mut Broker,
         from: Proc,
-        carrier_raw: &sys::RawFacts,
-        pulled: Vec<Pulled>,
-        prepared: &mut Vec<Prepared>,
-    ) -> (Result<Ticket, Refusal>, Vec<OwnedHandle>) {
-        let mut spare: Vec<OwnedHandle> = Vec::new();
-        let carrier = match Self::key_of(b, carrier_raw) {
-            Some(k) => k,
-            None => {
-                // The carrier is not this relayer's channel: refuse, and
-                // drop every pulled item (it is gone from the child).
-                spare.extend(pulled.into_iter().filter_map(|p| p.handle));
-                return (Err(Refusal::Carrier), spare);
-            }
-        };
-        let mut ends = Vec::with_capacity(pulled.len());
-        let mut handles = Vec::with_capacity(pulled.len());
-        let mut first_err = None;
+        carrier: PipeKey,
+        cands: &mut [Cand],
+        refusal: Option<Refusal>,
+        later: &mut Vec<Box<dyn Any + Send>>,
+    ) -> Result<Ticket, Refusal> {
+        let mut first_err = refusal;
+        let mut ends = Vec::with_capacity(cands.len());
         // Regions (D6): (index, registry id, outcome, kind, len).
         let mut regions = Vec::new();
-        for (index, p) in pulled.into_iter().enumerate() {
-            if p.kind.is_region() {
-                match Self::region_decide(b, from, &p) {
-                    Ok((id, o)) => regions.push((index, id, o, p.kind, p.len)),
+        for (index, c) in cands.iter().enumerate() {
+            if c.changed {
+                first_err.get_or_insert(Refusal::Changed);
+                continue;
+            }
+            if c.kind.is_region() {
+                match Self::region_decide(b, from, c) {
+                    Ok((id, o)) => regions.push((index, id, o, c.kind, c.len)),
                     Err(r) => {
                         first_err.get_or_insert(r);
                     }
                 }
-                if let Some(h) = p.handle {
-                    handles.push(h);
-                }
                 continue;
             }
             let facts = Facts {
-                raw: p.value,
-                pulled: p.handle.is_some(),
-                is_pipe: p.raw.is_pipe,
-                server_end: p.raw.server_end,
-                message: p.raw.message,
-                max_instances: p.raw.max_instances,
-                read_message: p.raw.read_message,
-                wait: p.raw.wait,
-                pipe: Self::key_of(b, &p.raw),
-                handle_count: p.raw.handle_count,
+                raw: c.value,
+                pulled: c.held.is_some(),
+                is_pipe: c.facts.is_pipe,
+                server_end: c.facts.server_end,
+                message: c.facts.message,
+                max_instances: c.facts.max_instances,
+                read_message: c.facts.read_message,
+                wait: c.facts.wait,
+                pipe: Self::key_of(b, &c.facts),
+                handle_count: c.facts.handle_count,
             };
-            let view = facts
-                .pipe
-                .and_then(|k| b.ledger.view(k, crate::ipc::win::accept::end_for(p.kind)));
+            let view = facts.pipe.and_then(|k| b.ledger.view(k, end_for(c.kind)));
             let ctx = crate::ipc::win::accept::Ctx {
                 relayer: from,
                 carrier,
                 view,
             };
-            match accept(p.kind, &facts, &ctx) {
-                Ok((pipe, end)) => ends.push((pipe, end, p.kind)),
+            match accept(c.kind, &facts, &ctx) {
+                Ok((pipe, end)) if c.changed || Some(pipe) != c.chan => {
+                    first_err.get_or_insert(Refusal::Changed);
+                    ends.push((pipe, end, c.kind));
+                }
+                Ok((pipe, end)) => ends.push((pipe, end, c.kind)),
                 Err(r) => {
                     first_err.get_or_insert(r);
                 }
             }
-            if let Some(h) = p.handle {
-                handles.push(h);
+            // A replacement end must be the broker's only handle to it: a
+            // holder that kept a copy of what it was given is refused.
+            if c.let_go.is_some()
+                && let Some(h) = &c.ticket_end
+                && sys::count_handles(h) != 1
+            {
+                first_err.get_or_insert(Refusal::KeptCopy);
             }
         }
         let keys: Vec<(PipeKey, PipeEnd)> = ends.iter().map(|(p, e, _)| (*p, *e)).collect();
@@ -913,13 +1721,15 @@ impl Inner {
                     }
                 };
                 // The registry moves on last, and is put back if the
-                // ledger then refuses the relay.
+                // ledger then refuses the relay. The copies were made and
+                // registered before the relay claimed its channels, so
+                // none is made here.
                 let (grants, undo) =
-                    Self::region_commit(b, &regions, &mut handles, &mut spare, prepared)?;
+                    Self::region_commit(b, &regions, cands, later, &mut Vec::new())?;
                 let held = Held {
                     carrier,
                     from,
-                    ends,
+                    ends: ends.clone(),
                     regions: grants,
                 };
                 if b.ledger.relay(ticket, held).is_err() {
@@ -931,12 +1741,31 @@ impl Inner {
         };
         match result {
             Ok(ticket) => {
+                let mut handles = Vec::with_capacity(cands.len());
+                for c in cands.iter_mut() {
+                    let pulled = c.held.take();
+                    match c.ticket_end.take() {
+                        Some(new) => {
+                            handles.push(new);
+                            if let (true, Some(old), Some(pipe)) = (c.queue_old, pulled, c.pipe) {
+                                b.old.insert(pipe, old);
+                            }
+                        }
+                        None => handles.extend(pulled),
+                    }
+                }
                 b.held.insert(ticket, handles);
-                (Ok(ticket), spare)
+                Ok(ticket)
             }
             Err(r) => {
-                spare.extend(handles);
-                (Err(r), spare)
+                // The pulled ends are gone; so is each moving end's
+                // channel side (its peer, if it switched, sees Closed).
+                let lost: Vec<(PipeKey, PipeEnd, WireKind)> = cands
+                    .iter()
+                    .filter_map(|c| Some((c.chan?, end_for(c.kind), c.kind)))
+                    .collect();
+                b.ledger.lost(&lost);
+                Err(r)
             }
         }
     }
@@ -946,10 +1775,10 @@ impl Inner {
     fn region_decide(
         b: &Broker,
         from: Proc,
-        p: &Pulled,
+        c: &Cand,
     ) -> Result<(u64, crate::ipc::win::regions::Outcome), Refusal> {
-        let h = p.handle.as_ref().ok_or(Refusal::PullFailed)?;
-        Self::region_decide_parts(b, from, h, p.kind, p.len, p.flags, p.section)
+        let h = c.held.as_ref().ok_or(Refusal::PullFailed)?;
+        Self::region_decide_parts(b, from, h, c.kind, c.len, c.flags, c.section)
     }
 
     /// [`Inner::region_decide`] on a borrowed handle and its facts.
@@ -999,12 +1828,13 @@ impl Inner {
     /// Applies a relay's region outcomes once every item passed: moves
     /// each section's state on and makes the copies the outcomes ask for
     /// (review Q1), putting each copy's read-only handle in place of the
-    /// pulled one. Returns the grants for the ticket.
+    /// pulled one (the pulled one is closed later, off the lock). Returns
+    /// the grants for the ticket.
     fn region_commit(
         b: &mut Broker,
         regions: &[(usize, u64, crate::ipc::win::regions::Outcome, WireKind, u32)],
-        handles: &mut [OwnedHandle],
-        spare: &mut Vec<OwnedHandle>,
+        cands: &mut [Cand],
+        later: &mut Vec<Box<dyn Any + Send>>,
         prepared: &mut Vec<Prepared>,
     ) -> Result<(Vec<(usize, Grant)>, RegionUndo), Refusal> {
         let mut grants = Vec::with_capacity(regions.len());
@@ -1048,8 +1878,10 @@ impl Inner {
                         (copy_id, h)
                     }
                 };
-                if let Some(slot) = handles.get_mut(index) {
-                    spare.push(core::mem::replace(slot, h));
+                if let Some(c) = cands.get_mut(index)
+                    && let Some(pulled) = c.held.replace(h)
+                {
+                    later.push(Box::new(pulled));
                 }
                 grant.id = copy_id;
                 grant.filler_trusted = false;
@@ -1114,17 +1946,6 @@ impl Inner {
             },
         );
         Ok((id, h))
-    }
-
-    /// The region items of a pulled relay, for [`Inner::plan_copies`].
-    fn pulled_regions(
-        pulled: &[Pulled],
-    ) -> impl Iterator<Item = (&OwnedHandle, WireKind, u32, u8, sys::SectionFacts)> {
-        pulled.iter().filter_map(|p| {
-            p.handle
-                .as_ref()
-                .map(|h| (h, p.kind, p.len, p.flags, p.section))
-        })
     }
 
     /// Registers a copy made off the lock as `SealedByBroker` (its charge
@@ -1312,6 +2133,88 @@ impl Inner {
             .map(|(id, _)| *id)
     }
 
+    /// A refused relay's values: each is still pulled with close-source
+    /// (the relayer gave them up) and closed. A child's regions were
+    /// pulled already and close with `cands`.
+    fn discard(process: Option<&sys::Process>, cands: Vec<Cand>) {
+        if let Some(p) = process {
+            for c in &cands {
+                if !c.own
+                    && !c.kind.is_region()
+                    && check_value(c.value).is_ok()
+                    && let Ok(h) = sys::pull(p, c.value, true)
+                {
+                    drop(h);
+                }
+            }
+        }
+        drop(cands);
+    }
+
+    /// Answers child `proc`'s `TakeDrains` for the receiver it peeked as
+    /// `raw` (W3): the channel's old pipes, given into the child in order,
+    /// if it holds that receiver and none were lost.
+    fn give_drains(
+        b: &mut Broker,
+        proc: Proc,
+        req: u64,
+        raw: &sys::RawFacts,
+        later: &mut Vec<Box<dyn Any + Send>>,
+    ) -> Ctl {
+        let chan = Self::receiver_key(b, raw)
+            .filter(|k| b.ledger.where_is(*k, PipeEnd::Receiver) == Where::Proc(proc));
+        let hs: Option<Vec<OwnedHandle>> = chan
+            .and_then(|k| b.ledger.take_old(k))
+            .and_then(|keys| keys.into_iter().map(|k| b.old.remove(&k)).collect());
+        b.sweep();
+        let (Some(hs), Some(c)) = (hs, b.children.get(&proc)) else {
+            return Ctl::DrainsRefused { req };
+        };
+        let items: Vec<CtlItem> = hs
+            .iter()
+            .filter_map(|h| sys::give(&c.process, h).ok())
+            .map(|value| CtlItem::end(value, WireKind::Receiver))
+            .collect();
+        let all = items.len() == hs.len();
+        later.push(Box::new(hs));
+        match Items::from_slice(&items) {
+            Some(items) if all => Ctl::Drains { req, items },
+            _ => Ctl::DrainsRefused { req },
+        }
+    }
+
+    /// The broker listens on its own receiver `id`: it takes the old pipes
+    /// it holds for that channel itself (W3). A receiver whose old pipes
+    /// were lost ends in `Closed`.
+    fn take_own_drains(self: &Arc<Self>, st: &mut State, id: u64, facts: Option<&sys::RawFacts>) {
+        let Some(b) = st.broker.as_mut() else {
+            return;
+        };
+        let chan = b
+            .own
+            .get(&id)
+            .map(|(k, _)| *k)
+            .or_else(|| facts.and_then(|f| Self::key_of(b, f)));
+        let hs: Option<Vec<OwnedHandle>> = chan
+            .and_then(|k| b.ledger.take_old(k))
+            .and_then(|keys| keys.into_iter().map(|k| b.old.remove(&k)).collect());
+        b.sweep();
+        match (hs, st.ends.get_mut(&id)) {
+            (
+                Some(hs),
+                Some(End {
+                    role: Role::Receiver { drains, .. },
+                    ..
+                }),
+            ) => {
+                for h in hs.into_iter().rev() {
+                    drains.push_front(Arc::new(h));
+                }
+            }
+            _ => self.end_listener(st, id, Item::Closed),
+        }
+    }
+
     /// What the kernel says about a receiver end a child names by value,
     /// without taking it: a peek (no close-source) whose copy is dropped.
     /// Can wait on a synchronous end with a read pending (W8), so it runs
@@ -1395,7 +2298,10 @@ impl Inner {
                 };
                 match sys::give(&c.process, h) {
                     Ok(v) => {
-                        items.push(CtlItem::end(v, *kind));
+                        items.push(CtlItem {
+                            drains: *end == PipeEnd::Receiver && b.ledger.has_old(*pipe),
+                            ..CtlItem::end(v, *kind)
+                        });
                         noted.push((v, *pipe, *end));
                     }
                     Err(_) => ok = false,
@@ -1447,7 +2353,12 @@ impl Inner {
     /// forgets the child (dropping the queue's sender) and the queue is
     /// drained. It holds the transport weakly, so it never keeps it
     /// alive.
-    fn worker(inner: &Weak<Self>, proc: Proc, process: &sys::Process, jobs: &mpsc::Receiver<Job>) {
+    fn worker(
+        inner: &Weak<Self>,
+        proc: Proc,
+        process: Option<&sys::Process>,
+        jobs: &mpsc::Receiver<Job>,
+    ) {
         while let Ok(job) = jobs.recv() {
             let Some(inner) = inner.upgrade() else {
                 return;
@@ -1460,92 +2371,162 @@ impl Inner {
     /// the kernel queries first, off the lock; then the decision under
     /// it. A request whose child is gone by then is dropped unanswered,
     /// and whatever it pulled is closed outside the lock.
-    fn run_job(self: &Arc<Self>, proc: Proc, process: &sys::Process, job: Job) {
+    fn run_job(self: &Arc<Self>, proc: Proc, process: Option<&sys::Process>, job: Job) {
         let mut later: Vec<Box<dyn Any + Send>> = Vec::new();
         let mut events = Vec::new();
         let mut reply = None;
+        // The broker's own relays have no process; a child's job always
+        // has one.
+        let process = match (job, process) {
+            (
+                Job::OwnRelay {
+                    req,
+                    carrier,
+                    carrier_facts,
+                    taken,
+                },
+                _,
+            ) => {
+                let cands = taken
+                    .into_iter()
+                    .map(|(h, kind, len, flags)| {
+                        let region = kind.is_region();
+                        Cand {
+                            value: sys::value(&h),
+                            kind,
+                            facts: if region {
+                                sys::RawFacts::default()
+                            } else {
+                                sys::facts(&h)
+                            },
+                            section: if region {
+                                sys::section_facts(&h)
+                            } else {
+                                sys::SectionFacts::default()
+                            },
+                            held: Some(h),
+                            own: true,
+                            chan: None,
+                            pipe: None,
+                            ticket_end: None,
+                            queue_old: false,
+                            let_go: None,
+                            changed: false,
+                            len,
+                            flags,
+                        }
+                    })
+                    .collect();
+                let res = self.relay(BROKER, None, &carrier_facts, cands);
+                let mut st = self.lock();
+                Self::relay_done(&mut st, carrier, req, res.ok());
+                drop(st);
+                self.wake();
+                return;
+            }
+            (job, Some(p)) => (job, p),
+            (_, None) => return,
+        };
+        let (job, process) = process;
         let mut st = match job {
+            Job::OwnRelay { .. } => return,
             Job::Relay {
                 req,
                 carrier,
                 items,
             } => {
-                let (carrier_raw, pulled) = Self::classify_relay(process, carrier, &items);
-                // The copies review Q1 asks for: planned and charged under
-                // the lock, made here on this child's worker with no lock
-                // held (D5 review M8), then used by the decision.
-                // A copy another relay is making is waited for here, on
-                // this child's worker, then reused.
-                let deadline = StdInstant::now().checked_add(COPY_WAIT_MAX);
-                let plan = loop {
-                    let p = {
-                        let mut st = self.lock();
-                        match st.broker.as_mut() {
-                            Some(b) if b.children.contains_key(&proc) => {
-                                Self::plan_copies(b, proc, Self::pulled_regions(&pulled))
-                            }
-                            _ => Ok(Vec::new()),
-                        }
-                    };
-                    if !matches!(p, Err(Plan::Wait)) {
-                        break p;
-                    }
-                    // A copy that takes longer than this refuses the relay
-                    // rather than pin this worker.
-                    if deadline.is_none_or(|d| StdInstant::now() >= d) {
-                        break Err(Plan::Quota);
-                    }
-                    std::thread::sleep(COPY_WAIT_POLL);
-                };
-                let (mut prepared, failed, planned) = match plan {
-                    Ok(jobs) => {
-                        let (made, failed) = Self::make_copies(jobs);
-                        (made, failed, Ok(()))
-                    }
-                    Err(_) => (Vec::new(), Vec::new(), Err(Refusal::Quota)),
-                };
-                let mut st = self.lock();
-                match st.broker.as_mut() {
-                    // The child may have died while the copies were made:
-                    // then they are refunded and dropped below.
-                    Some(b) if b.children.contains_key(&proc) => {
-                        let copies_ok = failed.is_empty();
-                        Self::release_jobs(b, failed);
-                        // Registered now, so the in-progress mark lasts no
-                        // longer than the copy; the decision reuses them.
-                        later.push(Box::new(Self::register_made(
-                            b,
-                            core::mem::take(&mut prepared),
-                        )));
-                        let (res, spare) = match planned {
-                            Ok(()) if copies_ok => {
-                                Self::relay_decide(b, proc, &carrier_raw, pulled, &mut prepared)
-                            }
-                            Ok(()) | Err(_) => {
-                                let r = planned.err().unwrap_or(Refusal::Quota);
-                                let spare = pulled.into_iter().filter_map(|p| p.handle).collect();
-                                (Err(r), spare)
-                            }
+                let carrier_raw = Self::peek_raw(process, carrier);
+                let cands = items
+                    .as_slice()
+                    .iter()
+                    .map(|i| {
+                        // A channel end is peeked: it is pulled only after
+                        // its peer has moved to a new pipe (W3). A region
+                        // has no peer, so it is pulled with close-source at
+                        // once (D6).
+                        let region = i.kind.is_region();
+                        let held = check_value(i.value)
+                            .ok()
+                            .and_then(|()| sys::pull(process, i.value, region).ok());
+                        let (facts, section) = if region {
+                            let s = held.as_ref().map(sys::section_facts).unwrap_or_default();
+                            (sys::RawFacts::default(), s)
+                        } else {
+                            let f = held.as_ref().map(sys::facts).unwrap_or_default();
+                            (f, sys::SectionFacts::default())
                         };
-                        later.push(Box::new(Self::release_prepared(b, prepared)));
-                        later.push(Box::new(spare));
-                        reply = Some(match res {
-                            Ok(ticket) => Ctl::RelayOk { req, ticket },
-                            Err(r) => Ctl::RelayRefused {
-                                req,
-                                reason: r.code(),
-                            },
-                        });
-                    }
-                    other => {
-                        if let Some(b) = other {
-                            Self::release_jobs(b, failed);
-                            later.push(Box::new(Self::release_prepared(b, prepared)));
+                        Cand {
+                            value: i.value,
+                            kind: i.kind,
+                            facts,
+                            held,
+                            own: false,
+                            chan: None,
+                            pipe: None,
+                            ticket_end: None,
+                            queue_old: false,
+                            let_go: None,
+                            changed: false,
+                            len: i.len,
+                            flags: i.flags,
+                            section,
                         }
-                        let spare: Vec<OwnedHandle> =
-                            pulled.into_iter().filter_map(|p| p.handle).collect();
-                        later.push(Box::new(spare));
+                    })
+                    .collect();
+                let res = self.relay(proc, Some(process), &carrier_raw, cands);
+                let st = self.lock();
+                if st
+                    .broker
+                    .as_ref()
+                    .is_some_and(|b| b.children.contains_key(&proc))
+                {
+                    reply = Some(match res {
+                        Ok(ticket) => Ctl::RelayOk { req, ticket },
+                        Err(r) => Ctl::RelayRefused {
+                            req,
+                            reason: r.code(),
+                        },
+                    });
+                }
+                st
+            }
+            Job::Park { old } => {
+                let pulled = check_value(old)
+                    .ok()
+                    .and_then(|()| sys::pull(process, old, true).ok());
+                let f = pulled.as_ref().map(sys::facts).unwrap_or_default();
+                let mut st = self.lock();
+                if let Some(b) = st.broker.as_mut()
+                    && b.children.contains_key(&proc)
+                {
+                    // Only an old pipe's sole server end this holder was
+                    // expected to hand back joins its channel's queue.
+                    let ok = f.is_pipe
+                        && f.server_end
+                        && f.message
+                        && f.read_message
+                        && f.wait
+                        && f.max_instances == 1
+                        && f.handle_count == 1;
+                    let key = Self::pipe_key_of(b, &f);
+                    match (ok, key, pulled) {
+                        (true, Some(k), Some(h)) if b.ledger.park(proc, k).is_ok() => {
+                            b.old.insert(k, h);
+                        }
+                        (_, _, h) => later.push(Box::new(h)),
                     }
+                } else {
+                    later.push(Box::new(pulled));
+                }
+                st
+            }
+            Job::TakeDrains { req, rx } => {
+                let raw = Self::peek_raw(process, rx);
+                let mut st = self.lock();
+                if let Some(b) = st.broker.as_mut()
+                    && b.children.contains_key(&proc)
+                {
+                    reply = Some(Self::give_drains(b, proc, req, &raw, &mut later));
                 }
                 st
             }
@@ -1666,6 +2647,37 @@ impl Inner {
                 }
                 None
             }
+            // Answered inline, on the IO thread: the relayer's worker is
+            // waiting for it (W3).
+            Ctl::Rebound {
+                req,
+                switched,
+                park,
+            } => {
+                if b.waiters.get(&req).is_some_and(|(h, _)| *h == from)
+                    && let Some((_, tx)) = b.waiters.remove(&req)
+                {
+                    let a = if switched {
+                        Rebind::Switched { park }
+                    } else {
+                        Rebind::NotSwitched
+                    };
+                    let _ = tx.try_send((req, a));
+                }
+                None
+            }
+            Ctl::Park { old } => {
+                if !Self::enqueue(b, from, Job::Park { old }) {
+                    return self.child_gone(st, from);
+                }
+                None
+            }
+            Ctl::TakeDrains { req, rx } => {
+                if !Self::enqueue(b, from, Job::TakeDrains { req, rx }) {
+                    return self.child_gone(st, from);
+                }
+                None
+            }
             Ctl::Closed { end } => {
                 // Resolved from the give map, so no handle is pulled and
                 // no kernel query blocks (items 2, 3). The oldest grant
@@ -1685,7 +2697,11 @@ impl Inner {
             | Ctl::RelayRefused { .. }
             | Ctl::Redeemed { .. }
             | Ctl::RedeemRefused { .. }
-            | Ctl::BindBroken { .. } => {
+            | Ctl::BindBroken { .. }
+            | Ctl::RebindValue { .. }
+            | Ctl::RebindId { .. }
+            | Ctl::Drains { .. }
+            | Ctl::DrainsRefused { .. } => {
                 return self.child_gone(st, from);
             }
         };
@@ -1762,6 +2778,18 @@ impl Inner {
         let Some(c) = b.children.remove(&p) else {
             return out;
         };
+        // A relay waiting for this child's Rebound stops waiting (W3).
+        let asked: Vec<u64> = b
+            .waiters
+            .iter()
+            .filter(|(_, (h, _))| *h == p)
+            .map(|(r, _)| *r)
+            .collect();
+        for r in asked {
+            if let Some((_, tx)) = b.waiters.remove(&r) {
+                let _ = tx.try_send((r, Rebind::Gone));
+            }
+        }
         for t in b.ledger.gone(p) {
             if let Some(hs) = b.held.remove(&t) {
                 out.push(Box::new(hs));
@@ -1796,6 +2824,224 @@ impl Inner {
 
     // ---- a child's side ------------------------------------------------
 
+    /// Moves end `id` to the new pipe end `new` (W3): its peer moved, so
+    /// both ends go to a pipe no former holder ever had. A sender writes
+    /// on the new pipe from now on; a write still pending on the old one
+    /// finishes when the reader drains it (it is never cancelled, so no
+    /// record is lost), then the old pipe's credit read is cancelled and
+    /// the old pipe closes. A listening receiver keeps its old pipe as a
+    /// drain, reads it to its end, then the new one, and sends its
+    /// current delivered count as its first credit on the new pipe (a
+    /// credit left in the old pipe is superseded). An unlistened
+    /// receiver gives its old pipe back to the broker (`Park`). An end on
+    /// its way to another process is not switched; the broker applies the
+    /// switch when it pulls that end.
+    fn switch_end(
+        st: &mut State,
+        id: u64,
+        new: OwnedHandle,
+        later: &mut Vec<Box<dyn Any + Send>>,
+    ) -> Switch {
+        let Some(end) = st.ends.get_mut(&id).filter(|e| Self::movable(e)) else {
+            later.push(Box::new(new));
+            return Switch::No;
+        };
+        let old = core::mem::replace(&mut end.h, Arc::new(new));
+        let (writing, reading) = (end.writing, end.reading);
+        match &mut end.role {
+            Role::Sender { .. } => {
+                end.writing = false;
+                end.reading = false;
+                if writing {
+                    // The credit read stops once the write is done.
+                    end.old.push(OldPipe {
+                        h: old,
+                        writing: true,
+                        reading,
+                    });
+                } else if reading {
+                    sys::cancel(&old);
+                    end.old.push(OldPipe {
+                        h: old,
+                        writing: false,
+                        reading: true,
+                    });
+                } else {
+                    later.push(Box::new(old));
+                }
+                Switch::Done
+            }
+            Role::Receiver {
+                flow,
+                listener: Some(l),
+                drains,
+                ..
+            } => {
+                // A read in flight is on the oldest drain or, with none,
+                // on the old pipe, which is now the oldest drain.
+                drains.push_back(old);
+                end.writing = false;
+                l.credit.note(Credit {
+                    capacity: flow.capacity,
+                    delivered: flow.delivered,
+                });
+                Switch::Done
+            }
+            Role::Receiver {
+                listener: None,
+                drains,
+                ..
+            } => match Arc::try_unwrap(old) {
+                Ok(h) => Switch::Park(h),
+                Err(shared) => {
+                    // Still referenced (cannot happen without a listener):
+                    // keep it to read first instead.
+                    drains.push_back(shared);
+                    Switch::Done
+                }
+            },
+            // Not movable, so never reached.
+            Role::Link { .. } | Role::Region { .. } => Switch::No,
+        }
+    }
+
+    /// Whether a rebind can switch this end: a channel end not on its way
+    /// to another process.
+    fn movable(e: &End) -> bool {
+        match &e.role {
+            Role::Sender { in_transit, .. } | Role::Receiver { in_transit, .. } => !*in_transit,
+            Role::Link { .. } | Role::Region { .. } => false,
+        }
+    }
+
+    /// A child's answer to `RebindValue` or `RebindId`: finds the end,
+    /// adopts the new pipe end and switches (W3). A value it does not
+    /// adopt is left in its table, for the broker to take back.
+    fn child_rebind(
+        &self,
+        st: &mut State,
+        req: u64,
+        target: Result<u64, [u8; 16]>,
+        new: u64,
+        later: &mut Vec<Box<dyn Any + Send>>,
+    ) {
+        let held = |st: &State, v: u64| st.ends.values().any(|e| sys::value(&e.h) == v);
+        let found = if held(st, new) {
+            None
+        } else {
+            match target {
+                Ok(value) => st
+                    .ends
+                    .iter()
+                    .find(|(_, e)| sys::value(&e.h) == value && Self::movable(e))
+                    .map(|(id, e)| (*id, matches!(e.role, Role::Receiver { .. })))
+                    .and_then(|(id, server)| sys::adopt_pipe(new, server).map(|h| (id, h))),
+                Err(pipe_id) => sys::adopt_pipe_end(new).and_then(|(h, server)| {
+                    let id = st
+                        .ends
+                        .iter()
+                        .find(|(_, e)| {
+                            e.pipe_id == Some(pipe_id)
+                                && Self::movable(e)
+                                && matches!(
+                                    (&e.role, server),
+                                    (Role::Receiver { .. }, true) | (Role::Sender { .. }, false)
+                                )
+                        })
+                        .map(|(id, _)| *id);
+                    match id {
+                        Some(id) => Some((id, h)),
+                        None => {
+                            sys::forget(h);
+                            None
+                        }
+                    }
+                }),
+            }
+        };
+        let target_id = found.as_ref().map(|(id, _)| *id);
+        let outcome = match found {
+            // Found movable above, under the same lock: it switches.
+            Some((id, h)) => Self::switch_end(st, id, h, later),
+            None => Switch::No,
+        };
+        let (switched, park) = match &outcome {
+            Switch::No => (false, false),
+            Switch::Done => (true, false),
+            Switch::Park(_) => (true, true),
+        };
+        self.send_ctl(
+            st,
+            None,
+            &Ctl::Rebound {
+                req,
+                switched,
+                park,
+            },
+        );
+        if let Switch::Park(h) = outcome {
+            self.send_ctl(
+                st,
+                None,
+                &Ctl::Park {
+                    old: sys::value(&h),
+                },
+            );
+            // The broker pulls it with DUPLICATE_CLOSE_SOURCE.
+            sys::forget(h);
+            if let Some(id) = target_id
+                && let Some(End {
+                    role: Role::Receiver { old_queued, .. },
+                    ..
+                }) = st.ends.get_mut(&id)
+            {
+                *old_queued = true;
+            }
+        }
+    }
+
+    /// The broker answered `TakeDrains` `req`: `got` are the old pipes'
+    /// server ends in order, or `None` if it refused. A receiver whose
+    /// old pipes cannot all be read ends in `Closed`: records were lost
+    /// with them, and reading on would hide that.
+    fn drains_arrived(
+        self: &Arc<Self>,
+        st: &mut State,
+        req: u64,
+        got: Option<Vec<Option<OwnedHandle>>>,
+        later: &mut Vec<Box<dyn Any + Send>>,
+    ) {
+        let Some(rx) = st.takes.remove(&req) else {
+            later.push(Box::new(got));
+            return;
+        };
+        let all: Option<Vec<OwnedHandle>> = got.and_then(|g| g.into_iter().collect());
+        match (all, st.ends.get_mut(&rx)) {
+            (
+                Some(hs),
+                Some(End {
+                    role:
+                        Role::Receiver {
+                            listener: Some(l),
+                            drains,
+                            ..
+                        },
+                    ..
+                }),
+            ) if l.taking == Some(req) => {
+                // Older than any drain kept here since: read first.
+                for h in hs.into_iter().rev() {
+                    drains.push_front(Arc::new(h));
+                }
+                l.taking = None;
+            }
+            (hs, _) => {
+                later.push(Box::new(hs));
+                self.end_listener(st, rx, Item::Closed);
+            }
+        }
+    }
+
     /// Handles one control record from the broker.
     fn child_ctl(self: &Arc<Self>, st: &mut State, c: Ctl) -> Vec<Box<dyn Any + Send>> {
         let mut out: Vec<Box<dyn Any + Send>> = Vec::new();
@@ -1815,7 +3061,7 @@ impl Inner {
                     // A value naming an end this process already holds is
                     // refused, never adopted twice.
                     let held: Vec<u64> = st.ends.values().map(|e| sys::value(&e.h)).collect();
-                    let got: Vec<(Option<OwnedHandle>, CtlItem)> = items
+                    let got: Vec<Got> = items
                         .as_slice()
                         .iter()
                         .map(|i| {
@@ -1831,7 +3077,7 @@ impl Inner {
                                 }
                             };
                             let h = (!held.contains(&i.value)).then(adopt).flatten();
-                            (h, *i)
+                            (h, *i, None)
                         })
                         .collect();
                     out.extend(self.redeemed(st, rx, req, Some(got)));
@@ -1843,13 +3089,36 @@ impl Inner {
                 }
             }
             Ctl::BindBroken { rx_id, peer } => self.bind_broken(st, rx_id, peer),
+            #[cfg(test)]
+            Ctl::RebindValue { .. } | Ctl::RebindId { .. } if st.deaf => {}
+            Ctl::RebindValue { req, end, new } => {
+                self.child_rebind(st, req, Ok(end), new, &mut out)
+            }
+            Ctl::RebindId { req, id, new } => self.child_rebind(st, req, Err(id), new, &mut out),
+            Ctl::Drains { req, items } => {
+                let held: Vec<u64> = st.ends.values().map(|e| sys::value(&e.h)).collect();
+                let got: Vec<Option<OwnedHandle>> = items
+                    .as_slice()
+                    .iter()
+                    .map(|i| {
+                        (!held.contains(&i.value) && i.kind == WireKind::Receiver)
+                            .then(|| sys::adopt_pipe(i.value, true))
+                            .flatten()
+                    })
+                    .collect();
+                self.drains_arrived(st, req, Some(got), &mut out);
+            }
+            Ctl::DrainsRefused { req } => self.drains_arrived(st, req, None, &mut out),
             // Records only a child sends, or a second Hello: ignored.
             Ctl::Hello { .. }
             | Ctl::Relay { .. }
             | Ctl::Redeem { .. }
             | Ctl::Bind { .. }
             | Ctl::Unbind { .. }
-            | Ctl::Closed { .. } => {}
+            | Ctl::Closed { .. }
+            | Ctl::Rebound { .. }
+            | Ctl::Park { .. }
+            | Ctl::TakeDrains { .. } => {}
         }
         out
     }
@@ -1893,7 +3162,7 @@ impl Inner {
         st: &mut State,
         rx: u64,
         req: u64,
-        got: Option<Vec<(Option<OwnedHandle>, CtlItem)>>,
+        got: Option<Vec<Got>>,
     ) -> Vec<Box<dyn Any + Send>> {
         let mut out: Vec<Box<dyn Any + Send>> = Vec::new();
         let Some(End {
@@ -1931,8 +3200,8 @@ impl Inner {
             return out;
         };
         let checked = {
-            let items: Vec<CtlItem> = got.iter().map(|(_, i)| *i).collect();
-            if got.iter().any(|(h, _)| h.is_none()) {
+            let items: Vec<CtlItem> = got.iter().map(|(_, i, _)| *i).collect();
+            if got.iter().any(|(h, _, _)| h.is_none()) {
                 Err(Reason::Redeem)
             } else {
                 check_redeemed(&descs, &items)
@@ -1941,7 +3210,10 @@ impl Inner {
         match checked {
             Ok(kinds) => {
                 let mut handles = Vec::with_capacity(got.len());
-                for (((h, _), (kind, immutable)), desc) in got.into_iter().zip(kinds).zip(&descs) {
+                for (((h, item, key), (kind, immutable)), desc) in
+                    got.into_iter().zip(kinds).zip(&descs)
+                {
+                    let has_old = item.drains;
                     let Some(h) = h else { continue };
                     if desc.kind.is_region() {
                         let role = Role::Region {
@@ -1998,10 +3270,17 @@ impl Inner {
                                 bound: false,
                                 listener: None,
                                 in_transit: false,
+                                drains: VecDeque::new(),
+                                old_queued: has_old,
                             }
                         }
                     };
                     if let Some(id) = Self::insert(st, h, role) {
+                        // The broker keeps its own ends' channels, so a
+                        // close or a peer's move finds them (W3).
+                        if let (Some(b), Some(k)) = (st.broker.as_mut(), key) {
+                            b.own.insert(id, k);
+                        }
                         handles.push(Handle::new(Box::new(WinEnd {
                             inner: Arc::clone(self),
                             id,
@@ -2050,6 +3329,7 @@ impl Inner {
         let ids: Vec<u64> = st.ends.keys().copied().collect();
         let is_broker = st.broker.is_some();
         let mut lost_links: Vec<Proc> = Vec::new();
+        let mut ended: Vec<u64> = Vec::new();
         for id in ids {
             let Some(end) = st.ends.get_mut(&id) else {
                 continue;
@@ -2092,7 +3372,8 @@ impl Inner {
                     in_transit: false,
                     ..
                 } => {
-                    let read = (!l.ended && !flow.paused()).then_some(MAX_PIPE_DATA);
+                    let read =
+                        (!l.ended && !flow.paused() && l.taking.is_none()).then_some(MAX_PIPE_DATA);
                     let write = if end.writing || !l.credit.is_pending() {
                         None
                     } else {
@@ -2110,7 +3391,33 @@ impl Inner {
             if let Some(cap) = read
                 && !end.reading
             {
-                end.reading = sys::start_read(&end.h, cap, id).is_ok();
+                // A receiver reads its oldest drain, if it has one, before
+                // its current pipe (W3). A read on a pipe whose writer has
+                // closed with nothing left in it fails at once (Win32 error
+                // 109, `ERROR_BROKEN_PIPE`) instead of completing with it:
+                // on a drain that is its end, and the next pipe is read;
+                // on the current pipe it is the channel's end, as the same
+                // error from a completion is.
+                loop {
+                    let drain = match &end.role {
+                        Role::Receiver { drains, .. } => drains.front().cloned(),
+                        _ => None,
+                    };
+                    let on = drain.as_ref().unwrap_or(&end.h);
+                    match (sys::start_read(on, cap, id), &mut end.role) {
+                        (Ok(()), _) => end.reading = true,
+                        (Err(sys::ERROR_BROKEN_PIPE), Role::Receiver { drains, .. })
+                            if drain.is_some() =>
+                        {
+                            later.push(Box::new(drains.pop_front()));
+                            continue;
+                        }
+                        (Err(sys::ERROR_BROKEN_PIPE), Role::Receiver { .. }) => ended.push(id),
+                        // Anything else is tried again on the next pass.
+                        (Err(_), _) => {}
+                    }
+                    break;
+                }
             }
             if let Some(msg) = write {
                 match sys::start_write(&end.h, msg, id) {
@@ -2134,6 +3441,9 @@ impl Inner {
                     },
                 }
             }
+        }
+        for id in ended {
+            self.end_listener(st, id, Item::Closed);
         }
         if st.broker.is_some() {
             for p in lost_links {
@@ -2198,10 +3508,12 @@ impl Inner {
             let Some(e) = st.ends.get(cid) else {
                 continue;
             };
+            // A write still pending on an old pipe (W3) counts too: the
+            // moved end's records must all be in before it moves.
             let draining = matches!(
                 &e.role,
                 Role::Sender { outbox, broken, .. } if !outbox.is_empty() && !*broken
-            );
+            ) || !e.old.is_empty();
             if e.writing || draining {
                 // Still writing: wait (the deadline bounds the wait).
                 quiet = false;
@@ -2305,60 +3617,48 @@ impl Inner {
             return;
         };
         if st.broker.is_some() {
-            // The broker relays its own handles locally. Its ends are its
-            // own overlapped pipes, so the kernel queries do not block
-            // (unlike a child's possibly-crafted handle, M8), and this
-            // stays inline. Classify each owned handle, then decide.
-            let pulled: Vec<Pulled> = taken
+            // The broker relays its own handles on its own worker: the
+            // relay may wait for another process's Rebound (W3). Its
+            // ends are its own overlapped pipes, so the kernel queries do
+            // not block (unlike a child's possibly-crafted handle, M8).
+            // The copies its regions need were made first
+            // (`copies_ready`), so the worker never makes one.
+            let req = st.req();
+            if let Some(End {
+                role: Role::Sender { outbox, .. },
+                ..
+            }) = st.ends.get_mut(&id)
+                && let Some(Out::Carry(c)) = outbox.front_mut()
+            {
+                c.record = Some(record);
+                c.relaying = Some(req);
+            }
+            let taken = taken
                 .into_iter()
                 .zip(&descs)
                 .map(|((h, kind), d)| {
-                    let region = kind.is_region();
-                    Pulled {
-                        value: sys::value(&h),
-                        kind,
-                        raw: if region {
-                            sys::RawFacts::default()
-                        } else {
-                            sys::facts(&h)
-                        },
-                        len: if region { d.capacity } else { 0 },
-                        flags: if region { item_flags(d.sent) } else { 0 },
-                        section: if region {
-                            sys::section_facts(&h)
-                        } else {
-                            sys::SectionFacts::default()
-                        },
-                        handle: Some(h),
+                    if kind.is_region() {
+                        (h, kind, d.capacity, item_flags(d.sent))
+                    } else {
+                        (h, kind, 0, 0)
                     }
                 })
                 .collect();
-            let mut prepared = match st.ends.get_mut(&id).map(|e| &mut e.role) {
-                Some(Role::Sender { outbox, .. }) => match outbox.front_mut() {
-                    Some(Out::Carry(c)) => c.prepared.take().unwrap_or_default(),
-                    _ => Vec::new(),
-                },
-                _ => Vec::new(),
+            let job = Job::OwnRelay {
+                req,
+                carrier: id,
+                carrier_facts: Box::new(carrier_facts),
+                taken,
             };
-            let b = match st.broker.as_mut() {
-                Some(b) => b,
-                None => return,
-            };
-            let (res, spare) = Self::relay_decide(b, BROKER, &carrier_facts, pulled, &mut prepared);
-            later.push(Box::new(Self::release_prepared(b, prepared)));
-            later.push(Box::new(spare));
-            match res {
-                Ok(t) => {
-                    if let Some(End {
-                        role: Role::Sender { outbox, .. },
-                        ..
-                    }) = st.ends.get_mut(&id)
-                        && let Some(front) = outbox.front_mut()
-                    {
-                        *front = Out::Ready(join_data(&t, &record));
-                    }
+            let queued = match st.broker.as_ref().and_then(|b| b.own_jobs.as_ref()) {
+                Some(q) => q.try_send(job).map_err(|e| later.push(Box::new(e))).is_ok(),
+                None => {
+                    later.push(Box::new(job));
+                    false
                 }
-                Err(_) => Self::break_sender(st, id),
+            };
+            if !queued {
+                Self::break_sender(st, id);
             }
             return;
         }
@@ -2373,6 +3673,7 @@ impl Inner {
                         kind: *k,
                         len: d.capacity,
                         flags: item_flags(d.sent),
+                        drains: false,
                     }
                 } else {
                     CtlItem::end(sys::value(h), *k)
@@ -2560,6 +3861,7 @@ impl Inner {
         enum Next {
             Nothing,
             Kick,
+            Drained,
             EndWith(Item),
             Redeem(Ticket, Vec<u8>, Vec<HandleDesc>, u64),
             LinkLost(Proc),
@@ -2570,24 +3872,71 @@ impl Inner {
         let id = c.token;
         let is_broker = st.broker.is_some();
         let Some(end) = st.ends.get_mut(&id) else {
-            later.push(Box::new(c.buf));
+            later.push(Box::new((c.buf, c.handle)));
             return later;
         };
+        // After a switch to a new pipe (W3) an operation may still finish
+        // on the end's old pipe or on a drain.
+        let current = Arc::ptr_eq(&c.handle, &end.h);
         if c.write {
-            end.writing = false;
-            // A cancelled write (the end is being torn down) is not a
-            // broken peer; only a real write failure breaks the end
-            // (item 4).
-            if c.error != 0
-                && c.error != sys::ERROR_OPERATION_ABORTED
-                && let Role::Sender { broken, outbox, .. } = &mut end.role
-            {
-                *broken = true;
-                outbox.clear();
+            if current {
+                end.writing = false;
+                // A cancelled write (the end is being torn down) is not a
+                // broken peer; only a real write failure breaks the end
+                // (item 4).
+                if c.error != 0
+                    && c.error != sys::ERROR_OPERATION_ABORTED
+                    && let Role::Sender { broken, outbox, .. } = &mut end.role
+                {
+                    *broken = true;
+                    outbox.clear();
+                }
+            } else if let Some(i) = end.old.iter().position(|o| Arc::ptr_eq(&o.h, &c.handle)) {
+                // The last record on the old pipe is written: stop its
+                // credit read; the pipe closes once that is done, and its
+                // reader then moves on to the new one.
+                if let Some(o) = end.old.get_mut(i) {
+                    o.writing = false;
+                    if o.reading {
+                        sys::cancel(&o.h);
+                    } else {
+                        later.push(Box::new(end.old.remove(i)));
+                    }
+                }
             }
+            // Otherwise a receiver's credit write on a pipe it left.
+            later.push(Box::new(c.handle));
             return later;
         }
+        let mut on_drain = false;
+        if !current {
+            match &mut end.role {
+                Role::Receiver { drains, .. }
+                    if drains.front().is_some_and(|d| Arc::ptr_eq(d, &c.handle)) =>
+                {
+                    on_drain = true;
+                }
+                _ => {
+                    // A sender's credit read on its old pipe, cancelled
+                    // at the switch: its credits are superseded by the
+                    // receiver's first credit on the new pipe.
+                    if let Some(i) = end.old.iter().position(|o| Arc::ptr_eq(&o.h, &c.handle)) {
+                        if let Some(o) = end.old.get_mut(i) {
+                            o.reading = false;
+                            if !o.writing {
+                                later.push(Box::new(end.old.remove(i)));
+                            }
+                        }
+                    } else {
+                        end.reading = false;
+                    }
+                    later.push(Box::new((c.buf, c.handle)));
+                    return later;
+                }
+            }
+        }
         end.reading = false;
+        later.push(Box::new(c.handle));
         let rx_value = sys::value(&end.h);
         let next = match &mut end.role {
             Role::Sender { flow, broken, .. } => {
@@ -2634,6 +3983,9 @@ impl Inner {
                             }
                         }
                         sys::ERROR_OPERATION_ABORTED => Next::Nothing,
+                        // The end of a drain: its writer closed it after
+                        // its last record (W3). Read the next pipe.
+                        _ if on_drain => Next::Drained,
                         // End of the channel: every queued message was
                         // read (probe P9); or any other read failure.
                         _ => Next::EndWith(Item::Closed),
@@ -2658,6 +4010,15 @@ impl Inner {
         match next {
             Next::Nothing => {}
             Next::Kick => self.kick(st, id),
+            Next::Drained => {
+                if let Some(End {
+                    role: Role::Receiver { drains, .. },
+                    ..
+                }) = st.ends.get_mut(&id)
+                {
+                    later.push(Box::new(drains.pop_front()));
+                }
+            }
             Next::EndWith(item) => self.end_listener(st, id, item),
             Next::Redeem(ticket, payload, descs, rx_value) => {
                 let req = st.req();
@@ -2711,7 +4072,7 @@ impl Inner {
                 Ok((held, events)) => {
                     let hs = b.held.remove(&ticket).unwrap_or_default();
                     let mut ends = held.ends.iter();
-                    let mut got: Vec<(Option<OwnedHandle>, CtlItem)> = Vec::with_capacity(hs.len());
+                    let mut got: Vec<Got> = Vec::with_capacity(hs.len());
                     for (index, h) in hs.into_iter().enumerate() {
                         if let Some((_, g)) = held.regions.iter().find(|(i, _)| *i == index) {
                             if g.kind == WireKind::RegionWriter
@@ -2719,9 +4080,14 @@ impl Inner {
                             {
                                 e.state = RState::WriterOut(Some(BROKER));
                             }
-                            got.push((Some(h), region_item(0, g)));
-                        } else if let Some((_, _, k)) = ends.next() {
-                            got.push((Some(h), CtlItem::end(0, *k)));
+                            got.push((Some(h), region_item(0, g), None));
+                        } else if let Some((chan, end, k)) = ends.next() {
+                            let has_old = *end == PipeEnd::Receiver && b.ledger.has_old(*chan);
+                            let item = CtlItem {
+                                drains: has_old,
+                                ..CtlItem::end(0, *k)
+                            };
+                            got.push((Some(h), item, Some((*chan, *end))));
                         }
                     }
                     (Some(got), events)
@@ -2782,6 +4148,7 @@ fn region_item(value: u64, g: &Grant) -> CtlItem {
     CtlItem {
         value,
         kind: g.kind,
+        drains: false,
         len: g.len,
         flags: if g.filler_trusted {
             item_flags(REGION_FILLER_TRUSTED)
@@ -2965,23 +4332,12 @@ impl WindowsIpc {
         } else {
             let mut ledger = Ledger::default();
             ledger.add_proc(BROKER, sys::process_id());
-            state.broker = Some(Broker {
-                ledger,
-                held: BTreeMap::new(),
-                children: BTreeMap::new(),
-                reserved_sids: BTreeSet::new(),
-                creator_sids: BTreeMap::new(),
-                given: BTreeMap::new(),
-                own: BTreeMap::new(),
-                next_proc: 1,
-                regions: BTreeMap::new(),
-                next_region: 0,
-                quota: Quota::default(),
-            });
+            state.broker = Some(Broker::new(ledger, 1));
         }
         let inner = Arc::new(Inner {
             exec,
             state: Mutex::new(state),
+            settled: Condvar::new(),
             thread: OnceLock::new(),
             wake_pending: AtomicBool::new(false),
             container,
@@ -3001,6 +4357,19 @@ impl WindowsIpc {
         })
         .map_err(StartError::Os)?;
         let _ = ready_rx.recv();
+        if inner.lock().broker.is_some() {
+            // The worker for the broker's own relays (W3): like a child's,
+            // it ends once the transport is gone.
+            let (jobs, queue) = mpsc::sync_channel::<Job>(MAX_CHILD_REQUESTS);
+            let weak = Arc::downgrade(&inner);
+            crate::thread::spawn("hg-ipc-own", move || {
+                Inner::worker(&weak, BROKER, None, &queue);
+            })
+            .map_err(StartError::Os)?;
+            if let Some(b) = inner.lock().broker.as_mut() {
+                b.own_jobs = Some(jobs);
+            }
+        }
         Ok(Self {
             inner,
             boot_rx: Mutex::new(None),
@@ -3075,11 +4444,18 @@ impl WindowsIpc {
             return Err(IpcError::Sequence);
         }
         let mut st = self.inner.lock();
+        let take_req = st.req();
+        let is_broker = st.broker.is_some();
         let Some(End {
             h,
-            role: Role::Receiver {
-                bound, listener, ..
-            },
+            role:
+                Role::Receiver {
+                    flow,
+                    bound,
+                    listener,
+                    old_queued,
+                    ..
+                },
             ..
         }) = st.ends.get_mut(&id)
         else {
@@ -3089,16 +4465,44 @@ impl WindowsIpc {
             return Err(IpcError::Refused);
         }
         let rx_value = sys::value(h);
-        let rx_facts = peer.map(|_| sys::facts(h));
+        let rx_facts = (peer.is_some() || *old_queued).then(|| sys::facts(h));
+        // W3: the broker holds old pipes of this channel, to read first. A
+        // child asks for them and reads nothing until they come.
+        let take = core::mem::take(old_queued);
+        let mut credit = PendingCredit::default();
+        if flow.delivered > 0 {
+            // A credit a former holder or an old pipe left stranded is
+            // superseded by this one.
+            credit.note(Credit {
+                capacity: flow.capacity,
+                delivered: flow.delivered,
+            });
+        }
         *listener = Some(Listener {
             seq,
             sink: Arc::new(Mutex::new(sink)),
             queue: VecDeque::new(),
             draining: false,
             ended: false,
-            credit: PendingCredit::default(),
+            credit,
             bound_peer: peer,
+            taking: (take && !is_broker).then_some(take_req),
         });
+        if take {
+            if is_broker {
+                self.inner.take_own_drains(&mut st, id, rx_facts.as_ref());
+            } else {
+                st.takes.insert(take_req, id);
+                self.inner.send_ctl(
+                    &mut st,
+                    None,
+                    &Ctl::TakeDrains {
+                        req: take_req,
+                        rx: rx_value,
+                    },
+                );
+            }
+        }
         if let Some(p) = peer {
             // `id` is this listener's never-reused key (item 8).
             if let Some(b) = st.broker.as_mut() {
@@ -3176,8 +4580,15 @@ impl Ipc for WindowsIpc {
                 bound,
                 listener: None,
                 in_transit: false,
+                drains: VecDeque::new(),
+                old_queued: false,
             },
         );
+        for id in [tx, rx].into_iter().flatten() {
+            if let Some(e) = st.ends.get_mut(&id) {
+                e.pipe_id = Some(name);
+            }
+        }
         if let (Some(b), Some(tx), Some(rx)) = (st.broker.as_mut(), tx, rx) {
             let key = PipeKey {
                 creator: BROKER,
@@ -3651,6 +5062,8 @@ impl Ipc for WindowsIpc {
                 bound: false,
                 listener: None,
                 in_transit: false,
+                drains: VecDeque::new(),
+                old_queued: false,
             },
         );
         drop(st);
@@ -3748,8 +5161,18 @@ impl WindowsIpc {
             Inner::random16().ok_or_else(|| std::io::Error::other("no randomness for a pipe name"))
         };
         let (link_server, link_client) = sys::link_pair(&name()?)?;
-        let (up_rx, up_tx) = sys::pipe_pair(None, &name()?)?;
-        let (down_rx, down_tx) = sys::pipe_pair(None, &name()?)?;
+        let (up_id, down_id) = (name()?, name()?);
+        let (up_rx, up_tx) = sys::pipe_pair(None, &up_id)?;
+        let (down_rx, down_tx) = sys::pipe_pair(None, &down_id)?;
+        // The launch channels are the broker's: keyed by their names.
+        let up_key = PipeKey {
+            creator: BROKER,
+            id: up_id,
+        };
+        let down_key = PipeKey {
+            creator: BROKER,
+            id: down_id,
+        };
         let inherit = sys::inheritable(&link_client)?;
         let mut env = spec.env;
         env.push((LINK_VAR.to_owned(), sys::value(&inherit).to_string()));
@@ -3816,8 +5239,6 @@ impl WindowsIpc {
                 return Err(e);
             }
         };
-        let up_key = sys::facts(&up_rx);
-        let down_key = sys::facts(&down_tx);
         drop((up_tx, down_rx));
         let process = match sys::spawn::process_handle(&child) {
             Ok(p) => p,
@@ -3837,10 +5258,14 @@ impl WindowsIpc {
         let p = b.next_proc;
         b.next_proc = b.next_proc.saturating_add(1);
         b.ledger.add_proc(p, child.pid);
-        for (f, end) in [(&up_key, PipeEnd::Sender), (&down_key, PipeEnd::Receiver)] {
-            if let Some(k) = Inner::key_of(b, f) {
-                let _ = b.ledger.place(k, end, p);
-            }
+        // The child's launch ends are given like any other, so its Closed
+        // releases them and a move of their peers can name them (W3).
+        for (k, end, v) in [
+            (up_key, PipeEnd::Sender, v_up),
+            (down_key, PipeEnd::Receiver, v_down),
+        ] {
+            let _ = b.ledger.place(k, end, p);
+            b.grant(p, v, k, end);
         }
         let link = Inner::insert(
             &mut st,
@@ -3872,7 +5297,7 @@ impl WindowsIpc {
             .and_then(|wp| {
                 let weak = Arc::downgrade(&self.inner);
                 crate::thread::spawn("hg-ipc-child", move || {
-                    Inner::worker(&weak, p, &wp, &queue);
+                    Inner::worker(&weak, p, Some(&wp), &queue);
                 })
                 .ok()
             });
@@ -3915,6 +5340,8 @@ impl WindowsIpc {
                 bound: false,
                 listener: None,
                 in_transit: false,
+                drains: VecDeque::new(),
+                old_queued: false,
             },
         );
         let tx = Inner::insert(
@@ -3938,6 +5365,10 @@ impl WindowsIpc {
             sys::spawn::kill(&child);
             return Err(std::io::Error::other("no room for the launch ends"));
         };
+        if let Some(b) = st.broker.as_mut() {
+            b.own.insert(rx, (up_key, PipeEnd::Receiver));
+            b.own.insert(tx, (down_key, PipeEnd::Sender));
+        }
         drop(st);
         self.inner.wake();
         if let Err(e) = sys::spawn::resume(&child) {
