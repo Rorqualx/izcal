@@ -162,6 +162,16 @@ fn probe_tier() -> [Verdict; 4] {
     ]
 }
 
+/// Whether the profile's floor holds, by the same probes: a file read,
+/// a service lookup and an outbound connection are all denied.
+#[must_use]
+pub fn floor_holds() -> bool {
+    matches!(
+        probe_tier(),
+        [Verdict::Denied, Verdict::Denied, Verdict::Denied, _]
+    )
+}
+
 /// The ready-line segment for macOS: the sandbox_check verdicts plus
 /// the behavioral sysctl probe. `sandbox_check`'s "sysctl-read" name
 /// returns a false deny while the profile's `(allow sysctl-read)` rule

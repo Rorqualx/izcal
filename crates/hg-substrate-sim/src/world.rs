@@ -196,6 +196,8 @@ pub(crate) struct Proc {
     pub(crate) committed: u64,
     /// Launched by another process ([`World::link`]): never the broker.
     pub(crate) launched: bool,
+    /// The kinds this process may launch: the broker's only.
+    pub(crate) children: Option<Arc<crate::launch::ChildTable>>,
 }
 
 /// Where a delayed task goes when it fires.
@@ -364,7 +366,7 @@ impl Wreckage {
 
 /// The simulated world.
 pub struct World {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
 }
 
 impl std::fmt::Debug for World {
@@ -432,7 +434,29 @@ impl World {
         restart: bool,
         entry: impl Fn(Substrate) + Send + Sync + 'static,
     ) -> ProcessId {
-        self.spawn_inner(name, backing, restart, Arc::new(entry), None)
+        self.spawn_inner(name, backing, restart, Arc::new(entry), None, None)
+    }
+
+    /// As [`World::spawn`], for a browser that launches children: its
+    /// substrate's `launcher` starts a process of each kind in `children`
+    /// (M1 phase E). Launched children are not restarted by the world;
+    /// relaunching after a crash is the browser's job.
+    pub fn spawn_launcher(
+        &self,
+        name: &'static str,
+        backing: Arc<dyn Memory>,
+        restart: bool,
+        entry: impl Fn(Substrate) + Send + Sync + 'static,
+        children: crate::launch::ChildTable,
+    ) -> ProcessId {
+        self.spawn_inner(
+            name,
+            backing,
+            restart,
+            Arc::new(entry),
+            None,
+            Some(Arc::new(children)),
+        )
     }
 
     /// As [`World::spawn`], for the broker: its substrate's `os` is the
@@ -446,7 +470,7 @@ impl World {
         entry: impl Fn(Substrate) + Send + Sync + 'static,
         script: crate::os::OsScript,
     ) -> ProcessId {
-        self.spawn_inner(name, backing, restart, Arc::new(entry), Some(script))
+        self.spawn_inner(name, backing, restart, Arc::new(entry), Some(script), None)
     }
 
     fn spawn_inner(
@@ -456,74 +480,144 @@ impl World {
         restart: bool,
         entry: Entry,
         script: Option<crate::os::OsScript>,
+        children: Option<Arc<crate::launch::ChildTable>>,
     ) -> ProcessId {
-        let mut st = self.shared.lock();
-        let pid = ProcessId(u32::try_from(st.procs.len()).unwrap_or(u32::MAX));
-        if let Some(script) = script {
-            st.os.insert(pid, crate::os::OsModel::new(script));
-        }
-        st.procs.push(Proc {
+        spawn_in(
+            &self.shared,
             name,
-            generation: 0,
-            alive: false,
-            entry,
-            restart,
             backing,
-            seqs: Vec::new(),
-            regions: BTreeMap::new(),
-            launched: false,
-            reserved: 0,
-            committed: 0,
-        });
-        self.start(&mut st, pid, 0);
-        pid
+            restart,
+            entry,
+            script,
+            children,
+        )
     }
 
     /// Brings incarnation `generation` of `pid` up and queues its entry.
     fn start(&self, st: &mut State, pid: ProcessId, generation: u32) {
-        let seed = st.config.seed;
-        let Some(p) = st
-            .procs
-            .get_mut(usize::try_from(pid.0).unwrap_or(usize::MAX))
-        else {
-            return;
-        };
-        p.generation = generation;
-        p.alive = true;
-        p.seqs = vec![Seq {
-            name: "main",
-            queue: VecDeque::new(),
-            delayed: 0,
-            posted: 1,
-        }];
-        let has_os = st.os.contains_key(&pid);
-        let substrate = crate::substrate_for(
-            &self.shared,
-            pid,
-            generation,
-            derive(&[seed, tag::PROCESS, u64::from(pid.0), u64::from(generation)]),
-            has_os,
-        );
-        let entry = Arc::clone(&p.entry);
-        if let Some(main) = p.seqs.first_mut() {
-            main.queue
-                .push_back((0, Task::new(move || entry(substrate))));
-        }
-        let name = p.name;
-        st.trace.record(format_args!("start {name}.{generation}"));
+        start_in(&self.shared, st, pid, generation);
     }
+}
 
+/// [`World::crash`]'s work, on the shared state.
+pub(crate) fn crash_in(shared: &Arc<Shared>, pid: ProcessId) -> bool {
+    let mut st = shared.lock();
+    let wreck = World::crash_locked(&mut st, pid);
+    drop(st);
+    let crashed = wreck.is_some();
+    if let Some(w) = wreck {
+        w.clear();
+    }
+    crashed
+}
+
+/// Crashes `pid` only if it is still incarnation `generation`: a kill
+/// aimed at an earlier incarnation never reaches a later one.
+pub(crate) fn crash_in_generation(shared: &Arc<Shared>, pid: ProcessId, generation: u64) -> bool {
+    let mut st = shared.lock();
+    let current = st
+        .procs
+        .get(usize::try_from(pid.0).unwrap_or(usize::MAX))
+        .is_some_and(|p| p.alive && u64::from(p.generation) == generation);
+    if !current {
+        return false;
+    }
+    let wreck = World::crash_locked(&mut st, pid);
+    drop(st);
+    let crashed = wreck.is_some();
+    if let Some(w) = wreck {
+        w.clear();
+    }
+    crashed
+}
+
+/// [`World::os_peer`]'s work, on the shared state.
+pub(crate) fn os_peer_in(
+    shared: &Arc<Shared>,
+    pid: ProcessId,
+) -> Option<hg_substrate::ipc::OsPeer> {
+    let st = shared.lock();
+    let p = st.procs.get(usize::try_from(pid.0).ok()?)?;
+    p.alive
+        .then(|| hg_substrate::ipc::OsPeer::new(pid.0, u64::from(p.generation)))
+}
+
+/// [`World::spawn`]'s work, on the shared state: what the simulated
+/// launcher calls from inside a running task (a temporary [`World`] would
+/// tear the run down when dropped).
+pub(crate) fn spawn_in(
+    shared: &Arc<Shared>,
+    name: &'static str,
+    backing: Arc<dyn Memory>,
+    restart: bool,
+    entry: Entry,
+    script: Option<crate::os::OsScript>,
+    children: Option<Arc<crate::launch::ChildTable>>,
+) -> ProcessId {
+    let mut st = shared.lock();
+    let pid = ProcessId(u32::try_from(st.procs.len()).unwrap_or(u32::MAX));
+    if let Some(script) = script {
+        st.os.insert(pid, crate::os::OsModel::new(script));
+    }
+    st.procs.push(Proc {
+        name,
+        generation: 0,
+        alive: false,
+        entry,
+        restart,
+        backing,
+        seqs: Vec::new(),
+        regions: BTreeMap::new(),
+        launched: false,
+        reserved: 0,
+        committed: 0,
+        children,
+    });
+    start_in(shared, &mut st, pid, 0);
+    pid
+}
+
+/// Brings incarnation `generation` of `pid` up and queues its entry.
+fn start_in(shared: &Arc<Shared>, st: &mut State, pid: ProcessId, generation: u32) {
+    let seed = st.config.seed;
+    let Some(p) = st
+        .procs
+        .get_mut(usize::try_from(pid.0).unwrap_or(usize::MAX))
+    else {
+        return;
+    };
+    p.generation = generation;
+    p.alive = true;
+    p.seqs = vec![Seq {
+        name: "main",
+        queue: VecDeque::new(),
+        delayed: 0,
+        posted: 1,
+    }];
+    let has_os = st.os.contains_key(&pid);
+    let children = p.children.clone();
+    let substrate = crate::substrate_for(
+        shared,
+        pid,
+        generation,
+        derive(&[seed, tag::PROCESS, u64::from(pid.0), u64::from(generation)]),
+        has_os,
+        children,
+    );
+    let entry = Arc::clone(&p.entry);
+    if let Some(main) = p.seqs.first_mut() {
+        main.queue
+            .push_back((0, Task::new(move || entry(substrate))));
+    }
+    let name = p.name;
+    st.trace.record(format_args!("start {name}.{generation}"));
+}
+
+impl World {
     /// Crashes `pid` now, as an injected fault would. Returns false if it
     /// was not running.
     pub fn crash(&self, pid: ProcessId) -> bool {
-        let mut st = self.shared.lock();
-        let wreck = Self::crash_locked(&mut st, pid);
-        drop(st);
-        let crashed = wreck.is_some();
-        if let Some(w) = wreck {
-            w.clear();
-        }
-        crashed
+        crash_in(&self.shared, pid)
     }
 
     fn crash_locked(st: &mut State, pid: ProcessId) -> Option<Wreckage> {
@@ -727,6 +821,16 @@ impl World {
         crate::ipc::corrupt_next(&mut st, pid, kind);
     }
 
+    /// Makes `pid` a compromised process that maps regions with the OS
+    /// directly, behind its backend's back: on macOS and Windows its own
+    /// seal no longer sees those mappings and succeeds while one is live;
+    /// the Linux kernel still sees them (fact L1). The adversarial-filler
+    /// fault of the D6 review (M7).
+    pub fn hide_mappings(&self, pid: ProcessId) {
+        let mut st = self.shared.lock();
+        crate::region::hide_mappings(&mut st, pid);
+    }
+
     /// Virtual time now.
     pub fn now(&self) -> Instant {
         self.shared.lock().now
@@ -736,10 +840,7 @@ impl World {
     /// bound receiver is given ([`hg_substrate::ipc::Ipc::listen_bound`]),
     /// or `None` if no such process is running.
     pub fn os_peer(&self, pid: ProcessId) -> Option<hg_substrate::ipc::OsPeer> {
-        let st = self.shared.lock();
-        let p = st.procs.get(usize::try_from(pid.0).ok()?)?;
-        p.alive
-            .then(|| hg_substrate::ipc::OsPeer::new(pid.0, u64::from(p.generation)))
+        os_peer_in(&self.shared, pid)
     }
 
     /// Whether `pid` is running (not crashed and awaiting restart).

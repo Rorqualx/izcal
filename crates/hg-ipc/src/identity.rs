@@ -13,7 +13,7 @@
 //! worker identity join as those types arrive (IPC-R2 (b)); the types are
 //! `#[non_exhaustive]` for that.
 
-use hg_substrate::ipc::OsPeer;
+use hg_substrate::ipc::PeerAttest;
 
 /// A peer process as the broker numbers it: an index and a generation,
 /// so an identifier is never reused for a later process (IPC-R8).
@@ -47,15 +47,15 @@ impl PeerId {
 pub struct PeerBinding {
     /// The peer the endpoint was made for.
     pub peer: PeerId,
-    /// That peer's process as the OS identifies it: the receiving
-    /// transport accepts records from this process only
-    /// ([`hg_substrate::ipc::Ipc::listen_bound`]).
-    pub os: OsPeer,
+    /// How the receiving transport attests that peer's process: as the
+    /// OS identifies it, or (a child's bootstrap receiver only) by the
+    /// inherited channel ([`hg_substrate::ipc::Ipc::listen_bound`]).
+    pub os: PeerAttest,
 }
 
 impl PeerBinding {
-    /// A binding to `peer`, whose process is `os`.
-    pub const fn new(peer: PeerId, os: OsPeer) -> Self {
+    /// A binding to `peer`, attested by `os`.
+    pub const fn new(peer: PeerId, os: PeerAttest) -> Self {
         Self { peer, os }
     }
 }

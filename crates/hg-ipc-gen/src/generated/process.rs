@@ -55,13 +55,19 @@ impl crate::sample::Sample for ProcessError {
     }
 }
 
-/// The process kinds M1 starts (Stage 1 design M1 exit).
+/// The process kinds the broker launches at M1 (Stage 1 design M1 exit;
+/// networking NW-D3). The browser and the Linux spawner are not children
+/// of this protocol. The same list as `hg_launch_plan::Kind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProcessKind {
     /// A renderer: one site's web content.
     Renderer,
-    /// The network service.
-    Network,
+    /// The network system service.
+    NetworkSystem,
+    /// A container's network service.
+    NetworkContainer,
+    /// A (top-level site, container)'s network service.
+    NetworkPartition,
 }
 
 impl Wire for ProcessKind {
@@ -70,15 +76,23 @@ impl Wire for ProcessKind {
             Self::Renderer => {
                 0u32.encode(w);
             }
-            Self::Network => {
+            Self::NetworkSystem => {
                 1u32.encode(w);
+            }
+            Self::NetworkContainer => {
+                2u32.encode(w);
+            }
+            Self::NetworkPartition => {
+                3u32.encode(w);
             }
         }
     }
     fn decode(r: &mut Reader<'_>) -> Result<Self, BadMessage> {
         match u32::decode(r)? {
             0 => Ok(Self::Renderer),
-            1 => Ok(Self::Network),
+            1 => Ok(Self::NetworkSystem),
+            2 => Ok(Self::NetworkContainer),
+            3 => Ok(Self::NetworkPartition),
             _ => Err(BadMessage::UnknownTag),
         }
     }
@@ -86,6 +100,8 @@ impl Wire for ProcessKind {
         match u32::decode(r)? {
             0 => Ok(()),
             1 => Ok(()),
+            2 => Ok(()),
+            3 => Ok(()),
             _ => Err(BadMessage::UnknownTag),
         }
     }
@@ -96,9 +112,359 @@ impl Wire for ProcessKind {
 #[cfg(test)]
 impl crate::sample::Sample for ProcessKind {
     fn sample(g: &mut crate::sample::Gen) -> Self {
-        match g.below(2) {
+        match g.below(4) {
             0 => Self::Renderer,
-            _ => Self::Network,
+            1 => Self::NetworkSystem,
+            2 => Self::NetworkContainer,
+            _ => Self::NetworkPartition,
+        }
+    }
+}
+
+/// The sandbox a child reached, by OS (security scope 6.7; SEC-8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SandboxTier {
+    /// Linux: seccomp and Landlock, no namespaces.
+    LinuxNoUserns,
+    /// Linux: seccomp, Landlock, user, PID and network namespaces, no
+    /// mount namespace (a non-reference configuration).
+    LinuxRestrictedUserns,
+    /// Linux: the security scope 6.7 row.
+    LinuxFull,
+    /// macOS: the deny-default SBPL profile.
+    MacosSbpl,
+    /// Windows: AppContainer, lockdown token and job (the M1 subset).
+    WindowsAppContainer,
+    /// Under the simulator: no OS sandbox exists.
+    Simulated,
+}
+
+impl Wire for SandboxTier {
+    fn encode(&self, w: &mut Writer) {
+        match self {
+            Self::LinuxNoUserns => {
+                0u32.encode(w);
+            }
+            Self::LinuxRestrictedUserns => {
+                1u32.encode(w);
+            }
+            Self::LinuxFull => {
+                2u32.encode(w);
+            }
+            Self::MacosSbpl => {
+                3u32.encode(w);
+            }
+            Self::WindowsAppContainer => {
+                4u32.encode(w);
+            }
+            Self::Simulated => {
+                5u32.encode(w);
+            }
+        }
+    }
+    fn decode(r: &mut Reader<'_>) -> Result<Self, BadMessage> {
+        match u32::decode(r)? {
+            0 => Ok(Self::LinuxNoUserns),
+            1 => Ok(Self::LinuxRestrictedUserns),
+            2 => Ok(Self::LinuxFull),
+            3 => Ok(Self::MacosSbpl),
+            4 => Ok(Self::WindowsAppContainer),
+            5 => Ok(Self::Simulated),
+            _ => Err(BadMessage::UnknownTag),
+        }
+    }
+    fn validate(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        match u32::decode(r)? {
+            0 => Ok(()),
+            1 => Ok(()),
+            2 => Ok(()),
+            3 => Ok(()),
+            4 => Ok(()),
+            5 => Ok(()),
+            _ => Err(BadMessage::UnknownTag),
+        }
+    }
+    const MIN_LEN: usize = 4;
+    const MAX_LEN: usize = 4;
+}
+
+#[cfg(test)]
+impl crate::sample::Sample for SandboxTier {
+    fn sample(g: &mut crate::sample::Gen) -> Self {
+        match g.below(6) {
+            0 => Self::LinuxNoUserns,
+            1 => Self::LinuxRestrictedUserns,
+            2 => Self::LinuxFull,
+            3 => Self::MacosSbpl,
+            4 => Self::WindowsAppContainer,
+            _ => Self::Simulated,
+        }
+    }
+}
+
+/// A part of the 6.7 row the child did not reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SandboxFeature {
+    /// No empty root (Linux).
+    EmptyRoot,
+    /// No user-namespace id map (Linux).
+    IdMap,
+    /// No mount namespace (Linux).
+    MountNamespace,
+    /// No Landlock UDP rules (Linux, ABI below 10).
+    LandlockUdp,
+    /// No alternate desktop (Windows, M5).
+    AlternateDesktop,
+    /// No win32k lockdown (Windows, M5).
+    Win32kLockdown,
+    /// No code integrity guard (Windows, M5).
+    CodeIntegrityGuard,
+}
+
+impl Wire for SandboxFeature {
+    fn encode(&self, w: &mut Writer) {
+        match self {
+            Self::EmptyRoot => {
+                0u32.encode(w);
+            }
+            Self::IdMap => {
+                1u32.encode(w);
+            }
+            Self::MountNamespace => {
+                2u32.encode(w);
+            }
+            Self::LandlockUdp => {
+                3u32.encode(w);
+            }
+            Self::AlternateDesktop => {
+                4u32.encode(w);
+            }
+            Self::Win32kLockdown => {
+                5u32.encode(w);
+            }
+            Self::CodeIntegrityGuard => {
+                6u32.encode(w);
+            }
+        }
+    }
+    fn decode(r: &mut Reader<'_>) -> Result<Self, BadMessage> {
+        match u32::decode(r)? {
+            0 => Ok(Self::EmptyRoot),
+            1 => Ok(Self::IdMap),
+            2 => Ok(Self::MountNamespace),
+            3 => Ok(Self::LandlockUdp),
+            4 => Ok(Self::AlternateDesktop),
+            5 => Ok(Self::Win32kLockdown),
+            6 => Ok(Self::CodeIntegrityGuard),
+            _ => Err(BadMessage::UnknownTag),
+        }
+    }
+    fn validate(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        match u32::decode(r)? {
+            0 => Ok(()),
+            1 => Ok(()),
+            2 => Ok(()),
+            3 => Ok(()),
+            4 => Ok(()),
+            5 => Ok(()),
+            6 => Ok(()),
+            _ => Err(BadMessage::UnknownTag),
+        }
+    }
+    const MIN_LEN: usize = 4;
+    const MAX_LEN: usize = 4;
+}
+
+#[cfg(test)]
+impl crate::sample::Sample for SandboxFeature {
+    fn sample(g: &mut crate::sample::Gen) -> Self {
+        match g.below(7) {
+            0 => Self::EmptyRoot,
+            1 => Self::IdMap,
+            2 => Self::MountNamespace,
+            3 => Self::LandlockUdp,
+            4 => Self::AlternateDesktop,
+            5 => Self::Win32kLockdown,
+            _ => Self::CodeIntegrityGuard,
+        }
+    }
+}
+
+/// What the child's own probes found after lockdown. A cross-check of
+/// what the launcher applied: a mismatch ends the child (design review M3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SandboxReport {
+    /// The tier reached.
+    pub tier: SandboxTier,
+    /// What the 6.7 row has that this tier lacks; empty for the full row.
+    pub missing: hg_ipc::BoundedVec<SandboxFeature, 8>,
+}
+
+impl Wire for SandboxReport {
+    const MIN_LEN: usize = hg_ipc::wire::len_add(
+        hg_ipc::wire::len_add(0, <SandboxTier as Wire>::MIN_LEN),
+        <hg_ipc::BoundedVec<SandboxFeature, 8> as Wire>::MIN_LEN,
+    );
+    const MAX_LEN: usize = hg_ipc::wire::len_add(
+        hg_ipc::wire::len_add(0, <SandboxTier as Wire>::MAX_LEN),
+        <hg_ipc::BoundedVec<SandboxFeature, 8> as Wire>::MAX_LEN,
+    );
+    fn encode(&self, w: &mut Writer) {
+        self.tier.encode(w);
+        self.missing.encode(w);
+    }
+    fn decode(r: &mut Reader<'_>) -> Result<Self, BadMessage> {
+        Ok(Self {
+            tier: Wire::decode(r)?,
+            missing: Wire::decode(r)?,
+        })
+    }
+    fn validate(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        <SandboxTier as Wire>::validate(r)?;
+        <hg_ipc::BoundedVec<SandboxFeature, 8> as Wire>::validate(r)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl crate::sample::Sample for SandboxReport {
+    fn sample(g: &mut crate::sample::Gen) -> Self {
+        use crate::sample::Sample;
+        Self {
+            tier: Sample::sample(g),
+            missing: Sample::sample(g),
+        }
+    }
+}
+
+/// What a child is for, sent once after `ready`. Ids are the broker's own
+/// opaque numbers; the child does nothing kind-specific before this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChildConfig {
+    /// A renderer for one site.
+    Renderer {
+        /// The broker's id of the site.
+        site: u64,
+    },
+    /// The network system service.
+    NetworkSystem,
+    /// One container's service.
+    NetworkContainer {
+        /// The broker's id of the container.
+        container: u64,
+    },
+    /// One (top-level site, container)'s service.
+    NetworkPartition {
+        /// The broker's id of the top-level site.
+        top_site: u64,
+        /// The broker's id of the container.
+        container: u64,
+    },
+}
+
+impl Wire for ChildConfig {
+    fn encode(&self, w: &mut Writer) {
+        match self {
+            Self::Renderer { site } => {
+                0u32.encode(w);
+                site.encode(w);
+            }
+            Self::NetworkSystem => {
+                1u32.encode(w);
+            }
+            Self::NetworkContainer { container } => {
+                2u32.encode(w);
+                container.encode(w);
+            }
+            Self::NetworkPartition {
+                top_site,
+                container,
+            } => {
+                3u32.encode(w);
+                top_site.encode(w);
+                container.encode(w);
+            }
+        }
+    }
+    fn decode(r: &mut Reader<'_>) -> Result<Self, BadMessage> {
+        match u32::decode(r)? {
+            0 => Ok(Self::Renderer {
+                site: Wire::decode(r)?,
+            }),
+            1 => Ok(Self::NetworkSystem),
+            2 => Ok(Self::NetworkContainer {
+                container: Wire::decode(r)?,
+            }),
+            3 => Ok(Self::NetworkPartition {
+                top_site: Wire::decode(r)?,
+                container: Wire::decode(r)?,
+            }),
+            _ => Err(BadMessage::UnknownTag),
+        }
+    }
+    fn validate(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        match u32::decode(r)? {
+            0 => {
+                <u64 as Wire>::validate(r)?;
+                Ok(())
+            }
+            1 => Ok(()),
+            2 => {
+                <u64 as Wire>::validate(r)?;
+                Ok(())
+            }
+            3 => {
+                <u64 as Wire>::validate(r)?;
+                <u64 as Wire>::validate(r)?;
+                Ok(())
+            }
+            _ => Err(BadMessage::UnknownTag),
+        }
+    }
+    const MIN_LEN: usize = hg_ipc::wire::len_add(
+        4,
+        hg_ipc::wire::len_min(
+            hg_ipc::wire::len_min(
+                hg_ipc::wire::len_min(hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN), 0),
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+            ),
+            hg_ipc::wire::len_add(
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+                <u64 as Wire>::MIN_LEN,
+            ),
+        ),
+    );
+    const MAX_LEN: usize = hg_ipc::wire::len_add(
+        4,
+        hg_ipc::wire::len_max(
+            hg_ipc::wire::len_max(
+                hg_ipc::wire::len_max(hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN), 0),
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+            ),
+            hg_ipc::wire::len_add(
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                <u64 as Wire>::MAX_LEN,
+            ),
+        ),
+    );
+}
+
+#[cfg(test)]
+impl crate::sample::Sample for ChildConfig {
+    fn sample(g: &mut crate::sample::Gen) -> Self {
+        use crate::sample::Sample;
+        match g.below(4) {
+            0 => Self::Renderer {
+                site: Sample::sample(g),
+            },
+            1 => Self::NetworkSystem,
+            2 => Self::NetworkContainer {
+                container: Sample::sample(g),
+            },
+            _ => Self::NetworkPartition {
+                top_site: Sample::sample(g),
+                container: Sample::sample(g),
+            },
         }
     }
 }
@@ -240,11 +606,29 @@ pub enum ProcessHost {
         kind: ProcessKind,
         /// The child's build.
         build: BuildId,
+        /// The sandbox it reached.
+        sandbox: SandboxReport,
     },
     /// The answer to `ProcessControl.ping`.
     Pong {
         /// The ping's nonce.
         nonce: u64,
+    },
+    /// M1's skeleton work (Stage 1 M1 exit: an IPC round trip through the
+    /// browser): the child asks for something only another child can
+    /// answer; the browser routes it and returns `ProcessControl.answered`.
+    Ask {
+        /// The child's own request number.
+        id: u64,
+        /// What it asks.
+        payload: hg_ipc::BoundedBytes<256>,
+    },
+    /// The answer to `ProcessControl.work`.
+    Answer {
+        /// The work's number.
+        id: u64,
+        /// The result.
+        payload: hg_ipc::BoundedBytes<256>,
     },
 }
 
@@ -258,11 +642,26 @@ impl ProcessHost {
         max_message_len: hg_ipc::wire::len_add(
             2,
             hg_ipc::wire::len_max(
-                hg_ipc::wire::len_add(
-                    hg_ipc::wire::len_add(0, <ProcessKind as Wire>::MAX_LEN),
-                    <BuildId as Wire>::MAX_LEN,
+                hg_ipc::wire::len_max(
+                    hg_ipc::wire::len_max(
+                        hg_ipc::wire::len_add(
+                            hg_ipc::wire::len_add(
+                                hg_ipc::wire::len_add(0, <ProcessKind as Wire>::MAX_LEN),
+                                <BuildId as Wire>::MAX_LEN,
+                            ),
+                            <SandboxReport as Wire>::MAX_LEN,
+                        ),
+                        hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                    ),
+                    hg_ipc::wire::len_add(
+                        hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                        <hg_ipc::BoundedBytes<256> as Wire>::MAX_LEN,
+                    ),
                 ),
-                hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                hg_ipc::wire::len_add(
+                    hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                    <hg_ipc::BoundedBytes<256> as Wire>::MAX_LEN,
+                ),
             ),
         ),
     };
@@ -270,19 +669,23 @@ impl ProcessHost {
 
 impl ProcessHost {
     /// Reads [`Self::Ready`]'s fields, after its ordinal.
-    fn decode_ready(r: &mut Reader<'_>) -> Result<(ProcessKind, BuildId), BadMessage> {
-        Ok((Wire::decode(r)?, Wire::decode(r)?))
+    fn decode_ready(
+        r: &mut Reader<'_>,
+    ) -> Result<(ProcessKind, BuildId, SandboxReport), BadMessage> {
+        Ok((Wire::decode(r)?, Wire::decode(r)?, Wire::decode(r)?))
     }
     /// Checks [`Self::Ready`]'s fields, after its ordinal.
     fn validate_ready(r: &mut Reader<'_>) -> Result<(), BadMessage> {
         <ProcessKind as Wire>::validate(r)?;
         <BuildId as Wire>::validate(r)?;
+        <SandboxReport as Wire>::validate(r)?;
         Ok(())
     }
     /// Writes [`Self::Ready`]'s fields, after its ordinal.
-    fn encode_ready(w: &mut Writer, kind: &ProcessKind, build: &BuildId) {
+    fn encode_ready(w: &mut Writer, kind: &ProcessKind, build: &BuildId, sandbox: &SandboxReport) {
         kind.encode(w);
         build.encode(w);
+        sandbox.encode(w);
     }
     /// Reads [`Self::Pong`]'s fields, after its ordinal.
     fn decode_pong(r: &mut Reader<'_>) -> Result<(u64,), BadMessage> {
@@ -297,30 +700,84 @@ impl ProcessHost {
     fn encode_pong(w: &mut Writer, nonce: &u64) {
         nonce.encode(w);
     }
+    /// Reads [`Self::Ask`]'s fields, after its ordinal.
+    fn decode_ask(r: &mut Reader<'_>) -> Result<(u64, hg_ipc::BoundedBytes<256>), BadMessage> {
+        Ok((Wire::decode(r)?, Wire::decode(r)?))
+    }
+    /// Checks [`Self::Ask`]'s fields, after its ordinal.
+    fn validate_ask(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        <u64 as Wire>::validate(r)?;
+        <hg_ipc::BoundedBytes<256> as Wire>::validate(r)?;
+        Ok(())
+    }
+    /// Writes [`Self::Ask`]'s fields, after its ordinal.
+    fn encode_ask(w: &mut Writer, id: &u64, payload: &hg_ipc::BoundedBytes<256>) {
+        id.encode(w);
+        payload.encode(w);
+    }
+    /// Reads [`Self::Answer`]'s fields, after its ordinal.
+    fn decode_answer(r: &mut Reader<'_>) -> Result<(u64, hg_ipc::BoundedBytes<256>), BadMessage> {
+        Ok((Wire::decode(r)?, Wire::decode(r)?))
+    }
+    /// Checks [`Self::Answer`]'s fields, after its ordinal.
+    fn validate_answer(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        <u64 as Wire>::validate(r)?;
+        <hg_ipc::BoundedBytes<256> as Wire>::validate(r)?;
+        Ok(())
+    }
+    /// Writes [`Self::Answer`]'s fields, after its ordinal.
+    fn encode_answer(w: &mut Writer, id: &u64, payload: &hg_ipc::BoundedBytes<256>) {
+        id.encode(w);
+        payload.encode(w);
+    }
 }
 
 impl Wire for ProcessHost {
     fn encode(&self, w: &mut Writer) {
         match self {
-            Self::Ready { kind, build } => {
+            Self::Ready {
+                kind,
+                build,
+                sandbox,
+            } => {
                 0u16.encode(w);
-                Self::encode_ready(w, kind, build);
+                Self::encode_ready(w, kind, build, sandbox);
             }
             Self::Pong { nonce } => {
                 1u16.encode(w);
                 Self::encode_pong(w, nonce);
+            }
+            Self::Ask { id, payload } => {
+                2u16.encode(w);
+                Self::encode_ask(w, id, payload);
+            }
+            Self::Answer { id, payload } => {
+                3u16.encode(w);
+                Self::encode_answer(w, id, payload);
             }
         }
     }
     fn decode(r: &mut Reader<'_>) -> Result<Self, BadMessage> {
         match u16::decode(r)? {
             0 => {
-                let (kind, build) = Self::decode_ready(r)?;
-                Ok(Self::Ready { kind, build })
+                let (kind, build, sandbox) = Self::decode_ready(r)?;
+                Ok(Self::Ready {
+                    kind,
+                    build,
+                    sandbox,
+                })
             }
             1 => {
                 let (nonce,) = Self::decode_pong(r)?;
                 Ok(Self::Pong { nonce })
+            }
+            2 => {
+                let (id, payload) = Self::decode_ask(r)?;
+                Ok(Self::Ask { id, payload })
+            }
+            3 => {
+                let (id, payload) = Self::decode_answer(r)?;
+                Ok(Self::Answer { id, payload })
             }
             _ => Err(BadMessage::UnknownOrdinal),
         }
@@ -329,27 +786,59 @@ impl Wire for ProcessHost {
         match u16::decode(r)? {
             0 => Self::validate_ready(r),
             1 => Self::validate_pong(r),
+            2 => Self::validate_ask(r),
+            3 => Self::validate_answer(r),
             _ => Err(BadMessage::UnknownOrdinal),
         }
     }
     const MIN_LEN: usize = hg_ipc::wire::len_add(
         2,
         hg_ipc::wire::len_min(
-            hg_ipc::wire::len_add(
-                hg_ipc::wire::len_add(0, <ProcessKind as Wire>::MIN_LEN),
-                <BuildId as Wire>::MIN_LEN,
+            hg_ipc::wire::len_min(
+                hg_ipc::wire::len_min(
+                    hg_ipc::wire::len_add(
+                        hg_ipc::wire::len_add(
+                            hg_ipc::wire::len_add(0, <ProcessKind as Wire>::MIN_LEN),
+                            <BuildId as Wire>::MIN_LEN,
+                        ),
+                        <SandboxReport as Wire>::MIN_LEN,
+                    ),
+                    hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+                ),
+                hg_ipc::wire::len_add(
+                    hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+                    <hg_ipc::BoundedBytes<256> as Wire>::MIN_LEN,
+                ),
             ),
-            hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+            hg_ipc::wire::len_add(
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+                <hg_ipc::BoundedBytes<256> as Wire>::MIN_LEN,
+            ),
         ),
     );
     const MAX_LEN: usize = hg_ipc::wire::len_add(
         2,
         hg_ipc::wire::len_max(
-            hg_ipc::wire::len_add(
-                hg_ipc::wire::len_add(0, <ProcessKind as Wire>::MAX_LEN),
-                <BuildId as Wire>::MAX_LEN,
+            hg_ipc::wire::len_max(
+                hg_ipc::wire::len_max(
+                    hg_ipc::wire::len_add(
+                        hg_ipc::wire::len_add(
+                            hg_ipc::wire::len_add(0, <ProcessKind as Wire>::MAX_LEN),
+                            <BuildId as Wire>::MAX_LEN,
+                        ),
+                        <SandboxReport as Wire>::MAX_LEN,
+                    ),
+                    hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                ),
+                hg_ipc::wire::len_add(
+                    hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                    <hg_ipc::BoundedBytes<256> as Wire>::MAX_LEN,
+                ),
             ),
-            hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+            hg_ipc::wire::len_add(
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                <hg_ipc::BoundedBytes<256> as Wire>::MAX_LEN,
+            ),
         ),
     );
 }
@@ -364,6 +853,8 @@ impl ProcessHost {
         match u16::decode(&mut r)? {
             0 => Self::validate_ready(&mut r)?,
             1 => Self::validate_pong(&mut r)?,
+            2 => Self::validate_ask(&mut r)?,
+            3 => Self::validate_answer(&mut r)?,
             _ => return Err(BadMessage::UnknownOrdinal),
         }
         r.finish()
@@ -375,13 +866,25 @@ impl hg_ipc::Interface for ProcessHost {
     fn into_wire(self) -> (Vec<u8>, Vec<hg_ipc::Handle>) {
         let mut w = Writer::new();
         match self {
-            Self::Ready { kind, build } => {
+            Self::Ready {
+                kind,
+                build,
+                sandbox,
+            } => {
                 0u16.encode(&mut w);
-                Self::encode_ready(&mut w, &kind, &build);
+                Self::encode_ready(&mut w, &kind, &build, &sandbox);
             }
             Self::Pong { nonce } => {
                 1u16.encode(&mut w);
                 Self::encode_pong(&mut w, &nonce);
+            }
+            Self::Ask { id, payload } => {
+                2u16.encode(&mut w);
+                Self::encode_ask(&mut w, &id, &payload);
+            }
+            Self::Answer { id, payload } => {
+                3u16.encode(&mut w);
+                Self::encode_answer(&mut w, &id, &payload);
             }
         }
         (w.into_bytes(), Vec::new())
@@ -399,13 +902,27 @@ impl hg_ipc::Interface for ProcessHost {
         let msg = match u16::decode(&mut r)? {
             0 => {
                 hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
-                let (kind, build) = Self::decode_ready(&mut r)?;
-                Self::Ready { kind, build }
+                let (kind, build, sandbox) = Self::decode_ready(&mut r)?;
+                Self::Ready {
+                    kind,
+                    build,
+                    sandbox,
+                }
             }
             1 => {
                 hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
                 let (nonce,) = Self::decode_pong(&mut r)?;
                 Self::Pong { nonce }
+            }
+            2 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (id, payload) = Self::decode_ask(&mut r)?;
+                Self::Ask { id, payload }
+            }
+            3 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (id, payload) = Self::decode_answer(&mut r)?;
+                Self::Answer { id, payload }
             }
             _ => return Err(BadMessage::UnknownOrdinal),
         };
@@ -428,12 +945,35 @@ pub trait ProcessHostHandler {
         from: &hg_ipc::CallerIdentity,
         kind: ProcessKind,
         build: BuildId,
+        sandbox: SandboxReport,
     ) -> Result<(), ProcessError>;
     /// The answer to `ProcessControl.ping`.
     ///
     /// # Errors
     /// The protocol's error, which ends the conversation.
     fn pong(&mut self, from: &hg_ipc::CallerIdentity, nonce: u64) -> Result<(), ProcessError>;
+    /// M1's skeleton work (Stage 1 M1 exit: an IPC round trip through the
+    /// browser): the child asks for something only another child can
+    /// answer; the browser routes it and returns `ProcessControl.answered`.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn ask(
+        &mut self,
+        from: &hg_ipc::CallerIdentity,
+        id: u64,
+        payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError>;
+    /// The answer to `ProcessControl.work`.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn answer(
+        &mut self,
+        from: &hg_ipc::CallerIdentity,
+        id: u64,
+        payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError>;
 }
 
 impl ProcessHost {
@@ -447,8 +987,14 @@ impl ProcessHost {
         from: &hg_ipc::CallerIdentity,
     ) -> Result<(), ProcessError> {
         match self {
-            Self::Ready { kind, build } => h.ready(from, kind, build),
+            Self::Ready {
+                kind,
+                build,
+                sandbox,
+            } => h.ready(from, kind, build, sandbox),
             Self::Pong { nonce } => h.pong(from, nonce),
+            Self::Ask { id, payload } => h.ask(from, id, payload),
+            Self::Answer { id, payload } => h.answer(from, id, payload),
         }
     }
 }
@@ -459,20 +1005,52 @@ pub trait ProcessHostRemote {
     ///
     /// # Errors
     /// [`hg_ipc::SendError`]; the sender never blocks.
-    fn ready(&self, kind: ProcessKind, build: BuildId) -> Result<(), hg_ipc::SendError>;
+    fn ready(
+        &self,
+        kind: ProcessKind,
+        build: BuildId,
+        sandbox: SandboxReport,
+    ) -> Result<(), hg_ipc::SendError>;
     /// The answer to `ProcessControl.ping`.
     ///
     /// # Errors
     /// [`hg_ipc::SendError`]; the sender never blocks.
     fn pong(&self, nonce: u64) -> Result<(), hg_ipc::SendError>;
+    /// M1's skeleton work (Stage 1 M1 exit: an IPC round trip through the
+    /// browser): the child asks for something only another child can
+    /// answer; the browser routes it and returns `ProcessControl.answered`.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn ask(&self, id: u64, payload: hg_ipc::BoundedBytes<256>) -> Result<(), hg_ipc::SendError>;
+    /// The answer to `ProcessControl.work`.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn answer(&self, id: u64, payload: hg_ipc::BoundedBytes<256>) -> Result<(), hg_ipc::SendError>;
 }
 
 impl ProcessHostRemote for hg_ipc::Remote<ProcessHost> {
-    fn ready(&self, kind: ProcessKind, build: BuildId) -> Result<(), hg_ipc::SendError> {
-        self.send(ProcessHost::Ready { kind, build })
+    fn ready(
+        &self,
+        kind: ProcessKind,
+        build: BuildId,
+        sandbox: SandboxReport,
+    ) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessHost::Ready {
+            kind,
+            build,
+            sandbox,
+        })
     }
     fn pong(&self, nonce: u64) -> Result<(), hg_ipc::SendError> {
         self.send(ProcessHost::Pong { nonce })
+    }
+    fn ask(&self, id: u64, payload: hg_ipc::BoundedBytes<256>) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessHost::Ask { id, payload })
+    }
+    fn answer(&self, id: u64, payload: hg_ipc::BoundedBytes<256>) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessHost::Answer { id, payload })
     }
 }
 
@@ -480,13 +1058,22 @@ impl ProcessHostRemote for hg_ipc::Remote<ProcessHost> {
 impl crate::sample::Sample for ProcessHost {
     fn sample(g: &mut crate::sample::Gen) -> Self {
         use crate::sample::Sample;
-        match g.below(2) {
+        match g.below(4) {
             0 => Self::Ready {
                 kind: Sample::sample(g),
                 build: Sample::sample(g),
+                sandbox: Sample::sample(g),
             },
-            _ => Self::Pong {
+            1 => Self::Pong {
                 nonce: Sample::sample(g),
+            },
+            2 => Self::Ask {
+                id: Sample::sample(g),
+                payload: Sample::sample(g),
+            },
+            _ => Self::Answer {
+                id: Sample::sample(g),
+                payload: Sample::sample(g),
             },
         }
     }
@@ -494,13 +1081,13 @@ impl crate::sample::Sample for ProcessHost {
 
 /// VER-1 for `process.ProcessHost.ready` (IPC-R5): validating never
 /// panics, overflows or reads out of bounds. Bounds: messages of 2 to
-/// 14 bytes (its encodings are 14 to 14); loops unwound 2 times.
+/// 54 bytes (its encodings are 22 to 54); loops unwound 10 times.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(2)]
+#[kani::unwind(10)]
 fn verify_process_host_ready_validates() {
-    let bytes: [u8; 12] = kani::any();
-    let len: usize = kani::any_where(|&n: &usize| n <= 12);
+    let bytes: [u8; 52] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 52);
     let Some(input) = bytes.get(..len) else {
         return;
     };
@@ -510,15 +1097,15 @@ fn verify_process_host_ready_validates() {
 }
 
 /// VER-1 for `process.ProcessHost.ready` (IPC-R5): decoding never
-/// panics. Bounds: messages of 2 to 14 bytes (its encodings are
-/// 14 to 14); loops unwound 2 times. Its round trip is
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 22 to 54); loops unwound 7 times. Its round trip is
 /// proved per layout below (1 layouts).
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(2)]
+#[kani::unwind(7)]
 fn verify_process_host_ready_decodes() {
-    let bytes: [u8; 12] = kani::any();
-    let len: usize = kani::any_where(|&n: &usize| n <= 12);
+    let bytes: [u8; 22] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 22);
     let Some(input) = bytes.get(..len) else {
         return;
     };
@@ -528,21 +1115,33 @@ fn verify_process_host_ready_decodes() {
 }
 
 /// VER-1 for `process.ProcessHost.ready` (IPC-R6): every accepted
-/// input of layout 0 (12 bytes) re-encodes to the same bytes.
+/// input of layout 0 (20 bytes) re-encodes to the same bytes.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::unwind(2)]
+#[kani::unwind(7)]
 fn verify_process_host_ready_round_trip_0() {
-    let bytes: [u8; 12] = kani::any();
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(16) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(17) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(18) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(19) {
+        *b = 0;
+    }
     let mut r = Reader::new(&bytes);
     let decoded = ProcessHost::decode_ready(&mut r).and_then(|f| r.finish().map(|()| f));
     kani::cover!(decoded.is_ok(), "this layout is accepted");
-    if let Ok((kind, build)) = decoded {
+    if let Ok((kind, build, sandbox)) = decoded {
         let mut w = Writer::new();
         0u16.encode(&mut w);
-        ProcessHost::encode_ready(&mut w, &kind, &build);
+        ProcessHost::encode_ready(&mut w, &kind, &build, &sandbox);
         let out = w.into_bytes();
-        assert!(out.len() == 12 + 2);
+        assert!(out.len() == 20 + 2);
         assert!(out.first() == Some(&0));
         assert!(out.get(1) == Some(&0));
         assert!(out.get(2) == bytes.get(0));
@@ -557,6 +1156,14 @@ fn verify_process_host_ready_round_trip_0() {
         assert!(out.get(11) == bytes.get(9));
         assert!(out.get(12) == bytes.get(10));
         assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
     }
 }
 
@@ -624,6 +1231,1176 @@ fn verify_process_host_pong_round_trip_0() {
     }
 }
 
+/// VER-1 for `process.ProcessHost.ask` (IPC-R5): validating never
+/// panics, overflows or reads out of bounds. Bounds: messages of 2 to
+/// 64 bytes (its encodings are 14 to 270); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_validates() {
+    let bytes: [u8; 62] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 62);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let checked = ProcessHost::validate_ask(&mut r).and_then(|()| r.finish());
+    kani::cover!(checked.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 14 to 270); loops unwound 2 times. Its round trip is
+/// proved per layout below (11 layouts).
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_decodes() {
+    let bytes: [u8; 22] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 22);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 0 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_0() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 1 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_1() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 2 (14 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_2() {
+    let mut bytes: [u8; 14] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 14 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 3 (15 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_3() {
+    let mut bytes: [u8; 15] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 15 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 4 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_4() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 16 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 5 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_5() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 6 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_6() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 7 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_7() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 7;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 8 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_8() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 8;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 9 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_9() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 9;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.ask` (IPC-R6): every accepted
+/// input of layout 10 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_ask_round_trip_10() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 10;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_ask(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessHost::encode_ask(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R5): validating never
+/// panics, overflows or reads out of bounds. Bounds: messages of 2 to
+/// 64 bytes (its encodings are 14 to 270); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_validates() {
+    let bytes: [u8; 62] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 62);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let checked = ProcessHost::validate_answer(&mut r).and_then(|()| r.finish());
+    kani::cover!(checked.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 14 to 270); loops unwound 2 times. Its round trip is
+/// proved per layout below (11 layouts).
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_decodes() {
+    let bytes: [u8; 22] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 22);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 0 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_0() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 1 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_1() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 2 (14 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_2() {
+    let mut bytes: [u8; 14] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 14 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 3 (15 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_3() {
+    let mut bytes: [u8; 15] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 15 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 4 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_4() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 16 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 5 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_5() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 6 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_6() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 7 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_7() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 7;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 8 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_8() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 8;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 9 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_9() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 9;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `process.ProcessHost.answer` (IPC-R6): every accepted
+/// input of layout 10 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_host_answer_round_trip_10() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 10;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessHost::decode_answer(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessHost::encode_answer(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
 /// For [`verify_process_host_unknown_ordinal`]: a message validator that
 /// may accept or refuse anything.
 #[cfg(kani)]
@@ -644,8 +2421,10 @@ fn kani_any_process_host_validation(_r: &mut Reader<'_>) -> Result<(), BadMessag
 #[kani::unwind(6)]
 #[kani::stub(ProcessHost::validate_ready, kani_any_process_host_validation)]
 #[kani::stub(ProcessHost::validate_pong, kani_any_process_host_validation)]
+#[kani::stub(ProcessHost::validate_ask, kani_any_process_host_validation)]
+#[kani::stub(ProcessHost::validate_answer, kani_any_process_host_validation)]
 fn verify_process_host_unknown_ordinal() {
-    let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 2);
+    let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 4);
     let tail: [u8; 2] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| (2..=4).contains(&n));
     let [o0, o1] = ordinal.to_le_bytes();
@@ -672,6 +2451,25 @@ pub enum ProcessControl {
         /// Why.
         reason: ExitReason,
     },
+    /// What the child is for; sent once, after `ready` is accepted.
+    Start {
+        /// The child's configuration.
+        config: ChildConfig,
+    },
+    /// Work the browser routes to this child (M1 skeleton).
+    Work {
+        /// The browser's number for it.
+        id: u64,
+        /// What to do.
+        payload: hg_ipc::BoundedBytes<256>,
+    },
+    /// The answer to this child's `ProcessHost.ask`.
+    Answered {
+        /// The ask's number.
+        id: u64,
+        /// The answer.
+        payload: hg_ipc::BoundedBytes<256>,
+    },
 }
 
 impl ProcessControl {
@@ -684,8 +2482,23 @@ impl ProcessControl {
         max_message_len: hg_ipc::wire::len_add(
             2,
             hg_ipc::wire::len_max(
-                hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
-                hg_ipc::wire::len_add(0, <ExitReason as Wire>::MAX_LEN),
+                hg_ipc::wire::len_max(
+                    hg_ipc::wire::len_max(
+                        hg_ipc::wire::len_max(
+                            hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                            hg_ipc::wire::len_add(0, <ExitReason as Wire>::MAX_LEN),
+                        ),
+                        hg_ipc::wire::len_add(0, <ChildConfig as Wire>::MAX_LEN),
+                    ),
+                    hg_ipc::wire::len_add(
+                        hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                        <hg_ipc::BoundedBytes<256> as Wire>::MAX_LEN,
+                    ),
+                ),
+                hg_ipc::wire::len_add(
+                    hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                    <hg_ipc::BoundedBytes<256> as Wire>::MAX_LEN,
+                ),
             ),
         ),
     };
@@ -718,6 +2531,49 @@ impl ProcessControl {
     fn encode_exit(w: &mut Writer, reason: &ExitReason) {
         reason.encode(w);
     }
+    /// Reads [`Self::Start`]'s fields, after its ordinal.
+    fn decode_start(r: &mut Reader<'_>) -> Result<(ChildConfig,), BadMessage> {
+        Ok((Wire::decode(r)?,))
+    }
+    /// Checks [`Self::Start`]'s fields, after its ordinal.
+    fn validate_start(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        <ChildConfig as Wire>::validate(r)?;
+        Ok(())
+    }
+    /// Writes [`Self::Start`]'s fields, after its ordinal.
+    fn encode_start(w: &mut Writer, config: &ChildConfig) {
+        config.encode(w);
+    }
+    /// Reads [`Self::Work`]'s fields, after its ordinal.
+    fn decode_work(r: &mut Reader<'_>) -> Result<(u64, hg_ipc::BoundedBytes<256>), BadMessage> {
+        Ok((Wire::decode(r)?, Wire::decode(r)?))
+    }
+    /// Checks [`Self::Work`]'s fields, after its ordinal.
+    fn validate_work(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        <u64 as Wire>::validate(r)?;
+        <hg_ipc::BoundedBytes<256> as Wire>::validate(r)?;
+        Ok(())
+    }
+    /// Writes [`Self::Work`]'s fields, after its ordinal.
+    fn encode_work(w: &mut Writer, id: &u64, payload: &hg_ipc::BoundedBytes<256>) {
+        id.encode(w);
+        payload.encode(w);
+    }
+    /// Reads [`Self::Answered`]'s fields, after its ordinal.
+    fn decode_answered(r: &mut Reader<'_>) -> Result<(u64, hg_ipc::BoundedBytes<256>), BadMessage> {
+        Ok((Wire::decode(r)?, Wire::decode(r)?))
+    }
+    /// Checks [`Self::Answered`]'s fields, after its ordinal.
+    fn validate_answered(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+        <u64 as Wire>::validate(r)?;
+        <hg_ipc::BoundedBytes<256> as Wire>::validate(r)?;
+        Ok(())
+    }
+    /// Writes [`Self::Answered`]'s fields, after its ordinal.
+    fn encode_answered(w: &mut Writer, id: &u64, payload: &hg_ipc::BoundedBytes<256>) {
+        id.encode(w);
+        payload.encode(w);
+    }
 }
 
 impl Wire for ProcessControl {
@@ -731,6 +2587,18 @@ impl Wire for ProcessControl {
                 1u16.encode(w);
                 Self::encode_exit(w, reason);
             }
+            Self::Start { config } => {
+                2u16.encode(w);
+                Self::encode_start(w, config);
+            }
+            Self::Work { id, payload } => {
+                3u16.encode(w);
+                Self::encode_work(w, id, payload);
+            }
+            Self::Answered { id, payload } => {
+                4u16.encode(w);
+                Self::encode_answered(w, id, payload);
+            }
         }
     }
     fn decode(r: &mut Reader<'_>) -> Result<Self, BadMessage> {
@@ -743,6 +2611,18 @@ impl Wire for ProcessControl {
                 let (reason,) = Self::decode_exit(r)?;
                 Ok(Self::Exit { reason })
             }
+            2 => {
+                let (config,) = Self::decode_start(r)?;
+                Ok(Self::Start { config })
+            }
+            3 => {
+                let (id, payload) = Self::decode_work(r)?;
+                Ok(Self::Work { id, payload })
+            }
+            4 => {
+                let (id, payload) = Self::decode_answered(r)?;
+                Ok(Self::Answered { id, payload })
+            }
             _ => Err(BadMessage::UnknownOrdinal),
         }
     }
@@ -750,21 +2630,54 @@ impl Wire for ProcessControl {
         match u16::decode(r)? {
             0 => Self::validate_ping(r),
             1 => Self::validate_exit(r),
+            2 => Self::validate_start(r),
+            3 => Self::validate_work(r),
+            4 => Self::validate_answered(r),
             _ => Err(BadMessage::UnknownOrdinal),
         }
     }
     const MIN_LEN: usize = hg_ipc::wire::len_add(
         2,
         hg_ipc::wire::len_min(
-            hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
-            hg_ipc::wire::len_add(0, <ExitReason as Wire>::MIN_LEN),
+            hg_ipc::wire::len_min(
+                hg_ipc::wire::len_min(
+                    hg_ipc::wire::len_min(
+                        hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+                        hg_ipc::wire::len_add(0, <ExitReason as Wire>::MIN_LEN),
+                    ),
+                    hg_ipc::wire::len_add(0, <ChildConfig as Wire>::MIN_LEN),
+                ),
+                hg_ipc::wire::len_add(
+                    hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+                    <hg_ipc::BoundedBytes<256> as Wire>::MIN_LEN,
+                ),
+            ),
+            hg_ipc::wire::len_add(
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MIN_LEN),
+                <hg_ipc::BoundedBytes<256> as Wire>::MIN_LEN,
+            ),
         ),
     );
     const MAX_LEN: usize = hg_ipc::wire::len_add(
         2,
         hg_ipc::wire::len_max(
-            hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
-            hg_ipc::wire::len_add(0, <ExitReason as Wire>::MAX_LEN),
+            hg_ipc::wire::len_max(
+                hg_ipc::wire::len_max(
+                    hg_ipc::wire::len_max(
+                        hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                        hg_ipc::wire::len_add(0, <ExitReason as Wire>::MAX_LEN),
+                    ),
+                    hg_ipc::wire::len_add(0, <ChildConfig as Wire>::MAX_LEN),
+                ),
+                hg_ipc::wire::len_add(
+                    hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                    <hg_ipc::BoundedBytes<256> as Wire>::MAX_LEN,
+                ),
+            ),
+            hg_ipc::wire::len_add(
+                hg_ipc::wire::len_add(0, <u64 as Wire>::MAX_LEN),
+                <hg_ipc::BoundedBytes<256> as Wire>::MAX_LEN,
+            ),
         ),
     );
 }
@@ -779,6 +2692,9 @@ impl ProcessControl {
         match u16::decode(&mut r)? {
             0 => Self::validate_ping(&mut r)?,
             1 => Self::validate_exit(&mut r)?,
+            2 => Self::validate_start(&mut r)?,
+            3 => Self::validate_work(&mut r)?,
+            4 => Self::validate_answered(&mut r)?,
             _ => return Err(BadMessage::UnknownOrdinal),
         }
         r.finish()
@@ -797,6 +2713,18 @@ impl hg_ipc::Interface for ProcessControl {
             Self::Exit { reason } => {
                 1u16.encode(&mut w);
                 Self::encode_exit(&mut w, &reason);
+            }
+            Self::Start { config } => {
+                2u16.encode(&mut w);
+                Self::encode_start(&mut w, &config);
+            }
+            Self::Work { id, payload } => {
+                3u16.encode(&mut w);
+                Self::encode_work(&mut w, &id, &payload);
+            }
+            Self::Answered { id, payload } => {
+                4u16.encode(&mut w);
+                Self::encode_answered(&mut w, &id, &payload);
             }
         }
         (w.into_bytes(), Vec::new())
@@ -821,6 +2749,21 @@ impl hg_ipc::Interface for ProcessControl {
                 hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
                 let (reason,) = Self::decode_exit(&mut r)?;
                 Self::Exit { reason }
+            }
+            2 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (config,) = Self::decode_start(&mut r)?;
+                Self::Start { config }
+            }
+            3 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (id, payload) = Self::decode_work(&mut r)?;
+                Self::Work { id, payload }
+            }
+            4 => {
+                hg_ipc::endpoint::expect_kinds(handles.iter().map(hg_ipc::Handle::kind), &[])?;
+                let (id, payload) = Self::decode_answered(&mut r)?;
+                Self::Answered { id, payload }
             }
             _ => return Err(BadMessage::UnknownOrdinal),
         };
@@ -848,6 +2791,35 @@ pub trait ProcessControlHandler {
         from: &hg_ipc::CallerIdentity,
         reason: ExitReason,
     ) -> Result<(), ProcessError>;
+    /// What the child is for; sent once, after `ready` is accepted.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn start(
+        &mut self,
+        from: &hg_ipc::CallerIdentity,
+        config: ChildConfig,
+    ) -> Result<(), ProcessError>;
+    /// Work the browser routes to this child (M1 skeleton).
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn work(
+        &mut self,
+        from: &hg_ipc::CallerIdentity,
+        id: u64,
+        payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError>;
+    /// The answer to this child's `ProcessHost.ask`.
+    ///
+    /// # Errors
+    /// The protocol's error, which ends the conversation.
+    fn answered(
+        &mut self,
+        from: &hg_ipc::CallerIdentity,
+        id: u64,
+        payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError>;
 }
 
 impl ProcessControl {
@@ -863,6 +2835,9 @@ impl ProcessControl {
         match self {
             Self::Ping { nonce } => h.ping(from, nonce),
             Self::Exit { reason } => h.exit(from, reason),
+            Self::Start { config } => h.start(from, config),
+            Self::Work { id, payload } => h.work(from, id, payload),
+            Self::Answered { id, payload } => h.answered(from, id, payload),
         }
     }
 }
@@ -879,6 +2854,25 @@ pub trait ProcessControlRemote {
     /// # Errors
     /// [`hg_ipc::SendError`]; the sender never blocks.
     fn exit(&self, reason: ExitReason) -> Result<(), hg_ipc::SendError>;
+    /// What the child is for; sent once, after `ready` is accepted.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn start(&self, config: ChildConfig) -> Result<(), hg_ipc::SendError>;
+    /// Work the browser routes to this child (M1 skeleton).
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn work(&self, id: u64, payload: hg_ipc::BoundedBytes<256>) -> Result<(), hg_ipc::SendError>;
+    /// The answer to this child's `ProcessHost.ask`.
+    ///
+    /// # Errors
+    /// [`hg_ipc::SendError`]; the sender never blocks.
+    fn answered(
+        &self,
+        id: u64,
+        payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), hg_ipc::SendError>;
 }
 
 impl ProcessControlRemote for hg_ipc::Remote<ProcessControl> {
@@ -888,18 +2882,42 @@ impl ProcessControlRemote for hg_ipc::Remote<ProcessControl> {
     fn exit(&self, reason: ExitReason) -> Result<(), hg_ipc::SendError> {
         self.send(ProcessControl::Exit { reason })
     }
+    fn start(&self, config: ChildConfig) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessControl::Start { config })
+    }
+    fn work(&self, id: u64, payload: hg_ipc::BoundedBytes<256>) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessControl::Work { id, payload })
+    }
+    fn answered(
+        &self,
+        id: u64,
+        payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), hg_ipc::SendError> {
+        self.send(ProcessControl::Answered { id, payload })
+    }
 }
 
 #[cfg(test)]
 impl crate::sample::Sample for ProcessControl {
     fn sample(g: &mut crate::sample::Gen) -> Self {
         use crate::sample::Sample;
-        match g.below(2) {
+        match g.below(5) {
             0 => Self::Ping {
                 nonce: Sample::sample(g),
             },
-            _ => Self::Exit {
+            1 => Self::Exit {
                 reason: Sample::sample(g),
+            },
+            2 => Self::Start {
+                config: Sample::sample(g),
+            },
+            3 => Self::Work {
+                id: Sample::sample(g),
+                payload: Sample::sample(g),
+            },
+            _ => Self::Answered {
+                id: Sample::sample(g),
+                payload: Sample::sample(g),
             },
         }
     }
@@ -1127,6 +3145,1391 @@ fn verify_process_control_exit_round_trip_2() {
     }
 }
 
+/// VER-1 for `process.ProcessControl.start` (IPC-R5): validating never
+/// panics, overflows or reads out of bounds. Bounds: messages of 2 to
+/// 22 bytes (its encodings are 6 to 22); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_start_validates() {
+    let bytes: [u8; 20] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 20);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let checked = ProcessControl::validate_start(&mut r).and_then(|()| r.finish());
+    kani::cover!(checked.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessControl.start` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 22 bytes (its encodings are
+/// 6 to 22); loops unwound 2 times. Its round trip is
+/// proved per layout below (4 layouts).
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_start_decodes() {
+    let bytes: [u8; 20] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 20);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let decoded = ProcessControl::decode_start(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessControl.start` (IPC-R6): every accepted
+/// input of layout 0 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_start_round_trip_0() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_start(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((config,)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessControl::encode_start(&mut w, &config);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.start` (IPC-R6): every accepted
+/// input of layout 1 (4 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_start_round_trip_1() {
+    let mut bytes: [u8; 4] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_start(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((config,)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessControl::encode_start(&mut w, &config);
+        let out = w.into_bytes();
+        assert!(out.len() == 4 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.start` (IPC-R6): every accepted
+/// input of layout 2 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_start_round_trip_2() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_start(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((config,)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessControl::encode_start(&mut w, &config);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.start` (IPC-R6): every accepted
+/// input of layout 3 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_start_round_trip_3() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(2) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(3) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_start(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((config,)) = decoded {
+        let mut w = Writer::new();
+        2u16.encode(&mut w);
+        ProcessControl::encode_start(&mut w, &config);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&2));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R5): validating never
+/// panics, overflows or reads out of bounds. Bounds: messages of 2 to
+/// 64 bytes (its encodings are 14 to 270); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_validates() {
+    let bytes: [u8; 62] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 62);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let checked = ProcessControl::validate_work(&mut r).and_then(|()| r.finish());
+    kani::cover!(checked.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 14 to 270); loops unwound 2 times. Its round trip is
+/// proved per layout below (11 layouts).
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_decodes() {
+    let bytes: [u8; 22] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 22);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 0 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_0() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 1 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_1() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 2 (14 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_2() {
+    let mut bytes: [u8; 14] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 14 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 3 (15 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_3() {
+    let mut bytes: [u8; 15] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 15 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 4 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_4() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 16 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 5 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_5() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 6 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_6() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 7 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_7() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 7;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 8 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_8() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 8;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 9 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_9() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 9;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.work` (IPC-R6): every accepted
+/// input of layout 10 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_work_round_trip_10() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 10;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_work(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        3u16.encode(&mut w);
+        ProcessControl::encode_work(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&3));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R5): validating never
+/// panics, overflows or reads out of bounds. Bounds: messages of 2 to
+/// 64 bytes (its encodings are 14 to 270); loops unwound 2 times.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_validates() {
+    let bytes: [u8; 62] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 62);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let checked = ProcessControl::validate_answered(&mut r).and_then(|()| r.finish());
+    kani::cover!(checked.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R5): decoding never
+/// panics. Bounds: messages of 2 to 24 bytes (its encodings are
+/// 14 to 270); loops unwound 2 times. Its round trip is
+/// proved per layout below (11 layouts).
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_decodes() {
+    let bytes: [u8; 22] = kani::any();
+    let len: usize = kani::any_where(|&n: &usize| n <= 22);
+    let Some(input) = bytes.get(..len) else {
+        return;
+    };
+    let mut r = Reader::new(input);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "some input is accepted");
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 0 (12 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_0() {
+    let mut bytes: [u8; 12] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 12 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 1 (13 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_1() {
+    let mut bytes: [u8; 13] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 1;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 13 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 2 (14 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_2() {
+    let mut bytes: [u8; 14] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 2;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 14 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 3 (15 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_3() {
+    let mut bytes: [u8; 15] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 3;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 15 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 4 (16 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_4() {
+    let mut bytes: [u8; 16] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 4;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 16 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 5 (17 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_5() {
+    let mut bytes: [u8; 17] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 5;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 17 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 6 (18 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_6() {
+    let mut bytes: [u8; 18] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 6;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 18 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 7 (19 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_7() {
+    let mut bytes: [u8; 19] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 7;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 19 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 8 (20 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_8() {
+    let mut bytes: [u8; 20] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 8;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 20 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 9 (21 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_9() {
+    let mut bytes: [u8; 21] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 9;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 21 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+    }
+}
+
+/// VER-1 for `process.ProcessControl.answered` (IPC-R6): every accepted
+/// input of layout 10 (22 bytes) re-encodes to the same bytes.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(2)]
+fn verify_process_control_answered_round_trip_10() {
+    let mut bytes: [u8; 22] = kani::any();
+    if let Some(b) = bytes.get_mut(8) {
+        *b = 10;
+    }
+    if let Some(b) = bytes.get_mut(9) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(10) {
+        *b = 0;
+    }
+    if let Some(b) = bytes.get_mut(11) {
+        *b = 0;
+    }
+    let mut r = Reader::new(&bytes);
+    let decoded = ProcessControl::decode_answered(&mut r).and_then(|f| r.finish().map(|()| f));
+    kani::cover!(decoded.is_ok(), "this layout is accepted");
+    if let Ok((id, payload)) = decoded {
+        let mut w = Writer::new();
+        4u16.encode(&mut w);
+        ProcessControl::encode_answered(&mut w, &id, &payload);
+        let out = w.into_bytes();
+        assert!(out.len() == 22 + 2);
+        assert!(out.first() == Some(&4));
+        assert!(out.get(1) == Some(&0));
+        assert!(out.get(2) == bytes.get(0));
+        assert!(out.get(3) == bytes.get(1));
+        assert!(out.get(4) == bytes.get(2));
+        assert!(out.get(5) == bytes.get(3));
+        assert!(out.get(6) == bytes.get(4));
+        assert!(out.get(7) == bytes.get(5));
+        assert!(out.get(8) == bytes.get(6));
+        assert!(out.get(9) == bytes.get(7));
+        assert!(out.get(10) == bytes.get(8));
+        assert!(out.get(11) == bytes.get(9));
+        assert!(out.get(12) == bytes.get(10));
+        assert!(out.get(13) == bytes.get(11));
+        assert!(out.get(14) == bytes.get(12));
+        assert!(out.get(15) == bytes.get(13));
+        assert!(out.get(16) == bytes.get(14));
+        assert!(out.get(17) == bytes.get(15));
+        assert!(out.get(18) == bytes.get(16));
+        assert!(out.get(19) == bytes.get(17));
+        assert!(out.get(20) == bytes.get(18));
+        assert!(out.get(21) == bytes.get(19));
+        assert!(out.get(22) == bytes.get(20));
+        assert!(out.get(23) == bytes.get(21));
+    }
+}
+
 /// For [`verify_process_control_unknown_ordinal`]: a message validator that
 /// may accept or refuse anything.
 #[cfg(kani)]
@@ -1147,8 +4550,11 @@ fn kani_any_process_control_validation(_r: &mut Reader<'_>) -> Result<(), BadMes
 #[kani::unwind(6)]
 #[kani::stub(ProcessControl::validate_ping, kani_any_process_control_validation)]
 #[kani::stub(ProcessControl::validate_exit, kani_any_process_control_validation)]
+#[kani::stub(ProcessControl::validate_start, kani_any_process_control_validation)]
+#[kani::stub(ProcessControl::validate_work, kani_any_process_control_validation)]
+#[kani::stub(ProcessControl::validate_answered, kani_any_process_control_validation)]
 fn verify_process_control_unknown_ordinal() {
-    let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 2);
+    let ordinal: u16 = kani::any_where(|&n: &u16| usize::from(n) >= 5);
     let tail: [u8; 2] = kani::any();
     let len: usize = kani::any_where(|&n: &usize| (2..=4).contains(&n));
     let [o0, o1] = ordinal.to_le_bytes();

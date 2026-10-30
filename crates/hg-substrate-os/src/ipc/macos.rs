@@ -70,12 +70,13 @@ use std::time::{Duration, Instant as StdInstant};
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, FaultKind, Flow,
     Handle, HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES,
-    MAX_MESSAGE_HANDLES, Mapping, OsPeer, ProducerRegion, ReadOnlyRegion, RegionRefused,
-    RegionWriter, Sink, Transfer,
+    MAX_MESSAGE_HANDLES, Mapping, OsPeer, PeerAttest, ProducerRegion, ReadOnlyRegion,
+    RegionRefused, RegionWriter, Sink, Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
 use crate::executor::OsExecutor;
+use crate::ipc::common::attest;
 use crate::ipc::common::codec::{
     Credit, HandleDesc, WireKind, decode_credit, encode_credit, encode_data,
 };
@@ -389,6 +390,9 @@ pub(crate) struct Inner {
     state: Mutex<State>,
     token: Token,
     boot: Mutex<Option<Boot>>,
+    /// The bootstrap receiver's end ID once taken, and its launcher: the
+    /// one receiver `PeerAttest::Inherited` binds (review M7).
+    boot_rx: Mutex<Option<(u64, Token)>>,
     /// The broker, for a launched process: its launcher, as the hello's
     /// token attests. `None` in the broker itself, the one process not
     /// launched.
@@ -1415,6 +1419,7 @@ impl MacIpc {
             state: Mutex::new(State::default()),
             token,
             boot: Mutex::new(boot),
+            boot_rx: Mutex::new(None),
             broker,
             ledger: Mutex::new(Ledger::default()),
             #[cfg(test)]
@@ -1523,7 +1528,6 @@ impl MacIpc {
         }))))
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
     /// The launcher's side of the hello exchange (phase E's launcher and
     /// the tests): waits on `boot`, the bootstrap port given to a child
     /// started with [`sys::spawn`], for the hello of `expected`
@@ -1610,7 +1614,6 @@ impl MacIpc {
         None
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
     /// The ports of a child's two launch channels and this process's
     /// ends of them: (up data, up credit, down data, ours).
     fn launch_ends(&self) -> Option<(u32, u32, u32, (ChannelReceiver, ChannelSender))> {
@@ -2061,16 +2064,33 @@ impl Ipc for MacIpc {
     fn listen_bound(
         &self,
         from: ChannelReceiver,
-        peer: OsPeer,
+        peer: PeerAttest,
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
-        let (Ok(version), true) = (u32::try_from(peer.generation()), peer.pid() > 0) else {
-            return Err(IpcError::Refused);
-        };
-        let token = Token {
-            pid: peer.pid(),
-            version,
+        let boot = *self
+            .inner
+            .boot_rx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let is_boot = boot.is_some_and(|(id, _t)| self.held_end(from.handle()) == Some(id));
+        let token = match attest::resolve(peer, is_boot) {
+            None => return Err(IpcError::Refused),
+            // The audit token names the launcher: the inherited binding
+            // checks it as well, which only makes it stricter.
+            Some(attest::Bound::Inherited) => match boot {
+                Some((_id, t)) => t,
+                None => return Err(IpcError::Refused),
+            },
+            Some(attest::Bound::Peer(peer)) => {
+                let (Ok(version), true) = (u32::try_from(peer.generation()), peer.pid() > 0) else {
+                    return Err(IpcError::Refused);
+                };
+                Token {
+                    pid: peer.pid(),
+                    version,
+                }
+            }
         };
         self.start_listening(from, Some(token), seq, sink)
     }
@@ -2111,10 +2131,16 @@ impl Ipc for MacIpc {
             ChannelSender::from_handle(self.handle(tx, HandleKind::ChannelSender)).ok()?;
         let from_parent =
             ChannelReceiver::from_handle(self.handle(rx, HandleKind::ChannelReceiver)).ok()?;
+        *self
+            .inner
+            .boot_rx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some((rx, b.parent));
         Some(Bootstrap {
             to_parent,
             from_parent,
-            parent: OsPeer::new(b.parent.pid, u64::from(b.parent.version)),
+            // The audit token names the launcher (no PID namespace here).
+            parent: PeerAttest::Os(OsPeer::new(b.parent.pid, u64::from(b.parent.version))),
         })
     }
 }

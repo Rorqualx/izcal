@@ -77,11 +77,13 @@ use std::time::{Duration, Instant as StdInstant};
 use hg_substrate::ipc::{
     Bootstrap, ChannelReceiver, ChannelSender, ConsumerRegion, Delivery, Fault, Flow, Handle,
     HandleKind, HandleObject, Ipc, IpcError, Listening, MAX_MESSAGE_BYTES, MAX_MESSAGE_HANDLES,
-    Mapping, OsPeer, ProducerRegion, ReadOnlyRegion, RegionRefused, RegionWriter, Sink, Transfer,
+    Mapping, OsPeer, PeerAttest, ProducerRegion, ReadOnlyRegion, RegionRefused, RegionWriter, Sink,
+    Transfer,
 };
 use hg_substrate::{SequenceHandle, Task};
 
 use crate::executor::OsExecutor;
+use crate::ipc::common::attest;
 use crate::ipc::common::codec::{
     CREDIT_LEN, Credit, HandleDesc, MAX_DATA_RECORD, WireKind, decode_credit, encode_credit,
     encode_data,
@@ -153,6 +155,9 @@ struct Listener {
     /// For a bound receiver, the one process whose records it accepts
     /// ([`Ipc::listen_bound`]); `None` for a free one.
     peer: Option<i32>,
+    /// The bootstrap receiver bound by inheritance (`PeerAttest::Inherited`):
+    /// no pid check, and what arrives is the broker's (review M7).
+    inherited: bool,
     credit: PendingCredit,
 }
 
@@ -212,10 +217,21 @@ pub(crate) struct Inner {
     /// Open descriptors when the transport started, for the headroom.
     baseline_fds: usize,
     boot: Mutex<Option<(OwnedFd, OwnedFd)>>,
-    /// The broker, for a launched process: the creator of its launch
-    /// channels (`SO_PEERCRED`). `None` in the broker itself, the one
-    /// process started without them.
+    /// The broker, for a launched process that can see it: the creator of
+    /// its launch channels (`SO_PEERCRED`). `None` in the broker itself,
+    /// and in a child in a PID namespace, which reads it as pid 0
+    /// (launch facts E13).
     broker_pid: Option<i32>,
+    /// Started with launch channels: every process but the broker.
+    launched: bool,
+    /// Launched into a PID namespace (the launch channels' creator reads
+    /// as pid 0): no pid this process reads names anyone outside it, so
+    /// its violation reports carry no sender (design review M7). Set at
+    /// start; atomic only so a test can set it.
+    namespaced: core::sync::atomic::AtomicBool,
+    /// The bootstrap receiver's end ID, once taken: the one receiver
+    /// `PeerAttest::Inherited` binds.
+    boot_rx: Mutex<Option<u64>>,
     /// The broker's region charges (D6 review M4).
     ledger: Mutex<Ledger>,
     /// The region self-test's result, run before the first allocation.
@@ -229,7 +245,7 @@ impl Inner {
 
     /// Whether this process is the broker (it was not launched).
     const fn is_broker(&self) -> bool {
-        self.broker_pid.is_none()
+        !self.launched
     }
 
     fn ledger(&self) -> MutexGuard<'_, Ledger> {
@@ -533,6 +549,7 @@ impl Inner {
             };
             let binding = Binding {
                 peer: l.peer,
+                inherited: l.inherited,
                 broker: self.broker_pid,
             };
             let verdict = decide(&record, binding, flow, &|dev: u64, ino: u64| {
@@ -668,6 +685,15 @@ impl Inner {
         {
             l.ended = true;
             l.armed = false;
+            // In a PID namespace no pid names anyone outside it.
+            let last = match last {
+                Item::Violation(f)
+                    if self.namespaced.load(core::sync::atomic::Ordering::Relaxed) =>
+                {
+                    Item::Violation(Fault { sender: None, ..f })
+                }
+                other => other,
+            };
             if *registered {
                 let _ = self.epoll.delete(fd.as_fd());
                 *registered = false;
@@ -1007,10 +1033,13 @@ impl LinuxIpc {
             .add(waker.fd(), Interest::WAKER, WAKER_TOKEN)
             .map_err(StartError::Os)?;
         let limit = sys::fd_limit();
-        let broker_pid = match &bootstrap {
-            Some((up, _)) => Some(sys::creator_pid(up.as_fd()).ok_or(StartError::Bootstrap)?),
+        let creator = match &bootstrap {
+            Some((up, _)) => Some(sys::creator_pid_seen(up.as_fd()).ok_or(StartError::Bootstrap)?),
             None => None,
         };
+        let broker_pid = creator.filter(|&p| p > 0);
+        let launched = creator.is_some();
+        let namespaced = creator == Some(0);
         let inner = Arc::new(Inner {
             exec,
             epoll,
@@ -1020,12 +1049,23 @@ impl LinuxIpc {
             baseline_fds: sys::count_open(limit.min(4096)),
             boot: Mutex::new(bootstrap),
             broker_pid,
+            launched,
+            namespaced: core::sync::atomic::AtomicBool::new(namespaced),
+            boot_rx: Mutex::new(None),
             ledger: Mutex::new(Ledger::default()),
             regions_ok: OnceLock::new(),
         });
         let io = Arc::clone(&inner);
         crate::thread::spawn("hg-ipc-io", move || io.io_loop()).map_err(StartError::Os)?;
         Ok(Self { inner })
+    }
+
+    /// Tests only: behave as a child in a PID namespace.
+    #[cfg(test)]
+    pub(crate) fn set_namespaced(&self) {
+        self.inner
+            .namespaced
+            .store(true, core::sync::atomic::Ordering::Relaxed);
     }
 
     /// The end `h` names, if it is this transport's and held here.
@@ -1338,21 +1378,38 @@ impl Ipc for LinuxIpc {
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
-        self.start_listening(from, None, seq, sink)
+        self.start_listening(from, Listen::Free, seq, sink)
     }
 
     fn listen_bound(
         &self,
         from: ChannelReceiver,
-        peer: OsPeer,
+        peer: PeerAttest,
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
-        // A pid the kernel can never attest binds to no one.
-        let Some(pid) = i32::try_from(peer.pid()).ok().filter(|&p| p > 0) else {
-            return Err(IpcError::Refused);
-        };
-        self.start_listening(from, Some(pid), seq, sink)
+        let boot = *self
+            .inner
+            .boot_rx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let is_boot = boot.is_some() && self.held_end(from.handle()) == boot;
+        match attest::resolve(peer, is_boot) {
+            None => Err(IpcError::Refused),
+            // The launcher's pid is checked too where it is visible, as on
+            // macOS and Windows; in a PID namespace the channel alone
+            // attests.
+            Some(attest::Bound::Inherited) => {
+                self.start_listening(from, Listen::Inherited(self.inner.broker_pid), seq, sink)
+            }
+            Some(attest::Bound::Peer(peer)) => {
+                // A pid the kernel can never attest binds to no one.
+                let Some(pid) = i32::try_from(peer.pid()).ok().filter(|&p| p > 0) else {
+                    return Err(IpcError::Refused);
+                };
+                self.start_listening(from, Listen::Peer(pid), seq, sink)
+            }
+        }
     }
 
     fn allocate_region(&self, len: usize, owner: OsPeer) -> Result<RegionWriter, IpcError> {
@@ -1415,9 +1472,18 @@ impl Ipc for LinuxIpc {
             ChannelSender::from_handle(self.handle(tx?, HandleKind::ChannelSender)).ok()?;
         let from_parent =
             ChannelReceiver::from_handle(self.handle(rx?, HandleKind::ChannelReceiver)).ok()?;
-        // The launching process. Until phase E's spawner sits between
-        // the broker and its children, it is this process's parent.
-        let parent = OsPeer::new(std::os::unix::process::parent_id(), 0);
+        *self
+            .inner
+            .boot_rx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = rx;
+        // The launcher is the launch channels' creator (the broker, even
+        // with the spawner between them, launch facts E23). Where it reads
+        // as pid 0 (a PID namespace) the channel attests instead.
+        let parent = match self.inner.broker_pid.and_then(|p| u32::try_from(p).ok()) {
+            Some(p) => PeerAttest::Os(OsPeer::new(p, 0)),
+            None => PeerAttest::Inherited,
+        };
         Some(Bootstrap {
             to_parent,
             from_parent,
@@ -1427,12 +1493,11 @@ impl Ipc for LinuxIpc {
 }
 
 impl LinuxIpc {
-    /// [`Ipc::listen`] and [`Ipc::listen_bound`]: `peer` is the bound
-    /// peer's pid, `None` for a free receiver.
+    /// [`Ipc::listen`] and [`Ipc::listen_bound`].
     fn start_listening(
         &self,
         from: ChannelReceiver,
-        peer: Option<i32>,
+        how: Listen,
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError> {
@@ -1452,8 +1517,13 @@ impl LinuxIpc {
         else {
             return Err(IpcError::Refused);
         };
+        let (peer, inherited) = match how {
+            Listen::Free => (None, false),
+            Listen::Peer(p) => (Some(p), false),
+            Listen::Inherited(p) => (p, true),
+        };
         // A bound receiver listens only with its peer named.
-        if listener.is_some() || (*bound && peer.is_none()) {
+        if listener.is_some() || (*bound && how == Listen::Free) {
             return Err(IpcError::Refused);
         }
         *listener = Some(Listener {
@@ -1464,6 +1534,7 @@ impl LinuxIpc {
             ended: false,
             armed: false,
             peer,
+            inherited,
             credit: PendingCredit::default(),
         });
         self.inner.arm(&mut st, id);
@@ -1474,6 +1545,18 @@ impl LinuxIpc {
             id,
         }))))
     }
+}
+
+/// How a receiver listens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Listen {
+    /// From anyone holding the sender.
+    Free,
+    /// From this pid only, as `SCM_CREDENTIALS` attests.
+    Peer(i32),
+    /// The bootstrap receiver, attested by inheritance, and by the
+    /// launcher's pid where this process can see it.
+    Inherited(Option<i32>),
 }
 
 /// Reads every credit queued on sender end `id`. An error means the
@@ -1553,7 +1636,6 @@ pub fn launch_pair() -> std::io::Result<((OwnedFd, OwnedFd), (OwnedFd, OwnedFd))
 }
 
 /// The parent side of [`launch_pair`], as this transport's ends.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) fn adopt_parent_ends(
     ipc: &LinuxIpc,
     from_child: OwnedFd,

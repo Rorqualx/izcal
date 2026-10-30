@@ -1,0 +1,11 @@
+# Izcal's Linux spawner on hueyj: user namespaces with capabilities
+# inside them, for the full-tier probe (E-Q1). Test host only: it names
+# the two exact spawner binaries of one scratch build, nothing else.
+# See README.md in this directory before installing.
+abi <abi/4.0>,
+
+include <tunables/global>
+
+profile izcal-spawner /home/joe/izcal-m1e2/target/{debug,release}/hg-spawner-main flags=(unconfined) {
+  userns,
+}

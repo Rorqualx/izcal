@@ -200,6 +200,35 @@ impl OsPeer {
     }
 }
 
+/// How a bound receiver attests the one process it accepts records from
+/// ([`Ipc::listen_bound`]; design review M7, M8).
+///
+/// There is no wire form: no codec makes one, and no message can carry
+/// one (review M7). [`PeerAttest::Inherited`] is a variant of its own, not
+/// a reserved pid, so no [`OsPeer`] value can mean it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PeerAttest {
+    /// Every record must come from this process, as the OS attests the
+    /// sender of each (on Windows, as the broker attests the holder of
+    /// the channel's sender end).
+    Os(OsPeer),
+    /// The channel itself attests: this is the process's own bootstrap
+    /// receiver, which came to it at birth, and only the process that
+    /// launched it holds the matching sender (a bound sender is never
+    /// transferable). A child in a PID namespace reads every outside
+    /// process as pid 0 (launch facts E12, E13, E23), so this is how it
+    /// binds its launcher. Valid **only** for the receiver
+    /// [`Ipc::bootstrap`] returned; every transport refuses it for any
+    /// other receiver.
+    Inherited,
+}
+
+impl From<OsPeer> for PeerAttest {
+    fn from(p: OsPeer) -> Self {
+        Self::Os(p)
+    }
+}
+
 /// What a listener is given.
 #[derive(Debug)]
 pub enum Delivery {
@@ -248,6 +277,9 @@ pub enum FaultKind {
 pub struct Fault {
     /// What went wrong.
     pub kind: FaultKind,
+    /// A child in a PID namespace always reports `None`: every outside
+    /// process reads as pid 0 there (design review M7).
+    ///
     /// The OS process ID of the process at fault: the record's sender,
     /// when the OS attests it (Linux `SCM_CREDENTIALS`, the macOS audit
     /// token; a Windows pipe attests none, so faults a receiver detects
@@ -297,8 +329,10 @@ pub struct Bootstrap {
     /// From the launching process.
     pub from_parent: ChannelReceiver,
     /// The launching process, to listen on `from_parent` with
-    /// ([`Ipc::listen_bound`]).
-    pub parent: OsPeer,
+    /// ([`Ipc::listen_bound`]): [`PeerAttest::Os`] where the OS can name
+    /// it, [`PeerAttest::Inherited`] where it cannot (a Linux child in a
+    /// PID namespace).
+    pub parent: PeerAttest,
 }
 
 /// Why an IPC operation failed. Every case is the caller's to handle;
@@ -398,13 +432,23 @@ pub trait Ipc: Send + Sync {
     /// knows the one process that should send on it (a launch channel's
     /// child or parent).
     ///
+    /// **Identity on the child side (design review M8).** A child's
+    /// identity check is always the channel binding the broker issued:
+    /// its bootstrap receiver ([`PeerAttest::Inherited`] where the OS
+    /// cannot name the broker), and every other channel it holds came
+    /// from the broker bound to the peer the broker named. Region writers
+    /// and bound senders are accepted only from the broker: by the OS's
+    /// attestation where it has one, else because they arrived on the
+    /// inherited bootstrap channel, which only the broker can send on.
+    ///
     /// # Errors
     /// [`IpcError::Refused`] for a receiver this process does not hold,
-    /// [`IpcError::Sequence`], [`IpcError::Unsupported`].
+    /// or [`PeerAttest::Inherited`] for any receiver but the bootstrap
+    /// one, [`IpcError::Sequence`], [`IpcError::Unsupported`].
     fn listen_bound(
         &self,
         from: ChannelReceiver,
-        peer: OsPeer,
+        peer: PeerAttest,
         seq: SequenceHandle,
         sink: Sink,
     ) -> Result<Listening, IpcError>;

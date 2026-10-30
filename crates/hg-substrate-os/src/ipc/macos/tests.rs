@@ -3,6 +3,7 @@
 //! and its bootstrap port set to a port of ours, as phase E's launcher
 //! will), then hostile messages the transport itself never sends.
 
+use hg_substrate::ipc::PeerAttest;
 use std::ffi::CString;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
@@ -59,13 +60,13 @@ impl Rig {
     fn listen_bound(
         &self,
         rx: ChannelReceiver,
-        peer: OsPeer,
+        peer: impl Into<PeerAttest>,
     ) -> (Receiver<Ev>, hg_substrate::ipc::Listening) {
         let (tx, out) = sync_channel::<Ev>(4096);
         let seq = self.exec.sequence("test", Priority::UserVisible);
         let l = self
             .ipc
-            .listen_bound(rx, peer, seq, sink(tx))
+            .listen_bound(rx, peer.into(), seq, sink(tx))
             .expect("listen_bound");
         (out, l)
     }
@@ -313,13 +314,13 @@ fn bound_receivers_listen_only_with_their_peer_named() {
     let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
     assert!(
         r.ipc
-            .listen_bound(rx, OsPeer::new(me(), 1), seq(), nothing())
+            .listen_bound(rx, PeerAttest::Os(OsPeer::new(me(), 1)), seq(), nothing())
             .is_ok()
     );
     let (_btx, brx) = r.ipc.channel(8, Transfer::Bound).unwrap();
     assert_eq!(
         r.ipc
-            .listen_bound(brx, OsPeer::new(0, 0), seq(), nothing())
+            .listen_bound(brx, PeerAttest::Os(OsPeer::new(0, 0)), seq(), nothing())
             .err(),
         Some(IpcError::Refused)
     );
@@ -860,7 +861,14 @@ fn spawn(r: &Rig, case: &str) -> Child {
     .collect();
     let arg_refs: Vec<&std::ffi::CStr> = args.iter().map(CString::as_c_str).collect();
     let env = CString::new(format!("IZCAL_D4_CHILD={case}")).unwrap();
-    let child = sys::spawn(&exe, &arg_refs, &[env.as_c_str()], boot).unwrap();
+    let child = sys::spawn(
+        &exe,
+        &arg_refs,
+        &[env.as_c_str()],
+        boot,
+        &sys::SpawnOpts::default(),
+    )
+    .unwrap();
     // The child has its own send right now; ours is not needed.
     sys::deallocate(boot);
     let (rx, tx) = r.ipc.adopt_child(boot, child.token).expect("hello");
@@ -908,7 +916,13 @@ fn a_child_without_a_token_never_runs() {
     let arg_refs: Vec<&std::ffi::CStr> = args.iter().map(CString::as_c_str).collect();
     let env = CString::new("IZCAL_D4_CHILD=burst-exit").unwrap();
     test_support::FAIL_CHILD_TOKEN.set(true);
-    let got = sys::spawn(&exe, &arg_refs, &[env.as_c_str()], boot);
+    let got = sys::spawn(
+        &exe,
+        &arg_refs,
+        &[env.as_c_str()],
+        boot,
+        &sys::SpawnOpts::default(),
+    );
     test_support::FAIL_CHILD_TOKEN.set(false);
     sys::destroy_receive(boot);
     assert!(got.is_err());
@@ -998,7 +1012,14 @@ fn a_wrong_launch_identity_gets_no_channels() {
         .collect();
     let arg_refs: Vec<&std::ffi::CStr> = args.iter().map(CString::as_c_str).collect();
     let env = CString::new("IZCAL_D4_CHILD=burst-exit").unwrap();
-    let child = sys::spawn(&exe, &arg_refs, &[env.as_c_str()], boot).unwrap();
+    let child = sys::spawn(
+        &exe,
+        &arg_refs,
+        &[env.as_c_str()],
+        boot,
+        &sys::SpawnOpts::default(),
+    )
+    .unwrap();
     sys::deallocate(boot);
     let wrong = wire::Token {
         pid: child.token.pid,

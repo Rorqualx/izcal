@@ -23,7 +23,7 @@ fi
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 status=0
-for pkg in hg-ipc hg-ipc-gen hg-substrate-os; do
+for pkg in hg-ipc hg-ipc-gen hg-substrate-os hg-launch-plan; do
   echo "== cargo kani -p $pkg"
   # pipefail: the pipeline fails if cargo kani does.
   # -Z stubbing: the generated unknown-ordinal harnesses stub each

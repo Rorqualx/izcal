@@ -15,3 +15,6 @@ mod os;
 
 #[cfg(test)]
 mod install;
+
+#[cfg(test)]
+mod launch;

@@ -86,6 +86,10 @@ pub enum Cond {
     },
     /// One of the values.
     OneOf(&'static [u32]),
+    /// The whole 64-bit argument is 0: both of its words are checked, so
+    /// a pointer whose low word is 0 does not pass (a pointer's high word
+    /// is not truncated by the kernel, unlike an `int`'s).
+    Zero64,
 }
 
 /// One allowed syscall: its number, the conditions on its arguments (all
@@ -203,6 +207,80 @@ const NO_EXEC_ARGS: &[(u32, Cond)] = &[(
     },
 )];
 const SHUTDOWN_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(SHUT_WR))];
+/// `sendto` with no destination address: on a connected socket only.
+/// Defence in depth (faults worker's probe, 26 Oct): Landlock ABI 4 does
+/// not stop a datagram to a path-named Unix socket, and an address on an
+/// unconnected datagram socket would reach one. No child can hold such a
+/// socket today; this keeps it so if one ever arrives.
+const SENDTO_ARGS: &[(u32, Cond)] = &[(4, Cond::Zero64)];
+/// `poll(fds, 3, 0)`: Rust's start-up check that descriptors 0 to 2 are
+/// open, which aborts the process on any error but a few (measured on
+/// hueyj, 26 Oct: under the launch filter without this rule a launched
+/// child died at start with `poll` = EPERM, before `main`). Three
+/// descriptors and no wait only: it can learn nothing it does not hold.
+const STDIO_POLL_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(3)), (2, Cond::Eq(0))];
+/// aarch64's `ppoll`, which the C library's `poll` calls: three
+/// descriptors (the timeout is a pointer a filter cannot read).
+const STDIO_PPOLL_ARGS: &[(u32, Cond)] = &[(1, Cond::Eq(3))];
+/// The `ioctl` commands std and the transports use, on a descriptor the
+/// process holds: `TCGETS` (`isatty`), `FIONBIO`, `FIONCLEX`, `FIOCLEX`.
+/// Everything else, `TIOCSTI` (0x5412, typing into a terminal) first,
+/// is denied (design review M1).
+const IOCTL_CMDS: &[u32] = &[0x5401, 0x5421, 0x5450, 0x5451];
+/// `TIOCSTI`: queues input on a terminal. Never allowed.
+pub const TIOCSTI: u32 = 0x5412;
+const IOCTL_ARGS: &[(u32, Cond)] = &[(1, Cond::OneOf(IOCTL_CMDS))];
+
+/// `tgkill` on x86_64 and aarch64.
+const TGKILL_X86_64: u32 = 234;
+const TGKILL_AARCH64: u32 = 131;
+/// `execveat` on x86_64 and aarch64.
+pub const EXECVEAT_X86_64: u32 = 322;
+/// `execveat` on aarch64.
+pub const EXECVEAT_AARCH64: u32 = 281;
+
+/// The steady-state allowlist of a process whose thread-group id is
+/// `own_tgid`: the arch's table plus `tgkill` limited to the process's
+/// own threads (design review M2: no signalling another process, which a
+/// child without a PID namespace could otherwise do). Built once, at the
+/// process's own lockdown, so the one argument slice it makes is leaked
+/// once per process.
+#[must_use]
+pub fn steady_rules(arch: u32, own_tgid: u32) -> Vec<Rule> {
+    let (table, tgkill) = match arch {
+        ARCH_AARCH64 => (RULES_AARCH64, TGKILL_AARCH64),
+        _ => (RULES_X86_64, TGKILL_X86_64),
+    };
+    let args: &'static [(u32, Cond)] = Box::leak(Box::new([(0, Cond::Eq(own_tgid))]));
+    let mut v = table.to_vec();
+    v.push(Rule {
+        nr: tgkill,
+        args,
+        action: RET_ALLOW,
+        reason: "tgkill — this process's own threads only (review M2)",
+    });
+    v
+}
+
+/// The launch filter of a kind: its steady-state list plus `execveat`,
+/// and nothing else (design review B1). Seccomp filters stack, so a
+/// child that installs this before its exec keeps it for life: it must
+/// allow everything the steady list does. After exec the process adds the
+/// steady list, which takes `execveat` away.
+#[must_use]
+pub fn launch_rules(arch: u32, steady: &[Rule]) -> Vec<Rule> {
+    let execveat = if arch == ARCH_AARCH64 {
+        EXECVEAT_AARCH64
+    } else {
+        EXECVEAT_X86_64
+    };
+    let mut v = steady.to_vec();
+    v.push(allow(
+        execveat,
+        "execveat — the launch exec only; the steady filter removes it (review B1)",
+    ));
+    v
+}
 
 /// The x86_64 table: the empty process's needs, then the IPC
 /// transport's (M1 phase D3), each with its reason.
@@ -227,12 +305,25 @@ pub const RULES_X86_64: &[Rule] = &[
     allow(13, "rt_sigaction — thread setup"),
     allow(14, "rt_sigprocmask — thread setup"),
     allow(15, "rt_sigreturn — signal return"),
-    allow(16, "ioctl — std's fd queries"),
+    allow_if(
+        16,
+        IOCTL_ARGS,
+        "ioctl — std's fd queries, by command; never TIOCSTI (review M1)",
+    ),
+    allow_if(
+        7,
+        STDIO_POLL_ARGS,
+        "poll — Rust's start-up check of stdio: three descriptors, no wait",
+    ),
     allow(24, "sched_yield"),
     allow(28, "madvise — the allocator"),
     allow(35, "nanosleep"),
     allow(39, "getpid"),
-    allow(44, "sendto — the IPC ready byte (std uses MSG_NOSIGNAL)"),
+    allow_if(
+        44,
+        SENDTO_ARGS,
+        "sendto — the IPC ready byte (std uses MSG_NOSIGNAL); never to an address",
+    ),
     allow_if(
         46,
         SENDMSG_ARGS,
@@ -288,7 +379,6 @@ pub const RULES_X86_64: &[Rule] = &[
     allow(230, "clock_nanosleep — std::thread::sleep"),
     allow(231, "exit_group"),
     allow(233, "epoll_ctl — the IPC IO thread's interest list"),
-    allow(234, "tgkill — thread signalling"),
     allow(262, "newfstatat — std's fd queries"),
     allow(273, "set_robust_list — glibc thread teardown"),
     allow(281, "epoll_pwait — the IPC IO thread's wait"),
@@ -321,10 +411,15 @@ pub const RULES_AARCH64: &[Rule] = &[
         ADD_SEALS_ARGS,
         "fcntl — sealing an IPC region (write or future-write, and seal)",
     ),
-    allow(29, "ioctl"),
+    allow_if(29, IOCTL_ARGS, "ioctl — by command; never TIOCSTI"),
     allow(57, "close"),
     allow(62, "lseek"),
     allow(63, "read"),
+    allow_if(
+        73,
+        STDIO_PPOLL_ARGS,
+        "ppoll — Rust's start-up check of stdio: three descriptors",
+    ),
     allow(64, "write"),
     allow(79, "newfstatat"),
     allow(80, "fstat — IPC handle acceptance"),
@@ -338,7 +433,6 @@ pub const RULES_AARCH64: &[Rule] = &[
     allow(115, "clock_nanosleep"),
     allow(123, "sched_getaffinity"),
     allow(124, "sched_yield"),
-    allow(131, "tgkill"),
     allow(132, "sigaltstack"),
     allow(134, "rt_sigaction"),
     allow(135, "rt_sigprocmask"),
@@ -353,7 +447,11 @@ pub const RULES_AARCH64: &[Rule] = &[
         SOCKETPAIR_ARGS,
         "socketpair — new IPC channels, Unix seqpacket only",
     ),
-    allow(206, "sendto — the IPC ready byte (std uses MSG_NOSIGNAL)"),
+    allow_if(
+        206,
+        SENDTO_ARGS,
+        "sendto — the IPC ready byte (std uses MSG_NOSIGNAL); never to an address",
+    ),
     allow_if(
         208,
         SETSOCKOPT_ARGS,
@@ -405,6 +503,11 @@ pub enum BuildError {
     TooLong,
 }
 
+/// The most argument conditions one rule has (the evaluator's bound).
+pub const MAX_RULE_ARGS: usize = 4;
+/// The most values one [`Cond::OneOf`] lists (the evaluator's bound).
+pub const MAX_ONE_OF: usize = 8;
+
 /// The kernel's per-program instruction limit.
 const MAX_INSNS: usize = 4096;
 
@@ -446,6 +549,29 @@ fn block(rule: &Rule) -> Result<Vec<Insn>, BuildError> {
                     jt: 0,
                     jf: 0,
                     k: value,
+                });
+            }
+            Cond::Zero64 => {
+                // The low word (loaded above), then the high word.
+                to_deny.push(b.len());
+                b.push(Insn {
+                    code: JEQ_K,
+                    jt: 0,
+                    jf: 0,
+                    k: 0,
+                });
+                b.push(Insn {
+                    code: LD_W_ABS,
+                    jt: 0,
+                    jf: 0,
+                    k: off + 4,
+                });
+                to_deny.push(b.len());
+                b.push(Insn {
+                    code: JEQ_K,
+                    jt: 0,
+                    jf: 0,
+                    k: 0,
                 });
             }
             Cond::OneOf(values) => {
@@ -630,8 +756,14 @@ pub fn expected(arch: u32, rules: &[Rule], call: &Call) -> u32 {
     if call.arch != arch {
         return RET_DENY;
     }
+    // Loops over fixed bounds (a rule has at most [`MAX_RULE_ARGS`]
+    // conditions, a list at most [`MAX_ONE_OF`] values; the tables' test
+    // checks both), so a proof unwinds them that far and no further.
     let holds = |rule: &Rule| {
-        rule.args.iter().all(|&(i, cond)| {
+        (0..MAX_RULE_ARGS).all(|n| {
+            let Some(&(i, cond)) = rule.args.get(n) else {
+                return true;
+            };
             let Some(&raw) = call.args.get(usize::try_from(i).unwrap_or(usize::MAX)) else {
                 return false;
             };
@@ -643,7 +775,8 @@ pub fn expected(arch: u32, rules: &[Rule], call: &Call) -> u32 {
             match cond {
                 Cond::Eq(v) => a == v,
                 Cond::Masked { mask, value } => a & mask == value,
-                Cond::OneOf(vs) => vs.contains(&a),
+                Cond::OneOf(vs) => (0..MAX_ONE_OF).any(|k| vs.get(k) == Some(&a)),
+                Cond::Zero64 => raw == 0,
             }
         })
     };
@@ -675,6 +808,207 @@ mod tests {
                     assert_eq!(action, r.action);
                 }
             }
+        }
+    }
+
+    /// The concrete half of the Kani harnesses, for both tables: the
+    /// denied calls have no rule; `clone`, `clone3` and `sendto` have
+    /// exactly the rules the harness proves; neither `execveat` nor
+    /// `tgkill` is in a table (the builders append them).
+    #[test]
+    fn the_tables_hold_the_harness_facts() {
+        for (arch, table) in tables() {
+            let aarch64 = arch == ARCH_AARCH64;
+            let denied: [u32; 7] = if aarch64 {
+                [198, 203, 200, 117, 280, 97, 268]
+            } else {
+                [41, 42, 49, 101, 321, 272, 308]
+            };
+            let (clone, sendto, exec, tg) = if aarch64 {
+                (220, 206, EXECVEAT_AARCH64, TGKILL_AARCH64)
+            } else {
+                (56, 44, EXECVEAT_X86_64, TGKILL_X86_64)
+            };
+            let with = |nr: u32| table.iter().filter(|r| r.nr == nr).collect::<Vec<_>>();
+            for nr in denied.into_iter().chain([exec, tg]) {
+                assert!(with(nr).is_empty(), "nr {nr}");
+            }
+            let c = with(clone);
+            assert!(c.len() == 1 && c[0].args == CLONE_ARGS && c[0].action == RET_ALLOW);
+            let c3 = with(435);
+            assert!(c3.len() == 1 && c3[0].args.is_empty() && c3[0].action == RET_NOSYS);
+            let st = with(sendto);
+            assert!(st.len() == 1 && st[0].args == SENDTO_ARGS && st[0].action == RET_ALLOW);
+        }
+    }
+
+    /// The evaluator's loop bounds hold for every rule.
+    #[test]
+    fn rules_fit_the_evaluator_s_bounds() {
+        for (_arch, rules) in tables() {
+            for r in rules {
+                assert!(r.args.len() <= MAX_RULE_ARGS, "{}", r.reason);
+                for (_i, c) in r.args {
+                    if let Cond::OneOf(vs) = c {
+                        assert!(vs.len() <= MAX_ONE_OF, "{}", r.reason);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The Kani harnesses decide over the static table plus the rules the
+    /// builders append: the built lists are exactly that.
+    #[test]
+    fn the_lists_are_the_table_plus_their_rules() {
+        for (arch, table, tg, ex) in [
+            (ARCH_X86_64, RULES_X86_64, TGKILL_X86_64, EXECVEAT_X86_64),
+            (
+                ARCH_AARCH64,
+                RULES_AARCH64,
+                TGKILL_AARCH64,
+                EXECVEAT_AARCH64,
+            ),
+        ] {
+            let steady = steady_rules(arch, 77);
+            let launch = launch_rules(arch, &steady);
+            assert_eq!(steady.len(), table.len() + 1);
+            assert_eq!(launch.len(), table.len() + 2);
+            for (a, b) in table.iter().zip(&steady) {
+                assert!(a.nr == b.nr && a.action == b.action && a.args == b.args);
+            }
+            for (a, b) in steady.iter().zip(&launch) {
+                assert!(a.nr == b.nr && a.action == b.action && a.args == b.args);
+            }
+            let t = steady[table.len()];
+            assert_eq!(
+                (t.nr, t.action, t.args),
+                (tg, RET_ALLOW, &[(0, Cond::Eq(77))][..])
+            );
+            let e = launch[table.len() + 1];
+            assert_eq!((e.nr, e.action, e.args.len()), (ex, RET_ALLOW, 0));
+            // The tables' only action other than allow is clone3's ENOSYS,
+            // which the harnesses' `decide` relies on.
+            assert!(
+                table
+                    .iter()
+                    .all(|r| r.action == RET_ALLOW || (r.nr == 435 && r.action == RET_NOSYS))
+            );
+        }
+    }
+
+    /// Design review B1: for every call, the launch filter allows what the
+    /// steady filter allows, and the only thing it adds is `execveat`.
+    #[test]
+    fn launch_is_steady_plus_execveat_only() {
+        for (arch, exec) in [
+            (ARCH_X86_64, EXECVEAT_X86_64),
+            (ARCH_AARCH64, EXECVEAT_AARCH64),
+        ] {
+            for pid in [1, 4_194_303] {
+                let steady = steady_rules(arch, pid);
+                let launch = launch_rules(arch, &steady);
+                let steady_p = program(arch, &steady).unwrap();
+                let launch_p = program(arch, &launch).unwrap();
+                for nr in 0..500 {
+                    for a in [0u64, 1, 0x5401, 0x5412, u64::from(pid), 0x4, 0x8 | 0x1] {
+                        let call = Call {
+                            arch,
+                            nr,
+                            args: [a, a, a, a, a, a],
+                        };
+                        let st = run(&steady_p, &call).unwrap();
+                        let la = run(&launch_p, &call).unwrap();
+                        assert_eq!(st, expected(arch, &steady, &call));
+                        assert_eq!(la, expected(arch, &launch, &call));
+                        if nr == exec {
+                            assert_eq!(st, RET_DENY, "steady never execs");
+                            assert_eq!(la, RET_ALLOW);
+                        } else {
+                            assert_eq!(st, la, "nr {nr} arg {a:#x}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A launched child runs Rust's start-up under the launch filter, which
+    /// polls descriptors 0 to 2 once without waiting: allowed in exactly
+    /// that shape.
+    #[test]
+    fn stdio_poll_is_allowed_only_in_the_start_up_shape() {
+        let p = program(ARCH_X86_64, &steady_rules(ARCH_X86_64, 1)).unwrap();
+        let call = |n: u64, t: u64| Call {
+            arch: ARCH_X86_64,
+            nr: 7,
+            args: [0x1000, n, t, 0, 0, 0],
+        };
+        assert_eq!(run(&p, &call(3, 0)).unwrap(), RET_ALLOW);
+        assert_eq!(run(&p, &call(4, 0)).unwrap(), RET_DENY);
+        assert_eq!(run(&p, &call(3, 1000)).unwrap(), RET_DENY);
+        let p = program(ARCH_AARCH64, &steady_rules(ARCH_AARCH64, 1)).unwrap();
+        let call = |n: u64| Call {
+            arch: ARCH_AARCH64,
+            nr: 73,
+            args: [0x1000, n, 0x2000, 0, 8, 0],
+        };
+        assert_eq!(run(&p, &call(3)).unwrap(), RET_ALLOW);
+        assert_eq!(run(&p, &call(1)).unwrap(), RET_DENY);
+    }
+
+    /// `sendto` only without an address: both words of the pointer are
+    /// checked, so neither half alone passes.
+    #[test]
+    fn sendto_never_takes_an_address() {
+        for (arch, nr) in [(ARCH_X86_64, 44), (ARCH_AARCH64, 206)] {
+            let rules = steady_rules(arch, 1);
+            let p = program(arch, &rules).unwrap();
+            let call = |addr: u64| Call {
+                arch,
+                nr,
+                args: [3, 0x1000, 1, 0x4000, addr, 16],
+            };
+            assert_eq!(run(&p, &call(0)).unwrap(), RET_ALLOW);
+            for addr in [0x7fff_0000_0000, 0x1000, 0x7fff_dead_beef] {
+                assert_eq!(run(&p, &call(addr)).unwrap(), RET_DENY, "{addr:#x}");
+                assert_eq!(expected(arch, &rules, &call(addr)), RET_DENY);
+            }
+        }
+    }
+
+    /// Design review M1: `ioctl` only by command; `TIOCSTI` is denied.
+    #[test]
+    fn ioctl_is_allowed_by_command_and_never_tiocsti() {
+        for (arch, nr) in [(ARCH_X86_64, 16), (ARCH_AARCH64, 29)] {
+            let rules = steady_rules(arch, 1);
+            let p = program(arch, &rules).unwrap();
+            let call = |cmd: u64| Call {
+                arch,
+                nr,
+                args: [3, cmd, 0, 0, 0, 0],
+            };
+            assert_eq!(run(&p, &call(u64::from(TIOCSTI))).unwrap(), RET_DENY);
+            assert_eq!(run(&p, &call(0x5401)).unwrap(), RET_ALLOW, "TCGETS");
+            assert_eq!(run(&p, &call(0x5451)).unwrap(), RET_ALLOW, "FIOCLEX");
+            assert_eq!(run(&p, &call(0x8912)).unwrap(), RET_DENY, "SIOCGIFCONF");
+        }
+    }
+
+    /// Design review M2: `tgkill` reaches only the process's own threads.
+    #[test]
+    fn tgkill_reaches_only_the_own_process() {
+        for (arch, nr) in [(ARCH_X86_64, 234), (ARCH_AARCH64, 131)] {
+            let rules = steady_rules(arch, 4242);
+            let p = program(arch, &rules).unwrap();
+            let call = |tgid: u64| Call {
+                arch,
+                nr,
+                args: [tgid, 4243, 6, 0, 0, 0],
+            };
+            assert_eq!(run(&p, &call(4242)).unwrap(), RET_ALLOW);
+            assert_eq!(run(&p, &call(1)).unwrap(), RET_DENY);
+            assert_eq!(run(&p, &call(4241)).unwrap(), RET_DENY);
         }
     }
 
@@ -868,5 +1202,109 @@ mod tests {
             let prog = program(arch, rules).unwrap();
             assert!(prog.len() <= MAX_INSNS);
         }
+    }
+}
+
+#[cfg(kani)]
+mod proofs {
+    //! The two harnesses prove what depends on arguments, over the rules
+    //! that decide the calls in question; the unit test
+    //! `the_tables_hold_the_harness_facts` checks, over the concrete
+    //! tables, which rules those are (and that the denied calls have
+    //! none). Evaluating the whole table for a symbolic call did not
+    //! finish in 15 minutes (26 Oct, the Mac, 8 GB): the table part is
+    //! concrete data, so a test covers it exactly.
+
+    use super::{
+        ARCH_AARCH64, ARCH_X86_64, CLONE_ARGS, CLONE_NEW_BITS, Call, Cond, EXECVEAT_AARCH64,
+        EXECVEAT_X86_64, RET_ALLOW, RET_DENY, RET_NOSYS, Rule, SENDTO_ARGS, TGKILL_AARCH64,
+        TGKILL_X86_64, expected,
+    };
+
+    /// The two rules the builders append to the table: `tgkill` limited
+    /// to `own`, and (launch only) `execveat`.
+    fn extras(aarch64: bool) -> (u32, Rule, Rule) {
+        let own: u32 = kani::any();
+        let args: &'static [(u32, Cond)] = Box::leak(Box::new([(0, Cond::Eq(own))]));
+        let (arch, tg, ex) = if aarch64 {
+            (ARCH_AARCH64, TGKILL_AARCH64, EXECVEAT_AARCH64)
+        } else {
+            (ARCH_X86_64, TGKILL_X86_64, EXECVEAT_X86_64)
+        };
+        let rule = |nr, args| Rule {
+            nr,
+            args,
+            action: RET_ALLOW,
+            reason: "",
+        };
+        (arch, rule(tg, args), rule(ex, &[]))
+    }
+
+    /// Design review B1, for either arch and any call: steady = table ++
+    /// [tgkill] and launch = table ++ [tgkill, execveat] (unit test), and
+    /// the table has no `execveat` rule (unit test), so both lists decide
+    /// a call by the same table result and differ only in the extras.
+    /// Here: the extras decide every call the same way except `execveat`,
+    /// which the steady extras deny.
+    #[kani::proof]
+    fn launch_adds_exactly_execveat() {
+        let aarch64: bool = kani::any();
+        let (arch, tgkill, execveat) = extras(aarch64);
+        let call = Call {
+            arch: kani::any(),
+            nr: kani::any(),
+            args: kani::any(),
+        };
+        let st = expected(arch, &[tgkill], &call);
+        let la = expected(arch, &[tgkill, execveat], &call);
+        if call.nr == execveat.nr {
+            assert!(st == RET_DENY);
+        } else {
+            assert!(st == la);
+        }
+        kani::cover!(
+            la == RET_ALLOW && st == RET_DENY,
+            "execveat is the launch-only call"
+        );
+    }
+
+    /// Harness 2 (E-R11, review M1), the argument part: for any arguments,
+    /// `clone` is allowed only as a thread with no `CLONE_NEW*` bit,
+    /// `clone3` never (ENOSYS), and `sendto` never to an address. The unit
+    /// test checks that these are the only rules for those calls and that
+    /// `socket`, `connect`, `bind`, `ptrace`, `bpf`, `unshare` and `setns`
+    /// have none (so are denied for any arguments), in both tables.
+    #[kani::proof]
+    fn no_plan_reaches_sockets_namespaces_or_addresses() {
+        let arch = ARCH_X86_64;
+        let rule = |nr, args, action| Rule {
+            nr,
+            args,
+            action,
+            reason: "",
+        };
+        let rules = [
+            rule(56, CLONE_ARGS, RET_ALLOW),
+            rule(435, &[], RET_NOSYS),
+            rule(44, SENDTO_ARGS, RET_ALLOW),
+        ];
+        let args: [u64; 6] = kani::any();
+        let call = |nr: u32| Call { arch, nr, args };
+        assert!(expected(arch, &rules, &call(435)) != RET_ALLOW);
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the low word, as the kernel"
+        )]
+        let flags = args[0] as u32;
+        if expected(arch, &rules, &call(56)) == RET_ALLOW {
+            assert!(flags & CLONE_NEW_BITS == 0);
+            assert!(flags & 0x1_0000 != 0, "a thread, never a process");
+        }
+        let send = expected(arch, &rules, &call(44));
+        if args[4] != 0 {
+            assert!(send == RET_DENY);
+        }
+        kani::cover!(send == RET_ALLOW, "sendto without an address");
+        kani::cover!(expected(arch, &rules, &call(56)) == RET_ALLOW, "a thread");
     }
 }

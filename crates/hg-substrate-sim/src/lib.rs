@@ -23,6 +23,7 @@ mod entropy;
 mod exec;
 mod install;
 mod ipc;
+mod launch;
 mod memory;
 mod os;
 mod region;
@@ -35,6 +36,7 @@ use std::sync::Arc;
 use hg_substrate::Memory;
 use hg_substrate::Substrate;
 
+pub use launch::{ChildEntry, ChildTable};
 pub use os::{OsAnswer, OsFrames, OsScript};
 pub use region::SimOs;
 pub use world::{
@@ -48,6 +50,7 @@ pub(crate) fn substrate_for(
     generation: u32,
     seed: u64,
     has_os: bool,
+    children: Option<Arc<launch::ChildTable>>,
 ) -> Substrate {
     let exec: Arc<dyn hg_substrate::Executor> = Arc::new(exec::SimExecutor {
         shared: Arc::clone(shared),
@@ -83,5 +86,8 @@ pub(crate) fn substrate_for(
             generation,
         }),
         os,
+        launcher: children.map(|table| -> Arc<dyn hg_substrate::Launcher> {
+            Arc::new(launch::SimLauncher::new(Arc::clone(shared), pid, table))
+        }),
     }
 }

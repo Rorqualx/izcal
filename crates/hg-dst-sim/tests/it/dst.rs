@@ -35,7 +35,7 @@ fn a_planted_bug_is_one_signature_with_a_working_replay() {
     assert_eq!(groups.len(), 1, "{groups:?}");
     let (signature, seeds) = groups.iter().next().unwrap();
     assert!(
-        signature.starts_with("panic at crates/hg-dst/src/bin/dst-smoke.rs:"),
+        signature.starts_with("panic at crates/hg-dst-sim/src/bin/dst-smoke.rs:"),
         "{signature}"
     );
     assert!(

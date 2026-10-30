@@ -42,7 +42,7 @@ pub(crate) mod windows;
 
 use hg_substrate::SequenceHandle;
 use hg_substrate::ipc::{
-    Bootstrap, ChannelReceiver, ChannelSender, Handle, Ipc, IpcError, Listening, OsPeer, Sink,
+    Bootstrap, ChannelReceiver, ChannelSender, Handle, Ipc, IpcError, Listening, PeerAttest, Sink,
     Transfer,
 };
 
@@ -81,7 +81,7 @@ impl Ipc for OsIpc {
     fn listen_bound(
         &self,
         _from: ChannelReceiver,
-        _peer: OsPeer,
+        _peer: PeerAttest,
         _seq: SequenceHandle,
         _sink: Sink,
     ) -> Result<Listening, IpcError> {

@@ -15,6 +15,8 @@ pub mod generated {
 
 pub use generated::process;
 
+pub mod sandbox;
+
 #[cfg(test)]
 pub mod sample;
 

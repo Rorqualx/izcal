@@ -44,8 +44,9 @@ use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
 };
 use windows_sys::Win32::Security::{
-    GetTokenInformation, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_APPCONTAINER_INFORMATION,
-    TOKEN_QUERY, TOKEN_USER, TokenAppContainerSid, TokenUser,
+    GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, PSECURITY_DESCRIPTOR,
+    SECURITY_ATTRIBUTES, TOKEN_APPCONTAINER_INFORMATION, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+    TOKEN_USER, TokenAppContainerSid, TokenIntegrityLevel, TokenIsAppContainer, TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, FILE_NAME_INFO,
@@ -273,7 +274,6 @@ pub(crate) fn pipe_pair(
 /// Makes a control link: as [`pipe_pair`], under a name no channel has
 /// (so a link end is never taken for a channel end). The broker makes
 /// it, in the global namespace; (server, client) = (broker's, child's).
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) fn link_pair(id: &[u8; 16]) -> io::Result<(OwnedHandle, OwnedHandle)> {
     named_pair("izcal-link-", None, id)
 }
@@ -637,7 +637,6 @@ pub(crate) fn duplicate(h: &OwnedHandle) -> io::Result<OwnedHandle> {
 }
 
 /// A SID as its string form.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) fn sid_string(sid: &crate::sandbox::windows::AppContainerSid) -> Option<String> {
     let mut s: *mut u16 = null_mut();
     // SAFETY: a valid SID owned by `sid`; valid out-pointer.
@@ -669,7 +668,6 @@ fn wide_to_string(s: *const u16) -> String {
 }
 
 /// An inheritable copy of `h` for a child's handle list.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 #[expect(
     clippy::disallowed_methods,
     reason = "SEC-4 (d): this is the Windows IPC backend"
@@ -942,7 +940,6 @@ pub(crate) fn read_blocking(h: &OwnedHandle, cap: usize, timeout_ms: u32) -> io:
 /// the lockdown token, in a kill-on-close job assigned before it runs,
 /// with exactly one inherited handle: `inherit`. It starts suspended;
 /// the caller duplicates its launch ends in, then [`resume`]s it.
-#[cfg_attr(not(test), expect(dead_code, reason = "phase E's launcher calls it"))]
 pub(crate) mod spawn {
     use super::{Process, last_error, raw, wide};
     use core::mem::{size_of, zeroed};
@@ -989,8 +986,18 @@ pub(crate) mod spawn {
         pub(crate) sandbox: Option<(&'a AppContainerSid, &'a SbHandle, &'a SbHandle)>,
     }
 
+    /// The variables of this process a child gets (review M9: a minimal
+    /// environment; the broker's may hold secrets). `SystemRoot` for the
+    /// loader; `LOCALAPPDATA` because process creation in an AppContainer
+    /// fails without it with error 203, ERROR_ENVVAR_NOT_FOUND (measured
+    /// on rig253, 26 Oct: each other variable alone failed the same way;
+    /// launch facts E28).
+    const KEPT_VARS: [&str; 2] = ["SystemRoot", "LOCALAPPDATA"];
+
+    /// A child's environment: [`KEPT_VARS`] and `extra`, nothing else.
     fn env_block(extra: &[(String, String)]) -> Vec<u16> {
         let mut vars: Vec<(String, String)> = std::env::vars()
+            .filter(|(k, _)| KEPT_VARS.iter().any(|v| v.eq_ignore_ascii_case(k)))
             .filter(|(k, _)| !extra.iter().any(|(e, _)| e.eq_ignore_ascii_case(k)))
             .collect();
         vars.extend(extra.iter().cloned());
@@ -1236,13 +1243,143 @@ fn user_sid() -> Option<String> {
     Some(out)
 }
 
+/// `process`'s token, opened for queries.
+fn query_token(process: HANDLE) -> Option<OwnedHandle> {
+    let mut token: HANDLE = null_mut();
+    // SAFETY: a valid process handle (or the pseudo-handle); valid
+    // out-pointer.
+    if unsafe { OpenProcessToken(process, TOKEN_QUERY, &raw mut token) } == 0 {
+        return None;
+    }
+    // SAFETY: `token` was just opened and is owned here.
+    Some(unsafe { OwnedHandle::from_raw_handle(token.cast()) })
+}
+
+/// A token's integrity level: the last sub-authority of its label SID
+/// (Learn, "Mandatory Integrity Control": 0x1000 Low, 0x2000 Medium,
+/// 0x3000 High).
+fn integrity_rid(token: &OwnedHandle) -> Option<u32> {
+    let mut buf = [0u64; 16];
+    let mut len = 0u32;
+    // SAFETY: the buffer is 128 bytes, as passed; valid out-pointer.
+    let ok = unsafe {
+        GetTokenInformation(
+            raw(token),
+            TokenIntegrityLevel,
+            buf.as_mut_ptr().cast::<c_void>(),
+            128,
+            &raw mut len,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    // SAFETY: on success the buffer starts with a TOKEN_MANDATORY_LABEL
+    // whose SID points into the buffer; `buf` is 8-byte aligned.
+    let sid = unsafe { (*buf.as_ptr().cast::<TOKEN_MANDATORY_LABEL>()).Label.Sid };
+    // SAFETY: a valid SID while `buf` lives.
+    let count = unsafe { GetSidSubAuthorityCount(sid) };
+    // SAFETY: the call returns a pointer into the SID, which lives in
+    // `buf`.
+    let n = unsafe { *count };
+    let last = u32::from(n.checked_sub(1)?);
+    // SAFETY: `last` is below the SID's sub-authority count.
+    let rid = unsafe { GetSidSubAuthority(sid, last) };
+    // SAFETY: a pointer into the SID, which lives in `buf`.
+    Some(unsafe { *rid })
+}
+
+/// Whether a token is an AppContainer's.
+fn is_app_container(token: &OwnedHandle) -> bool {
+    let mut v = 0u32;
+    let mut len = 0u32;
+    // SAFETY: a 4-byte out-buffer, as passed; valid out-pointer.
+    let ok = unsafe {
+        GetTokenInformation(
+            raw(token),
+            TokenIsAppContainer,
+            (&raw mut v).cast::<c_void>(),
+            4,
+            &raw mut len,
+        )
+    };
+    ok != 0 && v != 0
+}
+
+/// This process's integrity level.
+pub(crate) fn own_integrity() -> Option<u32> {
+    integrity_rid(&query_token(current_process())?)
+}
+
+/// Whether `p` may hold regions (D6 review finding 5, fact S12): it runs
+/// in an AppContainer, or below this process's integrity `own`. A child
+/// outside a container at this process's own level can open this
+/// process and duplicate its sections, so no section protection holds
+/// against it. Unknown is no.
+pub(crate) fn may_hold_regions(p: &Process, own: u32) -> bool {
+    let Some(t) = query_token(raw(&p.0)) else {
+        return false;
+    };
+    crate::ipc::win::regions::may_hold_regions(is_app_container(&t), integrity_rid(&t), own)
+}
+
+/// The mandatory label part of `h`'s security descriptor, as SDDL
+/// (tests only).
+#[cfg(test)]
+pub(crate) fn label_sddl(h: &OwnedHandle) -> Option<String> {
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo, SE_KERNEL_OBJECT,
+    };
+    use windows_sys::Win32::Security::LABEL_SECURITY_INFORMATION;
+    let mut sd: PSECURITY_DESCRIPTOR = null_mut();
+    // SAFETY: a valid handle; null for the parts not asked for; valid
+    // out-pointer.
+    let rc = unsafe {
+        GetSecurityInfo(
+            raw(h),
+            SE_KERNEL_OBJECT,
+            LABEL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            &raw mut sd,
+        )
+    };
+    if rc != 0 {
+        return None;
+    }
+    let mut text: *mut u16 = null_mut();
+    // SAFETY: `sd` came from GetSecurityInfo; valid out-pointers.
+    let ok = unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            sd,
+            SDDL_REVISION_1,
+            LABEL_SECURITY_INFORMATION,
+            &raw mut text,
+            null_mut(),
+        )
+    };
+    let out = (ok != 0).then(|| wide_to_string(text));
+    // SAFETY: allocated for us to free with LocalFree.
+    unsafe { LocalFree(text.cast()) };
+    // SAFETY: allocated for us to free with LocalFree.
+    unsafe { LocalFree(sd) };
+    out
+}
+
 /// A new committed section of `len` bytes, zeroed, whose DACL grants
 /// GENERIC_ALL to this process's user only (fact S9: a handle the broker
-/// duplicates carries its own access, so no child SID is needed, and none
-/// can widen what it was given). Returns the broker's full-access handle.
+/// duplicates carries its own access, so no child SID is needed), with a
+/// no-write-up label at this process's own integrity (fact S12: an
+/// unlabelled section counts as Medium, so a child outside a container
+/// below a High broker could widen a read-only handle; the label stops
+/// every child below the broker). Returns the broker's full-access
+/// handle.
 pub(crate) fn create_section(len: u32) -> io::Result<OwnedHandle> {
     let sid = user_sid().ok_or_else(|| io::Error::other("no user SID"))?;
-    let sd = descriptor(&format!("D:P(A;;GA;;;{sid})"))?;
+    let il = own_integrity().ok_or_else(|| io::Error::other("no integrity level"))?;
+    let sd = descriptor(&format!("D:P(A;;GA;;;{sid})S:(ML;;NW;;;S-1-16-{il})"))?;
     let sa = SECURITY_ATTRIBUTES {
         nLength: u32::try_from(size_of::<SECURITY_ATTRIBUTES>()).unwrap_or(0),
         lpSecurityDescriptor: sd.0,

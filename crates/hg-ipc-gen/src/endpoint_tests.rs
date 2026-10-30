@@ -12,8 +12,8 @@ use hg_substrate_sim::{Limits, RunEnd, SimConfig, SimOs, World};
 use hg_types::Instant;
 
 use crate::generated::process::{
-    BuildId, ProcessControl, ProcessControlHandler, ProcessError, ProcessHost, ProcessHostHandler,
-    ProcessHostRemote, ProcessKind,
+    BuildId, ChildConfig, ProcessControl, ProcessControlHandler, ProcessError, ProcessHost,
+    ProcessHostHandler, ProcessHostRemote, ProcessKind, SandboxReport, SandboxTier,
 };
 use crate::generated::sample::{
     Handles, HandlesHandler, Loose, LooseRemote, Regions, RegionsRemote, Strict, StrictRemote,
@@ -73,6 +73,14 @@ fn world_on(
     w
 }
 
+/// The report a simulated child sends: no OS sandbox exists.
+fn simulated() -> SandboxReport {
+    SandboxReport {
+        tier: SandboxTier::Simulated,
+        missing: hg_ipc::BoundedVec::default(),
+    }
+}
+
 /// The broker's side of the process protocol.
 struct BrokerSide {
     control: Remote<ProcessControl>,
@@ -81,11 +89,30 @@ struct BrokerSide {
 }
 
 impl ProcessHostHandler for BrokerSide {
+    fn ask(
+        &mut self,
+        _from: &CallerIdentity,
+        _id: u64,
+        _payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError> {
+        Ok(())
+    }
+
+    fn answer(
+        &mut self,
+        _from: &CallerIdentity,
+        _id: u64,
+        _payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError> {
+        Ok(())
+    }
+
     fn ready(
         &mut self,
         from: &CallerIdentity,
         kind: ProcessKind,
         build: BuildId,
+        _sandbox: SandboxReport,
     ) -> Result<(), ProcessError> {
         note(
             &self.log,
@@ -111,6 +138,24 @@ struct ChildSide {
 }
 
 impl ProcessControlHandler for ChildSide {
+    fn work(
+        &mut self,
+        _from: &CallerIdentity,
+        _id: u64,
+        _payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError> {
+        Ok(())
+    }
+
+    fn answered(
+        &mut self,
+        _from: &CallerIdentity,
+        _id: u64,
+        _payload: hg_ipc::BoundedBytes<256>,
+    ) -> Result<(), ProcessError> {
+        Ok(())
+    }
+
     fn ping(&mut self, from: &CallerIdentity, nonce: u64) -> Result<(), ProcessError> {
         if from.peer() != BROKER {
             return Err(ProcessError::Unsupported);
@@ -118,6 +163,10 @@ impl ProcessControlHandler for ChildSide {
         self.host
             .pong(nonce)
             .map_err(|_e| ProcessError::ShuttingDown)
+    }
+
+    fn start(&mut self, _from: &CallerIdentity, _config: ChildConfig) -> Result<(), ProcessError> {
+        Ok(())
     }
 
     fn exit(
@@ -149,7 +198,7 @@ fn broker_serves(
         let serving = Endpoint::<ProcessHost>::from_receiver(&s.ipc, from_child)
             .serve_bound(
                 seq,
-                PeerBinding::new(CHILD, CHILD_OS),
+                PeerBinding::new(CHILD, CHILD_OS.into()),
                 move |m, from| m.dispatch(&mut side, from),
                 move |why| note(&ends, format!("{why:?}")),
             )
@@ -164,7 +213,7 @@ fn child_runs(keep: &Keep) -> impl Fn(Substrate) + Send + Sync + 'static {
     move |s| {
         let boot = s.ipc.bootstrap().unwrap();
         let host = Remote::<ProcessHost>::from_sender(&s.ipc, boot.to_parent);
-        host.ready(ProcessKind::Renderer, BuildId { id: 7 })
+        host.ready(ProcessKind::Renderer, BuildId { id: 7 }, simulated())
             .unwrap();
         let mut side = ChildSide { host };
         let seq = s.exec.sequence("control", Priority::UserVisible);
@@ -205,7 +254,11 @@ fn a_bad_message_ends_the_endpoint_before_any_handler() {
         s.ipc.send(&boot.to_parent, vec![9, 0], Vec::new()).unwrap();
         let host = Remote::<ProcessHost>::from_sender(&s.ipc, boot.to_parent);
         // Sent before the broker read the bad one; never handled.
-        let _ = host.ready(ProcessKind::Network, BuildId { id: 1 });
+        let _ = host.ready(
+            ProcessKind::NetworkPartition,
+            BuildId { id: 1 },
+            simulated(),
+        );
     };
     let w = world(2, broker_serves(&log, &ends, &keep, false), child);
     assert_eq!(w.run(LIMITS), RunEnd::Idle);
@@ -302,7 +355,7 @@ fn every_handle_form_crosses_and_works_in_the_new_process() {
             strict_ep
                 .serve_bound(
                     seq,
-                    PeerBinding::new(CHILD, CHILD_OS),
+                    PeerBinding::new(CHILD, CHILD_OS.into()),
                     move |m, from| {
                         note(&l2, format!("broker got {m:?} from {}", who(from)));
                         Ok::<(), ()>(())

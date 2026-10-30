@@ -229,8 +229,9 @@ mod ipc {
 
     use hg_ipc::{Endpoint, PeerBinding, PeerId, Remote, SendError, Serving};
     use hg_ipc_gen::process::{
-        BuildId, ExitReason, ProcessControl, ProcessControlHandler, ProcessControlRemote,
-        ProcessError, ProcessHost, ProcessHostHandler, ProcessHostRemote, ProcessKind,
+        BuildId, ChildConfig, ExitReason, ProcessControl, ProcessControlHandler,
+        ProcessControlRemote, ProcessError, ProcessHost, ProcessHostHandler, ProcessHostRemote,
+        ProcessKind, SandboxReport, SandboxTier,
     };
     use hg_substrate::ipc::{ChannelReceiver, ChannelSender, OsPeer};
     use hg_substrate::{
@@ -274,11 +275,30 @@ mod ipc {
     }
 
     impl ProcessHostHandler for Browser {
+        fn ask(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _id: u64,
+            _payload: hg_ipc::BoundedBytes<256>,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+
+        fn answer(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _id: u64,
+            _payload: hg_ipc::BoundedBytes<256>,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+
         fn ready(
             &mut self,
             _from: &hg_ipc::CallerIdentity,
             _kind: ProcessKind,
             _build: BuildId,
+            _sandbox: SandboxReport,
         ) -> Result<(), ProcessError> {
             self.ping_later(0);
             Ok(())
@@ -298,9 +318,35 @@ mod ipc {
     }
 
     impl ProcessControlHandler for Renderer {
+        fn work(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _id: u64,
+            _payload: hg_ipc::BoundedBytes<256>,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+
+        fn answered(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _id: u64,
+            _payload: hg_ipc::BoundedBytes<256>,
+        ) -> Result<(), ProcessError> {
+            Ok(())
+        }
+
         fn ping(&mut self, _from: &hg_ipc::CallerIdentity, nonce: u64) -> Result<(), ProcessError> {
             // A closed browser is fine: this process is ending too.
             let _ = self.host.pong(nonce);
+            Ok(())
+        }
+
+        fn start(
+            &mut self,
+            _from: &hg_ipc::CallerIdentity,
+            _config: ChildConfig,
+        ) -> Result<(), ProcessError> {
             Ok(())
         }
 
@@ -344,7 +390,7 @@ mod ipc {
             let serving = Endpoint::<ProcessHost>::from_receiver(&s.ipc, from_renderer)
                 .serve_bound(
                     seq,
-                    PeerBinding::new(PeerId::new(1, 0), renderer_os),
+                    PeerBinding::new(PeerId::new(1, 0), renderer_os.into()),
                     move |m, from| m.dispatch(&mut side, from),
                     |_why| {},
                 )
@@ -362,6 +408,10 @@ mod ipc {
                 ProcessKind::Renderer,
                 BuildId {
                     id: hg_types::BUILD_ID,
+                },
+                SandboxReport {
+                    tier: SandboxTier::Simulated,
+                    missing: hg_ipc::BoundedVec::default(),
                 },
             );
             let mut side = Renderer { host };

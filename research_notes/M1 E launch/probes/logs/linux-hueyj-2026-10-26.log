@@ -1,0 +1,263 @@
+kernel=6.8.0-147-generic host-uid=1000 child=./static
+/proc/sys/kernel/apparmor_restrict_unprivileged_userns=1
+/proc/sys/kernel/unprivileged_userns_clone=1
+/proc/sys/user/max_user_namespaces=127001
+/proc/sys/kernel/yama/ptrace_scope=1
+landlock abi (host)=4
+== plain (no namespaces)
+  pre-exec getpid=2183863 uid=1000 capeff=0000000000000000
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2183863 pidfd=8
+  parent got: 'ready pid=2183863 uid=1000 fds=0,1,2,3 peercred=pid=2183862 uid=1000 capeff=0000000000000000' creds[pid=2183863 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=2183862 uid=1000 gid=1000] sent' creds[pid=2183863 uid=1000 gid=1000]
+  first spawn-to-ready us=6147
+  spawn-to-ready over 20 runs: median us=966 max us=1147
+== user only
+  pre-exec getpid=2183884 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2183884 pidfd=8
+  parent got: 'ready pid=2183884 uid=65534 fds=0,1,2,3 peercred=pid=2183862 uid=65534 capeff=0000000000000000' creds[pid=2183884 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=2183862 uid=65534 gid=65534] sent' creds[pid=2183884 uid=1000 gid=1000]
+  first spawn-to-ready us=1067
+  spawn-to-ready over 20 runs: median us=1063 max us=1151
+== user+pid
+  pre-exec getpid=1 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2183905 pidfd=8
+  parent got: 'ready pid=1 uid=65534 fds=0,1,2,3 peercred=pid=0 uid=65534 capeff=0000000000000000' creds[pid=2183905 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=0 uid=65534 gid=65534] sent' creds[pid=2183905 uid=1000 gid=1000]
+  first spawn-to-ready us=1264
+  spawn-to-ready over 20 runs: median us=1091 max us=1330
+== user+net
+  pre-exec getpid=2183926 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  netns socket=8 connect-1.1.1.1 errno=101
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2183926 pidfd=8
+  parent got: 'ready pid=2183926 uid=65534 fds=0,1,2,3 peercred=pid=2183862 uid=65534 capeff=0000000000000000' creds[pid=2183926 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=2183862 uid=65534 gid=65534] sent' creds[pid=2183926 uid=1000 gid=1000]
+  first spawn-to-ready us=1751
+  spawn-to-ready over 20 runs: median us=1620 max us=1750
+== user+mnt
+  pre-exec getpid=2183948 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  execveat failed rc=-1 errno=13
+  parent: clone3 returned outer pid=2183948 pidfd=8
+  parent got: '' creds[no-creds]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: '' creds[no-creds]
+  first spawn-to-ready us=512
+  spawn-to-ready over 20 runs: median us=467 max us=558
+== user+mnt exec-by-path
+  pre-exec getpid=2183970 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2183970 pidfd=8
+  parent got: 'ready pid=2183970 uid=65534 fds=0,1,2,3 peercred=pid=2183862 uid=65534 capeff=0000000000000000' creds[pid=2183970 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=2183862 uid=65534 gid=65534] sent' creds[pid=2183970 uid=1000 gid=1000]
+  first spawn-to-ready us=1185
+  spawn-to-ready over 20 runs: median us=1189 max us=1334
+== user+mnt exec-fd-opened-in-child
+  pre-exec getpid=2183991 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2183991 pidfd=8
+  parent got: 'ready pid=2183991 uid=65534 fds=0,1,2,3 peercred=pid=2183862 uid=65534 capeff=0000000000000000' creds[pid=2183991 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=2183862 uid=65534 gid=65534] sent' creds[pid=2183991 uid=1000 gid=1000]
+  first spawn-to-ready us=1277
+  spawn-to-ready over 20 runs: median us=1171 max us=1391
+== FULL: user+pid+net+mnt, fd-in-child, landlock(exe rule), seccomp(200)
+  pre-exec getpid=1 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  netns socket=8 connect-1.1.1.1 errno=101
+  landlock abi=4 restrict ok=0 add_rule(exe) ok=0 open-errno=13 connect-errno=13 setup_us=6
+  seccomp(200) ok=0 us=524
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2184012 pidfd=8
+  parent got: 'ready pid=1 uid=65534 fds=0,1,2,3 peercred=pid=0 uid=65534 capeff=?' creds[pid=2184012 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=0 uid=65534 gid=65534] sent' creds[pid=2184012 uid=1000 gid=1000]
+  first spawn-to-ready us=2299
+  spawn-to-ready over 20 runs: median us=2164 max us=2380
+== pid only (no user ns)
+clone3 err=1
+  first spawn-to-ready us=0
+  spawn-to-ready over 20 runs: median us=0 max us=0
+== user+pid+net+mnt
+  pre-exec getpid=1 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  netns socket=8 connect-1.1.1.1 errno=101
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  execveat failed rc=-1 errno=13
+  parent: clone3 returned outer pid=2184034 pidfd=8
+  parent got: '' creds[no-creds]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: '' creds[no-creds]
+  first spawn-to-ready us=864
+  spawn-to-ready over 20 runs: median us=872 max us=2241
+== user+pid+net+mnt, pivot to empty tmpfs
+  pre-exec getpid=1 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  netns socket=8 connect-1.1.1.1 errno=101
+  pivot: private=13 tmpfs=13 chdir=0 pivot_root=1 umount_old=1 /etc/hosts-after=VISIBLE
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  execveat failed rc=-1 errno=13
+  parent: clone3 returned outer pid=2184055 pidfd=8
+  parent got: '' creds[no-creds]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: '' creds[no-creds]
+  first spawn-to-ready us=935
+  spawn-to-ready over 20 runs: median us=892 max us=1091
+== all ns + landlock + seccomp(200)
+  pre-exec getpid=1 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  netns socket=8 connect-1.1.1.1 errno=101
+  landlock abi=4 restrict ok=0 add_rule(exe) ok=0 open-errno=13 connect-errno=13 setup_us=7
+  seccomp(200) ok=0 us=457
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  execveat failed rc=-1 errno=13
+  parent: clone3 returned outer pid=2184076 pidfd=8
+  parent got: '' creds[no-creds]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: '' creds[no-creds]
+  first spawn-to-ready us=1344
+  spawn-to-ready over 20 runs: median us=1670 max us=5515
+== all ns + pivot + landlock + seccomp(200)
+  pre-exec getpid=1 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  netns socket=8 connect-1.1.1.1 errno=101
+  pivot: private=13 tmpfs=13 chdir=0 pivot_root=1 umount_old=1 /etc/hosts-after=VISIBLE
+  landlock abi=4 restrict ok=0 add_rule(exe) ok=0 open-errno=13 connect-errno=13 setup_us=6
+  seccomp(200) ok=0 us=454
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  execveat failed rc=-1 errno=13
+  parent: clone3 returned outer pid=2184097 pidfd=8
+  parent got: '' creds[no-creds]
+  parent SO_PEERCRED on its end: pid=2183862 uid=1000
+  child reply: '' creds[no-creds]
+  first spawn-to-ready us=1406
+  spawn-to-ready over 20 runs: median us=1526 max us=2559
+########## dynamic child
+kernel=6.8.0-147-generic host-uid=1000 child=./dyn
+/proc/sys/kernel/apparmor_restrict_unprivileged_userns=1
+/proc/sys/kernel/unprivileged_userns_clone=1
+/proc/sys/user/max_user_namespaces=127001
+/proc/sys/kernel/yama/ptrace_scope=1
+landlock abi (host)=4
+== FULL: user+pid+net+mnt, fd-in-child, landlock(exe rule), seccomp(200)
+  pre-exec getpid=1 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  netns socket=8 connect-1.1.1.1 errno=101
+  landlock abi=4 restrict ok=0 add_rule(exe) ok=0 open-errno=13 connect-errno=13 setup_us=6
+  seccomp(200) ok=0 us=484
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  execveat failed rc=-1 errno=13
+  parent: clone3 returned outer pid=2184119 pidfd=8
+  parent got: '' creds[no-creds]
+  parent SO_PEERCRED on its end: pid=2184118 uid=1000
+  child reply: '' creds[no-creds]
+  first spawn-to-ready us=1590
+  spawn-to-ready over 20 runs: median us=1516 max us=2056
+kernel=6.8.0-147-generic host-uid=1000 child=./dyn
+/proc/sys/kernel/apparmor_restrict_unprivileged_userns=1
+/proc/sys/kernel/unprivileged_userns_clone=1
+/proc/sys/user/max_user_namespaces=127001
+/proc/sys/kernel/yama/ptrace_scope=1
+landlock abi (host)=4
+== user+mnt
+  pre-exec getpid=2184142 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  execveat failed rc=-1 errno=13
+  parent: clone3 returned outer pid=2184142 pidfd=8
+  parent got: '' creds[no-creds]
+  parent SO_PEERCRED on its end: pid=2184141 uid=1000
+  child reply: '' creds[no-creds]
+  first spawn-to-ready us=521
+  spawn-to-ready over 3 runs: median us=441 max us=462
+== user+mnt exec-by-path
+  pre-exec getpid=2184146 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2184146 pidfd=8
+  parent got: 'ready pid=2184146 uid=65534 fds=0,1,2,3 peercred=pid=2184141 uid=65534 capeff=0000000000000000' creds[pid=2184146 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2184141 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=2184141 uid=65534 gid=65534] sent' creds[pid=2184146 uid=1000 gid=1000]
+  first spawn-to-ready us=1383
+  spawn-to-ready over 3 runs: median us=1378 max us=1629
+== user+mnt exec-fd-opened-in-child
+  pre-exec getpid=2184151 uid=65534 capeff=000001ffffffffff
+  setgroups deny: open-err=13
+  uid_map: write-err=1
+  gid_map: write-err=1
+  after-map uid=65534 capeff=000001ffffffffff
+  dup2=3 close_range_cloexec=ok=0 clear-cloexec-3=0
+  parent: clone3 returned outer pid=2184151 pidfd=8
+  parent got: 'ready pid=2184151 uid=65534 fds=0,1,2,3 peercred=pid=2184141 uid=65534 capeff=0000000000000000' creds[pid=2184151 uid=1000 gid=1000]
+  parent SO_PEERCRED on its end: pid=2184141 uid=1000
+  child reply: 'child-saw 'hello-from-parent' creds[pid=2184141 uid=65534 gid=65534] sent' creds[pid=2184151 uid=1000 gid=1000]
+  first spawn-to-ready us=1653
+  spawn-to-ready over 3 runs: median us=1600 max us=1637
+########## pidfd
+pidfd via SCM_RIGHTS: spawner said outer pid=2184157; broker fdinfo Pid:	2184157 | NSpid:	2184157	1; poll rc=1 revents=0x1 after 300 ms; non-parent waitid-errno=10; send_signal(0) after exit ok=0
+########## static build
+dyn:    ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=9111e46cbdae52701bc69ead523d7094f0dd3e00, not stripped
+static: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, for GNU/Linux 3.2.0, BuildID[sha1]=473bad6ceb87f2f3fe38be1f8d3b36a916f9e31f, not stripped
+-rwxrwxr-x 1 joe joe  529520 Oct 26 03:34 dyn
+-rwxrwxr-x 1 joe joe 1481632 Oct 26 03:32 static
+########## added run: reopen the pre-opened fd through /proc/self/fd inside the new mount namespace
+== user+mnt exec-procfs-reopen
+  reopen via /proc/self/fd: ok
+  execveat failed rc=-1 errno=13
+  kernel: apparmor="DENIED" operation="exec" class="file" info="Failed name lookup - disconnected path" error=-13 profile="unprivileged_userns" name="/dev/fd/200" requested_mask="x" denied_mask="x"

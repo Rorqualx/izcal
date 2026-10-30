@@ -9,6 +9,16 @@
 //! rule in `hg_substrate::ipc` that the Kani proofs cover, so no input
 //! reaches outside the mapping.
 //!
+//! **Read-only mappings.** A read-only region is mapped read-only, and
+//! the standard library's documentation of `core::sync::atomic`
+//! ("Atomic accesses to read-only memory") makes every atomic access to
+//! such pages undefined behaviour except "sufficiently small" loads with
+//! `Ordering::Relaxed`: up to 8 bytes on x86_64 and aarch64. It says an
+//! acquire load on read-only memory is done as a relaxed load followed by
+//! an acquire fence. So every load here is `Relaxed`, of 1, 4 or 8 bytes,
+//! and a stronger ordering is a fence after it ([`fence_after`]); only
+//! those two targets are built.
+//!
 //! This is the only `unsafe` here (CS-TY-13, `unsafe-inventory.toml`,
 //! entry `ipc::shm`).
 #![expect(
@@ -17,7 +27,13 @@
 )]
 
 use core::ptr::NonNull;
-use core::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering, fence};
+
+// The read-only load rule above is stated for these targets only.
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+compile_error!(
+    "ipc::shm's loads are documented sound on read-only pages only on x86_64 and aarch64"
+);
 
 use hg_substrate::ipc::{AccessError, MappingObject, check_range, check_word};
 
@@ -58,7 +74,8 @@ impl Raw {
     /// The byte at `off`, which the caller has checked is in bounds.
     fn byte(&self, off: usize) -> &AtomicU8 {
         // `AtomicU8` has the size and alignment of `u8`, and every access
-        // to the mapping is atomic.
+        // to the mapping is atomic; loads through it are 1-byte `Relaxed`,
+        // sound on read-only memory per the `core::sync::atomic` docs.
         // SAFETY: the caller checked `off < len` (`check_range`), so the
         // byte is inside the live mapping (`new`'s contract).
         unsafe { AtomicU8::from_ptr(self.at(off)) }
@@ -88,9 +105,15 @@ impl Raw {
     pub(crate) fn load_u32(&self, off: usize, order: Ordering) -> Result<u32, AccessError> {
         check_word(off, 4, self.len)?;
         // SAFETY: in bounds and 4-aligned (`check_word`; the base is page
-        // aligned), inside the live mapping; every access is atomic.
+        // aligned), inside the live mapping; every access is atomic, and
+        // on a read-only mapping this is a 4-byte `Relaxed` load, which
+        // the `core::sync::atomic` docs make sound on read-only memory.
         let w = unsafe { AtomicU32::from_ptr(self.at(off).cast::<u32>()) };
-        Ok(w.load(load_order(order)))
+        let v = w.load(Ordering::Relaxed);
+        if let Some(f) = fence_after(order) {
+            fence(f);
+        }
+        Ok(v)
     }
 
     pub(crate) fn store_u32(&self, off: usize, v: u32, order: Ordering) -> Result<(), AccessError> {
@@ -107,9 +130,16 @@ impl Raw {
     pub(crate) fn load_u64(&self, off: usize, order: Ordering) -> Result<u64, AccessError> {
         check_word(off, 8, self.len)?;
         // SAFETY: in bounds and 8-aligned (`check_word`; the base is page
-        // aligned), inside the live mapping; every access is atomic.
+        // aligned), inside the live mapping; every access is atomic, and
+        // on a read-only mapping this is an 8-byte `Relaxed` load, which
+        // the `core::sync::atomic` docs make sound on read-only memory on
+        // the two targets built.
         let w = unsafe { AtomicU64::from_ptr(self.at(off).cast::<u64>()) };
-        Ok(w.load(load_order(order)))
+        let v = w.load(Ordering::Relaxed);
+        if let Some(f) = fence_after(order) {
+            fence(f);
+        }
+        Ok(v)
     }
 
     pub(crate) fn store_u64(&self, off: usize, v: u64, order: Ordering) -> Result<(), AccessError> {
@@ -178,12 +208,15 @@ impl<G: Send + Sync> MappingObject for OsMapping<G> {
     }
 }
 
-/// A load ordering: release has none, so it becomes relaxed.
-const fn load_order(o: Ordering) -> Ordering {
+/// The fence that gives a `Relaxed` load the ordering asked for: the
+/// documented way to do an acquire load on read-only memory (see the
+/// module documentation). `None` for `Relaxed` (and `Release`, which a
+/// load cannot have).
+const fn fence_after(o: Ordering) -> Option<Ordering> {
     match o {
-        Ordering::Release | Ordering::Relaxed => Ordering::Relaxed,
-        Ordering::AcqRel => Ordering::Acquire,
-        other => other,
+        Ordering::Acquire | Ordering::AcqRel => Some(Ordering::Acquire),
+        Ordering::SeqCst => Some(Ordering::SeqCst),
+        _ => None,
     }
 }
 
@@ -226,6 +259,50 @@ mod tests {
         );
         let _ = (r, ro);
         drop(page);
+    }
+
+    /// Review finding 7: every load is `Relaxed`, and an acquire load is
+    /// a relaxed load and an acquire fence, never an acquire load.
+    #[test]
+    fn loads_are_relaxed_and_ordered_by_a_fence() {
+        assert_eq!(fence_after(Ordering::Relaxed), None);
+        assert_eq!(fence_after(Ordering::Acquire), Some(Ordering::Acquire));
+        assert_eq!(fence_after(Ordering::SeqCst), Some(Ordering::SeqCst));
+    }
+
+    /// Loads through a mapping that is read-only in the OS: the pages
+    /// are mapped read-only here, and every load works on them.
+    #[cfg(unix)]
+    #[test]
+    fn loads_work_on_read_only_pages() {
+        // SAFETY: a fresh private anonymous page, made read-only below,
+        // and unmapped after its last use.
+        let p = unsafe {
+            libc::mmap(
+                core::ptr::null_mut(),
+                4096,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANON,
+                -1,
+                0,
+            )
+        };
+        assert_ne!(p, libc::MAP_FAILED);
+        // SAFETY: the page just mapped.
+        unsafe { p.cast::<u64>().write(7) };
+        // SAFETY: the page just mapped; only its protection changes.
+        assert_eq!(unsafe { libc::mprotect(p, 4096, libc::PROT_READ) }, 0);
+        let base = NonNull::new(p.cast::<u8>()).unwrap();
+        // SAFETY: a live, read-only, page-aligned 4 KiB mapping.
+        let ro = unsafe { Raw::new(base, 4096, false) };
+        assert_eq!(ro.load_u64(0, Ordering::Acquire), Ok(7));
+        assert_eq!(ro.load_u32(0, Ordering::SeqCst), Ok(7));
+        let mut b = [0u8; 1];
+        ro.read(0, &mut b).unwrap();
+        assert_eq!(b, [7]);
+        let _ = ro;
+        // SAFETY: the mapping made above, unused after.
+        unsafe { libc::munmap(p, 4096) };
     }
 
     #[test]

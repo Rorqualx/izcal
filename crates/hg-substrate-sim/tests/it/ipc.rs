@@ -1,6 +1,7 @@
 //! Medium tests: the simulated IPC transport (Stage 1 4.2; IPC-R1, R2,
 //! R8; CS-AS-6 (b)).
 
+use hg_substrate::ipc::PeerAttest;
 use std::sync::{Arc, Mutex};
 
 use hg_substrate::ipc::{
@@ -481,7 +482,7 @@ fn a_bound_receiver_hears_only_the_peer_it_names() {
                     .ipc
                     .listen_bound(
                         rx,
-                        peer,
+                        PeerAttest::Os(peer),
                         seq,
                         Box::new(move |d| {
                             seen3.lock().unwrap().push(match d {
@@ -544,4 +545,68 @@ fn a_bound_receiver_hears_only_the_peer_it_names() {
         let seen = seen.lock().unwrap();
         assert_eq!(seen.first().map(String::as_str), Some(expect), "{seen:?}");
     }
+}
+
+/// Design review M7: `PeerAttest::Inherited` binds the process's own
+/// bootstrap receiver and nothing else; bound that way, it hears its
+/// launcher.
+#[test]
+fn inherited_binds_only_the_bootstrap_receiver() {
+    let seen: Seen = Arc::default();
+    let refused: Slot<Option<IpcError>> = slot();
+    let keep: Slot<Listening> = slot();
+    let (seen2, refused2, keep2) = (Arc::clone(&seen), Arc::clone(&refused), Arc::clone(&keep));
+    let p = pair(
+        11,
+        8,
+        |s, _from_child, to_child| {
+            s.ipc
+                .send(&to_child, b"hello".to_vec(), Vec::new())
+                .unwrap();
+            std::mem::forget(to_child);
+        },
+        move |s| {
+            let seq = s.exec.sequence("in", Priority::UserVisible);
+            let (_tx, other) = s.ipc.channel(1, Transfer::Free).unwrap();
+            *refused2.lock().unwrap() = Some(
+                s.ipc
+                    .listen_bound(
+                        other,
+                        PeerAttest::Inherited,
+                        seq,
+                        Box::new(|_d| Flow::Continue),
+                    )
+                    .err(),
+            );
+            let boot = s.ipc.bootstrap().unwrap();
+            let seen3 = Arc::clone(&seen2);
+            let l = s
+                .ipc
+                .listen_bound(
+                    boot.from_parent,
+                    PeerAttest::Inherited,
+                    seq,
+                    Box::new(move |d| {
+                        if let Delivery::Message { bytes, .. } = d {
+                            seen3
+                                .lock()
+                                .unwrap()
+                                .push(String::from_utf8_lossy(&bytes).into_owned());
+                        }
+                        Flow::Continue
+                    }),
+                )
+                .unwrap();
+            *keep2.lock().unwrap() = Some(l);
+        },
+    );
+    assert_eq!(p.world.run(LIMITS), RunEnd::Idle);
+    assert_eq!(
+        refused.lock().unwrap().take(),
+        Some(Some(IpcError::Refused))
+    );
+    assert_eq!(
+        seen.lock().unwrap().first().map(String::as_str),
+        Some("hello")
+    );
 }

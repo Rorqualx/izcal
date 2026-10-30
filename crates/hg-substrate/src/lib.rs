@@ -21,6 +21,7 @@ mod entropy;
 mod executor;
 pub mod install;
 pub mod ipc;
+pub mod launch;
 mod memory;
 pub mod os;
 pub mod prng;
@@ -32,6 +33,7 @@ pub use entropy::{CryptoRandom, Entropy, EntropyError, EntropyPurpose, RandomStr
 pub use executor::{Executor, PhasePool, PostError, Priority, SequenceHandle, Task};
 pub use install::InstallDevice;
 pub use ipc::Ipc;
+pub use launch::Launcher;
 pub use memory::{Memory, MemoryError, MemoryKind, MemoryStats, Region};
 pub use os::OsPort;
 
@@ -52,6 +54,8 @@ pub struct Substrate {
     /// The operating system's inputs and commands (OS integration 6.1):
     /// `Some` in the broker only.
     pub os: Option<Arc<dyn OsPort>>,
+    /// Starts child processes (M1 phase E): `Some` in the broker only.
+    pub launcher: Option<Arc<dyn Launcher>>,
 }
 
 #[cfg(test)]
@@ -174,7 +178,7 @@ mod tests {
         fn listen_bound(
             &self,
             _from: ipc::ChannelReceiver,
-            _peer: ipc::OsPeer,
+            _peer: ipc::PeerAttest,
             _seq: SequenceHandle,
             _sink: ipc::Sink,
         ) -> Result<ipc::Listening, ipc::IpcError> {
@@ -193,6 +197,7 @@ mod tests {
             mem: Arc::new(NoMemory),
             ipc: Arc::new(NoIpc),
             os: None,
+            launcher: None,
         }
     }
 
