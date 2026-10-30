@@ -331,14 +331,11 @@ pub(crate) fn slot_facts(desc: Desc) -> SlotFacts {
     if unsafe { mach_port_get_refs(task(), name, RIGHT_SEND, &raw mut send_refs) } != 0 {
         send_refs = 0;
     }
-    let mut kobject = 0u32;
-    if disposition == PORT_SEND {
-        let mut addr = 0u64;
-        // SAFETY: valid out-pointers.
-        if unsafe { mach_port_kobject(task(), name, &raw mut kobject, &raw mut addr) } != 0 {
-            kobject = 0;
-        }
-    }
+    let kobject = if disposition == PORT_SEND {
+        kobject_type(name).map_or(0, |raw| plain_as_none(raw, plain_kobject()))
+    } else {
+        0
+    };
     let status = if disposition == PORT_RECEIVE {
         receive_status(name)
     } else {
@@ -359,6 +356,49 @@ pub(crate) fn slot_facts(desc: Desc) -> SlotFacts {
         destroy_request: status
             .and_then(|w| w.get(STATUS_DESTROY_REQUEST).copied())
             .is_none_or(|n| n != 0),
+    }
+}
+
+/// `mach_port_kobject`'s type for send right `name`, if the query works.
+fn kobject_type(name: PortName) -> Option<u32> {
+    let mut kobject = 0u32;
+    let mut addr = 0u64;
+    // SAFETY: valid out-pointers.
+    let rc = unsafe { mach_port_kobject(task(), name, &raw mut kobject, &raw mut addr) };
+    (rc == 0).then_some(kobject)
+}
+
+/// What `mach_port_kobject` says of a plain port on the running kernel,
+/// asked once of a port made for the purpose. The value is not stable
+/// across releases (R14): 0xFFFFFFFF on macOS 27, 0 on macOS 15, while
+/// every kernel object type is the same on both. `None` if the kernel
+/// would not say, or says the same of this task's own port (then the
+/// query cannot tell a plain port from a task port); with `None` no send
+/// right is accepted.
+pub(crate) fn plain_kobject() -> Option<u32> {
+    static PLAIN: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+    *PLAIN.get_or_init(|| {
+        let name = allocate_receive().ok()?;
+        let plain = make_send(name).ok().and_then(|()| {
+            let t = kobject_type(name);
+            deallocate(name);
+            t
+        });
+        destroy_receive(name);
+        plain.filter(|&p| kobject_type(task()).is_some_and(|own| own != p))
+    })
+}
+
+/// Reports a raw kobject type in the acceptance rules' terms
+/// ([`wire::KOBJECT_NONE`] for a plain port): the running kernel's
+/// plain-port value becomes `KOBJECT_NONE`, and a raw `KOBJECT_NONE`
+/// that is not this kernel's plain value becomes 0, which no rule
+/// accepts. Without a plain value nothing is reported plain.
+pub(crate) const fn plain_as_none(raw: u32, plain: Option<u32>) -> u32 {
+    match plain {
+        Some(p) if raw == p => wire::KOBJECT_NONE,
+        _ if raw == wire::KOBJECT_NONE => 0,
+        _ => raw,
     }
 }
 
