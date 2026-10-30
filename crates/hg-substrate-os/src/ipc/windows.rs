@@ -762,6 +762,14 @@ pub(crate) struct Inner {
     /// Tests only: a child's worker waits before making its copies.
     #[cfg(test)]
     hold_copies: AtomicBool,
+    /// Tests only: how many relays have planned and charged their copies
+    /// and reached the hold (whether or not it is on).
+    #[cfg(test)]
+    copies_planned: AtomicUsize,
+    /// Tests only: how many of those relays have since registered or
+    /// refunded their copies.
+    #[cfg(test)]
+    copies_settled: AtomicUsize,
 }
 
 impl Inner {
@@ -1371,16 +1379,21 @@ impl Inner {
         if jobs.is_empty() {
             return Ok(());
         }
-        // Tests only: hold the copy until the test lets go (to order it
-        // against a child's death).
+        // Tests only: say the copies are planned, then hold them until the
+        // test lets go (to order them against a child's death).
         #[cfg(test)]
-        while self.hold_copies.load(Ordering::Acquire) {
-            std::thread::sleep(COPY_WAIT_POLL);
+        {
+            self.copies_planned.fetch_add(1, Ordering::AcqRel);
+            while self.hold_copies.load(Ordering::Acquire) {
+                std::thread::sleep(COPY_WAIT_POLL);
+            }
         }
         let (made, failed) = Self::make_copies(jobs);
         let mut st = self.lock();
         let Some(b) = st.broker.as_mut() else {
             later.push(Box::new((made, failed)));
+            #[cfg(test)]
+            self.copies_settled.fetch_add(1, Ordering::AcqRel);
             return Err(Refusal::Quota);
         };
         let copies_ok = failed.is_empty();
@@ -1388,11 +1401,15 @@ impl Inner {
         if !alive(b) {
             // The relayer died while the copies were made.
             later.push(Box::new(Self::release_prepared(b, made)));
+            #[cfg(test)]
+            self.copies_settled.fetch_add(1, Ordering::AcqRel);
             return Err(Refusal::Quota);
         }
         // Registered now, so the in-progress mark lasts no longer than
         // the copy.
         later.push(Box::new(Self::register_made(b, made)));
+        #[cfg(test)]
+        self.copies_settled.fetch_add(1, Ordering::AcqRel);
         if copies_ok {
             Ok(())
         } else {
@@ -4360,6 +4377,10 @@ impl WindowsIpc {
             fail_copy_spawn: AtomicBool::new(false),
             #[cfg(test)]
             hold_copies: AtomicBool::new(false),
+            #[cfg(test)]
+            copies_planned: AtomicUsize::new(0),
+            #[cfg(test)]
+            copies_settled: AtomicUsize::new(0),
         });
         let io = Arc::clone(&inner);
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
