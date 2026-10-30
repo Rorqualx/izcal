@@ -247,6 +247,28 @@ mod proofs {
         }
     }
 
+    /// Any element of at least `MIN` bytes: `MIN` to `M` bytes, or a
+    /// failure. The vector's count check uses the element's `MIN_LEN`, so
+    /// the proofs below use the real elements' smallest encodings.
+    #[derive(Debug)]
+    struct OpaqueMin<const MIN: usize, const M: usize>;
+
+    impl<const MIN: usize, const M: usize> Wire for OpaqueMin<MIN, M> {
+        const MIN_LEN: usize = MIN;
+        const MAX_LEN: usize = M;
+        fn encode(&self, _w: &mut Writer) {}
+        fn decode(_r: &mut Reader<'_>) -> Result<Self, BadMessage> {
+            Err(BadMessage::BadBool)
+        }
+        fn validate(r: &mut Reader<'_>) -> Result<(), BadMessage> {
+            if kani::any() {
+                return Err(BadMessage::BadBool);
+            }
+            let len: usize = kani::any_where(|&n: &usize| (MIN..=M).contains(&n));
+            r.take(len).map(|_bytes| ())
+        }
+    }
+
     /// Decoding any input of at most `K` bytes never panics, and an
     /// accepted one re-encodes to the same bytes.
     fn round_trip<T: Wire, const K: usize>() {
@@ -310,6 +332,33 @@ mod proofs {
     #[kani::unwind(10)]
     fn vec_of_any_element_validates() {
         validates::<BoundedVec<Opaque<8>, 8>, 64>();
+    }
+
+    /// The vector's loop, at the bounds of the generated messages whose
+    /// validators are proved by parts (hg-ipc-codegen's `shape::SPLIT`):
+    /// with any element of at least 4 bytes (a string), up to 16 of them,
+    /// on 0 to 62 bytes, validating never panics. The element itself is
+    /// proved by its own part harness.
+    #[kani::proof]
+    #[kani::unwind(18)]
+    fn vec_of_any_element_validates_16_of_4_bytes() {
+        validates::<BoundedVec<OpaqueMin<4, 62>, 16>, 62>();
+    }
+
+    /// As above: up to 64 elements of at least 8 bytes (a struct of a
+    /// string and a `u32`), on 0 to 62 bytes.
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn vec_of_any_element_validates_64_of_8_bytes() {
+        validates::<BoundedVec<OpaqueMin<8, 62>, 64>, 62>();
+    }
+
+    /// As above: up to 6 elements of at least 8 bytes (a union of one
+    /// string), on 0 to 62 bytes.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn vec_of_any_element_validates_6_of_8_bytes() {
+        validates::<BoundedVec<OpaqueMin<8, 62>, 6>, 62>();
     }
 
     /// Bounds: 0 to 64 bytes.

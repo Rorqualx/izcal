@@ -118,3 +118,34 @@ through both and compares the bytes, in every build.
 The buffer's size matters to CBMC: at 128 bytes `power` layout 0 ran
 out of memory again (92,788 steps); the capacity is 64, the largest
 harness input plus its ordinal.
+
+## Final run (26–27 October 2026)
+
+Every hg-os-types harness, with the Kani writer, the byte-at-a-time
+UTF-8 check, the size raise and the proofs by parts, on hueyj under a
+10 GiB cap, 15 minutes a harness, one job at a time:
+
+| Crate | Harnesses | Result | Slowest | Peak RSS |
+|---|---|---|---|---|
+| hg-os-types | 224 | 224 pass, every cover satisfied | 99 s | 5.3 GiB (second half) |
+| hg-ipc | 12 | 12 pass (with the three vector-loop proofs) | — | 1.7 GiB |
+| hg-ipc-gen | 41 | 41 pass | — | 1.9 GiB |
+| hg-launch-wire | 7 | 7 pass (earlier the same day) | — | 3.3 GiB |
+| hg-substrate-os | 34 | 34 pass (29 min) | — | 6.5 GiB |
+
+The hg-os-types run was cut at 23:28 when hueyj's disk filled (another
+session's runaway trace log); the 111 harnesses finished before then are
+complete in the log, and the other 113 were run again after space was
+freed. The peak memory of the first half was lost with that log write.
+
+The two kinds of proof by parts that are not whole-message proofs, and
+what each relies on:
+
+- **Fields of a split message, struct or union.** The join is checked by
+  the `every_codec_is_its_fields_in_order` test (generated codecs against
+  templates); the composition argument is in `hg-ipc-codegen`'s `shape`
+  module docs.
+- **A vector's elements (validators only).** The loop is proved in
+  `hg-ipc` against any element at the generated bounds
+  (`vec_of_any_element_validates_*`); `shape::VEC_LOOP_PROOFS` lists
+  the bounds and a test checks each proof exists.
