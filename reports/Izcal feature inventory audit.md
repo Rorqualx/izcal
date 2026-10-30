@@ -2,6 +2,8 @@
 
 *Planning document: does Izcal's design cover every feature a browser ships in 2026, and, where it does not, what work closes each gap. Date: 24 October 2026. Status: draft 0.1. Evidence: `research_notes/Izcal feature inventory audit/` (four inventories, four maps, five checks, one fact-check, and the final per-row `ledger.md`; Appendix A). Relates to: HGBA-2 [M-1, 2.3.2's MIT-only rule and its standards-data exception]; HGBA-3 [§7, B9, B10]; the Stage 1 design [§1 process map, §3 substrate, §4 IPC, §6, 7.8, 8.1 milestones, §9 backlog, 13.2]; the 24 component specs and the shell UI design; the security scope [6.15, 11.4, SEC-D14].*
 
+*Revision 0.2.1 (29 October 2026): FI-11 is recorded as a **known gap**: M1 built its shared recording and crash-report header, but FI-11 still has no spec. No work item, decision or count changed.*
+
 *Revision 0.2 (24 October 2026): **the owner decided FI-D1 to FI-D17** (Section 7.1); the work items they change (FI-9, FI-29, FI-31, FI-32, FI-35, FI-37) are updated, and FI-D14 records a project-wide rule: open protocols first. FI-D1 lifts the engine-code hold for M1.*
 
 *Revision 0.1 (24 October 2026): first draft, written by the synthesis author from the evidence notes. No existing report was edited. Every count in this document is computed by a script from the ledger's rows.*
@@ -274,6 +276,8 @@ Each work item is a **new spec**, an **amendment to a named spec**, or a **decis
 **Stage.** Record header at M1's exit; server and pipeline before the first public binary.
 
 **Depends on.** FI-1 (GDPR duties); FI-2 (symbols per build and channel).
+
+**Status (29 October 2026): known gap, no spec.** M1 built the record header this item asked for at M1's exit, `RecordingHeader` (magic `IZRH`: build ID, data versions, decision-point log, OS version, process kind, sandbox tier, policy digest or flags, profile identity), placed in `hg-types` so recordings and crash reports share it ([`hg-types`' `recording` module](../crates/hg-types/src/recording.rs)). Because FI-11 has no spec, the header's own sizes not fixed by another spec are the crate's and marked †, and the amendment to Stage 1 7.8 and the short back-end spec are still unwritten. The header's layout becomes that spec's input, not its decision.
 
 #### FI-12 Privacy spec
 
