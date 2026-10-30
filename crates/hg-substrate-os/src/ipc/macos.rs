@@ -1396,6 +1396,9 @@ impl MacIpc {
     /// port (the hello exchange).
     pub(crate) fn start(exec: Arc<OsExecutor>, launched: bool) -> Result<Self, StartError> {
         let token = sys::own_token().ok_or(StartError::Bootstrap)?;
+        // Learn this kernel's plain-port kobject value (R14) before the
+        // hello and before any sandbox profile applies.
+        let _ = sys::plain_kobject();
         let boot = if launched {
             Some(hello().ok_or(StartError::Bootstrap)?)
         } else {
