@@ -20,11 +20,11 @@
 //! The lints below enforce that here until the generated tier table does.
 
 // Only the Linux transport (`ipc::linux`) calls this code outside the
-// tests and the Kani harnesses; elsewhere (macOS and Windows until D4
-// and D5) it is unused.
+// tests and the Kani harnesses; macOS and Windows have their own cores
+// (`ipc::mach`, `ipc::win`).
 #![cfg_attr(
     not(any(test, kani, target_os = "linux")),
-    expect(dead_code, reason = "only the Linux transport uses it until D4 and D5")
+    expect(dead_code, reason = "only the Linux transport uses it")
 )]
 #![deny(
     clippy::unwrap_used,

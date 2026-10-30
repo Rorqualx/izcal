@@ -124,8 +124,10 @@ pub enum Transfer {
     /// carry it from anywhere else. The receiver is never carried: it
     /// stays with the process serving it, which listens with
     /// [`Ipc::listen_bound`] and so names the one process whose records
-    /// it accepts. That check, made on every record by the receiving
-    /// transport from what the OS attests, is what holds: a holder can
+    /// it accepts. That check, made by the receiving transport from what
+    /// the OS attests (on Windows, from the broker's record of who holds
+    /// the channel's one sender end, since a pipe attests no sender per
+    /// message), is what holds: a holder can
     /// still pass the sender on relabelled as a free one, which no
     /// sending-side rule can see, but the receiver then refuses what the
     /// new holder sends.
@@ -134,8 +136,8 @@ pub enum Transfer {
 
 /// A process as the OS identifies it: its process ID and, where the OS
 /// keeps one, a generation that changes when the ID is reused (the pid
-/// version on macOS; 0 on Linux, where pids carry none, and in the
-/// simulator the incarnation). The process that starts another obtains
+/// version on macOS; 0 on Linux and Windows, where process IDs carry
+/// none, and in the simulator the incarnation). The process that starts another obtains
 /// it from the OS when it does (phase E's launcher); nothing a peer
 /// sends can produce one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -211,7 +213,9 @@ pub struct Fault {
     pub kind: FaultKind,
     /// The OS process ID of the process at fault: the record's sender,
     /// when the OS attests it (Linux `SCM_CREDENTIALS`, the macOS audit
-    /// token) and the fault is one only that sender could cause; for a
+    /// token; a Windows pipe attests none, so faults a receiver detects
+    /// there carry `None`) and the fault is one only that sender could
+    /// cause; for a
     /// record from the wrong process on a bound channel, the bound peer
     /// ([`FaultKind::Identity`]). `None` when the transport cannot tell who is at
     /// fault, for example when a former holder of a transferred end may
@@ -340,7 +344,9 @@ pub trait Ipc: Send + Sync {
     ) -> Result<Listening, IpcError>;
 
     /// As [`Ipc::listen`], accepting records from `peer` only, as the OS
-    /// attests the sender of each; a record from any other process ends
+    /// attests the sender of each (on Windows, as the broker attests the
+    /// holder of the channel's sender end, and the binding breaks when
+    /// that end moves to anyone else); a record from any other process ends
     /// the channel with [`Delivery::Violation`]
     /// ([`FaultKind::Identity`]). The receiver of a bound channel
     /// listens only this way; any other receiver may, when its owner
