@@ -157,12 +157,24 @@ impl Memory for SimMemory {
                 usize::try_from(n).unwrap_or(0) * pg,
             );
             if p.backing.commit(region, o, l, kind).is_err() {
+                let mut kept = 0u64;
                 for &(df, dn) in &done {
                     let (o, l) = (
                         usize::try_from(df).unwrap_or(usize::MAX) * pg,
                         usize::try_from(dn).unwrap_or(0) * pg,
                     );
-                    p.backing.decommit(region, o, l);
+                    // A rollback the backing refuses leaves pages it
+                    // holds but this ledger does not count; the process
+                    // still owns them, inside its own reservation. The
+                    // trace records it, so a run that hits it differs.
+                    if p.backing.decommit(region, o, l).is_err() {
+                        kept = kept.saturating_add(to_u64(l));
+                    }
+                }
+                if kept > 0 {
+                    st.trace.record(format_args!(
+                        "commit-rollback-kept {name}.{generation} {kept}"
+                    ));
                 }
                 return Err(MemoryError::CommitFailed);
             }
@@ -183,29 +195,32 @@ impl Memory for SimMemory {
         Ok(())
     }
 
-    fn decommit(&self, region: &Region, offset: usize, len: usize) {
+    fn decommit(&self, region: &Region, offset: usize, len: usize) -> Result<(), MemoryError> {
         let mut st = self.shared.lock();
         let Some(p) = st.proc(self.pid, self.generation) else {
-            return;
+            return Err(MemoryError::OutOfRange);
         };
         let pg = page(&st, p);
-        let Ok((r, first, end)) = locate(p, pg, region, offset, len) else {
-            return;
-        };
+        let (r, first, end) = locate(p, pg, region, offset, len)?;
         let todo = runs(&r.committed, first, end, true);
         if todo.is_empty() {
-            return;
+            return Ok(());
         }
         let Some(p) = st.proc_mut(self.pid, self.generation) else {
-            return;
+            return Err(MemoryError::OutOfRange);
         };
         let mut freed = [0u64; 3];
+        let mut refused = false;
         for &(f, n) in &todo {
             let (o, l) = (
                 usize::try_from(f).unwrap_or(usize::MAX) * pg,
                 usize::try_from(n).unwrap_or(0) * pg,
             );
-            p.backing.decommit(region, o, l);
+            if p.backing.decommit(region, o, l).is_err() {
+                // The backing kept these pages: they stay committed here too.
+                refused = true;
+                continue;
+            }
             if let Some(r) = p.regions.get_mut(&region.base()) {
                 for pgi in f..f + n {
                     if let Some(k) = r.committed.remove(&pgi) {
@@ -222,6 +237,11 @@ impl Memory for SimMemory {
         let (name, generation) = (p.name, p.generation);
         st.trace
             .record(format_args!("decommit {name}.{generation} {shrink}"));
+        if refused {
+            Err(MemoryError::DecommitFailed)
+        } else {
+            Ok(())
+        }
     }
 
     fn purge(&self, region: &Region, offset: usize, len: usize) {

@@ -99,6 +99,9 @@ pub enum MemoryError {
     NotCommitted,
     /// The OS refused to change the pages' protection.
     ProtectFailed,
+    /// The OS refused to decommit some of the pages; they stay committed,
+    /// charged and readable.
+    DecommitFailed,
 }
 
 impl core::fmt::Display for MemoryError {
@@ -110,6 +113,7 @@ impl core::fmt::Display for MemoryError {
             Self::Misaligned => "the range is not page-aligned",
             Self::NotCommitted => "the range has pages that are not committed",
             Self::ProtectFailed => "the pages' protection could not be changed",
+            Self::DecommitFailed => "some pages could not be decommitted",
         })
     }
 }
@@ -168,8 +172,16 @@ pub trait Memory: Send + Sync {
 
     /// Returns the committed pages of `[offset, offset + len)` to the OS
     /// and makes them inaccessible; the reservation stays. Their contents
-    /// are gone.
-    fn decommit(&self, region: &Region, offset: usize, len: usize);
+    /// are gone. Pages in the range that are not committed are skipped.
+    ///
+    /// # Errors
+    ///
+    /// [`MemoryError::Misaligned`] or [`MemoryError::OutOfRange`] for a bad
+    /// range, which changes nothing. [`MemoryError::DecommitFailed`] when
+    /// the OS refused some pages: those stay committed, charged and with
+    /// their contents, so a caller that must not reuse old contents (a
+    /// cage handing a chunk to another heap) must not reuse them.
+    fn decommit(&self, region: &Region, offset: usize, len: usize) -> Result<(), MemoryError>;
 
     /// Drops the contents of the committed pages of `[offset, offset +
     /// len)`, keeping them committed and charged for reuse; their contents

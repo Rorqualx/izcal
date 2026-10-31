@@ -152,7 +152,8 @@ fn main() -> ExitCode {
                         let _ = s2
                             .mem
                             .commit(&r, 0, 64 * 1024, MemoryKind::CanonicalExemptCache);
-                        s2.mem.decommit(&r, 0, 64 * 1024);
+                        // A refused decommit is an expected outcome too.
+                        let _ = s2.mem.decommit(&r, 0, 64 * 1024);
                         s2.mem.release(r);
                     }
                 }),
