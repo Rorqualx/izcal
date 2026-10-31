@@ -1,0 +1,106 @@
+# JS-M0 design review, part 2: index, decisions and questions
+
+Compiled 31 October 2026. Part 2 of the JS-M0 design review asked for by the [JS engine spec](../../reports/Izcal%20JavaScript%20engine.md)'s JS-M0 row (Section 9.2): the T2 and W2 IR, frame states, the deopt model under JS-D19, stack maps, the code-table entry, the assumption ledger, and riscv64's register assignment, landing-pad labels and segment-switch stub, fixed together with x86-64 and AArch64. Part 1 (bytecode, `.hgop`, the core operation set and the `hg-js-host` hooks) is written on the branch `docs/js-m0-design-1`, in this same folder, with its own `README.md`; when both merge, the README is the folder's index and this file is part 2's. Method: the first-principles-spec skill. Reviewed against the spec's draft 0.4.4 on `main`; 0.4.5's JS-M0 row (pending) does not change anything here.
+
+**Status:** draft for the independent critique and fact-check that Phase 4 of the JS-M0 plan requires. No decision here is accepted until the owner says so.
+
+## Files
+
+| File | Fixes |
+|---|---|
+| [optimizer-ir.md](optimizer-ir.md) | The one SSA IR for T2 and W2: control, instruction kinds, effects, types, `.hgop` facts, guards and dependencies, verified rules, W2, the IR verifier |
+| [frames-deopt-stackmaps.md](frames-deopt-stackmaps.md) | Frame layouts for every tier on three ISAs; the status slot; eager and lazy deopt, OSR, exceptions without return-address writes; frame states; stack maps and the GC walk; stacks, segments and the canonical frame budget |
+| [code-table-and-ledger.md](code-table-and-ledger.md) | Two classes of trusted data; the code tables and their 32-byte entry; calls through them; facts, the ledger, installation, invalidation and discard |
+| [riscv64-abi.md](riscv64-abi.md) | Register roles on riscv64, AArch64 and x86-64; landing-pad kinds and labels; the segment-switch stub per ISA; validator rules for control-flow-sensitive instructions |
+
+## Decisions
+
+Each row names the alternative it beat and what would reverse it; the files hold the evidence.
+
+| ID | Decision | Rejected alternative | Reversal trigger |
+|---|---|---|---|
+| **R2-1** | CFG of basic blocks in SSA with **block parameters**; effectful instructions ordered; pure instructions hash-consed, re-placed at O2 by acyclic e-graph elaboration | Phis; sea of nodes; full equality saturation | Elaboration > 15%† of O2 compile time for < 1%† on JetStream 3 |
+| **R2-2** | A guard returns a **refined value**; uses that rely on it take the refined value; a heap-fact refinement dies at any effect that may invalidate it (V10); failure action is deopt, trap or throw | Guards anchored to control; guards on the effect chain only | Refinements > 5%† of O1 compile time |
+| **R2-3** | A fact can change only inside a status-checked lazy-deopt point (a call or runtime call with an after-call frame state); inline stores to fact holders take a runtime slow path | Invalidation checks inside straight-line code | — (a soundness rule) |
+| **R2-4** | Effect sets: a bitset of effect kinds and a tree of heap categories, generated from `.hgop`; never narrower than the facts | Hand-written effect tables | — |
+| **R2-5** | Two lattices: abstract type (kind bitset, shape set, range, constant, Wasm ref type) and representation; boxing charges zero canonical units | One combined lattice | Sizes re-set from the corpus at JS-M2 |
+| **R2-6** | `hg-opgen` emits one facts row per operation; the graph builder transpiles IC programs or falls back to `Op(hgop_id)` | Optimizer-specific operation knowledge | — |
+| **R2-7** | Every semantics-changing transformation is a named rule, gated by a verified-rules table keyed by the rule text's hash | Passes written as code, verified by tests | — (JS-11) |
+| **R2-8** | W2 builds the same IR from validated Wasm; traps are not deopts; the only Wasm speculation is `call_ref` inlining and verified casts | A separate Wasm IR | — (JS-D6, 6.6) |
+| **R2-9** | One frame shape on every tier and ISA: same prologue and epilogue, a 16-byte header below the frame record `R` (`[R]` saved fp, `[R+8]` return address; `R = fp` on x86-64 and AArch64, `fp − 16` on riscv64 per its psABI) | Per-tier frame shapes | — |
+| **R2-10** | No callee-saved allocatable registers in the internal conventions; pinned registers only | A callee-saved subset | Spills around calls > 3%† of T2's instructions on JetStream 3 |
+| **R2-11** | The status word is each frame's **status slot** at `R − 4`, a set of flag bits, one load and branch per call; bits are ORed by exception exit, invalidation (stack walk) and the debugger; the slow path tests invalidation first | A per-code-object bit checked at each call | — (refines 6.4; see C1) |
+| **R2-12** | Deopt builds a resume plan as data; the optimized frame becomes the outermost interpreter frame in place (never growing); inner frames are entered by genuine calls issued from T0's own call sequences, one per call kind, and return to T0's continuations; no inlining across user-code calls inside Rust builtins | Writing frames with return addresses | JS-15's ≤ 2% bound missed (JS-D19's trigger); R2T-9's deopt latency missed |
+| **R2-13** | OSR entry in place, through an OSR-kind landing pad; declined if real space is short | Calling the optimized code from the interpreter frame | OSR entry's parallel move costing more than a T0 loop iteration's worth of the benefit at JS-M2 (measured with R2T-9) |
+| **R2-14** | No decompressed address or derived pointer across a safepoint; maps are a slot bitset plus a register-save bitset at polls and deopt points | Register maps and derived-pointer tables | Rematerialization > 1%† of T2 time |
+| **R2-15** | Frame states in the sealed region as parent-chained entries over one location vocabulary; verified per compilation; deopt-everywhere in CI | Metadata emitted late, unchecked | Deopt metadata > 40%† of T2 code bytes |
+| **R2-16** | A per-agent **canonical depth counter**; fixed charges per logical frame and per inlinable builtin; T2 checks once at entry for its whole inlining tree and takes an entry bailout (not a deopt) near the limit; `B = 1 MiB†` | Real stack-pointer checks only | Counter > 1%† of T0 dispatch time; `B` re-set by owner (Q-R2-4) |
+| **R2-17** | One shadow stack per **stack** (JSPI unit); segments chained by a growth stub that moves only `sp` | A shadow stack per segment; one large reservation per stack | — (see C3) |
+| **R2-18** | Two classes of trusted data: **sealed** (written once per compilation through the window) and **runtime-trusted** (ordinary RW outside the cage, written by the script thread's runtime) | One region, window on every write | An exploit using an out-of-cage write to a JIT's code pointer table (see C2, OQ-1) |
+| **R2-19** | Two code tables **per agent**, one per calling convention (JS, Wasm); cage indices are **masked** into a 2^20† power-of-two reservation; unused entries are trap entries; the caller passes the entry address in a register; known callees also call through the entry; heap constants live in a traced per-code-object constant table | One mixed per-process table with a kind check per call; direct calls to known code | Table calls > 1%† of JetStream 3 (R2T-8): known callees call directly under a dependency |
+| **R2-20** | A 32-byte entry: `entry`, `owner`, `generation`, `code_object`, `sig`, `param_count`, `kind`, `tier`, `flags`, `agent`; the cage stores only the index | Index plus generation in the cage | — |
+| **R2-21** | The caller adapts arguments to `param_count` and cleans up | Callee-side adaptor frames | As R2-19 |
+| **R2-22** | The ledger: fact records (runtime-trusted) and per-compilation entries checked before emission; a compact copy kept with the code object | Dependencies registered at compile start | — |
+| **R2-23** | Install re-validates fact generations on the script thread at the decision point; invalidation is synchronous and semantic; discard waits for a decision point with no stack holding the code | Global epoch; background registration | — |
+| **R2-24** | Register roles on three ISAs: cage base `s11`/`x28`/`r15`, sealed base `s10`/`x27`/`r14`, agent context `s9`/`x26`/`r13`; `x7` labels only; `x18`, `gp`, `tp` never touched; the entry trampoline saves every platform callee-saved register | Only the cage base pinned | x86-64 T2 without the sealed-base pin faster by > 1%† |
+| **R2-25** | Eight indirectly entered kinds (the spec's six plus interpreter dispatch and jump tables) with fixed riscv64 labels `0x1A501`–`0x1A508`, BTI `c`/`j` kinds on AArch64, `endbr64` on x86-64, no `notrack` | Signature-hash labels for Wasm | A type confusion the trusted check missed |
+| **R2-26** | One segment-switch stub per ISA in `hg-substrate-os`, using the architecture's token protocol; fresh stacks start by a direct jump | Shadow-stack writes enabled | — (Windows waits on Q-JS-15) |
+| **R2-27** | Validator profiles (generated code, generated interpreters, inventoried stubs) with per-ISA rules for shadow-stack, signing, branch-source, label-register, reserved-register, `sp` and CSR instructions | One profile | — |
+
+**Targets proposed:** R2T-1 to R2T-9, in the files. No threshold in this review is measured; every † is a first-principles value.
+
+## Requirements on part 1 (bytecode and `.hgop`)
+
+The IR and the frames need these from part 1; part 1 owns the syntax and formats.
+
+1. `.hgop` states, per operation and per fast path: heap categories read and written, `invalidates` (fact kinds), a canonical allocation charge, may-throw, may-call-user-code, host-hook reach, deopt and safepoint points, result representations, a type transfer function, and an SMT encoding ID ([optimizer-ir.md](optimizer-ir.md), Section 9).
+2. The bytecode verifier computes register liveness per offset (frame states' `Dead`) and each function's register count and canonical frame charge `32 + 4 × (registers + params)` ([frames-deopt-stackmaps.md](frames-deopt-stackmaps.md), Section 8.3).
+3. T0's call handler has one call-return continuation that deopt resumption reuses, and resume entries per mode (after call, re-execute, at entry) ([frames-deopt-stackmaps.md](frames-deopt-stackmaps.md), Section 5.1).
+4. Call-like operations are marked, so `AfterCall` frame states can be checked.
+5. The heap-category list lives in `.hgop` ([optimizer-ir.md](optimizer-ir.md), Section 7).
+
+## Decisions this review could not make, and why
+
+| Item | Why not now | When and how |
+|---|---|---|
+| O2's register allocator (Q-R2-1) | A performance choice once the allocation checker exists; needs compile-time and code-quality data | JS-M2, on the corpus |
+| x86-64 ISA semantics for `hg-rulecheck` (Q-JS-4, Q-R2-2) | No machine-readable x86-64 specification has been evaluated | JS-M2, as the spec already says |
+| Windows stacks and shadow stacks (Q-JS-15, Q-R2-5) | Five black-box questions on rig253 decide whether the stub is `RSTORSSP` or a fiber switch | JS-M0 Phase 6 |
+| The canonical budget's value (Q-R2-4) | Needs the shipping browsers' recursion depth, black-box | JS-M1 |
+| The riscv64 entry trampoline's label (Q-R2-9) | Depends on whether and how the Rust toolchain labels `lpad`s | JS-M0 black-box check |
+| PAC, BTI and GCS availability on macOS and Windows on Arm (Q-R2-6) | Not found in the published ABI pages | JS-M0 black-box check on the Mac |
+| Exact x86 restore-token and Arm GCS cap arithmetic (Q-R2-10) | The manuals were not quoted this session | JS-M0 Phase 6 |
+
+## Questions for the owner
+
+- **OQ-1. Accept R2-18's split of the trusted region?** It amends JS-D16's text ("written only … through a write window") so that IC programs, the code tables, fact registrations and the buffer table are ordinary read-write memory outside the cage, written only by the script thread's runtime. Recommendation: **accept**; otherwise IC attach needs a mapping change per write on riscv64 and x86-64 without PKU, and a real-time worklet thread breaks JS-43 (C2).
+- **OQ-2. Accept the three wording amendments to the JS spec** that C1, C3, C6 and C11 to C16 below need (6.4's status word, 6.6's shadow stack per stack, 6.7's validator roles and landing-pad wording, 6.18's landing-pad kinds and install wording, H-1's index wording, 6.5's stack scanning, 6.2's registrations)? Recommendation: **accept**; none changes a decision, target or threshold.
+- **OQ-3. Recursion depth.** Should Izcal's canonical budget allow at least the deepest recursion of the shipping browsers (measured black-box at JS-M1), even if that costs more stack memory per stack? Recommendation: **yes**: a page that recurses deeper than Izcal allows but works elsewhere is a compatibility failure (P2), and the memory is reserved, not committed.
+
+## Contradictions and gaps found in the JS spec
+
+| # | Where | What | Proposed resolution |
+|---|---|---|---|
+| **C1** | 6.4 "Lazy deopt" | "Every call site … checks one return status word … 'invalidated' (a per-code-object bit set by invalidation) or 'exception pending'": a per-code-object bit and an exception state are two words, or one word reached through a table offset that does not fit an immediate on AArch64 or riscv64 | The status word is the frame's status slot (R2-11); the per-code-object flag stays, to stop new entries; amend 6.4's wording (OQ-2) |
+| **C2** | 6.1 "Trusted region" row, 6.2 "IC programs", 6.7 "W^X", JS-43 | IC programs and the IC site table are written by the runtime's IC-attach path "through a write window"; without per-thread permission the window is a mapping that exists only during one install; JS-43 forbids permission changes on a real-time worklet thread, which attaches ICs | R2-18 (OQ-1) |
+| **C3** | 6.6 "Stacks", 6.4 table | "A shadow stack per segment" while segments are "growable by chaining": a return across a chained segment boundary would need a shadow-stack switch | "Segment" (a guard-paged region) and "stack" (what JSPI suspends) are separated; one shadow stack per stack (R2-17); amend 6.6's wording (OQ-2) |
+| **C4** (a gap, not a contradiction) | 6.18 "Control-flow integrity" | The riscv64 section's "a corrupted code-table index that reaches a valid pad of the wrong kind faults" has no counterpart for x86-64, whose pads have no labels, or AArch64, which has two kinds | Per-convention code tables (R2-19) give x86-64 and AArch64 the same property for calls; OSR and IC-stub pads rely on BTI `j`/`c` and identity checks. Add a sentence to 6.18 |
+| **C5** | 6.1 item 4 | Lists the entry's fields as kind, parameter count, owner, generation and entry, then says `call_indirect` checks the canonical type ID "from the trusted table entry": the type ID is not in the list | R2-20 adds `sig` (and `code_object`, `tier`, `flags`, `agent`) |
+| **C6** | 6.7 "machine-code validator" | "no instruction writes the base registers or the stack pointer except in the prologue and epilogue", but JS-D19's own deopt (frame 0 resized in place) and OSR entry (frame body replaced) must move `sp` mid-function | Validator roles for the deopt tail and OSR entry: `sp = R − size` with the size from sealed metadata (R2-27); amend 6.7 (OQ-2) |
+| **C7** | 6.1 item 6 and 6.7 | Machine code reaches the trusted region "only through … table entries", but T0's bytecode pointer is an absolute pointer into the sealed region that advances by itself | A certificate role "bytecode pointer" for the generated interpreters' build-time profile; no spec text changes the property, only its statement |
+| **C8** | 6.5 "Optimized frames" and 6.6 "precise scanning walks only engine frames" | Do not say how the walk crosses Rust frames on the same segment | Exit and entry frames (frames note, Section 3) |
+| **C9** | 6.9 stack-overflow row | "each frame charges a size fixed by its function, whatever its tier" does not say how inlined frames are charged in T2 without a check per inlined call | R2-16's entry check over the inlining tree |
+| **C10** | Header and plan | `main` carries draft 0.4.4; the JS-M0 plan and this review's brief cite 0.4.5, which is on the unmerged `docs/js-m0-amendments` branch | No action; noted so the review's reference is unambiguous |
+| **C11** | 6.18 "Control-flow integrity" | The six entry kinds (JS call, Wasm call, OSR, deopt-resume, IC stub, runtime trampoline) omit two indirect branches the engine's own code makes: the generated interpreters' dispatch to handlers and jump tables for `switch` | Two more kinds with their own labels (R2-25); amend 6.18's list (OQ-2) |
+| **C12** | 6.1 H-1 | "table indices are bounds-, kind- and generation-checked on use", but a masked index into a per-agent, per-convention table needs no bounds or kind check, and a generation stored in the cage adds nothing against an attacker who reads process memory | Amend H-1's sentence to "masked into a table of their own kind" (R2-19, R2-20) |
+| **C13** | 6.7 validator property | "every indirect branch goes through the code table to a landing pad", but runtime trampolines, deopt-resume entries and IC stubs are reached through the agent block, and dispatch and jump tables through their own tables | Amend to "every indirect branch lands on a landing pad of its kind" (R2-25, R2-27) |
+| **C14** | 6.18 "W^X and code installation" | "the code writer completes its stores with a `fence` before publishing a code-table entry", while R2-20 has the script thread publish the entry at the install safepoint | Consistent once worded: the code writer fences its code stores; the applying script thread runs `fence.i` and then publishes. Amend the sentence |
+| **C15** | 6.5 "The concurrent marker's data-race protocol" | Lists "interpreter frame slots scanned concurrently", while R2-14's walk scans stacks on the owning thread at safepoints | Stacks are scanned by their owner at JS-M0; concurrent stack scanning is a later option measured against JS-40, and 6.5's slots stay atomic so it remains possible |
+| **C16** | 6.2 "Fact cells" | "A fact cell's registrations are code-table entries", while R2-22 registers code objects: a code-table entry outlives the code it points to, so registering entries would invalidate the wrong code after a tier change | Amend to "code objects, by ID and generation" |
+
+## Verification of this part
+
+- **Links.** Every relative link points to a file in the tree; the external `#block-arguments-vs-phi-nodes` fragment was checked against the MLIR page on 31 October 2026; DOIs were checked against Crossref.
+- **M-1 part 3.** No link points to source code. The RISC-V ISA manual, the RISC-V psABI and the x86-64 psABI are specifications; they are cited at their release or landing pages, and their prose was read, never their tooling.
+- **Independent fact-check** (31 October 2026, an agent that did not write these notes): ISA facts 2.1–2.9 confirmed against the RISC-V CFI chapter, the psABI and the kernel pages; paper metadata confirmed against Crossref; spec quotes behind C1–C10 confirmed; arithmetic and IDs consistent. Six must-fix items, all applied: riscv64's psABI frame-pointer convention (now the frame record `R`, R2-9); two missing landing-pad kinds (dispatch and jump tables, R2-25, C11); the Sparkplug quotation; a mis-sourced V8 sandbox claim; `lui x7, LABEL`; register counts made comparable. Its recommended wording fixes (Pizlo's cost, V8's CFI post, the red zone, WRSS, 6.2a, C4's label, the shadow-stack size, part 1's location) are applied too. Rows 2.10, 2.11, 2.13 stay Medium: the Arm and Intel manuals block automated reading.
+- **Independent design critique** (31 October 2026, a second agent): 8 High, 8 Medium and 9 Low findings, all applied: status bits ORed so an exception cannot hide an invalidation (H1, R2-11); heap-fact refinements die at invalidating effects (H2, R2-2, V10); resume calls issued from T0's code, one continuation per call kind, no inlining across user calls in Rust builtins (H3, R2-12); frame 0 never grows, resume entries do not charge depth (H4); per-agent code tables and an entry register (H5, R2-19); known callees call through the entry and code objects keep what they embed alive (H6); a traced constant table for heap constants (H7); outgoing-argument and Wasm-parameter map rules (H8, R2-14); Wasm tail calls with a fixed stack-argument area (M1); polls without `MayCallUser` (M2); ledger snapshots, no facts on shared objects (M3); containment rules and a wider trigger for R2-18 (M4); builtin charges, JSPI resume overflow, entry bailouts (M5); `Charge` for removed allocations (M6); five more spec amendments (M7, C12–C16); trampoline register saves, whole-process landing pads, growth-stub bounds, `sigaltstack`, a worklet segment pool (M8); and the Low items (trigger comparison, OSR address, Wasm memory base, bound and Proxy callables, shared-memory loads, per-stack summaries, missing reversal triggers, a deopt-latency target R2T-9).
