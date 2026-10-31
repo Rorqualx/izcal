@@ -6,6 +6,7 @@
 //! | commit | `mprotect` read/write (macOS also `MADV_FREE_REUSE`) | `VirtualAlloc` `MEM_COMMIT`, `PAGE_READWRITE` |
 //! | decommit | `mmap` `MAP_FIXED` `PROT_NONE` over the range (drops the pages, keeps the reservation) | `VirtualFree` `MEM_DECOMMIT` |
 //! | purge | Linux `MADV_FREE`; macOS `MADV_FREE_REUSABLE` (FP-M0 measured: it releases the `phys_footprint` charge) | `DiscardVirtualMemory` |
+//! | protect | `mprotect` none, read, or read/write | `VirtualProtect` `PAGE_NOACCESS`, `PAGE_READONLY` or `PAGE_READWRITE` |
 //! | release | `munmap` | `VirtualFree` `MEM_RELEASE` |
 //!
 //! Addresses are passed as `usize` and every range is page-aligned by the
@@ -130,6 +131,30 @@ pub unsafe fn purge(base: usize, len: usize) -> Result<(), OsError> {
     Ok(())
 }
 
+/// Sets the protection of `[base, base + len)`: `0` none, `1` read,
+/// `2` read/write.
+///
+/// # Errors
+/// The OS error if the protection cannot be changed.
+///
+/// # Safety
+/// The range must be committed memory inside a live reservation, and no
+/// reference into it may be used in a way the new protection forbids.
+#[cfg(unix)]
+pub unsafe fn protect(base: usize, len: usize, access: u8) -> Result<(), OsError> {
+    let prot = match access {
+        0 => libc::PROT_NONE,
+        1 => libc::PROT_READ,
+        _ => libc::PROT_READ | libc::PROT_WRITE,
+    };
+    // SAFETY: the caller's contract: the range is committed memory of ours.
+    let rc = unsafe { libc::mprotect(base as *mut libc::c_void, len, prot) };
+    if rc != 0 {
+        return Err(last_error());
+    }
+    Ok(())
+}
+
 /// Releases a whole reservation.
 ///
 /// # Errors
@@ -230,6 +255,35 @@ pub unsafe fn purge(base: usize, len: usize) -> Result<(), OsError> {
     let rc = unsafe { DiscardVirtualMemory(base as *mut _, len) };
     if rc != 0 {
         return Err(OsError(i64::from(rc)));
+    }
+    Ok(())
+}
+
+/// Sets the protection of `[base, base + len)`: `0` none, `1` read,
+/// `2` read/write.
+///
+/// # Errors
+/// The OS error if the protection cannot be changed.
+///
+/// # Safety
+/// The range must be committed memory inside a live reservation, and no
+/// reference into it may be used in a way the new protection forbids.
+#[cfg(windows)]
+pub unsafe fn protect(base: usize, len: usize, access: u8) -> Result<(), OsError> {
+    use windows_sys::Win32::System::Memory::{
+        PAGE_NOACCESS, PAGE_PROTECTION_FLAGS, PAGE_READONLY, PAGE_READWRITE, VirtualProtect,
+    };
+    let prot = match access {
+        0 => PAGE_NOACCESS,
+        1 => PAGE_READONLY,
+        _ => PAGE_READWRITE,
+    };
+    let mut old: PAGE_PROTECTION_FLAGS = 0;
+    // SAFETY: the caller's contract: the range is committed memory of
+    // ours; `old` is a valid out-pointer.
+    let ok = unsafe { VirtualProtect(base as *const _, len, prot, &mut old) };
+    if ok == 0 {
+        return Err(last_error());
     }
     Ok(())
 }

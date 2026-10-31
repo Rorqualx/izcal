@@ -149,8 +149,10 @@ fn main() -> ExitCode {
                     let r = s2.mem.reserve(256 * 1024, MemoryKind::CanonicalExemptCache);
                     if let Ok(r) = r {
                         // A refused commit is an expected outcome here.
-                        let _ = s2.mem.commit(&r, 64 * 1024);
-                        s2.mem.decommit(&r, 0);
+                        let _ = s2
+                            .mem
+                            .commit(&r, 0, 64 * 1024, MemoryKind::CanonicalExemptCache);
+                        s2.mem.decommit(&r, 0, 64 * 1024);
                         s2.mem.release(r);
                     }
                 }),
