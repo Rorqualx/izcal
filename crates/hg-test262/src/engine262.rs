@@ -348,7 +348,17 @@ fn run_with_timeout(mut cmd: Command, timeout: Duration) -> std::io::Result<Outp
         let mut timed_out = false;
         let mut pause = Duration::from_micros(500);
         let status = loop {
-            match child.try_wait()? {
+            let polled = match child.try_wait() {
+                Ok(p) => p,
+                Err(e) => {
+                    // Stop the child, or the readers would wait for pipes
+                    // that never close.
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(e);
+                }
+            };
+            match polled {
                 Some(st) => break Some(st),
                 None if start.elapsed() >= timeout => {
                     let _ = child.kill();
@@ -407,7 +417,11 @@ pub fn parse_report(
                 in_stack = true;
             } else if let Some(m) = rest.strip_prefix("message ") {
                 message = Some(m.to_string());
-            } else if rest == "end" && threw && completion.is_none() {
+            } else if rest == "end" && (!threw || completion.is_some()) {
+                // A report that cannot apply (a second one): end its
+                // message, so later lines are prints again.
+                message = None;
+            } else if rest == "end" {
                 let phase = if raw {
                     None
                 } else if evaluating {

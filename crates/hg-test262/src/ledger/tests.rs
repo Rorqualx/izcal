@@ -186,3 +186,16 @@ fn compare_finds_regressions_and_improvements() {
     assert_eq!(d.other.len(), 2);
     assert!(compare(&a, &a).regressions.is_empty());
 }
+
+#[test]
+fn long_paths_survive_and_details_are_cut() {
+    let long = format!("{}/x.js", "d".repeat(600));
+    let l = Ledger {
+        header: vec![("command".into(), "c".repeat(700))],
+        entries: vec![e(Status::Fail, Mode::Sloppy, &long, &[], &"m".repeat(900))],
+    };
+    let back = Ledger::parse(&l.to_text()).unwrap();
+    assert_eq!(back.entries[0].path, long);
+    assert_eq!(back.header[0].1.len(), 700);
+    assert_eq!(back.entries[0].detail.len(), MAX_DETAIL);
+}

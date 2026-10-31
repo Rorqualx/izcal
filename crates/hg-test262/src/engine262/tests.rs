@@ -240,3 +240,22 @@ fn parse_errors_and_instantiation_errors_are_told_apart() {
         })
     ));
 }
+
+#[test]
+fn a_second_report_does_not_swallow_later_prints() {
+    let m = |s: &str| format!("{MARK}{s}\n");
+    let out = [
+        m("evaluating"),
+        m("completion normal"),
+        m("completion throw"),
+        m("name E"),
+        m("stack "),
+        m("message x"),
+        m("end"),
+        "Test262:AsyncTestComplete\n".into(),
+    ]
+    .concat();
+    let (c, prints, _) = parse_report(&out, SourceKind::Module, false, None);
+    assert_eq!(c, Some(Completion::Normal));
+    assert_eq!(prints, ["Test262:AsyncTestComplete"]);
+}

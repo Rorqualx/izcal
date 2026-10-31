@@ -62,9 +62,15 @@ pub struct Ledger {
     pub entries: Vec<Entry>,
 }
 
+/// Escapes a detail, kept to [`MAX_DETAIL`] characters.
+fn escape_detail(s: &str) -> String {
+    escape(&s.chars().take(MAX_DETAIL).collect::<String>())
+}
+
+/// Escapes a field; paths and header values are never cut.
 fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    for c in s.chars().take(MAX_DETAIL) {
+    for c in s.chars() {
         match c {
             '\\' => out.push_str("\\\\"),
             '\t' => out.push_str("\\t"),
@@ -136,7 +142,7 @@ impl Ledger {
                 e.mode,
                 escape(&e.path),
                 features,
-                escape(&e.detail)
+                escape_detail(&e.detail)
             );
         }
         out
