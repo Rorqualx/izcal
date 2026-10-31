@@ -157,6 +157,7 @@ impl Memory for SimMemory {
                 usize::try_from(n).unwrap_or(0) * pg,
             );
             if p.backing.commit(region, o, l, kind).is_err() {
+                let mut kept = 0u64;
                 for &(df, dn) in &done {
                     let (o, l) = (
                         usize::try_from(df).unwrap_or(usize::MAX) * pg,
@@ -164,8 +165,16 @@ impl Memory for SimMemory {
                     );
                     // A rollback the backing refuses leaves pages it
                     // holds but this ledger does not count; the process
-                    // still owns them, inside its own reservation.
-                    let _ = p.backing.decommit(region, o, l);
+                    // still owns them, inside its own reservation. The
+                    // trace records it, so a run that hits it differs.
+                    if p.backing.decommit(region, o, l).is_err() {
+                        kept = kept.saturating_add(to_u64(l));
+                    }
+                }
+                if kept > 0 {
+                    st.trace.record(format_args!(
+                        "commit-rollback-kept {name}.{generation} {kept}"
+                    ));
                 }
                 return Err(MemoryError::CommitFailed);
             }
