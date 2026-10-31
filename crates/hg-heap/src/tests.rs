@@ -233,14 +233,19 @@ fn a_checked_cast_follows_the_header() {
 }
 
 #[test]
-fn the_canonical_trigger_counts_object_bytes() {
-    // Each Cell is 8 + 8 + 16 = 32 bytes; a trigger of 320 gives a cycle
-    // every 10 allocations.
+fn only_charged_units_trigger_a_canonical_cycle() {
+    // Allocation charges nothing; charge() does. A trigger of 30 units
+    // with 3 units per allocating operation gives a cycle every 10.
     assert_eq!(<Cell as Object>::LAYOUT.size(0), Some(32));
-    let (mut h, log) = heap(Stress::None, 320);
+    let (mut h, log) = heap(Stress::None, 30);
     h.enter(|m| {
         m.scope(|m, s| {
+            for _ in 0..100 {
+                let _ = m.alloc::<Cell>(s, 0).unwrap();
+            }
+            assert_eq!(m.stats().canonical_cycles, 0);
             for _ in 0..35 {
+                m.charge(3);
                 let _ = m.alloc::<Cell>(s, 0).unwrap();
             }
         });
@@ -261,11 +266,12 @@ fn corrupted_slots_and_headers_stay_inside_the_cage() {
         x
     };
     for stress in [Stress::None, Stress::MoveOnAlloc] {
-        let (mut h, _) = heap(stress, 4096);
+        let (mut h, _) = heap(stress, 64);
         h.enter(|m| {
             m.scope(|m, s| {
                 let arr = m.alloc::<Array>(s, 64).unwrap();
                 for round in 0..40 {
+                    m.charge(4);
                     let c = m.alloc::<Cell>(s, 0).unwrap();
                     let a = arr.get(m);
                     for i in 0..64 {

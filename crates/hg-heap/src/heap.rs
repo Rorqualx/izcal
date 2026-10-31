@@ -41,8 +41,8 @@ pub struct HeapConfig {
     /// The cage's size: a power of two from 1 MiB to 16 GiB. Production
     /// uses 16 GiB (JS-D17); tests use small cages.
     pub cage_bytes: u64,
-    /// Canonical allocation units (bytes of object size) between
-    /// canonical cycles (heap design H-8).
+    /// Canonical allocation units between canonical cycles, as charged
+    /// by [`Mutator::charge`] (heap design H-8).
     pub trigger: u64,
     /// Extra, non-canonical cycles for testing.
     pub stress: Stress,
@@ -244,7 +244,10 @@ impl<'h> Mutator<'h> {
     }
 
     /// Allocates a zeroed `T` with a tail of `len` elements (0 for a type
-    /// without a tail) and roots it in `s`. A GC point.
+    /// without a tail) and roots it in `s`. A GC point. It charges no
+    /// canonical units: the operation that allocates charges what its
+    /// description says, through [`Mutator::charge`], so the charge never
+    /// depends on representation or tier (design review R0-B10).
     ///
     /// # Errors
     /// [`AllocError::OutOfMemory`] if the cage is full.
@@ -260,10 +263,6 @@ impl<'h> Mutator<'h> {
         let size = layout.size(len).ok_or(AllocError::OutOfMemory)?;
         if st.config.stress == Stress::MoveOnAlloc {
             st.collect(false);
-        }
-        st.debt = st.debt.saturating_add(size);
-        if st.debt >= st.config.trigger {
-            st.collect(true);
         }
         let ty = st.type_of::<T>();
         let at = st.space.alloc(&st.cage, size)?;
@@ -288,6 +287,18 @@ impl<'h> Mutator<'h> {
     #[cfg(test)]
     pub(crate) fn state_for_tests(&self) -> &State {
         self.state
+    }
+
+    /// Charges `units` canonical allocation units of GC debt (JS spec
+    /// 6.9), and runs a canonical cycle when the debt reaches the
+    /// trigger. A GC point. Each operation that semantically allocates
+    /// calls it with the units its description fixes.
+    pub fn charge(&mut self, units: u64) {
+        let st = &mut *self.state;
+        st.debt = st.debt.saturating_add(units);
+        if st.debt >= st.config.trigger {
+            st.collect(true);
+        }
     }
 
     /// An explicit safepoint: a GC point where the stress mode moves
