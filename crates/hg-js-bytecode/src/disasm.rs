@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use crate::unit::{Constant, Unit};
+use crate::unit::{Constant, Unit, UnitKind};
 use crate::{Intrinsic, OperandKind, Reg, decode};
 
 /// The text of `unit`. Bytes that do not decode end the listing with a
@@ -15,11 +15,16 @@ pub fn disassemble(unit: &Unit) -> String {
     let mut o = String::new();
     let _ = writeln!(
         o,
-        ".function {} params={} registers={}{}",
+        ".function {} params={} registers={}{}{}",
         unit.name,
         unit.params,
         unit.registers,
-        if unit.strict { " strict" } else { "" }
+        if unit.strict { " strict" } else { "" },
+        if unit.kind == UnitKind::Script {
+            " script"
+        } else {
+            ""
+        }
     );
     for (i, c) in unit.constants.iter().enumerate() {
         let lit = match c {

@@ -285,6 +285,19 @@ fn the_assembler_rejects_what_the_verifier_will() {
 }
 
 #[test]
+fn script_units_and_strictness_round_trip() {
+    let u = &assemble(
+        ".function top params=0 registers=0 strict script\n LoadUndefined\n Return\n.end",
+    )
+    .unwrap()[0];
+    assert_eq!((u.kind, u.strict), (UnitKind::Script, true));
+    assert_eq!(&assemble(&disassemble(u)).unwrap()[0], u);
+    // `\u` takes exactly four hex digits, without a sign.
+    let e = assemble(".function f params=0 registers=0\n.const k0 string \"\\u+abc\"\n LoadConst k0\n Return\n.end").unwrap_err();
+    assert!(e.msg.contains("four hex digits"), "{e}");
+}
+
+#[test]
 fn constants_keep_every_number_and_code_unit() {
     let text = ".function f params=0 registers=1\n\
         .const k0 number -0\n.const k1 number NaN\n.const k2 number -Infinity\n\

@@ -58,6 +58,7 @@ struct Func {
     params: u32,
     registers: u32,
     strict: bool,
+    script: bool,
     line: usize,
     consts: BTreeMap<u32, (Constant, usize)>,
     slots: BTreeMap<u32, (SlotKind, usize)>,
@@ -184,6 +185,8 @@ fn function_header(rest: &str, line: usize) -> Result<Func, AsmError> {
     for a in parts {
         if a == "strict" {
             f.strict = true;
+        } else if a == "script" {
+            f.script = true;
         } else if let Some(v) = a.strip_prefix("params=") {
             f.params = uint(v, line)?;
         } else if let Some(v) = a.strip_prefix("registers=") {
@@ -264,8 +267,10 @@ pub(crate) fn json_string(s: &str, line: usize) -> Result<Vec<u16>, AsmError> {
                     Some('t') => out.push(0x09),
                     Some('u') => {
                         let hex: String = chars.by_ref().take(4).collect();
+                        // Four ASCII hex digits (ECMA-404): no sign.
+                        let digits = hex.len() == 4 && hex.chars().all(|c| c.is_ascii_hexdigit());
                         match u16::from_str_radix(&hex, 16) {
-                            Ok(v) if hex.len() == 4 => out.push(v),
+                            Ok(v) if digits => out.push(v),
                             _ => return err(line, "a `\\u` escape takes four hex digits"),
                         }
                     }
@@ -442,6 +447,13 @@ fn finish(f: Func, end_line: usize) -> Result<Unit, AsmError> {
         }
         slots.push(*s);
     }
+    let max = usize::try_from(crate::unit::MAX_TABLE).unwrap_or(usize::MAX);
+    if constants.len() > max || slots.len() > max {
+        return err(
+            end_line,
+            "more constants or slots than a unit holds (MAX_TABLE)",
+        );
+    }
     // Operand checks against the frame and the tables (bytecode note 8).
     for item in &f.items {
         let kinds = item.op.info().operands;
@@ -608,7 +620,11 @@ fn finish(f: Func, end_line: usize) -> Result<Unit, AsmError> {
     }
     Ok(Unit {
         name: f.name,
-        kind: UnitKind::Function,
+        kind: if f.script {
+            UnitKind::Script
+        } else {
+            UnitKind::Function
+        },
         strict: f.strict,
         params: f.params,
         registers: f.registers,
