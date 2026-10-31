@@ -130,8 +130,7 @@ fn run_cases(
 /// The answers to `cases` from `argv` (a program and its leading
 /// arguments; the script's path is appended), over `jobs` workers.
 fn run_all(cases: &[Case], argv: &[&std::ffi::OsStr], jobs: usize) -> Result<Vec<String>, String> {
-    let dir: PathBuf = std::env::temp_dir().join(format!("hg-js-oracle-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let dir = private_scratch("hg-js-oracle").map_err(|e| format!("a scratch directory: {e}"))?;
     let chunks: Vec<(usize, &[Case])> = cases
         .chunks(CHUNK)
         .enumerate()
@@ -204,4 +203,36 @@ pub fn run(
 /// prelude falls back to `console.log`.
 pub fn run_node(cases: &[Case], node: &Path) -> Result<Vec<String>, String> {
     run_all(cases, &[node.as_os_str()], 1)
+}
+
+/// A new scratch directory under the system temp directory, made by this
+/// call alone: the name has the process ID, the time and a counter, and
+/// it is created exclusively (and, on Unix, readable only by this user),
+/// so a path someone else placed there first is never used, and removing
+/// the directory afterwards removes only what this process made.
+fn private_scratch(prefix: &str) -> std::io::Result<PathBuf> {
+    let base = std::env::temp_dir();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    for n in 0..100u32 {
+        let path = base.join(format!("{prefix}-{}-{nanos:x}-{n}", std::process::id()));
+        #[cfg(unix)]
+        let b = {
+            let mut b = std::fs::DirBuilder::new();
+            std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o700);
+            b
+        };
+        #[cfg(not(unix))]
+        let b = std::fs::DirBuilder::new();
+        match b.create(&path) {
+            Ok(()) => return Ok(path),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "no free scratch directory name",
+    ))
 }
