@@ -156,24 +156,30 @@ impl Drop for Cage {
 }
 
 /// Memory for tests: each reservation is an ordinary zeroed allocation,
-/// so Miri can run the heap (it cannot map a real reservation).
-#[cfg(test)]
-pub(crate) mod test_memory {
+/// so Miri can run the heap (it cannot map a real reservation). Built for
+/// this crate's tests and, through the `testing` feature, for the tests of
+/// crates built on the heap (never for a shipping build: only
+/// dev-dependencies enable the feature).
+#[cfg(any(test, feature = "testing"))]
+pub mod test_memory {
     use std::sync::Mutex;
 
     use hg_substrate::{Access, Memory, MemoryError, MemoryKind, MemoryStats, Region};
 
     /// Memory for tests: each reservation is a zeroed allocation.
-    #[derive(Default)]
-    pub(crate) struct TestMemory {
+    #[derive(Debug, Default)]
+    pub struct TestMemory {
         live: Mutex<Vec<(usize, std::alloc::Layout)>>,
         protects: Mutex<Vec<(usize, usize, Access)>>,
     }
 
     impl TestMemory {
         /// Every protection change asked for, in order.
-        pub(crate) fn protects(&self) -> Vec<(usize, usize, Access)> {
-            self.protects.lock().unwrap().clone()
+        pub fn protects(&self) -> Vec<(usize, usize, Access)> {
+            self.protects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
         }
     }
 
@@ -190,7 +196,10 @@ pub(crate) mod test_memory {
                 return Err(MemoryError::OutOfAddressSpace);
             }
             let base = p.expose_provenance();
-            self.live.lock().unwrap().push((base, layout));
+            self.live
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push((base, layout));
             Ok(Region::new(base, bytes, kind))
         }
         fn commit(&self, _: &Region, _: usize, _: usize, _: MemoryKind) -> Result<(), MemoryError> {
@@ -199,11 +208,17 @@ pub(crate) mod test_memory {
         fn decommit(&self, _: &Region, _: usize, _: usize) {}
         fn purge(&self, _: &Region, _: usize, _: usize) {}
         fn protect(&self, _: &Region, o: usize, l: usize, a: Access) -> Result<(), MemoryError> {
-            self.protects.lock().unwrap().push((o, l, a));
+            self.protects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push((o, l, a));
             Ok(())
         }
         fn release(&self, region: Region) {
-            let mut live = self.live.lock().unwrap();
+            let mut live = self
+                .live
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(i) = live.iter().position(|(b, _)| *b == region.base()) {
                 let (base, layout) = live.remove(i);
                 // SAFETY: `base` came from `alloc_zeroed` with `layout`, and the
