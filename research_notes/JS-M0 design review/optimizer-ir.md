@@ -110,10 +110,10 @@ Each instruction has an opcode, operands (value IDs), result values, an effect s
 | **Allocation** | `Allocate(layout, size_class)`; `Charge(units)` | `Alloc`, `Safepoint` | `Allocate` carries its canonical allocation charge from the facts. When escape analysis removes an allocation it leaves a `Charge(units)` in its place: the canonical units are still charged and `Charge` is still a canonical GC trigger point, as the spec requires ([JS 6.5](../../reports/Izcal%20JavaScript%20engine.md), [JS 6.9](../../reports/Izcal%20JavaScript%20engine.md)). Materializing that object on deopt charges 0, because its units were charged already |
 | **Calls** | `CallJs(callee, argc, args)`, `CallWasm(idx, args)`, `CallIndirectWasm(table, i, sig)`, `CallRuntime(stub, args)`, `CallBuiltin(id, args)` | from the callee's facts, at least `MayCallUser`, `MayThrow`, `Safepoint` | Every call is followed by the frame's status check; the call instruction itself carries the after-call frame state (6.2) |
 | **Generic operation** | `Op(hgop_id, operands)` | exactly the operation's facts | The graph builder's fallback for any bytecode or Wasm instruction it does not specialize; lowered to the operation's generic path. This keeps the builder total |
-| **Interrupt poll** | `Poll` | `Safepoint` only | At every loop back-edge; carries the canonical progress counter update ([JS 6.10](../../reports/Izcal%20JavaScript%20engine.md)). The poll's slow path never runs JS: it serves GC and safepoint requests and applies decision points, and records any JS-visible interrupt (termination, a debugger pause) for the next status-checked call or back-edge exit to act on. **The collector never changes a fact, and a decision point applied at a non-call safepoint (a code install, a flush) never invalidates one**, so a poll does not kill load elimination, loop-invariant motion or guard hoisting |
+| **Interrupt poll** | `Poll` | `Safepoint` only | At every loop back-edge, and at an inlined function entry whose inlining tree contains a `charge`; carries the canonical progress counter update ([JS 6.10](../../reports/Izcal%20JavaScript%20engine.md); the counter and the decision-applicable points are part 1's R0-B11, [bytecode note](bytecode-and-core-set.md) Section 4.10). The poll's slow path never runs JS: it serves GC and safepoint requests and applies decision points, and records any JS-visible interrupt (termination, a debugger pause) for the next status-checked call or back-edge exit to act on. **The collector never changes a fact, and a decision point applied at a non-call safepoint (a code install, a flush) never invalidates one**, so a poll does not kill load elimination, loop-invariant motion or guard hoisting |
 | **Terminators** | `Jump`, `Branch`, `Switch(bounded)`, `Return`, `Throw`, `Deopt(reason)`, `Trap(kind)`, `TailCallWasm`, `Unreachable` | as named | `Switch` lowers to a bounds-checked jump table in read-only code; the jump into it is indirect and each case block starts with a jump-table landing pad ([riscv64-abi.md](riscv64-abi.md), R2-25) |
 
-**What the IR does not have.** No raw pointer type that survives a safepoint; no instruction that writes the stack pointer, a return address, the shadow stack or a base register (those exist only in the backend's prologue, epilogue and the inventoried stubs, [riscv64-abi.md](riscv64-abi.md)); no instruction that reads a clock or entropy (G13).
+**What the IR does not have.** No raw pointer type that survives a safepoint; no instruction that writes the stack pointer, a return address, the shadow stack or a base register (those exist only in the backend's prologue, epilogue and the inventoried stubs, [riscv64-abi.md](riscv64-abi.md)); no instruction that reads a clock or entropy (G13) except an `Op` whose facts carry the `Input` effect (Section 7).
 
 ### 6.1 Guards: refining definitions (R2-2)
 
@@ -146,7 +146,8 @@ v3 = UntagInt(v2)                             ; may use v2 only
 A **dependency** relies on a fact that no instruction checks at the use: a fact cell ([JS 6.2](../../reports/Izcal%20JavaScript%20engine.md)) such as "the prototype chain of shape S has no property `x`". `Depend(fact)` sits at the first program point where the compiled code relies on it.
 
 **Decision R2-3: a fact can change only inside an instruction whose effect set intersects the fact's invalidating categories, and every such instruction is a lazy-deopt point: a call or runtime call followed by the frame's status check, with an after-call frame state.** The ledger checker ([code-table-and-ledger.md](code-table-and-ledger.md)) verifies this per compilation. The consequence for the IR:
-- `CallJs`, `CallRuntime`, `CallBuiltin`, `Op` with `MayCallUser`, `Poll` and any inline store whose category may hold a registered fact (a prototype's slots, a global cell) carry an **after-call frame state** and are followed by the status check.
+- `CallJs`, `CallRuntime`, `CallBuiltin`, `Op` with `MayCallUser`, and any inline store whose category may hold a registered fact (a prototype's slots, a global cell) carry an **after-call frame state** and are followed by the status check.
+- `Poll` changes no fact: its slow path runs no JS, and the decisions it applies (GC completion with weak clearing, installs) change no fact cell; the only hook it reaches, cleanup enqueueing, has no heap context (part 1's R0-H4). It carries a frame state at its `LoopBack` for the debugger's tier-down request (bit 2), not an after-call one. (Phase-8 fix of 31 October 2026: draft 0.1 listed `Poll` here, against the instruction table.)
 - An inline store to a category that may hold a registered fact lowers its fact-holder test into the store's slow path, which calls the runtime; so invalidation happens inside a call, never inside straight-line code.
 - Between two such points, a dependency's fact cannot change. This is what makes "depend once, use many times" sound.
 
@@ -166,7 +167,8 @@ Calls are not terminators. The status check after a call (one frame-relative loa
 | `MayDeopt` | Has a frame state and may exit | Ordered with every other effect |
 | `MayCallUser` | May run arbitrary JS | Implies every `Read`, `Write`, `Alloc`, `Safepoint`, `MayThrow` and fact invalidation |
 | `MayTrap` | Wasm trap | Ordered like `MayThrow` (a trap is a Wasm exception at the JS boundary) |
-| `HostHook` | Reaches an `hg-js-host` hook | Implies `MayCallUser` |
+| `HostHook(cx)` | Reaches an `hg-js-host` hook with context `cx` (part 1's R0-H4) | No context: no heap effect; `&HostCx`: `Read(Heap)`; `&mut HostCx`: `Alloc`, `Safepoint`, `Write(Heap)`; `&mut ScriptCx`: `MayCallUser` |
+| `Input(src)` | Reads a B1 input (`entropy`, `clock`) through the realm stream or a hook | Ordered with every other `Input`; never folded, merged or removed, so two `Math.random()` calls stay two |
 
 **Heap categories** form a small tree, so alias checks are a subset test:
 
@@ -181,8 +183,11 @@ Calls are not terminators. The status check after a call (one frame-relative loa
 | `WasmMem(m)`, `WasmTable(t)`, `WasmGlobal(g)` | per index | W2 |
 | `WasmStruct(type, field)`, `WasmArray(type)` | per canonical type | W2 and Wasm GC |
 | `External(kind)` | node columns through `hg-dom`'s API, external strings | Never written inline; only through runtime calls |
+| `weak` | weak slots; changed at every `Safepoint` (a cycle clears them), so `Safepoint` writes it | `WeakRef.deref`, FinalizationRegistry |
+| `kept` | the agent's `[[KeptAlive]]` list (outside the cage) | `WeakRef` creation and deref |
+| `realm` | the realm's random stream | `Math.random` (with `Input(entropy)`) |
 
-The category list is part of `.hgop` (part 1 of the review owns the syntax). Adding a category is a `.hgop` change, regenerated everywhere (G16).
+The category list is part of `.hgop`: part 1 declares it as one parameterised tree with `category` and `fact` items (R0-O12, [hgop-language.md](hgop-language.md) Section 3), and this table is that tree. Adding a category is a `.hgop` change, regenerated everywhere (G16).
 
 ## 8. Types and representations (R2-5)
 
