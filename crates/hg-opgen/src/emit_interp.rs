@@ -46,6 +46,11 @@ pub fn emit(m: &Model, flows: &Flows, header: &str) -> String {
          clippy::redundant_locals,\n    \
          clippy::let_unit_value\n\
          )]\n\
+         // Every operation has the dispatch signature and every `Num(x)`\n\
+         // pattern covers both Number classes, so some parameters go unused\n\
+         // and some alternatives are covered by earlier arms; OC-2 checks\n\
+         // reachability at the description level.\n\
+         #![allow(unused_variables, unreachable_patterns)]\n\
          // The allowances above are style lints that generated code trips by\n\
          // construction (every route ends in an explicit `return`, conditions\n\
          // are written as the descriptions write them); hg-opgen's output is\n\
@@ -57,7 +62,7 @@ pub fn emit(m: &Model, flows: &Flows, header: &str) -> String {
          use hg_substrate::RandomStream;\n\n\
          use crate::heap::{self, Class, ObjectKind, Ref, Rooted, kind};\n\
          use crate::support::{\n    \
-         CallKind, Completion, Cx, ErrorKind, Flow, Host, OutOfMemory, Reg, RegList, RuntimeBase, ScriptToken, Throw,\n\
+         Completion, Cx, ErrorKind, Flow, Host, OutOfMemory, Reg, RegList, RuntimeBase, ScriptToken, Throw,\n\
          };\n\
          use crate::support::prim;\n\
          use super::defs::units;\n\n",
@@ -67,18 +72,18 @@ pub fn emit(m: &Model, flows: &Flows, header: &str) -> String {
     for (i, f) in m.helpers.iter().enumerate() {
         let mut g = Gen::new(m, &f.body, &flows.helpers[i], Ctx::Helper(&f.sig));
         g.func_helper(f, i);
-        o.push_str(&g.out);
+        o.push_str(&hoist_context(&g.out));
     }
     emit_intrinsic_dispatch(m, &mut o);
     for (i, f) in m.intrinsics.iter().enumerate() {
         let mut g = Gen::new(m, &f.body, &flows.intrinsics[i], Ctx::Intrinsic(&f.sig));
         g.func_intrinsic(f);
-        o.push_str(&g.out);
+        o.push_str(&hoist_context(&g.out));
     }
     for (i, op) in m.ops.iter().enumerate() {
         let mut g = Gen::new(m, &op.body, &flows.ops[i], Ctx::Op(op));
         g.func_op(op);
-        o.push_str(&g.out);
+        o.push_str(&hoist_context(&g.out));
     }
     o
 }
@@ -666,13 +671,19 @@ impl<'a> Gen<'a> {
                 self.line(&format!("let {name} = {code};"));
             }
             TStmt::SetAcc(e, _) => {
+                // The value is computed first: it may call a helper that
+                // takes the whole context, which the frame write borrows.
                 let v = self.expr_as(e, Rep::Plain, Ty::Value);
-                self.line(&format!("cx.frame.set_acc(m, {v});"));
+                let t = self.fresh("w");
+                self.line(&format!("let {t} = {v};"));
+                self.line(&format!("cx.frame.set_acc(m, {t});"));
             }
             TStmt::SetReg(r, e, _) => {
                 let v = self.expr_as(e, Rep::Plain, Ty::Value);
                 let reg = self.operand_name(*r);
-                self.line(&format!("cx.frame.set_reg(m, {reg}, {v});"));
+                let t = self.fresh("w");
+                self.line(&format!("let {t} = {v};"));
+                self.line(&format!("cx.frame.set_reg(m, {reg}, {t});"));
             }
             TStmt::If(c, t, e) => {
                 let cond = self.expr_as(c, Rep::Scalar, Ty::Bool);
@@ -720,7 +731,10 @@ impl<'a> Gen<'a> {
                     e.ty,
                 );
                 if e.ty == Ty::Unit {
-                    self.line(&format!("{code};"));
+                    // A unit-valued step already emitted its statements.
+                    if code != "()" {
+                        self.line(&format!("{code};"));
+                    }
                 } else {
                     self.line(&format!("let _ = {code};"));
                 }
@@ -1486,8 +1500,9 @@ fn diverges_match(m: &TMatch) -> bool {
 }
 
 fn block_diverges(b: &TBlock) -> bool {
-    if b.tail.is_some() {
-        return false;
+    if let Some(t) = &b.tail {
+        // A tail `match` whose every arm diverges diverges too.
+        return matches!(&t.kind, TE::Match(m) if diverges_match(m));
     }
     match b.stmts.last() {
         Some(TStmt::Term(_)) => true,
@@ -1496,4 +1511,34 @@ fn block_diverges(b: &TBlock) -> bool {
         Some(TStmt::Path(p)) => block_diverges(&p.body),
         _ => false,
     }
+}
+
+/// Copies the frame, the realm and the constants out of the context at
+/// the start of a generated function (they are `Copy` handles), so that a
+/// call taking the whole context can sit inside an expression that reads
+/// the frame: `realm.boolean(m, helper(m, cx, frame.acc(m)))`.
+fn hoist_context(f: &str) -> String {
+    let body = f
+        .replace("&cx.realm", "realm")
+        .replace("cx.frame", "frame")
+        .replace("cx.realm", "realm")
+        .replace("cx.consts", "consts");
+    let mut out = String::with_capacity(body.len() + 256);
+    for line in body.lines() {
+        out.push_str(line);
+        out.push('\n');
+        if line.starts_with("fn ") && line.ends_with('{') && line.contains("cx: &mut Cx") {
+            for (name, used) in [
+                ("frame", "frame."),
+                ("realm", "realm"),
+                ("consts", "consts."),
+            ] {
+                // Only what the body uses, so nothing is unused.
+                if body.contains(used) {
+                    out.push_str(&format!("    let {name} = cx.{name};\n"));
+                }
+            }
+        }
+    }
+    out
 }

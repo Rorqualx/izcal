@@ -20,6 +20,11 @@
     clippy::redundant_locals,
     clippy::let_unit_value
 )]
+// Every operation has the dispatch signature and every `Num(x)`
+// pattern covers both Number classes, so some parameters go unused
+// and some alternatives are covered by earlier arms; OC-2 checks
+// reachability at the description level.
+#![allow(unused_variables, unreachable_patterns)]
 // The allowances above are style lints that generated code trips by
 // construction (every route ends in an explicit `return`, conditions
 // are written as the descriptions write them); hg-opgen's output is
@@ -33,8 +38,8 @@ use super::defs::units;
 use crate::heap::{self, Class, ObjectKind, Ref, Rooted, kind};
 use crate::support::prim;
 use crate::support::{
-    CallKind, Completion, Cx, ErrorKind, Flow, Host, OutOfMemory, Reg, RegList, RuntimeBase,
-    ScriptToken, Throw,
+    Completion, Cx, ErrorKind, Flow, Host, OutOfMemory, Reg, RegList, RuntimeBase, ScriptToken,
+    Throw,
 };
 
 /// The runtime functions the descriptions call (one method per
@@ -414,6 +419,7 @@ fn helper_string_concat<'h, 's, R: Runtime<'h>>(
     l_a_0: Rooted<'h, 's, kind::String>,
     l_b_1: Rooted<'h, 's, kind::String>,
 ) -> Result<Rooted<'h, 's, kind::String>, Throw<'h, 's>> {
+    let realm = cx.realm;
     let l_n_2 = i64::from(heap::string_length(m, l_a_0.get(m)))
         + i64::from(heap::string_length(m, l_b_1.get(m)));
     if l_n_2 > 1073741823_i64 {
@@ -440,7 +446,7 @@ fn helper_string_concat<'h, 's, R: Runtime<'h>>(
     let a5 = l_a_0;
     let a6 = l_b_1;
     let a7 = prim::to_u32(l_n_2);
-    let t8 = heap::alloc_rope(m, s, &cx.realm, a5, a6, a7)?;
+    let t8 = heap::alloc_rope(m, s, realm, a5, a6, a7)?;
     return Ok(t8);
 }
 
@@ -483,12 +489,13 @@ fn intr_object_create<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     list: RegList,
 ) -> Result<Root<'h, 's, Any>, Throw<'h, 's>> {
-    let v1 = cx.frame.reg(m, list.at(0));
+    let frame = cx.frame;
+    let v1 = frame.reg(m, list.at(0));
     match heap::classify(m, v1) {
         Class::Null | Class::Dict(_) | Class::WeakRef(_) | Class::FinReg(_) | Class::HostFn(_) => {
             // path `create`: spec: https://tc39.es/ecma262/#sec-object.create step 2
             cx.charge(m, units::dict_units());
-            let a3 = s.root_value(m, cx.frame.reg(m, list.at(0)));
+            let a3 = s.root_value(m, frame.reg(m, list.at(0)));
             let t4 = cx.rt.rt_dict_new(m, s, a3)?;
             return Ok(t4.erase());
         }
@@ -509,16 +516,18 @@ fn intr_weak_ref_create<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     list: RegList,
 ) -> Result<Root<'h, 's, Any>, Throw<'h, 's>> {
-    if !helper_can_be_held_weakly(m, cx, cx.frame.reg(m, list.at(0))) {
+    let frame = cx.frame;
+    let realm = cx.realm;
+    if !helper_can_be_held_weakly(m, cx, frame.reg(m, list.at(0))) {
         // path `not_holdable`: spec: https://tc39.es/ecma262/#sec-weak-ref-target step 2
         cx.charge(m, units::error_units());
         return Err(Throw::Error(ErrorKind::TypeError));
     }
     cx.charge(m, units::weakref_units());
-    let a1 = s.root_value(m, cx.frame.reg(m, list.at(0)));
-    let t2 = heap::alloc_weak_ref(m, s, &cx.realm, a1)?;
+    let a1 = s.root_value(m, frame.reg(m, list.at(0)));
+    let t2 = heap::alloc_weak_ref(m, s, realm, a1)?;
     let l_w_1 = t2.get(m);
-    heap::kept_push(m, cx.frame.reg(m, list.at(0)));
+    heap::kept_push(m, frame.reg(m, list.at(0)));
     return Ok(s.root_value(m, l_w_1.value()));
 }
 
@@ -532,14 +541,16 @@ fn intr_weak_ref_deref<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     list: RegList,
 ) -> Result<Root<'h, 's, Any>, Throw<'h, 's>> {
-    let v1 = cx.frame.reg(m, list.at(0));
-    Ok(match heap::classify(m, v1) {
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let v1 = frame.reg(m, list.at(0));
+    match heap::classify(m, v1) {
         Class::WeakRef(l_w_1) => {
             // path `deref`: spec: https://tc39.es/ecma262/#sec-weakrefderef
             let v3 = heap::weak_ref_target(m, l_w_1);
             match v3 {
                 None => {
-                    return Ok(s.root_value(m, cx.realm.undefined(m)));
+                    return Ok(s.root_value(m, realm.undefined(m)));
                 }
                 Some(l_v_2) => {
                     heap::kept_push(m, l_v_2);
@@ -552,7 +563,7 @@ fn intr_weak_ref_deref<'h, 's, R: Runtime<'h>>(
             cx.charge(m, units::error_units());
             return Err(Throw::Error(ErrorKind::TypeError));
         }
-    })
+    }
 }
 
 /// Intrinsic `%FinalizationRegistryCreate`: effects { alloc(finreg_units), alloc_internal, throw(TypeError), host(HostMakeJobCallback) }.
@@ -565,7 +576,9 @@ fn intr_finalization_registry_create<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     list: RegList,
 ) -> Result<Root<'h, 's, Any>, Throw<'h, 's>> {
-    let v1 = cx.frame.reg(m, list.at(0));
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let v1 = frame.reg(m, list.at(0));
     match heap::classify(m, v1) {
         c0_2 @ (Class::Dict(_) | Class::WeakRef(_) | Class::FinReg(_) | Class::HostFn(_))
             if {
@@ -577,9 +590,9 @@ fn intr_finalization_registry_create<'h, 's, R: Runtime<'h>>(
             // path `create`: spec: https://tc39.es/ecma262/#sec-finalization-registry-cleanup-callback step 3
             let l_job_2 = cx.rt.rt_make_job_callback(m, &mut *cx.host, l_f_1);
             cx.charge(m, units::finreg_units());
-            let a3 = s.root_value(m, cx.frame.reg(m, list.at(0)));
+            let a3 = s.root_value(m, frame.reg(m, list.at(0)));
             let a4 = l_job_2;
-            let t5 = heap::alloc_fin_reg(m, s, &cx.realm, a3, a4)?;
+            let t5 = heap::alloc_fin_reg(m, s, realm, a3, a4)?;
             return Ok(t5.erase());
         }
         _ => {
@@ -603,36 +616,38 @@ fn intr_finalization_registry_register<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     list: RegList,
 ) -> Result<Root<'h, 's, Any>, Throw<'h, 's>> {
-    let v1 = cx.frame.reg(m, list.at(0));
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let v1 = frame.reg(m, list.at(0));
     match heap::classify(m, v1) {
         Class::FinReg(l_r_4) => {
             let l_r_4 = l_r_4.root(m, s);
             // path `register`: spec: https://tc39.es/ecma262/#sec-finalization-registry.prototype.register
-            if !helper_can_be_held_weakly(m, cx, cx.frame.reg(m, list.at(1))) {
+            if !helper_can_be_held_weakly(m, cx, frame.reg(m, list.at(1))) {
                 // path `bad_target`: spec: https://tc39.es/ecma262/#sec-finalization-registry.prototype.register step 3
                 cx.charge(m, units::error_units());
                 return Err(Throw::Error(ErrorKind::TypeError));
             }
-            if heap::same(cx.frame.reg(m, list.at(1)), cx.frame.reg(m, list.at(2))) {
+            if heap::same(frame.reg(m, list.at(1)), frame.reg(m, list.at(2))) {
                 // path `same_value`: spec: https://tc39.es/ecma262/#sec-finalization-registry.prototype.register step 4
                 cx.charge(m, units::error_units());
                 return Err(Throw::Error(ErrorKind::TypeError));
             }
-            let l_has_token_5 = helper_can_be_held_weakly(m, cx, cx.frame.reg(m, list.at(3)));
-            if !l_has_token_5 && !heap::same(cx.frame.reg(m, list.at(3)), cx.realm.undefined(m)) {
+            let l_has_token_5 = helper_can_be_held_weakly(m, cx, frame.reg(m, list.at(3)));
+            if !l_has_token_5 && !heap::same(frame.reg(m, list.at(3)), realm.undefined(m)) {
                 // path `bad_token`: spec: https://tc39.es/ecma262/#sec-finalization-registry.prototype.register step 5.a
                 cx.charge(m, units::error_units());
                 return Err(Throw::Error(ErrorKind::TypeError));
             }
             cx.charge(m, units::cell_units());
             let a3 = l_r_4;
-            let a4 = s.root_value(m, cx.frame.reg(m, list.at(1)));
-            let a5 = s.root_value(m, cx.frame.reg(m, list.at(2)));
-            let a6 = s.root_value(m, cx.frame.reg(m, list.at(3)));
+            let a4 = s.root_value(m, frame.reg(m, list.at(1)));
+            let a5 = s.root_value(m, frame.reg(m, list.at(2)));
+            let a6 = s.root_value(m, frame.reg(m, list.at(3)));
             let a7 = l_has_token_5;
             let t8 = cx.rt.rt_finreg_register(m, s, a3, a4, a5, a6, a7)?;
             let _ = t8;
-            return Ok(s.root_value(m, cx.realm.undefined(m)));
+            return Ok(s.root_value(m, realm.undefined(m)));
         }
         _ => {
             // path `not_a_registry`: spec: https://tc39.es/ecma262/#sec-requireinternalslot
@@ -653,21 +668,23 @@ fn intr_finalization_registry_unregister<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     list: RegList,
 ) -> Result<Root<'h, 's, Any>, Throw<'h, 's>> {
-    let v1 = cx.frame.reg(m, list.at(0));
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let v1 = frame.reg(m, list.at(0));
     match heap::classify(m, v1) {
         Class::FinReg(l_r_2) => {
             // path `unregister`: spec: https://tc39.es/ecma262/#sec-finalization-registry.prototype.unregister
-            if !helper_can_be_held_weakly(m, cx, cx.frame.reg(m, list.at(1))) {
+            if !helper_can_be_held_weakly(m, cx, frame.reg(m, list.at(1))) {
                 // path `bad_token`: spec: https://tc39.es/ecma262/#sec-finalization-registry.prototype.unregister step 3
                 cx.charge(m, units::error_units());
                 return Err(Throw::Error(ErrorKind::TypeError));
             }
             return Ok(s.root_value(
                 m,
-                cx.realm.boolean(
+                realm.boolean(
                     m,
                     cx.rt
-                        .rt_finreg_unregister(m, l_r_2, cx.frame.reg(m, list.at(1))),
+                        .rt_finreg_unregister(m, l_r_2, frame.reg(m, list.at(1))),
                 ),
             ));
         }
@@ -687,6 +704,7 @@ fn intr_math_random<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     _list: RegList,
 ) -> Result<Root<'h, 's, Any>, Throw<'h, 's>> {
+    let realm = cx.realm;
     let t1 = heap::number(m, s, cx.rt.rt_math_random(m, &mut *cx.random))?;
     return Ok(t1);
 }
@@ -713,13 +731,15 @@ fn intr_create_host_function<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     list: RegList,
 ) -> Result<Root<'h, 's, Any>, Throw<'h, 's>> {
-    let v1 = cx.frame.reg(m, list.at(0));
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let v1 = frame.reg(m, list.at(0));
     match heap::classify(m, v1) {
         Class::Smi(l_n_1) => {
             // path `create`: spec: https://tc39.es/ecma262/#sec-createbuiltinfunction
             cx.charge(m, units::hostfn_units());
             let a3 = l_n_1;
-            let t4 = heap::alloc_host_fn(m, s, &cx.realm, a3)?;
+            let t4 = heap::alloc_host_fn(m, s, realm, a3)?;
             return Ok(t4.erase());
         }
         _ => {
@@ -737,7 +757,10 @@ fn op_load_undefined<'h, 's, R: Runtime<'h>>(
     s: &Scope<'h, 's>,
     cx: &mut Cx<'_, 'h, '_, R>,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(m, cx.realm.undefined(m));
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let w1 = realm.undefined(m);
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -748,7 +771,10 @@ fn op_load_null<'h, 's, R: Runtime<'h>>(
     s: &Scope<'h, 's>,
     cx: &mut Cx<'_, 'h, '_, R>,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(m, cx.realm.null(m));
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let w1 = realm.null(m);
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -759,7 +785,10 @@ fn op_load_true<'h, 's, R: Runtime<'h>>(
     s: &Scope<'h, 's>,
     cx: &mut Cx<'_, 'h, '_, R>,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(m, cx.realm.true_value(m));
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let w1 = realm.true_value(m);
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -770,7 +799,10 @@ fn op_load_false<'h, 's, R: Runtime<'h>>(
     s: &Scope<'h, 's>,
     cx: &mut Cx<'_, 'h, '_, R>,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(m, cx.realm.false_value(m));
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let w1 = realm.false_value(m);
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -782,7 +814,9 @@ fn op_load_int<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     o_value: i32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(m, heap::smi(o_value));
+    let frame = cx.frame;
+    let w1 = heap::smi(o_value);
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -794,7 +828,10 @@ fn op_load_const<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     o_k: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(m, cx.consts.get(m, o_k));
+    let frame = cx.frame;
+    let consts = cx.consts;
+    let w1 = consts.get(m, o_k);
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -806,7 +843,9 @@ fn op_load_reg<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     o_src: Reg,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(m, cx.frame.reg(m, o_src));
+    let frame = cx.frame;
+    let w1 = frame.reg(m, o_src);
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -818,7 +857,9 @@ fn op_store_reg<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     o_dst: Reg,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_reg(m, o_dst, cx.frame.acc(m));
+    let frame = cx.frame;
+    let w1 = frame.acc(m);
+    frame.set_reg(m, o_dst, w1);
     return Ok(Flow::Next);
 }
 
@@ -831,7 +872,9 @@ fn op_copy<'h, 's, R: Runtime<'h>>(
     o_src: Reg,
     o_dst: Reg,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_reg(m, o_dst, cx.frame.reg(m, o_src));
+    let frame = cx.frame;
+    let w1 = frame.reg(m, o_src);
+    frame.set_reg(m, o_dst, w1);
     return Ok(Flow::Next);
 }
 
@@ -842,11 +885,10 @@ fn op_to_boolean<'h, 's, R: Runtime<'h>>(
     s: &Scope<'h, 's>,
     cx: &mut Cx<'_, 'h, '_, R>,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(
-        m,
-        cx.realm
-            .boolean(m, helper_to_boolean_value(m, cx, cx.frame.acc(m))),
-    );
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let w1 = realm.boolean(m, helper_to_boolean_value(m, cx, frame.acc(m)));
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -860,7 +902,8 @@ fn op_to_number<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let v1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let v1 = frame.acc(m);
     match heap::classify(m, v1) {
         Class::Smi(_) | Class::HeapNumber(_) => {
             // path `number`: spec: https://tc39.es/ecma262/#sec-tonumber
@@ -868,9 +911,10 @@ fn op_to_number<'h, 's, R: Runtime<'h>>(
         }
         _ => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-tonumber
-            let a4 = s.root_value(m, cx.frame.acc(m));
+            let a4 = s.root_value(m, frame.acc(m));
             let t5 = cx.rt.rt_to_number(m, cx.t, s, a4)?;
-            cx.frame.set_acc(m, t5.get_value(m));
+            let w6 = t5.get_value(m);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
     };
@@ -887,7 +931,8 @@ fn op_to_numeric<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let v1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let v1 = frame.acc(m);
     match heap::classify(m, v1) {
         Class::Smi(_) | Class::HeapNumber(_) => {
             // path `number`: spec: https://tc39.es/ecma262/#sec-tonumeric
@@ -899,9 +944,10 @@ fn op_to_numeric<'h, 's, R: Runtime<'h>>(
         }
         _ => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-tonumeric
-            let a5 = s.root_value(m, cx.frame.acc(m));
+            let a5 = s.root_value(m, frame.acc(m));
             let t6 = cx.rt.rt_to_numeric(m, cx.t, s, a5)?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let w7 = t6.get_value(m);
+            frame.set_acc(m, w7);
             return Ok(Flow::Next);
         }
     };
@@ -917,7 +963,8 @@ fn op_to_string<'h, 's, R: Runtime<'h>>(
     s: &Scope<'h, 's>,
     cx: &mut Cx<'_, 'h, '_, R>,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let v1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let v1 = frame.acc(m);
     match heap::classify(m, v1) {
         Class::String(_) => {
             // path `string`: spec: https://tc39.es/ecma262/#sec-tostring
@@ -928,14 +975,16 @@ fn op_to_string<'h, 's, R: Runtime<'h>>(
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-tostring
             let a4 = l_n_0;
             let t5 = cx.rt.rt_number_to_string(m, s, a4)?;
-            cx.frame.set_acc(m, t5.erase().get_value(m));
+            let w6 = t5.erase().get_value(m);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
         _ => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-tostring
-            let a7 = s.root_value(m, cx.frame.acc(m));
-            let t8 = cx.rt.rt_to_string(m, cx.t, s, a7)?;
-            cx.frame.set_acc(m, t8.get_value(m));
+            let a8 = s.root_value(m, frame.acc(m));
+            let t9 = cx.rt.rt_to_string(m, cx.t, s, a8)?;
+            let w10 = t9.get_value(m);
+            frame.set_acc(m, w10);
             return Ok(Flow::Next);
         }
     };
@@ -948,11 +997,10 @@ fn op_not<'h, 's, R: Runtime<'h>>(
     s: &Scope<'h, 's>,
     cx: &mut Cx<'_, 'h, '_, R>,
 ) -> Result<Flow, Throw<'h, 's>> {
-    cx.frame.set_acc(
-        m,
-        cx.realm
-            .boolean(m, !helper_to_boolean_value(m, cx, cx.frame.acc(m))),
-    );
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let w1 = realm.boolean(m, !helper_to_boolean_value(m, cx, frame.acc(m)));
+    frame.set_acc(m, w1);
     return Ok(Flow::Next);
 }
 
@@ -964,7 +1012,8 @@ fn op_type_of<'h, 's, R: Runtime<'h>>(
     s: &Scope<'h, 's>,
     cx: &mut Cx<'_, 'h, '_, R>,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let v1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let v1 = frame.acc(m);
     let l_tag_2 = match heap::classify(m, v1) {
         Class::Undefined => 0_i32,
         Class::Null => 1_i32,
@@ -992,8 +1041,8 @@ fn op_type_of<'h, 's, R: Runtime<'h>>(
         }
         Class::Dict(_) | Class::WeakRef(_) | Class::FinReg(_) | Class::HostFn(_) => 1_i32,
     };
-    cx.frame
-        .set_acc(m, cx.rt.rt_typeof_name(m, l_tag_2).value());
+    let w12 = cx.rt.rt_typeof_name(m, l_tag_2).value();
+    frame.set_acc(m, w12);
     return Ok(Flow::Next);
 }
 
@@ -1010,42 +1059,47 @@ fn op_add<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-add
             let t4 = heap::number(m, s, prim::exact_f64(i64::from(l_a_2) + i64::from(l_b_3)))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (
-            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_5.number(m);
-            let l_b_5 = c1_5.number(m);
+            let l_a_4 = c0_6.number(m);
+            let l_b_5 = c1_6.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-add
-            let t6 = heap::number(m, s, l_a_4 + l_b_5)?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let t7 = heap::number(m, s, l_a_4 + l_b_5)?;
+            let w8 = t7.get_value(m);
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (Class::String(l_a_6), Class::String(l_b_7)) => {
             // path `strings`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator step 1.c
-            let a8 = l_a_6.root(m, s);
-            let a9 = l_b_7.root(m, s);
-            let t10 = helper_string_concat(m, s, cx, a8, a9)?;
-            cx.frame.set_acc(m, t10.erase().get_value(m));
+            let a10 = l_a_6.root(m, s);
+            let a11 = l_b_7.root(m, s);
+            let t12 = helper_string_concat(m, s, cx, a10, a11)?;
+            let w13 = t12.erase().get_value(m);
+            frame.set_acc(m, w13);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a12 = s.root_value(m, l_x_0);
-            let a13 = s.root_value(m, l_y_1);
-            let t14 = cx.rt.rt_add(m, cx.t, s, a12, a13)?;
-            cx.frame.set_acc(m, t14.get_value(m));
+            let a15 = s.root_value(m, l_x_0);
+            let a16 = s.root_value(m, l_y_1);
+            let t17 = cx.rt.rt_add(m, cx.t, s, a15, a16)?;
+            let w18 = t17.get_value(m);
+            frame.set_acc(m, w18);
             return Ok(Flow::Next);
         }
     };
@@ -1063,35 +1117,39 @@ fn op_sub<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-subtract
             let t4 = heap::number(m, s, prim::exact_f64(i64::from(l_a_2) - i64::from(l_b_3)))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (
-            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_5.number(m);
-            let l_b_5 = c1_5.number(m);
+            let l_a_4 = c0_6.number(m);
+            let l_b_5 = c1_6.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-subtract
-            let t6 = heap::number(m, s, l_a_4 - l_b_5)?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let t7 = heap::number(m, s, l_a_4 - l_b_5)?;
+            let w8 = t7.get_value(m);
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a8 = 1_i32;
-            let a9 = s.root_value(m, l_x_0);
-            let a10 = s.root_value(m, l_y_1);
-            let t11 = cx.rt.rt_numeric(m, cx.t, s, a8, a9, a10)?;
-            cx.frame.set_acc(m, t11.get_value(m));
+            let a10 = 1_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_numeric(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -1109,35 +1167,39 @@ fn op_mul<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-multiply
             let t4 = heap::number(m, s, f64::from(l_a_2) * f64::from(l_b_3))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (
-            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_5.number(m);
-            let l_b_5 = c1_5.number(m);
+            let l_a_4 = c0_6.number(m);
+            let l_b_5 = c1_6.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-multiply
-            let t6 = heap::number(m, s, l_a_4 * l_b_5)?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let t7 = heap::number(m, s, l_a_4 * l_b_5)?;
+            let w8 = t7.get_value(m);
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a8 = 2_i32;
-            let a9 = s.root_value(m, l_x_0);
-            let a10 = s.root_value(m, l_y_1);
-            let t11 = cx.rt.rt_numeric(m, cx.t, s, a8, a9, a10)?;
-            cx.frame.set_acc(m, t11.get_value(m));
+            let a10 = 2_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_numeric(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -1155,35 +1217,39 @@ fn op_div<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-divide
             let t4 = heap::number(m, s, f64::from(l_a_2) / f64::from(l_b_3))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (
-            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_5.number(m);
-            let l_b_5 = c1_5.number(m);
+            let l_a_4 = c0_6.number(m);
+            let l_b_5 = c1_6.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-divide
-            let t6 = heap::number(m, s, l_a_4 / l_b_5)?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let t7 = heap::number(m, s, l_a_4 / l_b_5)?;
+            let w8 = t7.get_value(m);
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a8 = 3_i32;
-            let a9 = s.root_value(m, l_x_0);
-            let a10 = s.root_value(m, l_y_1);
-            let t11 = cx.rt.rt_numeric(m, cx.t, s, a8, a9, a10)?;
-            cx.frame.set_acc(m, t11.get_value(m));
+            let a10 = 3_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_numeric(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -1201,35 +1267,39 @@ fn op_mod<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-remainder
             let t4 = heap::number(m, s, prim::remainder(f64::from(l_a_2), f64::from(l_b_3)))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (
-            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_5.number(m);
-            let l_b_5 = c1_5.number(m);
+            let l_a_4 = c0_6.number(m);
+            let l_b_5 = c1_6.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-remainder
-            let t6 = heap::number(m, s, prim::remainder(l_a_4, l_b_5))?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let t7 = heap::number(m, s, prim::remainder(l_a_4, l_b_5))?;
+            let w8 = t7.get_value(m);
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a8 = 4_i32;
-            let a9 = s.root_value(m, l_x_0);
-            let a10 = s.root_value(m, l_y_1);
-            let t11 = cx.rt.rt_numeric(m, cx.t, s, a8, a9, a10)?;
-            cx.frame.set_acc(m, t11.get_value(m));
+            let a10 = 4_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_numeric(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -1246,8 +1316,9 @@ fn op_exp<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
@@ -1259,16 +1330,18 @@ fn op_exp<'h, 's, R: Runtime<'h>>(
             let l_b_3 = c1_3.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-exponentiate
             let t4 = heap::number(m, s, cx.rt.rt_exponentiate(m, l_a_2, l_b_3))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a6 = 5_i32;
-            let a7 = s.root_value(m, l_x_0);
-            let a8 = s.root_value(m, l_y_1);
-            let t9 = cx.rt.rt_numeric(m, cx.t, s, a6, a7, a8)?;
-            cx.frame.set_acc(m, t9.get_value(m));
+            let a7 = 5_i32;
+            let a8 = s.root_value(m, l_x_0);
+            let a9 = s.root_value(m, l_y_1);
+            let t10 = cx.rt.rt_numeric(m, cx.t, s, a7, a8, a9)?;
+            let w11 = t10.get_value(m);
+            frame.set_acc(m, w11);
             return Ok(Flow::Next);
         }
     };
@@ -1286,38 +1359,42 @@ fn op_bit_and<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-bitwiseAND
-            cx.frame.set_acc(m, heap::smi(l_a_2 & l_b_3));
+            let w4 = heap::smi(l_a_2 & l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-bitwiseAND
-            let t5 = heap::number(
+            let t6 = heap::number(
                 m,
                 s,
                 f64::from(prim::to_int32(l_a_4) & prim::to_int32(l_b_5)),
             )?;
-            cx.frame.set_acc(m, t5.get_value(m));
+            let w7 = t6.get_value(m);
+            frame.set_acc(m, w7);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a7 = 6_i32;
-            let a8 = s.root_value(m, l_x_0);
-            let a9 = s.root_value(m, l_y_1);
-            let t10 = cx.rt.rt_numeric(m, cx.t, s, a7, a8, a9)?;
-            cx.frame.set_acc(m, t10.get_value(m));
+            let a9 = 6_i32;
+            let a10 = s.root_value(m, l_x_0);
+            let a11 = s.root_value(m, l_y_1);
+            let t12 = cx.rt.rt_numeric(m, cx.t, s, a9, a10, a11)?;
+            let w13 = t12.get_value(m);
+            frame.set_acc(m, w13);
             return Ok(Flow::Next);
         }
     };
@@ -1335,38 +1412,42 @@ fn op_bit_or<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-bitwiseOR
-            cx.frame.set_acc(m, heap::smi(l_a_2 | l_b_3));
+            let w4 = heap::smi(l_a_2 | l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-bitwiseOR
-            let t5 = heap::number(
+            let t6 = heap::number(
                 m,
                 s,
                 f64::from(prim::to_int32(l_a_4) | prim::to_int32(l_b_5)),
             )?;
-            cx.frame.set_acc(m, t5.get_value(m));
+            let w7 = t6.get_value(m);
+            frame.set_acc(m, w7);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a7 = 7_i32;
-            let a8 = s.root_value(m, l_x_0);
-            let a9 = s.root_value(m, l_y_1);
-            let t10 = cx.rt.rt_numeric(m, cx.t, s, a7, a8, a9)?;
-            cx.frame.set_acc(m, t10.get_value(m));
+            let a9 = 7_i32;
+            let a10 = s.root_value(m, l_x_0);
+            let a11 = s.root_value(m, l_y_1);
+            let t12 = cx.rt.rt_numeric(m, cx.t, s, a9, a10, a11)?;
+            let w13 = t12.get_value(m);
+            frame.set_acc(m, w13);
             return Ok(Flow::Next);
         }
     };
@@ -1384,38 +1465,42 @@ fn op_bit_xor<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-bitwiseXOR
-            cx.frame.set_acc(m, heap::smi(l_a_2 ^ l_b_3));
+            let w4 = heap::smi(l_a_2 ^ l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-bitwiseXOR
-            let t5 = heap::number(
+            let t6 = heap::number(
                 m,
                 s,
                 f64::from(prim::to_int32(l_a_4) ^ prim::to_int32(l_b_5)),
             )?;
-            cx.frame.set_acc(m, t5.get_value(m));
+            let w7 = t6.get_value(m);
+            frame.set_acc(m, w7);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a7 = 8_i32;
-            let a8 = s.root_value(m, l_x_0);
-            let a9 = s.root_value(m, l_y_1);
-            let t10 = cx.rt.rt_numeric(m, cx.t, s, a7, a8, a9)?;
-            cx.frame.set_acc(m, t10.get_value(m));
+            let a9 = 8_i32;
+            let a10 = s.root_value(m, l_x_0);
+            let a11 = s.root_value(m, l_y_1);
+            let t12 = cx.rt.rt_numeric(m, cx.t, s, a9, a10, a11)?;
+            let w13 = t12.get_value(m);
+            frame.set_acc(m, w13);
             return Ok(Flow::Next);
         }
     };
@@ -1433,39 +1518,43 @@ fn op_shl<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-leftShift
             let t4 = heap::number(m, s, f64::from(prim::shl(l_a_2, l_b_3)))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (
-            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_5.number(m);
-            let l_b_5 = c1_5.number(m);
+            let l_a_4 = c0_6.number(m);
+            let l_b_5 = c1_6.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-leftShift
-            let t6 = heap::number(
+            let t7 = heap::number(
                 m,
                 s,
                 f64::from(prim::shl(prim::to_int32(l_a_4), prim::to_uint32(l_b_5))),
             )?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let w8 = t7.get_value(m);
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a8 = 9_i32;
-            let a9 = s.root_value(m, l_x_0);
-            let a10 = s.root_value(m, l_y_1);
-            let t11 = cx.rt.rt_numeric(m, cx.t, s, a8, a9, a10)?;
-            cx.frame.set_acc(m, t11.get_value(m));
+            let a10 = 9_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_numeric(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -1483,39 +1572,43 @@ fn op_sar<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-signedRightShift
             let t4 = heap::number(m, s, f64::from(prim::sar(l_a_2, l_b_3)))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (
-            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_6 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_5.number(m);
-            let l_b_5 = c1_5.number(m);
+            let l_a_4 = c0_6.number(m);
+            let l_b_5 = c1_6.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-signedRightShift
-            let t6 = heap::number(
+            let t7 = heap::number(
                 m,
                 s,
                 f64::from(prim::sar(prim::to_int32(l_a_4), prim::to_uint32(l_b_5))),
             )?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let w8 = t7.get_value(m);
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a8 = 10_i32;
-            let a9 = s.root_value(m, l_x_0);
-            let a10 = s.root_value(m, l_y_1);
-            let t11 = cx.rt.rt_numeric(m, cx.t, s, a8, a9, a10)?;
-            cx.frame.set_acc(m, t11.get_value(m));
+            let a10 = 10_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_numeric(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -1532,8 +1625,9 @@ fn op_shr<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
@@ -1549,16 +1643,18 @@ fn op_shr<'h, 's, R: Runtime<'h>>(
                 s,
                 f64::from(prim::shr(prim::to_uint32(l_a_2), prim::to_uint32(l_b_3))),
             )?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let w5 = t4.get_value(m);
+            frame.set_acc(m, w5);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-applystringornumericbinaryoperator
-            let a6 = 11_i32;
-            let a7 = s.root_value(m, l_x_0);
-            let a8 = s.root_value(m, l_y_1);
-            let t9 = cx.rt.rt_numeric(m, cx.t, s, a6, a7, a8)?;
-            cx.frame.set_acc(m, t9.get_value(m));
+            let a7 = 11_i32;
+            let a8 = s.root_value(m, l_x_0);
+            let a9 = s.root_value(m, l_y_1);
+            let t10 = cx.rt.rt_numeric(m, cx.t, s, a7, a8, a9)?;
+            let w11 = t10.get_value(m);
+            frame.set_acc(m, w11);
             return Ok(Flow::Next);
         }
     };
@@ -1575,27 +1671,31 @@ fn op_neg<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let v1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let v1 = frame.acc(m);
     match heap::classify(m, v1) {
         Class::Smi(l_a_0) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-unaryMinus
             let t3 = heap::number(m, s, -f64::from(l_a_0))?;
-            cx.frame.set_acc(m, t3.get_value(m));
+            let w4 = t3.get_value(m);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
-        c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)) => {
-            let l_a_1 = c0_4.number(m);
+        c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)) => {
+            let l_a_1 = c0_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-unaryMinus
-            let t5 = heap::number(m, s, -l_a_1)?;
-            cx.frame.set_acc(m, t5.get_value(m));
+            let t6 = heap::number(m, s, -l_a_1)?;
+            let w7 = t6.get_value(m);
+            frame.set_acc(m, w7);
             return Ok(Flow::Next);
         }
         _ => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-unary-minus-operator-runtime-semantics-evaluation
-            let a7 = 1_i32;
-            let a8 = s.root_value(m, cx.frame.acc(m));
-            let t9 = cx.rt.rt_unary(m, cx.t, s, a7, a8)?;
-            cx.frame.set_acc(m, t9.get_value(m));
+            let a9 = 1_i32;
+            let a10 = s.root_value(m, frame.acc(m));
+            let t11 = cx.rt.rt_unary(m, cx.t, s, a9, a10)?;
+            let w12 = t11.get_value(m);
+            frame.set_acc(m, w12);
             return Ok(Flow::Next);
         }
     };
@@ -1612,26 +1712,30 @@ fn op_bit_not<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let v1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let v1 = frame.acc(m);
     match heap::classify(m, v1) {
         Class::Smi(l_a_0) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-bitwiseNOT
-            cx.frame.set_acc(m, heap::smi(!l_a_0));
+            let w3 = heap::smi(!l_a_0);
+            frame.set_acc(m, w3);
             return Ok(Flow::Next);
         }
-        c0_3 @ (Class::Smi(_) | Class::HeapNumber(_)) => {
-            let l_a_1 = c0_3.number(m);
+        c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)) => {
+            let l_a_1 = c0_4.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-bitwiseNOT
-            let t4 = heap::number(m, s, f64::from(!prim::to_int32(l_a_1)))?;
-            cx.frame.set_acc(m, t4.get_value(m));
+            let t5 = heap::number(m, s, f64::from(!prim::to_int32(l_a_1)))?;
+            let w6 = t5.get_value(m);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
         _ => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-bitwise-not-operator-runtime-semantics-evaluation
-            let a6 = 2_i32;
-            let a7 = s.root_value(m, cx.frame.acc(m));
-            let t8 = cx.rt.rt_unary(m, cx.t, s, a6, a7)?;
-            cx.frame.set_acc(m, t8.get_value(m));
+            let a8 = 2_i32;
+            let a9 = s.root_value(m, frame.acc(m));
+            let t10 = cx.rt.rt_unary(m, cx.t, s, a8, a9)?;
+            let w11 = t10.get_value(m);
+            frame.set_acc(m, w11);
             return Ok(Flow::Next);
         }
     };
@@ -1648,27 +1752,31 @@ fn op_inc<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let v1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let v1 = frame.acc(m);
     match heap::classify(m, v1) {
         Class::Smi(l_a_0) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-add
             let t3 = heap::number(m, s, prim::exact_f64(i64::from(l_a_0) + 1_i64))?;
-            cx.frame.set_acc(m, t3.get_value(m));
+            let w4 = t3.get_value(m);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
-        c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)) => {
-            let l_a_1 = c0_4.number(m);
+        c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)) => {
+            let l_a_1 = c0_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-add
-            let t5 = heap::number(m, s, l_a_1 + 1.0_f64)?;
-            cx.frame.set_acc(m, t5.get_value(m));
+            let t6 = heap::number(m, s, l_a_1 + 1.0_f64)?;
+            let w7 = t6.get_value(m);
+            frame.set_acc(m, w7);
             return Ok(Flow::Next);
         }
         _ => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-prefix-increment-operator-runtime-semantics-evaluation
-            let a7 = 3_i32;
-            let a8 = s.root_value(m, cx.frame.acc(m));
-            let t9 = cx.rt.rt_unary(m, cx.t, s, a7, a8)?;
-            cx.frame.set_acc(m, t9.get_value(m));
+            let a9 = 3_i32;
+            let a10 = s.root_value(m, frame.acc(m));
+            let t11 = cx.rt.rt_unary(m, cx.t, s, a9, a10)?;
+            let w12 = t11.get_value(m);
+            frame.set_acc(m, w12);
             return Ok(Flow::Next);
         }
     };
@@ -1685,27 +1793,31 @@ fn op_dec<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let v1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let v1 = frame.acc(m);
     match heap::classify(m, v1) {
         Class::Smi(l_a_0) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-subtract
             let t3 = heap::number(m, s, prim::exact_f64(i64::from(l_a_0) - 1_i64))?;
-            cx.frame.set_acc(m, t3.get_value(m));
+            let w4 = t3.get_value(m);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
-        c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)) => {
-            let l_a_1 = c0_4.number(m);
+        c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)) => {
+            let l_a_1 = c0_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-subtract
-            let t5 = heap::number(m, s, l_a_1 - 1.0_f64)?;
-            cx.frame.set_acc(m, t5.get_value(m));
+            let t6 = heap::number(m, s, l_a_1 - 1.0_f64)?;
+            let w7 = t6.get_value(m);
+            frame.set_acc(m, w7);
             return Ok(Flow::Next);
         }
         _ => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-prefix-decrement-operator-runtime-semantics-evaluation
-            let a7 = 4_i32;
-            let a8 = s.root_value(m, cx.frame.acc(m));
-            let t9 = cx.rt.rt_unary(m, cx.t, s, a7, a8)?;
-            cx.frame.set_acc(m, t9.get_value(m));
+            let a9 = 4_i32;
+            let a10 = s.root_value(m, frame.acc(m));
+            let t11 = cx.rt.rt_unary(m, cx.t, s, a9, a10)?;
+            let w12 = t11.get_value(m);
+            frame.set_acc(m, w12);
             return Ok(Flow::Next);
         }
     };
@@ -1725,45 +1837,49 @@ fn op_loose_eq<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-equal
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_2 == l_b_3));
+            let w4 = realm.boolean(m, l_a_2 == l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-equal
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_4 == l_b_5));
+            let w6 = realm.boolean(m, l_a_4 == l_b_5);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
         (Class::String(l_a_6), Class::String(l_b_7)) => {
             // path `strings`: spec: https://tc39.es/ecma262/#sec-samevaluenonnumber
-            cx.frame.set_acc(
-                m,
-                cx.realm.boolean(m, cx.rt.rt_string_equal(m, l_a_6, l_b_7)),
-            );
+            let w8 = realm.boolean(m, cx.rt.rt_string_equal(m, l_a_6, l_b_7));
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (Class::Undefined | Class::Null, Class::Undefined | Class::Null) => {
             // path `nullish`: spec: https://tc39.es/ecma262/#sec-islooselyequal step 2
-            cx.frame.set_acc(m, cx.realm.true_value(m));
+            let w10 = realm.true_value(m);
+            frame.set_acc(m, w10);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-islooselyequal
-            let a8 = s.root_value(m, l_x_0);
-            let a9 = s.root_value(m, l_y_1);
-            let t10 = cx.rt.rt_loose_equal(m, cx.t, s, a8, a9)?;
-            cx.frame.set_acc(m, t10.get_value(m));
+            let a12 = s.root_value(m, l_x_0);
+            let a13 = s.root_value(m, l_y_1);
+            let t14 = cx.rt.rt_loose_equal(m, cx.t, s, a12, a13)?;
+            let w15 = t14.get_value(m);
+            frame.set_acc(m, w15);
             return Ok(Flow::Next);
         }
     };
@@ -1783,46 +1899,46 @@ fn op_strict_eq<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-equal
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_2 == l_b_3));
+            let w4 = realm.boolean(m, l_a_2 == l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-equal
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_4 == l_b_5));
+            let w6 = realm.boolean(m, l_a_4 == l_b_5);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
         (Class::String(l_a_6), Class::String(l_b_7)) => {
             // path `strings`: spec: https://tc39.es/ecma262/#sec-samevaluenonnumber
-            cx.frame.set_acc(
-                m,
-                cx.realm.boolean(m, cx.rt.rt_string_equal(m, l_a_6, l_b_7)),
-            );
+            let w8 = realm.boolean(m, cx.rt.rt_string_equal(m, l_a_6, l_b_7));
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (Class::BigInt(l_a_8), Class::BigInt(l_b_9)) => {
             // path `bigints`: spec: https://tc39.es/ecma262/#sec-numeric-types-bigint-equal
-            cx.frame.set_acc(
-                m,
-                cx.realm.boolean(m, cx.rt.rt_bigint_equal(m, l_a_8, l_b_9)),
-            );
+            let w10 = realm.boolean(m, cx.rt.rt_bigint_equal(m, l_a_8, l_b_9));
+            frame.set_acc(m, w10);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `identity`: spec: https://tc39.es/ecma262/#sec-samevaluenonnumber
-            cx.frame
-                .set_acc(m, cx.realm.boolean(m, heap::same(l_x_0, l_y_1)));
+            let w12 = realm.boolean(m, heap::same(l_x_0, l_y_1));
+            frame.set_acc(m, w12);
             return Ok(Flow::Next);
         }
     };
@@ -1841,42 +1957,44 @@ fn op_lt<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-lessThan
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_2 < l_b_3));
+            let w4 = realm.boolean(m, l_a_2 < l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-lessThan
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_4 < l_b_5));
+            let w6 = realm.boolean(m, l_a_4 < l_b_5);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
         (Class::String(l_a_6), Class::String(l_b_7)) => {
             // path `strings`: spec: https://tc39.es/ecma262/#sec-islessthan step 3
-            cx.frame.set_acc(
-                m,
-                cx.realm
-                    .boolean(m, cx.rt.rt_string_less_than(m, l_a_6, l_b_7)),
-            );
+            let w8 = realm.boolean(m, cx.rt.rt_string_less_than(m, l_a_6, l_b_7));
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-islessthan
-            let a7 = 1_i32;
-            let a8 = s.root_value(m, l_x_0);
-            let a9 = s.root_value(m, l_y_1);
-            let t10 = cx.rt.rt_compare(m, cx.t, s, a7, a8, a9)?;
-            cx.frame.set_acc(m, t10.get_value(m));
+            let a10 = 1_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_compare(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -1895,42 +2013,44 @@ fn op_gt<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-lessThan
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_2 > l_b_3));
+            let w4 = realm.boolean(m, l_a_2 > l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-lessThan
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_4 > l_b_5));
+            let w6 = realm.boolean(m, l_a_4 > l_b_5);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
         (Class::String(l_a_6), Class::String(l_b_7)) => {
             // path `strings`: spec: https://tc39.es/ecma262/#sec-islessthan step 3
-            cx.frame.set_acc(
-                m,
-                cx.realm
-                    .boolean(m, cx.rt.rt_string_less_than(m, l_b_7, l_a_6)),
-            );
+            let w8 = realm.boolean(m, cx.rt.rt_string_less_than(m, l_b_7, l_a_6));
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-islessthan
-            let a7 = 2_i32;
-            let a8 = s.root_value(m, l_x_0);
-            let a9 = s.root_value(m, l_y_1);
-            let t10 = cx.rt.rt_compare(m, cx.t, s, a7, a8, a9)?;
-            cx.frame.set_acc(m, t10.get_value(m));
+            let a10 = 2_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_compare(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -1949,42 +2069,44 @@ fn op_le<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-lessThan
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_2 <= l_b_3));
+            let w4 = realm.boolean(m, l_a_2 <= l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-lessThan
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_4 <= l_b_5));
+            let w6 = realm.boolean(m, l_a_4 <= l_b_5);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
         (Class::String(l_a_6), Class::String(l_b_7)) => {
             // path `strings`: spec: https://tc39.es/ecma262/#sec-islessthan step 3
-            cx.frame.set_acc(
-                m,
-                cx.realm
-                    .boolean(m, !cx.rt.rt_string_less_than(m, l_b_7, l_a_6)),
-            );
+            let w8 = realm.boolean(m, !cx.rt.rt_string_less_than(m, l_b_7, l_a_6));
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-islessthan
-            let a7 = 3_i32;
-            let a8 = s.root_value(m, l_x_0);
-            let a9 = s.root_value(m, l_y_1);
-            let t10 = cx.rt.rt_compare(m, cx.t, s, a7, a8, a9)?;
-            cx.frame.set_acc(m, t10.get_value(m));
+            let a10 = 3_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_compare(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -2003,42 +2125,44 @@ fn op_ge<'h, 's, R: Runtime<'h>>(
     o_lhs: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_x_0 = cx.frame.reg(m, o_lhs);
-    let l_y_1 = cx.frame.acc(m);
+    let frame = cx.frame;
+    let realm = cx.realm;
+    let l_x_0 = frame.reg(m, o_lhs);
+    let l_y_1 = frame.acc(m);
     let v1 = l_x_0;
     let v2 = l_y_1;
     match (heap::classify(m, v1), heap::classify(m, v2)) {
         (Class::Smi(l_a_2), Class::Smi(l_b_3)) => {
             // path `smi`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-lessThan
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_2 >= l_b_3));
+            let w4 = realm.boolean(m, l_a_2 >= l_b_3);
+            frame.set_acc(m, w4);
             return Ok(Flow::Next);
         }
         (
-            c0_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
-            c1_4 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c0_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
+            c1_5 @ (Class::Smi(_) | Class::HeapNumber(_)),
         ) => {
-            let l_a_4 = c0_4.number(m);
-            let l_b_5 = c1_4.number(m);
+            let l_a_4 = c0_5.number(m);
+            let l_b_5 = c1_5.number(m);
             // path `number`: spec: https://tc39.es/ecma262/#sec-numeric-types-number-lessThan
-            cx.frame.set_acc(m, cx.realm.boolean(m, l_a_4 >= l_b_5));
+            let w6 = realm.boolean(m, l_a_4 >= l_b_5);
+            frame.set_acc(m, w6);
             return Ok(Flow::Next);
         }
         (Class::String(l_a_6), Class::String(l_b_7)) => {
             // path `strings`: spec: https://tc39.es/ecma262/#sec-islessthan step 3
-            cx.frame.set_acc(
-                m,
-                cx.realm
-                    .boolean(m, !cx.rt.rt_string_less_than(m, l_a_6, l_b_7)),
-            );
+            let w8 = realm.boolean(m, !cx.rt.rt_string_less_than(m, l_a_6, l_b_7));
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
         (_, _) => {
             // path `generic`: spec: https://tc39.es/ecma262/#sec-islessthan
-            let a7 = 4_i32;
-            let a8 = s.root_value(m, l_x_0);
-            let a9 = s.root_value(m, l_y_1);
-            let t10 = cx.rt.rt_compare(m, cx.t, s, a7, a8, a9)?;
-            cx.frame.set_acc(m, t10.get_value(m));
+            let a10 = 4_i32;
+            let a11 = s.root_value(m, l_x_0);
+            let a12 = s.root_value(m, l_y_1);
+            let t13 = cx.rt.rt_compare(m, cx.t, s, a10, a11, a12)?;
+            let w14 = t13.get_value(m);
+            frame.set_acc(m, w14);
             return Ok(Flow::Next);
         }
     };
@@ -2068,7 +2192,6 @@ fn op_loop_back<'h, 's, R: Runtime<'h>>(
     if !p1 {
         return Ok(Flow::Interrupt);
     }
-    ();
     return Ok(Flow::Jump(o_target));
 }
 
@@ -2080,7 +2203,9 @@ fn op_branch_true<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     o_target: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    if heap::same(cx.frame.acc(m), cx.realm.true_value(m)) {
+    let frame = cx.frame;
+    let realm = cx.realm;
+    if heap::same(frame.acc(m), realm.true_value(m)) {
         return Ok(Flow::Jump(o_target));
     }
     return Ok(Flow::Next);
@@ -2094,7 +2219,9 @@ fn op_branch_false<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     o_target: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    if heap::same(cx.frame.acc(m), cx.realm.false_value(m)) {
+    let frame = cx.frame;
+    let realm = cx.realm;
+    if heap::same(frame.acc(m), realm.false_value(m)) {
         return Ok(Flow::Jump(o_target));
     }
     return Ok(Flow::Next);
@@ -2108,7 +2235,8 @@ fn op_branch_truthy<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     o_target: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    if helper_to_boolean_value(m, cx, cx.frame.acc(m)) {
+    let frame = cx.frame;
+    if helper_to_boolean_value(m, cx, frame.acc(m)) {
         return Ok(Flow::Jump(o_target));
     }
     return Ok(Flow::Next);
@@ -2122,7 +2250,8 @@ fn op_branch_falsy<'h, 's, R: Runtime<'h>>(
     cx: &mut Cx<'_, 'h, '_, R>,
     o_target: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    if helper_to_boolean_value(m, cx, cx.frame.acc(m)) {
+    let frame = cx.frame;
+    if helper_to_boolean_value(m, cx, frame.acc(m)) {
         return Ok(Flow::Next);
     } else {
         return Ok(Flow::Jump(o_target));
@@ -2153,8 +2282,10 @@ fn op_get_named<'h, 's, R: Runtime<'h>>(
     o_key: u32,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_o_0 = cx.frame.reg(m, o_obj);
-    let l_k_1 = cx.consts.key(m, o_key);
+    let frame = cx.frame;
+    let consts = cx.consts;
+    let l_o_0 = frame.reg(m, o_obj);
+    let l_k_1 = consts.key(m, o_key);
     let v1 = l_o_0;
     match heap::classify(m, v1) {
         Class::Undefined | Class::Null => {
@@ -2174,24 +2305,27 @@ fn op_get_named<'h, 's, R: Runtime<'h>>(
             let a5 = l_k_1.root(m, s);
             let a6 = s.root_value(m, l_o_0);
             let t7 = cx.rt.rt_ordinary_get(m, cx.t, s, a4, a5, a6)?;
-            cx.frame.set_acc(m, t7.get_value(m));
+            let w8 = t7.get_value(m);
+            frame.set_acc(m, w8);
             return Ok(Flow::Next);
         }
-        c0_8 @ (Class::Dict(_) | Class::WeakRef(_) | Class::FinReg(_) | Class::HostFn(_)) => {
-            let l_x_3 = c0_8.object();
+        c0_9 @ (Class::Dict(_) | Class::WeakRef(_) | Class::FinReg(_) | Class::HostFn(_)) => {
+            let l_x_3 = c0_9.object();
             // path `other_object`: spec: https://tc39.es/ecma262/#sec-getv
-            let a9 = s.root_value(m, l_x_3.value());
-            let a10 = l_k_1.root(m, s);
-            let t11 = cx.rt.rt_get(m, cx.t, s, a9, a10)?;
-            cx.frame.set_acc(m, t11.get_value(m));
+            let a10 = s.root_value(m, l_x_3.value());
+            let a11 = l_k_1.root(m, s);
+            let t12 = cx.rt.rt_get(m, cx.t, s, a10, a11)?;
+            let w13 = t12.get_value(m);
+            frame.set_acc(m, w13);
             return Ok(Flow::Next);
         }
         _ => {
             // path `primitive`: spec: https://tc39.es/ecma262/#sec-getv
-            let a13 = s.root_value(m, l_o_0);
-            let a14 = l_k_1.root(m, s);
-            let t15 = cx.rt.rt_get(m, cx.t, s, a13, a14)?;
-            cx.frame.set_acc(m, t15.get_value(m));
+            let a15 = s.root_value(m, l_o_0);
+            let a16 = l_k_1.root(m, s);
+            let t17 = cx.rt.rt_get(m, cx.t, s, a15, a16)?;
+            let w18 = t17.get_value(m);
+            frame.set_acc(m, w18);
             return Ok(Flow::Next);
         }
     };
@@ -2210,8 +2344,10 @@ fn op_set_named<'h, 's, R: Runtime<'h>>(
     o_key: u32,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_o_0 = cx.frame.reg(m, o_obj);
-    let l_k_1 = cx.consts.key(m, o_key);
+    let frame = cx.frame;
+    let consts = cx.consts;
+    let l_o_0 = frame.reg(m, o_obj);
+    let l_k_1 = consts.key(m, o_key);
     let v1 = l_o_0;
     match heap::classify(m, v1) {
         Class::Undefined | Class::Null => {
@@ -2229,7 +2365,7 @@ fn op_set_named<'h, 's, R: Runtime<'h>>(
             // path `dictionary`: spec: https://tc39.es/ecma262/#sec-ordinaryset
             let a4 = l_d_2.root(m, s);
             let a5 = l_k_1.root(m, s);
-            let a6 = s.root_value(m, cx.frame.acc(m));
+            let a6 = s.root_value(m, frame.acc(m));
             let a7 = s.root_value(m, l_o_0);
             let a8 = cx.strict;
             let t9 = cx.rt.rt_ordinary_set(m, cx.t, s, a4, a5, a6, a7, a8)?;
@@ -2240,7 +2376,7 @@ fn op_set_named<'h, 's, R: Runtime<'h>>(
             // path `other`: spec: https://tc39.es/ecma262/#sec-putvalue step 3.d
             let a11 = s.root_value(m, l_o_0);
             let a12 = l_k_1.root(m, s);
-            let a13 = s.root_value(m, cx.frame.acc(m));
+            let a13 = s.root_value(m, frame.acc(m));
             let a14 = cx.strict;
             let t15 = cx.rt.rt_set(m, cx.t, s, a11, a12, a13, a14)?;
             let _ = t15;
@@ -2260,7 +2396,8 @@ fn op_get_keyed<'h, 's, R: Runtime<'h>>(
     o_obj: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_o_0 = cx.frame.reg(m, o_obj);
+    let frame = cx.frame;
+    let l_o_0 = frame.reg(m, o_obj);
     let v1 = l_o_0;
     match heap::classify(m, v1) {
         Class::Undefined | Class::Null => {
@@ -2271,9 +2408,10 @@ fn op_get_keyed<'h, 's, R: Runtime<'h>>(
         _ => {
             // path `keyed`: spec: https://tc39.es/ecma262/#sec-getvalue step 3.c
             let a4 = s.root_value(m, l_o_0);
-            let a5 = s.root_value(m, cx.frame.acc(m));
+            let a5 = s.root_value(m, frame.acc(m));
             let t6 = cx.rt.rt_get_keyed(m, cx.t, s, a4, a5)?;
-            cx.frame.set_acc(m, t6.get_value(m));
+            let w7 = t6.get_value(m);
+            frame.set_acc(m, w7);
             return Ok(Flow::Next);
         }
     };
@@ -2291,7 +2429,8 @@ fn op_set_keyed<'h, 's, R: Runtime<'h>>(
     o_key: Reg,
     _o_fb: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
-    let l_o_0 = cx.frame.reg(m, o_obj);
+    let frame = cx.frame;
+    let l_o_0 = frame.reg(m, o_obj);
     let v1 = l_o_0;
     match heap::classify(m, v1) {
         Class::Undefined | Class::Null => {
@@ -2302,8 +2441,8 @@ fn op_set_keyed<'h, 's, R: Runtime<'h>>(
         _ => {
             // path `keyed`: spec: https://tc39.es/ecma262/#sec-putvalue step 3.c
             let a4 = s.root_value(m, l_o_0);
-            let a5 = s.root_value(m, cx.frame.reg(m, o_key));
-            let a6 = s.root_value(m, cx.frame.acc(m));
+            let a5 = s.root_value(m, frame.reg(m, o_key));
+            let a6 = s.root_value(m, frame.acc(m));
             let a7 = cx.strict;
             let t8 = cx.rt.rt_set_keyed(m, cx.t, s, a4, a5, a6, a7)?;
             let _ = t8;
@@ -2322,7 +2461,10 @@ fn op_call_intrinsic<'h, 's, R: Runtime<'h>>(
     o_args: Reg,
     o_count: u32,
 ) -> Result<Flow, Throw<'h, 's>> {
+    let frame = cx.frame;
+    let realm = cx.realm;
     let t1 = call_intrinsic(m, s, cx, o_id, RegList::new(o_args, o_count))?;
-    cx.frame.set_acc(m, t1.get_value(m));
+    let w2 = t1.get_value(m);
+    frame.set_acc(m, w2);
     return Ok(Flow::Next);
 }
