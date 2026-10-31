@@ -122,4 +122,13 @@ jobs:
         run: bash tools/ci-install-kani.sh
 
       - name: Kani
-        run: tools/kani.sh
+        # Logs memory, swap and free disk once a minute. On 30 Oct 2026 the
+        # runner was shut down mid-run three times with no reason in the
+        # log, so a shutdown now leaves the runner's last state behind.
+        run: |
+          while sleep 60; do
+            echo "runner: $(free -m | awk '/^Mem:/{printf "mem_used=%sM avail=%sM", $3, $7} /^Swap:/{printf " swap_used=%sM", $3}') disk_avail=$(df -BM --output=avail / | tail -1 | tr -d ' ') top=$(ps -eo rss=,comm= --sort=-rss | head -1 | awk '{printf "%s:%dM", $2, $1/1024}')"
+          done &
+          mon=$!
+          trap 'kill "$mon"' EXIT
+          tools/kani.sh
