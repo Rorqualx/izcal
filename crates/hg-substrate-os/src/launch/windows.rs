@@ -2,7 +2,9 @@
 //! sandbox merged in. Each child gets its own AppContainer (one SID per
 //! live child), the lockdown token and its own job (kill on close, at
 //! most one active process), assigned while it is still suspended; one
-//! inherited handle, its link to the broker; a minimal environment; and
+//! inherited handle, a read-only section carrying the value of its link
+//! to the broker, which is duplicated in, never inherited (facts W15); a
+//! minimal environment; and
 //! the kind's token as its only argument. The build directory and the
 //! executables are held open from broker start, shared for reading only.
 //! The child lowers itself to Untrusted first thing and probes.
@@ -520,11 +522,7 @@ pub(crate) fn child_start(
     if win::app_container_sid().is_none() {
         return Err(ChildError::Sandbox("not in an AppContainer".into()));
     }
-    let link = std::env::var(crate::ipc::windows::LINK_VAR)
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .and_then(|v| win::adopt_pipe(v, false))
-        .ok_or(ChildError::Arguments)?;
+    let link = crate::ipc::windows::take_link().ok_or(ChildError::Arguments)?;
     stamp!("link");
     let (s, main) = crate::os_substrate_launched(threads, link).map_err(ChildError::Start)?;
     stamp!("substrate");
