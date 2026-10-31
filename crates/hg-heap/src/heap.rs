@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use hg_types::HashMap;
 use std::sync::Arc;
 
-use hg_substrate::{DecisionKind, DecisionLog, Memory, MemoryKind, Position};
+use hg_substrate::{DecisionKind, DecisionLog, Memory, Position};
 
 use crate::cage::{Cage, CageError};
 use crate::object::{Any, Layout, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
@@ -75,7 +75,7 @@ pub struct HeapStats {
 }
 
 pub(crate) struct State {
-    pub(crate) cage: Cage,
+    pub(crate) cage: Arc<Cage>,
     space: Space,
     /// The type table: index → layout (outside the cage, H-4).
     types: Vec<Layout>,
@@ -93,9 +93,41 @@ pub(crate) struct State {
     stats: HeapStats,
 }
 
+/// The process's cage (JS spec 6.1, JS-D17): one reservation that every
+/// agent heap of the process allocates its chunks from. Cloning it shares
+/// the same cage.
+#[derive(Clone)]
+pub struct ProcessCage(Arc<Cage>);
+
+impl core::fmt::Debug for ProcessCage {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("ProcessCage").field(&self.0).finish()
+    }
+}
+
+impl ProcessCage {
+    /// Reserves the process's cage: `bytes` is a power of two from 1 MiB
+    /// to 16 GiB (production uses 16 GiB, JS-D17; tests use small cages).
+    ///
+    /// # Errors
+    /// [`HeapError::Cage`] if the cage cannot be reserved.
+    pub fn new(mem: Arc<dyn Memory>, bytes: u64) -> Result<Self, HeapError> {
+        Ok(Self(Arc::new(
+            Cage::new(mem, bytes).map_err(HeapError::Cage)?,
+        )))
+    }
+}
+
 /// One agent heap. It is entered for each turn of its agent's work.
 pub struct Heap {
     state: State,
+}
+
+impl Drop for Heap {
+    fn drop(&mut self) {
+        let st = &mut self.state;
+        st.space.release(&st.cage);
+    }
 }
 
 impl core::fmt::Debug for Heap {
@@ -174,8 +206,10 @@ pub enum Value<'h, 'm> {
 }
 
 impl Heap {
-    /// A heap in a fresh cage reserved through `mem`, logging its
-    /// decisions to `decisions`.
+    /// A heap in a cage of its own, reserved through `mem`, logging its
+    /// decisions to `decisions`. A process with several agents makes one
+    /// [`ProcessCage`] and puts each agent's heap in it with
+    /// [`Heap::in_cage`] (JS-D17).
     ///
     /// # Errors
     /// [`HeapError::Cage`] if the cage cannot be reserved.
@@ -184,11 +218,23 @@ impl Heap {
         decisions: Arc<dyn DecisionLog>,
         config: HeapConfig,
     ) -> Result<Self, HeapError> {
-        let cage = Cage::new(mem, config.cage_bytes).map_err(HeapError::Cage)?;
-        Ok(Self {
+        let cage = ProcessCage::new(mem, config.cage_bytes)?;
+        Ok(Self::in_cage(&cage, decisions, config))
+    }
+
+    /// An agent heap in the process's cage: it owns the chunks it takes
+    /// from the cage, and gives them all back when it is dropped (JS spec
+    /// 6.5: a destroyed agent's heap is released whole, without a trace).
+    /// `config.cage_bytes` is ignored; the cage's own size applies.
+    pub fn in_cage(
+        cage: &ProcessCage,
+        decisions: Arc<dyn DecisionLog>,
+        config: HeapConfig,
+    ) -> Self {
+        Self {
             state: State {
-                cage,
-                space: Space::new(MemoryKind::PerAgent),
+                cage: Arc::clone(&cage.0),
+                space: Space::new(),
                 types: Vec::new(),
                 type_index: HashMap::default(),
                 roots: RefCell::new(Vec::new()),
@@ -200,7 +246,7 @@ impl Heap {
                 progress: 0,
                 stats: HeapStats::default(),
             },
-        })
+        }
     }
 
     /// Runs `f` with this heap's mutator under a fresh brand.
@@ -801,8 +847,11 @@ impl State {
         let Some((_, size)) = self.shape(off) else {
             return s;
         };
-        let block = usize::try_from(off / crate::space::BLOCK).unwrap_or(usize::MAX);
-        let evacuate = evacuating.get(block).copied().unwrap_or(false) && self.space.is_small(off);
+        let evacuate = self
+            .space
+            .block_index(off)
+            .is_some_and(|b| evacuating.get(b).copied().unwrap_or(false))
+            && self.space.is_small(off);
         if evacuate
             && !self.space.is_marked(off)
             && let Ok(to) = self.space.alloc_copy(&self.cage, size, evacuating)

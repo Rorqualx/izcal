@@ -13,20 +13,47 @@
 //! change a value but never cause a data race.
 #![expect(unsafe_code, reason = "G5: cage (every cage memory access)")]
 
-use std::sync::Arc;
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use hg_substrate::{Memory, MemoryError, MemoryKind, Region};
 
 use crate::slot::MAX_CAGE_BYTES;
 
-/// The cage: its reservation and the memory interface that made it.
+/// Bytes the cage hands an agent heap at a time: a multiple of every page
+/// size Izcal runs on (4, 16 and 64 KiB), so commits are aligned on every
+/// OS and the simulator's ledger is the same everywhere (heap design H-5).
+pub(crate) const CHUNK: u64 = 1 << 20;
+
+/// Which chunks are free. Chunk 0 is never handed out, so no object lives
+/// at cage offset 0.
+#[derive(Debug)]
+struct Pool {
+    /// The first chunk never handed out.
+    next: u64,
+    /// Chunks handed out and returned, lowest first.
+    free: BTreeSet<u64>,
+}
+
+/// The cage: its reservation, the memory interface that made it, and the
+/// pool of chunks its agent heaps draw from (JS-D17: one cage per
+/// process; each agent heap owns its own chunks).
 pub(crate) struct Cage {
     mem: Arc<dyn Memory>,
     region: Option<Region>,
     base: *mut u8,
     len: u64,
+    pool: Mutex<Pool>,
 }
+
+// SAFETY: the raw base pointer is never written after `new`, every access
+// through it is atomic (this module's condition), and the chunk pool is
+// behind a mutex; so agent heaps on different threads may share the cage.
+unsafe impl Send for Cage {}
+// SAFETY: as for `Send`: shared references only perform atomic accesses
+// and locked pool operations.
+unsafe impl Sync for Cage {}
 
 impl core::fmt::Debug for Cage {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -63,16 +90,68 @@ impl Cage {
             region: Some(region),
             base,
             len,
+            pool: Mutex::new(Pool {
+                next: CHUNK,
+                free: BTreeSet::new(),
+            }),
         })
     }
 
-    /// The cage's length in bytes.
-    pub(crate) const fn len(&self) -> u64 {
-        self.len
+    /// Hands out `n` adjacent chunks, committed and charged to the
+    /// per-agent ledger line; returns the first one's offset. A single
+    /// chunk reuses the lowest returned one; a run comes from fresh space.
+    pub(crate) fn acquire(&self, n: u64) -> Result<u64, CageError> {
+        let mut pool = self
+            .pool
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let reuse = if n == 1 { pool.free.pop_first() } else { None };
+        let at = match reuse {
+            Some(at) => at,
+            None => {
+                let at = pool.next;
+                let end = n
+                    .checked_mul(CHUNK)
+                    .and_then(|b| at.checked_add(b))
+                    .ok_or(CageError::BadLength)?;
+                if end > self.len {
+                    return Err(CageError::BadLength);
+                }
+                pool.next = end;
+                at
+            }
+        };
+        if let Err(e) = self.commit(at, n * CHUNK, MemoryKind::PerAgent) {
+            // Nothing was committed: the chunks go back as they were.
+            if reuse.is_some() {
+                pool.free.insert(at);
+            } else if pool.next == at + n * CHUNK {
+                pool.next = at;
+            }
+            return Err(e);
+        }
+        Ok(at)
+    }
+
+    /// Takes back the chunk at `offset`: its pages are decommitted (so
+    /// they read as zero, or fault, never as old data) and it is reused.
+    pub(crate) fn release(&self, offset: u64) {
+        if let (Some(region), Ok(o), Ok(l)) = (
+            self.region.as_ref(),
+            usize::try_from(offset),
+            usize::try_from(CHUNK),
+        ) {
+            self.mem.decommit(region, o, l);
+        }
+        let mut pool = self
+            .pool
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        pool.free.insert(offset);
     }
 
     /// Commits `[offset, offset + len)`, charged to `kind`.
-    pub(crate) fn commit(&self, offset: u64, len: u64, kind: MemoryKind) -> Result<(), CageError> {
+    fn commit(&self, offset: u64, len: u64, kind: MemoryKind) -> Result<(), CageError> {
         let (Some(region), Ok(o), Ok(l)) = (
             self.region.as_ref(),
             usize::try_from(offset),
