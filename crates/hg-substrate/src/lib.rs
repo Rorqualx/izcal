@@ -151,7 +151,14 @@ mod tests {
         ) -> Result<(), MemoryError> {
             Err(MemoryError::CommitFailed)
         }
-        fn decommit(&self, _region: &Region, _offset: usize, _len: usize) {}
+        fn decommit(
+            &self,
+            _region: &Region,
+            _offset: usize,
+            _len: usize,
+        ) -> Result<(), MemoryError> {
+            Err(MemoryError::OutOfRange)
+        }
         fn purge(&self, _region: &Region, _offset: usize, _len: usize) {}
         fn protect(
             &self,

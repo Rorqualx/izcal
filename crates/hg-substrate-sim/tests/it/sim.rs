@@ -260,7 +260,7 @@ fn the_budget_and_commit_faults_refuse_commits() {
             s.mem.commit(&r, 1, page, MemoryKind::PerAgent),
             Err(MemoryError::Misaligned)
         );
-        s.mem.decommit(&r, page, page);
+        assert_eq!(s.mem.decommit(&r, page, page), Ok(()));
         assert_eq!(s.mem.stats().committed, page as u64);
         assert_eq!(s.mem.stats().committed_by_kind, [0, page as u64, 0]);
         s.mem.release(r);
