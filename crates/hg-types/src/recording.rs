@@ -134,8 +134,10 @@ pub struct DataVersion {
     pub version: u64,
 }
 
-/// Where the decision-point log is: in M1, the DST trace it hashes to
-/// and its length.
+/// Where the decision-point log is: in simulation, the DST trace it
+/// hashes to and its length. The trace holds the scheduler's decisions
+/// and every decision point a process records (JS-D15), in one ordered
+/// stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DecisionLogRef {
     /// The log's 64-bit trace hash.
