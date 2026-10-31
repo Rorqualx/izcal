@@ -47,6 +47,10 @@ pub struct Report {
     pub crashes: u64,
     /// The trace hash.
     pub trace: u64,
+    /// A hash of the state the run ended in, if the binary reports one
+    /// (`state=` after the trace): the JS-M0 probe's heap, weak-state
+    /// and decision-log digest.
+    pub state: Option<u64>,
 }
 
 /// How one seed ended.
@@ -187,6 +191,58 @@ impl Target {
     }
 }
 
+/// How `times` runs of one seed ended: each distinct outcome with the
+/// number of runs that ended that way, in first-seen order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Repeats {
+    /// The seed.
+    pub seed: u64,
+    /// Distinct outcomes and their counts.
+    pub outcomes: Vec<(Outcome, u64)>,
+}
+
+impl Repeats {
+    /// Whether every run passed with the same report.
+    pub fn all_identical(&self) -> bool {
+        matches!(self.outcomes.as_slice(), [(Outcome::Pass(_), _)])
+    }
+}
+
+impl Target {
+    /// Runs `seed` `times` times on `jobs` parallel child processes and
+    /// groups the outcomes (the JS-M0 decision-point probe: Stage 1 3.3).
+    pub fn repeat(&self, seed: u64, times: u64, jobs: usize) -> Repeats {
+        let next = AtomicU64::new(0);
+        let results: Mutex<Vec<(u64, Outcome)>> = Mutex::new(Vec::new());
+        std::thread::scope(|scope| {
+            for _ in 0..jobs.max(1) {
+                scope.spawn(|| {
+                    loop {
+                        // ordering: Relaxed — a work counter; results are
+                        // collected under the mutex.
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        if i >= times {
+                            break;
+                        }
+                        let r = self.run_seed(seed);
+                        results.lock().unwrap().push((i, r.outcome));
+                    }
+                });
+            }
+        });
+        let mut runs = results.into_inner().unwrap();
+        runs.sort_by_key(|(i, _)| *i);
+        let mut outcomes: Vec<(Outcome, u64)> = Vec::new();
+        for (_, o) in runs {
+            match outcomes.iter_mut().find(|(seen, _)| *seen == o) {
+                Some((_, n)) => *n += 1,
+                None => outcomes.push((o, 1)),
+            }
+        }
+        Repeats { seed, outcomes }
+    }
+}
+
 /// Failing seeds grouped by signature, each group in seed order.
 pub fn group_failures(results: &[SeedResult]) -> BTreeMap<String, Vec<u64>> {
     let mut groups: BTreeMap<String, Vec<u64>> = BTreeMap::new();
@@ -260,6 +316,10 @@ pub fn parse_report(stdout: &str) -> Option<Report> {
         time_ns: field("time_ns")?.parse().ok()?,
         crashes: field("crashes")?.parse().ok()?,
         trace: u64::from_str_radix(field("trace")?, 16).ok()?,
+        state: match field("state") {
+            Some(s) => Some(u64::from_str_radix(s, 16).ok()?),
+            None => None,
+        },
     })
 }
 
@@ -308,8 +368,17 @@ mod tests {
                 steps: 10,
                 time_ns: 42,
                 crashes: 1,
-                trace: 255
+                trace: 255,
+                state: None,
             })
+        );
+        let with_state =
+            "hg-dst: seed=3 steps=10 time_ns=42 crashes=0 trace=01 state=00000000000000ab\n";
+        assert_eq!(parse_report(with_state).and_then(|r| r.state), Some(0xab));
+        // A malformed state field makes the line unreadable, not stateless.
+        assert_eq!(
+            parse_report("hg-dst: seed=3 steps=1 time_ns=1 crashes=0 trace=01 state=zz"),
+            None
         );
         assert_eq!(parse_report("nothing"), None);
         assert_eq!(
