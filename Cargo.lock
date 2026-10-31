@@ -87,6 +87,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-js-number"
+version = "0.0.0"
+
+[[package]]
 name = "hg-launch-plan"
 version = "0.0.0"
 
