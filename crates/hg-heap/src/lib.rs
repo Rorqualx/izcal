@@ -12,9 +12,11 @@ mod slot;
 mod space;
 #[cfg(test)]
 mod tests;
+mod trusted;
 
 pub use cage::CageError;
 pub use heap::{Gc, Heap, HeapConfig, HeapError, HeapStats, Mutator, Root, Scope, Stress, Value};
 pub use object::{Any, Layout, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
 pub use slot::{MAX_CAGE_BYTES, Slot};
 pub use space::AllocError;
+pub use trusted::{TrustedError, TrustedId, TrustedKind, TrustedRegion};

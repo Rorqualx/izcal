@@ -167,6 +167,14 @@ pub(crate) mod test_memory {
     #[derive(Default)]
     pub(crate) struct TestMemory {
         live: Mutex<Vec<(usize, std::alloc::Layout)>>,
+        protects: Mutex<Vec<(usize, usize, Access)>>,
+    }
+
+    impl TestMemory {
+        /// Every protection change asked for, in order.
+        pub(crate) fn protects(&self) -> Vec<(usize, usize, Access)> {
+            self.protects.lock().unwrap().clone()
+        }
     }
 
     impl Memory for TestMemory {
@@ -190,7 +198,8 @@ pub(crate) mod test_memory {
         }
         fn decommit(&self, _: &Region, _: usize, _: usize) {}
         fn purge(&self, _: &Region, _: usize, _: usize) {}
-        fn protect(&self, _: &Region, _: usize, _: usize, _: Access) -> Result<(), MemoryError> {
+        fn protect(&self, _: &Region, o: usize, l: usize, a: Access) -> Result<(), MemoryError> {
+            self.protects.lock().unwrap().push((o, l, a));
             Ok(())
         }
         fn release(&self, region: Region) {

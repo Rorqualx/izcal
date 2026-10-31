@@ -32,4 +32,5 @@ entries = [
 [crates.hg-heap]
 entries = [
   "cage",                       # every cage access: masked, aligned atomic loads and stores (JS spec 6.1 H-2; heap design H-1)
+  "trusted",                    # the trusted region (JS-D16): writes only inside a write window, reads bounds-, kind- and generation-checked
 ]
