@@ -145,3 +145,8 @@ why = "JS spec 6.3, bytecode note: the generated opcode table, the decoder, the 
 tier = "R"
 layer = "L2e"
 why = "JS spec 6.3, design review R0-O1: the generated reference interpreter, generic over the generated Runtime trait, its frame and value layer over hg-heap, and the operation facts"
+
+[crates.hg-js-runtime]
+tier = "R"
+layer = "L2e"
+why = "JS spec 6.3: the JS-M0 runtime the generated interpreter calls (the agent, jobs, ClearKeptObjects, conversions, properties, finalization cleanup)"

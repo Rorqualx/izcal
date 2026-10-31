@@ -109,6 +109,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-js-runtime"
+version = "0.0.0"
+dependencies = [
+ "hg-heap",
+ "hg-js-bytecode",
+ "hg-js-number",
+ "hg-js-ops",
+ "hg-substrate",
+]
+
+[[package]]
 name = "hg-launch-plan"
 version = "0.0.0"
 
