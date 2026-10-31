@@ -99,6 +99,16 @@ name = "hg-js-number"
 version = "0.0.0"
 
 [[package]]
+name = "hg-js-ops"
+version = "0.0.0"
+dependencies = [
+ "hg-heap",
+ "hg-js-bytecode",
+ "hg-js-number",
+ "hg-substrate",
+]
+
+[[package]]
 name = "hg-launch-plan"
 version = "0.0.0"
 
@@ -134,6 +144,10 @@ dependencies = [
  "hg-substrate",
  "hg-types",
 ]
+
+[[package]]
+name = "hg-opgen"
+version = "0.0.0"
 
 [[package]]
 name = "hg-os-types"

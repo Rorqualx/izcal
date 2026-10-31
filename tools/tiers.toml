@@ -126,6 +126,11 @@ tier = "R"
 layer = "L2e"
 why = "JS spec 6.15: hg-heap is L2e, tier R with an inventoried unsafe core (the cage module); its tier-P build for the component host comes with JS-D10"
 
+[crates.hg-opgen]
+tier = "T"
+layer = "tools"
+why = "JS spec 6.3 and G16: the operation generator, a build-time tool that reads the .hgop descriptions and writes checked-in Rust (design review R0-O1 to R0-O12); tools, tier T"
+
 [crates.hg-js-number]
 tier = "R"
 layer = "L2e"
@@ -135,3 +140,8 @@ why = "JS spec 6.15: Number's own conversions (Number::toString's shortest round
 tier = "R"
 layer = "L2e"
 why = "JS spec 6.3, bytecode note: the generated opcode table, the decoder, the unit image and its trusted form, the assembler and disassembler; the verifier's tables (JS-M1)"
+
+[crates.hg-js-ops]
+tier = "R"
+layer = "L2e"
+why = "JS spec 6.3, design review R0-O1: the generated reference interpreter, generic over the generated Runtime trait, its frame and value layer over hg-heap, and the operation facts"
