@@ -273,10 +273,11 @@ pub(crate) struct Seq {
     pub(crate) posted: u64,
 }
 
-#[derive(Clone, Copy)]
 pub(crate) struct Reservation {
     pub(crate) len: u64,
-    pub(crate) committed: u64,
+    /// The committed pages, by index in the simulator's page size, with
+    /// the ledger line each is charged to.
+    pub(crate) committed: BTreeMap<u64, MemoryKind>,
     pub(crate) kind: MemoryKind,
     pub(crate) host_len: usize,
 }
@@ -292,6 +293,8 @@ pub(crate) struct Proc {
     pub(crate) regions: BTreeMap<usize, Reservation>,
     pub(crate) reserved: u64,
     pub(crate) committed: u64,
+    pub(crate) committed_by_kind: [u64; 3],
+    pub(crate) protect_calls: u64,
     /// Launched by another process ([`World::link`]): never the broker.
     pub(crate) launched: bool,
     /// Started by the simulated launcher in a modelled PID namespace
@@ -731,6 +734,8 @@ pub(crate) fn spawn_in(
         pid_ns: false,
         reserved: 0,
         committed: 0,
+        committed_by_kind: [0; 3],
+        protect_calls: 0,
         children,
     });
     start_in(shared, &mut st, pid, 0, stall);
@@ -824,6 +829,8 @@ impl World {
         }
         p.reserved = 0;
         p.committed = 0;
+        p.committed_by_kind = [0; 3];
+        p.protect_calls = 0;
         let (name, generation, restart) = (p.name, p.generation, p.restart);
         let doomed: Vec<(u64, u64)> = st
             .timers
