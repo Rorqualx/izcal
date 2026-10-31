@@ -150,3 +150,8 @@ why = "JS spec 6.3, design review R0-O1: the generated reference interpreter, ge
 tier = "R"
 layer = "L2e"
 why = "JS spec 6.3: the JS-M0 runtime the generated interpreter calls (the agent, jobs, ClearKeptObjects, conversions, properties, finalization cleanup)"
+
+[crates.hg-js-oracle]
+tier = "T"
+layer = "tools"
+why = "JS-M0 plan Phase 1 (ORC-1): the operation-level oracle, which checks each core operation of the reference interpreter against engine262 run black-box under Node; test-only, never shipped; tools, tier T"
