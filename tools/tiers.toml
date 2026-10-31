@@ -120,3 +120,8 @@ why = "M1 plan E-R1, as its library; tier P by design-review disposition M5"
 tier = "T"
 layer = "tools"
 why = "M1 plan E design review (minor, other): --measure-spawn lives in a tool binary, never in a main; also runs the OS round trip (E-R12); tools, tier T"
+
+[crates.hg-heap]
+tier = "R"
+layer = "L2e"
+why = "JS spec 6.15: hg-heap is L2e, tier R with an inventoried unsafe core (the cage module); its tier-P build for the component host comes with JS-D10"
