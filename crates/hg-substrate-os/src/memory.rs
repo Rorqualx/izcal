@@ -168,19 +168,20 @@ impl Memory for OsMemory {
         Ok(())
     }
 
-    fn decommit(&self, region: &Region, offset: usize, len: usize) {
+    fn decommit(&self, region: &Region, offset: usize, len: usize) -> Result<(), MemoryError> {
         let page = self.page;
         let mut l = self.ledger();
         let Some(r) = l.regions.get(&region.base()) else {
-            return;
+            return Err(MemoryError::OutOfRange);
         };
-        let Ok(end) = check_range(page, r.len, offset, len) else {
-            return;
-        };
+        let end = check_range(page, r.len, offset, len)?;
         let todo = runs(&r.committed, offset / page, end / page, true);
         let mut freed = [0u64; 3];
+        let mut refused = false;
         for &(first, n) in &todo {
             if unsafe_decommit(region.base() + first * page, n * page).is_err() {
+                // These pages stay committed, charged and in the ledger.
+                refused = true;
                 continue;
             }
             if let Some(r) = l.regions.get_mut(&region.base()) {
@@ -193,6 +194,11 @@ impl Memory for OsMemory {
         }
         for (c, f) in l.committed_by_kind.iter_mut().zip(freed) {
             *c = c.saturating_sub(f);
+        }
+        if refused {
+            Err(MemoryError::DecommitFailed)
+        } else {
+            Ok(())
         }
     }
 
@@ -363,8 +369,9 @@ mod tests {
         );
 
         // Decommitting a range returns each page to its own line.
-        m.decommit(&r, 0, 4 * page);
+        assert_eq!(m.decommit(&r, 0, 4 * page), Ok(()));
         assert_eq!(m.stats().committed_by_kind, [to_u64(page), 0, 0]);
+        assert_eq!(m.decommit(&r, 1, page), Err(MemoryError::Misaligned));
 
         // Misaligned and outside ranges are refused, never rounded.
         assert_eq!(
