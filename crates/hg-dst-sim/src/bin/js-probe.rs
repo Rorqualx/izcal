@@ -310,7 +310,10 @@ fn main() {
         std::process::exit(2);
     };
     let units = assemble(&slots(PROGRAM)).expect("the probe program assembles");
-    let world = World::new(SimConfig::new(seed));
+    let mut config = SimConfig::new(seed);
+    // JS_PROBE_TRACE prints the trace's lines, for comparing two runs.
+    config.keep_trace_text = std::env::var_os("JS_PROBE_TRACE").is_some();
+    let world = World::new(config);
     let state: Arc<Mutex<Option<u64>>> = Arc::new(Mutex::new(None));
     let out = Arc::clone(&state);
     world.spawn("renderer", Arc::new(OsMemory::new()), false, move |s| {
@@ -351,5 +354,8 @@ fn main() {
         eprintln!("js-probe: the rounds did not run");
         std::process::exit(1);
     };
+    if let Some(text) = world.trace_text() {
+        eprint!("{text}");
+    }
     println!("{} state={h:016x}", world.summary().report_line());
 }

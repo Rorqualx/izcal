@@ -16,7 +16,7 @@ The report line is the `hg-dst` line plus `state=`, a hash of:
 - each host-function call and its arguments;
 - the heap's address-independent digest and the cycle count.
 
-`JS_PROBE_EXPLAIN=1` prints each item the hash covers. For seed 1 it shows two rounds whose target was cleared (`deref Undefined`), their two cleanup calls with the held values, and five cycles.
+`JS_PROBE_EXPLAIN=1` prints each item the hash covers, and `JS_PROBE_TRACE=1` prints the trace. For seed 1 it shows two rounds whose target was cleared (`deref Undefined`), their two cleanup calls with the held values, and five cycles.
 
 ## Results
 
