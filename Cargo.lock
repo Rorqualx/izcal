@@ -87,6 +87,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-js-bytecode"
+version = "0.0.0"
+dependencies = [
+ "hg-heap",
+ "hg-js-number",
+]
+
+[[package]]
 name = "hg-js-number"
 version = "0.0.0"
 

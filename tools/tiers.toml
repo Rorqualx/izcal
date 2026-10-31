@@ -130,3 +130,8 @@ why = "JS spec 6.15: hg-heap is L2e, tier R with an inventoried unsafe core (the
 tier = "R"
 layer = "L2e"
 why = "JS spec 6.15: Number's own conversions (Number::toString's shortest round trip, StringToNumber, ToInt32, exponentiation) for the JS engine; built here, no library (M-1 part 3)"
+
+[crates.hg-js-bytecode]
+tier = "R"
+layer = "L2e"
+why = "JS spec 6.3, bytecode note: the generated opcode table, the decoder, the unit image and its trusted form, the assembler and disassembler; the verifier's tables (JS-M1)"
