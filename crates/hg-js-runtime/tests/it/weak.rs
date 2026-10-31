@@ -116,6 +116,36 @@ fn a_weak_target_dies_after_clear_kept_objects_and_its_cleanup_runs() {
 }
 
 #[test]
+fn released_handles_and_finished_jobs_are_reused() {
+    let units = assemble_auto(PROBE);
+    let after = with_agent(Stress::None, 1000, |m, a, host| {
+        let h1 = a.handle(m, &HostValue::Number(1.5)).unwrap();
+        a.release(m, h1);
+        assert_eq!(a.host_value(m, h1), None);
+        let h2 = a.handle(m, &HostValue::Bool(true)).unwrap();
+        assert_eq!(h2, h1, "the released slot is reused");
+        assert_eq!(a.host_value(m, h2), Some(HostValue::Bool(true)));
+        // Two rounds of the probe: the second cleanup job reuses the first's slot.
+        let mut jobs = Vec::new();
+        for _ in 0..2 {
+            let holder = run_unit(m, a, host, &units[0], &[]).unwrap();
+            a.clear_kept_objects(m);
+            let r = run_unit(m, a, host, &units[1], &[holder]).unwrap();
+            a.release(m, r);
+            a.release(m, holder);
+            for job in std::mem::take(&mut host.cleanup_jobs) {
+                assert_eq!(a.run_cleanup_job(m, host, job), Ok(1));
+                // A job runs once.
+                assert_eq!(a.run_cleanup_job(m, host, job), Err(JobError::BadHandle));
+                jobs.push(job);
+            }
+        }
+        jobs
+    });
+    assert_eq!(after.value, vec![0, 0]);
+}
+
+#[test]
 fn a_kept_target_survives_until_clear_kept_objects() {
     // Without ClearKeptObjects the target is in [[KeptAlive]] (AddToKeptObjects
     // in WeakRef's constructor), so the cycles keep it: deref is the object,

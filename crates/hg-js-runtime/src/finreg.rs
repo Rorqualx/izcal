@@ -117,7 +117,8 @@ impl<'h> JsRuntime<'h, '_> {
                     continue;
                 }
                 let r = s.root_value(m, r);
-                // A full cage leaves the cell for a later cycle's job.
+                // A full cage ends the agent (JS spec 6.9): the cell stays
+                // marked and no job is enqueued.
                 if let Ok(job) = self.push(m, s, AgentRoots::PENDING, r)
                     && let Some(registry) = reg(m, r.get_value(m))
                 {
@@ -144,10 +145,14 @@ impl<'h> JsRuntime<'h, '_> {
                 return Err(JobError::BadHandle);
             }
             let v = a.tail(m, index).ok_or(JobError::BadHandle)?;
+            if self.free_pending.contains(&index) {
+                return Err(JobError::BadHandle);
+            }
             let u = self.realm.undefined(m);
             a.set_tail(m, index, u);
             v
         };
+        self.free_pending.push(index);
         let r = s.root_value(m, r);
         let Some(registry) = reg(m, r.get_value(m)) else {
             return Ok(0);

@@ -108,6 +108,10 @@ pub struct JsRuntime<'h, 'o> {
     roots: Root<'h, 'o, AgentRoots>,
     pacer: Pacer,
     functions: Box<dyn HostFunctions>,
+    /// Released handle slots and finished cleanup-job slots, reused before
+    /// the arrays grow.
+    free_handles: Vec<u32>,
+    free_pending: Vec<u32>,
 }
 
 /// The `typeof` result names, by the descriptions' `TYPEOF_*` tags.
@@ -167,6 +171,8 @@ impl<'h, 'o> Agent<'h, 'o> {
             roots,
             pacer: Pacer::new(trigger),
             functions,
+            free_handles: Vec::new(),
+            free_pending: Vec::new(),
         };
         Ok(Self {
             rt,
@@ -195,6 +201,19 @@ impl<'h, 'o> Agent<'h, 'o> {
     pub fn host_value(&self, m: &Mutator<'h>, h: Handle) -> Option<HostValue> {
         let v = self.rt.handle_value(m, h)?;
         Some(self.rt.host_view(m, v))
+    }
+
+    /// Releases handle `h`: its value is no longer held for the host, and
+    /// the slot is reused. Releasing an unknown handle does nothing.
+    pub fn release(&mut self, m: &Mutator<'h>, h: Handle) {
+        let Some(a) = self.rt.array(m, AgentRoots::HANDLES) else {
+            return;
+        };
+        if h.0 >= a.raw(m, Array::LEN) || self.rt.free_handles.contains(&h.0) {
+            return;
+        }
+        a.set_tail(m, h.0, Value::Small(0));
+        self.rt.free_handles.push(h.0);
     }
 
     /// Whether handles `a` and `b` hold the same value (SameValue by
@@ -315,7 +334,18 @@ impl<'h, 'o> JsRuntime<'h, 'o> {
         }
     }
 
-    /// Appends `v` to the array in field `f`, growing it; returns its index.
+    fn free_list(&mut self, f: hg_heap::Traced<AgentRoots, Any>) -> Option<&mut Vec<u32>> {
+        if f.index() == AgentRoots::HANDLES.index() {
+            Some(&mut self.free_handles)
+        } else if f.index() == AgentRoots::PENDING.index() {
+            Some(&mut self.free_pending)
+        } else {
+            None
+        }
+    }
+
+    /// Stores `v` in the array in field `f`: in a released slot if there
+    /// is one, else appended (growing the array); returns its index.
     fn push(
         &mut self,
         m: &mut Mutator<'h>,
@@ -323,6 +353,11 @@ impl<'h, 'o> JsRuntime<'h, 'o> {
         f: hg_heap::Traced<AgentRoots, Any>,
         v: Root<'h, '_, Any>,
     ) -> Result<u32, OutOfMemory> {
+        if let Some(i) = self.free_list(f).and_then(Vec::pop) {
+            let a = self.array(m, f).ok_or(OutOfMemory)?;
+            a.set_tail(m, i, v.get_value(m));
+            return Ok(i);
+        }
         let (len, cap) = match self.array(m, f) {
             Some(a) => (a.raw(m, Array::LEN), a.len(m)),
             None => return Err(OutOfMemory),
@@ -357,7 +392,7 @@ impl<'h, 'o> JsRuntime<'h, 'o> {
 
     fn handle_value<'m>(&self, m: &'m Mutator<'h>, h: Handle) -> Option<Value<'h, 'm>> {
         let a = self.array(m, AgentRoots::HANDLES)?;
-        if h.0 >= a.raw(m, Array::LEN) {
+        if h.0 >= a.raw(m, Array::LEN) || self.free_handles.contains(&h.0) {
             return None;
         }
         a.tail(m, h.0)
