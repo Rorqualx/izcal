@@ -31,7 +31,7 @@ Measured 31 October 2026, on macOS (Huey the Sixth). This is the JS-M0 plan's Ph
   No tc39/ecma262 issue for it was found on 31 Oct 2026. The open editorial PR [#3918](https://github.com/tc39/ecma262/pull/3918) refactors these steps; it is not checked here whether it fixes them.
 - **Sensitivity.** With one planted error in the oracle's table (`Sar` computed as `>>>`), the run reports 657 `Sar` mismatches and exits 1.
 
-## Open
+## Notes
 
-- **CI.** The CI job needs Node and the pinned engine262 package from `tools/fetch-test-data.sh`, which lands with `hg-test262`. The job comes with or after that PR.
+- **CI.** The `js-oracle` job in `.github/workflows/checks.yml` runs it on every PR. It sets up Node 26.13.0, fetches the pinned engine262 with `tools/fetch-test-data.sh engine262`, and runs `hg-js-oracle ops`. Its steps were run locally against an empty cache on 31 Oct 2026.
 - **Coverage.** Loads, jumps, `Return`, property get and set, and the intrinsics are not in the oracle; the interpreter's own tests and the probe cover them. Objects with `valueOf` or `toString` are not in it either: the core set has no functions defined in script, so ToPrimitive reaching user code is checked through host functions in `hg-js-runtime`'s tests.
