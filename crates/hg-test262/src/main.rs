@@ -148,7 +148,7 @@ fn cmd_run(mut args: impl Iterator<Item = String>) -> Result<ExitCode> {
                 .unwrap_or_else(|| default_exclusions(&engine_name)),
         )?
     };
-    let scratch = std::env::temp_dir().join(format!("hg-test262-{}", std::process::id()));
+    let scratch = private_scratch("hg-test262").map_err(|e| format!("a scratch directory: {e}"))?;
     let engine = Engine262::new(engine262, node.clone(), scratch.clone());
     let cfg = RunConfig {
         test262,
@@ -380,4 +380,36 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// A new scratch directory under the system temp directory, made by this
+/// call alone: the name has the process ID, the time and a counter, and
+/// it is created exclusively (and, on Unix, readable only by this user),
+/// so a path someone else placed there first is never used, and removing
+/// the directory afterwards removes only what this process made.
+fn private_scratch(prefix: &str) -> std::io::Result<std::path::PathBuf> {
+    let base = std::env::temp_dir();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    for n in 0..100u32 {
+        let path = base.join(format!("{prefix}-{}-{nanos:x}-{n}", std::process::id()));
+        #[cfg(unix)]
+        let b = {
+            let mut b = std::fs::DirBuilder::new();
+            std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o700);
+            b
+        };
+        #[cfg(not(unix))]
+        let b = std::fs::DirBuilder::new();
+        match b.create(&path) {
+            Ok(()) => return Ok(path),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "no free scratch directory name",
+    ))
 }
