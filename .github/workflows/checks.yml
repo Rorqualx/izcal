@@ -105,7 +105,8 @@ jobs:
   # every allocation). Miri needs a nightly; this one is pinned.
   miri:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # 25 min on an M-series Mac for hg-heap's 14 tests (31 Oct 2026).
+    timeout-minutes: 60
     env:
       MIRI_TOOLCHAIN: nightly-2026-10-17
       MIRIFLAGS: -Zmiri-permissive-provenance

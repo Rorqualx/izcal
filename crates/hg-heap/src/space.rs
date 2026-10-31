@@ -1,12 +1,16 @@
-//! Immix blocks and lines (heap design H-5, H-6). The cage is divided
-//! into 32 KiB blocks of 128-byte lines, committed in 1 MiB chunks from
-//! the bottom up. Every block's state, line marks and object mark bits
-//! live here, outside the cage, so corrupted cage contents can never
-//! corrupt the collector's own bookkeeping (H-2).
+//! Immix blocks and lines (heap design H-5, H-6), for one agent heap.
+//! The process's cage hands each heap whole 1 MiB chunks; the heap
+//! divides them into 32 KiB blocks of 128-byte lines. Blocks are numbered
+//! locally, in the order the heap acquired its chunks, so a heap's layout
+//! never depends on what other agents did (JS-D17: one cage, each agent
+//! heap owns its own blocks). Every block's state, line marks and object
+//! mark bits live here, outside the cage, so corrupted cage contents can
+//! never corrupt the collector's own bookkeeping (H-2); and a slot that
+//! points into a chunk another heap owns is never followed.
 
-use hg_substrate::MemoryKind;
+use std::collections::BTreeMap;
 
-use crate::cage::{Cage, CageError};
+use crate::cage::{CHUNK, Cage};
 
 /// Bytes per block.
 pub(crate) const BLOCK: u64 = 32 * 1024;
@@ -14,8 +18,6 @@ pub(crate) const BLOCK: u64 = 32 * 1024;
 pub(crate) const LINE: u64 = 128;
 /// Lines per block.
 const LINES: usize = 256;
-/// Bytes committed at a time: a multiple of every page size Izcal runs on.
-pub(crate) const CHUNK: u64 = 1 << 20;
 /// Blocks per chunk.
 const CHUNK_BLOCKS: usize = 32;
 /// Objects larger than this go to the large-object space.
@@ -77,9 +79,13 @@ impl Bump {
     }
 }
 
-/// Every block of the cage that has been committed.
+/// One agent heap's blocks.
 #[derive(Debug)]
 pub(crate) struct Space {
+    /// The cage offset of each chunk, in the order the heap acquired them.
+    chunks: Vec<u64>,
+    /// Cage chunk index → local chunk index.
+    owned: BTreeMap<u64, usize>,
     blocks: Vec<Meta>,
     /// Holes in recyclable blocks, then fresh blocks.
     small: Bump,
@@ -87,9 +93,8 @@ pub(crate) struct Space {
     overflow: Bump,
     /// Copies made by evacuation, into blocks no cycle is evacuating.
     to_space: Bump,
-    /// The next block to look at for holes, after a cycle.
+    /// The next local block to look at for holes, after a cycle.
     recycle_from: usize,
-    kind: MemoryKind,
 }
 
 /// Why an allocation failed.
@@ -99,80 +104,89 @@ pub enum AllocError {
     OutOfMemory,
 }
 
-impl From<CageError> for AllocError {
-    fn from(_: CageError) -> Self {
-        Self::OutOfMemory
-    }
-}
-
-const fn block_of(off: u64) -> usize {
-    (off / BLOCK) as usize
-}
-
-const fn block_start(b: usize) -> u64 {
-    b as u64 * BLOCK
-}
-
 impl Space {
-    /// An empty space; its blocks are charged to `kind`.
-    pub(crate) fn new(kind: MemoryKind) -> Self {
+    /// An empty space.
+    pub(crate) fn new() -> Self {
         Self {
+            chunks: Vec::new(),
+            owned: BTreeMap::new(),
             blocks: Vec::new(),
             small: Bump::default(),
             overflow: Bump::default(),
             to_space: Bump::default(),
             recycle_from: 0,
-            kind,
         }
     }
 
-    /// Commits the next chunk. Block 0 is never handed out, so no object
-    /// lives at cage offset 0.
-    fn grow(&mut self, cage: &Cage) -> Result<(), AllocError> {
-        let start = self.blocks.len() as u64 * BLOCK;
-        if start.checked_add(CHUNK).is_none_or(|end| end > cage.len()) {
-            return Err(AllocError::OutOfMemory);
-        }
-        cage.commit(start, CHUNK, self.kind)?;
-        for _ in 0..CHUNK_BLOCKS {
-            self.blocks.push(Meta::new());
-        }
-        if start == 0
-            && let Some(first) = self.blocks.first_mut()
-        {
-            first.state = State::LargeTail; // reserved, never free
-        }
-        Ok(())
+    /// The cage offset of local block `b`.
+    fn start(&self, b: usize) -> u64 {
+        let c = self.chunks.get(b / CHUNK_BLOCKS).copied().unwrap_or(0);
+        c + (b % CHUNK_BLOCKS) as u64 * BLOCK
     }
 
-    /// The lowest free block (committing a chunk if none is free), marked
-    /// as holding small objects. `skip` excludes blocks being evacuated.
+    /// The local block holding cage offset `off`, if this heap owns it.
+    fn local(&self, off: u64) -> Option<usize> {
+        let c = self.owned.get(&(off / CHUNK))?;
+        Some(c * CHUNK_BLOCKS + ((off % CHUNK) / BLOCK) as usize)
+    }
+
+    fn meta(&self, off: u64) -> Option<&Meta> {
+        self.blocks.get(self.local(off)?)
+    }
+
+    /// Takes `n` adjacent chunks from the cage and adds their blocks.
+    fn grow(&mut self, cage: &Cage, n: u64) -> Result<usize, AllocError> {
+        let at = cage.acquire(n).map_err(|_| AllocError::OutOfMemory)?;
+        let first = self.blocks.len();
+        for k in 0..n {
+            let off = at + k * CHUNK;
+            self.owned.insert(off / CHUNK, self.chunks.len());
+            self.chunks.push(off);
+            for _ in 0..CHUNK_BLOCKS {
+                self.blocks.push(Meta::new());
+            }
+        }
+        Ok(first)
+    }
+
+    /// Gives every chunk back to the cage: the heap's whole memory is
+    /// returned without a trace (JS spec 6.5, navigation away).
+    pub(crate) fn release(&mut self, cage: &Cage) {
+        for &c in &self.chunks {
+            cage.release(c);
+        }
+        self.chunks.clear();
+        self.owned.clear();
+        self.blocks.clear();
+    }
+
+    /// The lowest free local block (taking a chunk if none is free),
+    /// marked as holding small objects. `skip` excludes blocks being
+    /// evacuated.
     fn fresh_block(&mut self, cage: &Cage, skip: &[bool]) -> Result<usize, AllocError> {
-        loop {
-            let found = self.blocks.iter().enumerate().position(|(i, m)| {
+        let found =
+            self.blocks.iter().enumerate().position(|(i, m)| {
                 m.state == State::Free && !skip.get(i).copied().unwrap_or(false)
             });
-            if let Some(b) = found {
-                if let Some(m) = self.blocks.get_mut(b) {
-                    m.state = State::Small;
-                }
-                return Ok(b);
-            }
-            self.grow(cage)?;
+        let b = match found {
+            Some(b) => b,
+            None => self.grow(cage, 1)?,
+        };
+        if let Some(m) = self.blocks.get_mut(b) {
+            m.state = State::Small;
         }
+        Ok(b)
     }
 
-    /// The next hole (a run of free lines) at or after `self.recycle_from`
-    /// in a block holding small objects.
+    /// The next hole (a run of free lines) at or after `recycle_from` in
+    /// a block holding small objects.
     fn next_hole(&mut self) -> Option<Bump> {
         while let Some(m) = self.blocks.get(self.recycle_from) {
             let b = self.recycle_from;
             self.recycle_from += 1;
-            if m.state != State::Small || b == 0 {
+            if m.state != State::Small {
                 continue;
             }
-            // The longest-first rule is Immix's refinement; the first hole
-            // keeps the order simple and deterministic.
             let mut line = 0usize;
             while line < LINES {
                 if is_set(&m.lines, line) {
@@ -185,21 +199,27 @@ impl Space {
                 }
                 // Revisit this block for its later holes.
                 self.recycle_from = b;
-                let mut hole = Bump {
-                    cursor: block_start(b) + start as u64 * LINE,
-                    limit: block_start(b) + line as u64 * LINE,
-                };
-                // Mark the hole's lines used, so the next search skips it.
+                let base = self.start(b);
                 if let Some(m) = self.blocks.get_mut(b) {
                     for l in start..line {
                         set(&mut m.lines, l);
                     }
                 }
-                hole.cursor = hole.cursor.max(8);
-                return Some(hole);
+                return Some(Bump {
+                    cursor: base + start as u64 * LINE,
+                    limit: base + line as u64 * LINE,
+                });
             }
         }
         None
+    }
+
+    fn whole(&self, b: usize) -> Bump {
+        let s = self.start(b);
+        Bump {
+            cursor: s,
+            limit: s + BLOCK,
+        }
     }
 
     /// Allocates `size` bytes (a multiple of 8) for a new object.
@@ -217,7 +237,7 @@ impl Space {
                 return Ok(self.used(at, size));
             }
             let b = self.fresh_block(cage, &[])?;
-            self.overflow = whole_block(b);
+            self.overflow = self.whole(b);
             let at = self.overflow.take(size).ok_or(AllocError::OutOfMemory)?;
             return Ok(self.used(at, size));
         }
@@ -228,7 +248,7 @@ impl Space {
             }
         }
         let b = self.fresh_block(cage, &[])?;
-        self.small = whole_block(b);
+        self.small = self.whole(b);
         let at = self.small.take(size).ok_or(AllocError::OutOfMemory)?;
         Ok(self.used(at, size))
     }
@@ -244,7 +264,7 @@ impl Space {
             return Ok(self.used(at, size));
         }
         let b = self.fresh_block(cage, evacuating)?;
-        self.to_space = whole_block(b);
+        self.to_space = self.whole(b);
         let at = self.to_space.take(size).ok_or(AllocError::OutOfMemory)?;
         Ok(self.used(at, size))
     }
@@ -255,39 +275,52 @@ impl Space {
         at
     }
 
+    /// A large object: `n` free blocks inside one chunk, or for more than
+    /// a chunk's worth, a fresh run of adjacent chunks.
     fn alloc_large(&mut self, cage: &Cage, size: u64) -> Result<u64, AllocError> {
         let n = usize::try_from(size.div_ceil(BLOCK)).map_err(|_| AllocError::OutOfMemory)?;
-        loop {
-            // The lowest run of n free blocks.
+        let first = if n > CHUNK_BLOCKS {
+            let chunks =
+                u64::try_from(n.div_ceil(CHUNK_BLOCKS)).map_err(|_| AllocError::OutOfMemory)?;
+            self.grow(cage, chunks)?
+        } else {
+            match self.free_run(n) {
+                Some(f) => f,
+                None => self.grow(cage, 1)?,
+            }
+        };
+        for (k, m) in self.blocks.iter_mut().skip(first).take(n).enumerate() {
+            m.state = if k == 0 {
+                State::LargeHead(u32::try_from(n).unwrap_or(u32::MAX))
+            } else {
+                State::LargeTail
+            };
+        }
+        Ok(self.start(first))
+    }
+
+    /// The lowest run of `n` free blocks inside one chunk.
+    fn free_run(&self, n: usize) -> Option<usize> {
+        for (c, chunk) in self.blocks.chunks(CHUNK_BLOCKS).enumerate() {
             let mut run = 0usize;
-            let mut found = None;
-            for (i, m) in self.blocks.iter().enumerate() {
+            for (i, m) in chunk.iter().enumerate() {
                 if m.state == State::Free {
                     run += 1;
                     if run == n {
-                        found = Some(i + 1 - n);
-                        break;
+                        return Some(c * CHUNK_BLOCKS + i + 1 - n);
                     }
                 } else {
                     run = 0;
                 }
             }
-            if let Some(first) = found {
-                for (k, m) in self.blocks.iter_mut().skip(first).take(n).enumerate() {
-                    m.state = if k == 0 {
-                        State::LargeHead(u32::try_from(n).unwrap_or(u32::MAX))
-                    } else {
-                        State::LargeTail
-                    };
-                }
-                return Ok(block_start(first));
-            }
-            self.grow(cage)?;
         }
+        None
     }
 
     fn mark_lines(&mut self, at: u64, size: u64) {
-        let b = block_of(at);
+        let Some(b) = self.local(at) else {
+            return;
+        };
         let Some(m) = self.blocks.get_mut(b) else {
             return;
         };
@@ -301,12 +334,13 @@ impl Space {
         }
     }
 
-    /// Whether `off` can be the start of a live object: inside a block
-    /// that holds small objects (not block 0), or the start of a large
-    /// object. Anything else read from a slot is not followed (H-2).
+    /// Whether `off` can be the start of a live object of this heap:
+    /// inside a block of this heap that holds small objects, or the start
+    /// of one of its large objects. Anything else read from a slot is not
+    /// followed (H-2), including any offset in another heap's chunks.
     pub(crate) fn is_object(&self, off: u64) -> bool {
-        match self.blocks.get(block_of(off)).map(|m| m.state) {
-            Some(State::Small) => block_of(off) != 0,
+        match self.meta(off).map(|m| m.state) {
+            Some(State::Small) => true,
             Some(State::LargeHead(_)) => off.is_multiple_of(BLOCK),
             Some(State::Free | State::LargeTail) | None => false,
         }
@@ -315,18 +349,21 @@ impl Space {
     /// The bytes an object at `off` may occupy at most: to the end of its
     /// block, or of its large-object run.
     pub(crate) fn room(&self, off: u64) -> u64 {
-        match self.blocks.get(block_of(off)).map(|m| m.state) {
+        match self.meta(off).map(|m| m.state) {
             Some(State::LargeHead(n)) => u64::from(n) * BLOCK,
             Some(State::Small) => BLOCK - off % BLOCK,
             _ => 0,
         }
     }
 
-    /// Whether `off` is in a small-object block.
+    /// Whether `off` is in a small-object block of this heap.
     pub(crate) fn is_small(&self, off: u64) -> bool {
-        self.blocks
-            .get(block_of(off))
-            .is_some_and(|m| m.state == State::Small)
+        self.meta(off).is_some_and(|m| m.state == State::Small)
+    }
+
+    /// The local block of `off`, for evacuation's candidate test.
+    pub(crate) fn block_index(&self, off: u64) -> Option<usize> {
+        self.local(off)
     }
 
     // --- Collection -------------------------------------------------------
@@ -344,15 +381,14 @@ impl Space {
         self.to_space = Bump::default();
     }
 
-    /// The blocks to evacuate: every small-object block when `all`, else
-    /// the fragmented ones (few live lines at the last canonical cycle).
+    /// The local blocks to evacuate: every small-object block when `all`,
+    /// else the fragmented ones (few live lines at the last canonical
+    /// cycle).
     pub(crate) fn candidates(&self, all: bool) -> Vec<bool> {
         self.blocks
             .iter()
-            .enumerate()
-            .map(|(i, m)| {
-                i != 0
-                    && m.state == State::Small
+            .map(|m| {
+                m.state == State::Small
                     && (all || (m.live_lines > 0 && usize::from(m.live_lines) <= LINES / 4))
             })
             .collect()
@@ -361,8 +397,10 @@ impl Space {
     /// Marks the object at `off` (of `size` bytes); returns whether it was
     /// already marked.
     pub(crate) fn mark(&mut self, off: u64, size: u64) -> bool {
-        let b = block_of(off);
         let g = ((off % BLOCK) / 8) as usize;
+        let Some(b) = self.local(off) else {
+            return true;
+        };
         let Some(m) = self.blocks.get_mut(b) else {
             return true;
         };
@@ -379,9 +417,7 @@ impl Space {
     /// Whether the object at `off` is marked.
     pub(crate) fn is_marked(&self, off: u64) -> bool {
         let g = ((off % BLOCK) / 8) as usize;
-        self.blocks
-            .get(block_of(off))
-            .is_some_and(|m| is_set(&m.marks[..], g))
+        self.meta(off).is_some_and(|m| is_set(&m.marks[..], g))
     }
 
     /// Frees what the cycle left unmarked, and the evacuated blocks.
@@ -390,7 +426,8 @@ impl Space {
     /// `poison`, so a stale reference reads garbage, never old data.
     pub(crate) fn sweep(&mut self, cage: &Cage, evacuated: &[bool], canonical: bool, poison: u64) {
         let n = self.blocks.len();
-        for b in 1..n {
+        for b in 0..n {
+            let base = self.start(b);
             let Some(m) = self.blocks.get(b) else {
                 continue;
             };
@@ -398,6 +435,7 @@ impl Space {
                 State::Small => {
                     let live = count(&m.lines);
                     let gone = evacuated.get(b).copied().unwrap_or(false) || live == 0;
+                    let lines = m.lines;
                     if let Some(m) = self.blocks.get_mut(b) {
                         if canonical {
                             m.live_lines = u16::try_from(live).unwrap_or(u16::MAX);
@@ -409,13 +447,11 @@ impl Space {
                         }
                     }
                     if gone {
-                        cage.fill(block_start(b), BLOCK, poison);
+                        cage.fill(base, BLOCK, poison);
                     } else {
-                        // Poison the free lines too.
                         for l in 0..LINES {
-                            let used = self.blocks.get(b).is_some_and(|m| is_set(&m.lines, l));
-                            if !used {
-                                cage.fill(block_start(b) + l as u64 * LINE, LINE, poison);
+                            if !is_set(&lines, l) {
+                                cage.fill(base + l as u64 * LINE, LINE, poison);
                             }
                         }
                     }
@@ -428,7 +464,9 @@ impl Space {
                                 m.state = State::Free;
                             }
                         }
-                        cage.fill(block_start(b), k as u64 * BLOCK, poison);
+                        for j in b..(b + k).min(n) {
+                            cage.fill(self.start(j), BLOCK, poison);
+                        }
                     }
                 }
                 State::Free | State::LargeTail => {}
@@ -440,23 +478,14 @@ impl Space {
         self.to_space = Bump::default();
     }
 
-    /// Blocks committed, and blocks holding objects.
+    /// Blocks owned, and blocks holding objects.
     pub(crate) fn census(&self) -> (usize, usize) {
         let used = self
             .blocks
             .iter()
-            .skip(1)
             .filter(|m| m.state != State::Free)
             .count();
         (self.blocks.len(), used)
-    }
-}
-
-fn whole_block(b: usize) -> Bump {
-    let start = block_start(b);
-    Bump {
-        cursor: start.max(8),
-        limit: start + BLOCK,
     }
 }
 
