@@ -231,10 +231,15 @@ impl<'h, 'o> Agent<'h, 'o> {
         m.clear_kept_objects();
     }
 
-    /// A decision point outside a unit (a job's entry or end): the
-    /// progress counter advances and a requested cycle runs.
-    fn decision_point(&mut self, m: &mut Mutator<'h>, host: &mut dyn Host<'h>) {
-        m.advance(1);
+    /// A decision point outside a unit (a job's entry or end): a
+    /// requested cycle runs, and at an entry the progress counter advances.
+    fn decision_point(&mut self, m: &mut Mutator<'h>, host: &mut dyn Host<'h>, entry: bool) {
+        // R0-B11: the progress counter counts LoopBacks and logical
+        // function and job entries; a job's end is a decision point but
+        // does not count.
+        if entry {
+            m.advance(1);
+        }
         if self.rt.pacer.decide(m) {
             self.rt.on_canonical_cycle(m, host);
         }
@@ -253,7 +258,7 @@ impl<'h, 'o> Agent<'h, 'o> {
         this: Option<Handle>,
         args: &[Handle],
     ) -> Result<Handle, JobError> {
-        self.decision_point(m, host);
+        self.decision_point(m, host, true);
         let r = m.scope(|m, s| -> Result<Handle, JobError> {
             let realm = self.realm.reroot(m, s);
             let consts = self.rt.materialize(m, s, unit)?;
@@ -297,7 +302,7 @@ impl<'h, 'o> Agent<'h, 'o> {
                 Completion::BadBytecode(pc) => Err(JobError::BadBytecode(pc)),
             }
         });
-        self.decision_point(m, host);
+        self.decision_point(m, host, false);
         r
     }
 
@@ -315,9 +320,9 @@ impl<'h, 'o> Agent<'h, 'o> {
         host: &mut dyn Host<'h>,
         job: u64,
     ) -> Result<u32, JobError> {
-        self.decision_point(m, host);
+        self.decision_point(m, host, true);
         let r = m.scope(|m, s| self.rt.cleanup(m, s, job));
-        self.decision_point(m, host);
+        self.decision_point(m, host, false);
         r
     }
 }
