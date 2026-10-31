@@ -8,8 +8,12 @@ description = "Izcal's simulation binaries (tier T): the only package besides hg
 
 [dependencies]
 hg-browser = { path = "../hg-browser" }
+hg-heap = { path = "../hg-heap" }
 hg-ipc = { path = "../hg-ipc" }
 hg-ipc-gen = { path = "../hg-ipc-gen" }
+hg-js-bytecode = { path = "../hg-js-bytecode" }
+hg-js-ops = { path = "../hg-js-ops" }
+hg-js-runtime = { path = "../hg-js-runtime" }
 hg-net-service = { path = "../hg-net-service" }
 hg-renderer = { path = "../hg-renderer" }
 hg-substrate = { path = "../hg-substrate" }
@@ -28,6 +32,10 @@ path = "src/bin/dst-smoke.rs"
 [[bin]]
 name = "dst-sim"
 path = "src/bin/dst-sim.rs"
+
+[[bin]]
+name = "js-probe"
+path = "src/bin/js-probe.rs"
 
 [[test]]
 name = "it"
