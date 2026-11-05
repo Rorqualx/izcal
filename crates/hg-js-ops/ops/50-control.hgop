@@ -1,0 +1,56 @@
+// Control: opcodes 0x26-0x2C. Only LoopBack goes backward, so every cycle
+// passes its interrupt check, which is also a decision-applicable point
+// (bytecode note 4.7 and 4.10).
+
+op Jump(target: fwd) acc none
+  effects { }
+  anchor ecma262 "sec-if-statement-runtime-semantics-evaluation"
+{
+  jump target;
+}
+
+op LoopBack(target: back, fb: slot<loop>) acc none
+  effects { interrupt }
+  anchor ecma262 "sec-loopcontinues"
+{
+  interrupt.poll();                      // a safepoint; a requested canonical cycle runs here (R0-B11)
+  jump target;
+}
+
+op BranchTrue(target: fwd) acc in
+  effects { }
+  anchor ecma262 "sec-if-statement-runtime-semantics-evaluation"
+{
+  if acc == True { jump target; }
+  next;
+}
+
+op BranchFalse(target: fwd) acc in
+  effects { }
+  anchor ecma262 "sec-if-statement-runtime-semantics-evaluation"
+{
+  if acc == False { jump target; }
+  next;
+}
+
+op BranchTruthy(target: fwd) acc in
+  effects { }
+  anchor ecma262 "sec-toboolean"
+{
+  if ToBooleanValue(acc) { jump target; }
+  next;
+}
+
+op BranchFalsy(target: fwd) acc in
+  effects { }
+  anchor ecma262 "sec-toboolean"
+{
+  if ToBooleanValue(acc) { next; } else { jump target; }
+}
+
+op Return() acc in
+  effects { }
+  anchor ecma262 "sec-return-statement-runtime-semantics-evaluation"
+{
+  return;
+}

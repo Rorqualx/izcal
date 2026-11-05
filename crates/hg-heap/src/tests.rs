@@ -306,6 +306,71 @@ fn corrupted_slots_and_headers_stay_inside_the_cage() {
     }
 }
 
+#[test]
+fn value_roots_hold_small_integers_and_follow_moved_references() {
+    for stress in [Stress::None, Stress::MoveOnAlloc] {
+        let (mut h, _) = heap(stress, 1 << 40);
+        h.enter(|m| {
+            m.scope(|m, s| {
+                let small = s.root_value(m, Value::Small(-7));
+                let cell = m.alloc::<Cell>(s, 0).unwrap();
+                cell.get(m).set_raw(m, Cell::N, 99);
+                let v = Value::Ref(cell.get(m).erase());
+                let r = s.root_value(m, v);
+                let _ = m.alloc::<Cell>(s, 0).unwrap(); // moves everything under stress
+                assert_eq!(small.get_value(m), Value::Small(-7));
+                let Value::Ref(g) = r.get_value(m) else {
+                    panic!("a reference stays a reference")
+                };
+                assert_eq!(g.cast::<Cell>(m).unwrap().raw(m, Cell::N), 99);
+                assert_eq!(g, cell.get(m).erase());
+                r.set_value(m, Value::Small(3));
+                assert_eq!(r.get_value(m), Value::Small(3));
+            });
+        });
+    }
+}
+
+#[test]
+fn canonical_cycles_report_the_holders_whose_weak_slots_they_cleared() {
+    for stress in [Stress::None, Stress::MoveOnAlloc, Stress::MoveAtSafepoint] {
+        let (mut h, _) = heap(stress, 1 << 40);
+        h.enter(|m| {
+            m.scope(|m, s| {
+                let a = m.alloc::<WeakCell>(s, 0).unwrap();
+                let b = m.alloc::<WeakCell>(s, 0).unwrap();
+                let c = m.alloc::<WeakCell>(s, 0).unwrap();
+                let alive = m.alloc::<Cell>(s, 0).unwrap();
+                m.scope(|m, s2| {
+                    let d1 = m.alloc::<Cell>(s2, 0).unwrap();
+                    let d2 = m.alloc::<Cell>(s2, 0).unwrap();
+                    a.get(m)
+                        .set_weak(m, WeakCell::TARGET, Some(d1.get(m).erase()));
+                    b.get(m)
+                        .set_weak(m, WeakCell::TARGET, Some(alive.get(m).erase()));
+                    c.get(m)
+                        .set_weak(m, WeakCell::TARGET, Some(d2.get(m).erase()));
+                });
+                // Nothing is reported before a canonical cycle, nor by a
+                // stress cycle.
+                m.safepoint();
+                assert!(m.take_cleared(s).is_empty());
+                m.collect();
+                // The report survives a moving cycle before it is taken.
+                let _ = m.alloc::<Cell>(s, 0).unwrap();
+                m.safepoint();
+                let got = m.take_cleared(s);
+                assert_eq!(got.len(), 2, "{stress:?}");
+                assert_eq!(got[0].get(m), a.get(m).erase());
+                assert_eq!(got[1].get(m), c.get(m).erase());
+                assert!(m.take_cleared(s).is_empty());
+                m.collect();
+                assert!(m.take_cleared(s).is_empty());
+            });
+        });
+    }
+}
+
 /// JS-D17: several agent heaps share the process's cage, each owning its
 /// own chunks. Interleaved work in two heaps gives each the digest it has
 /// alone; a slot pointing into the other heap's chunks is never followed;

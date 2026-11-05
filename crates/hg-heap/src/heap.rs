@@ -84,6 +84,10 @@ pub(crate) struct State {
     roots: RefCell<Vec<Slot>>,
     /// The agent's [[KeptAlive]] list (ECMA-262 9.10).
     kept: RefCell<Vec<Slot>>,
+    /// Objects that had a weak slot cleared by a canonical cycle and that
+    /// the embedder has not taken yet ([`Mutator::take_cleared`]). Traced
+    /// as roots until taken, in the order the cycle cleared them.
+    cleared: RefCell<Vec<Slot>>,
     /// Objects whose layout has weak slots, to clear after a cycle.
     weak_holders: Vec<u64>,
     debt: u64,
@@ -239,6 +243,7 @@ impl Heap {
                 type_index: HashMap::default(),
                 roots: RefCell::new(Vec::new()),
                 kept: RefCell::new(Vec::new()),
+                cleared: RefCell::new(Vec::new()),
                 weak_holders: Vec::new(),
                 debt: 0,
                 config,
@@ -371,6 +376,32 @@ impl<'h> Mutator<'h> {
         self.state.kept.borrow_mut().clear();
     }
 
+    /// Takes the objects whose weak slots canonical cycles have cleared
+    /// since the last call, rooted in `s`, in the order the cycles cleared
+    /// them (allocation order within a cycle). An object appears once per
+    /// cycle that cleared at least one of its weak slots. The engine uses
+    /// it to find the finalization cells whose targets died (ECMA-262
+    /// [Execution](https://tc39.es/ecma262/#sec-weakref-execution)); until
+    /// taken, the objects are roots, so a cell cannot be lost between the
+    /// cycle and the embedder's look. Not a GC point.
+    pub fn take_cleared<'s>(&self, s: &Scope<'h, 's>) -> Vec<Root<'h, 's, Any>> {
+        let _ = s;
+        let taken = core::mem::take(&mut *self.state.cleared.borrow_mut());
+        let mut roots = self.state.roots.borrow_mut();
+        taken
+            .into_iter()
+            .map(|slot| {
+                roots.push(slot);
+                Root {
+                    index: roots.len() - 1,
+                    _h: PhantomData,
+                    _s: PhantomData,
+                    _t: PhantomData,
+                }
+            })
+            .collect()
+    }
+
     /// The heap's counters, with the block counts as they are now.
     pub fn stats(&self) -> HeapStats {
         let (blocks, used) = self.state.space.census();
@@ -420,6 +451,7 @@ impl<'h> Mutator<'h> {
             .borrow()
             .iter()
             .chain(st.kept.borrow().iter())
+            .chain(st.cleared.borrow().iter())
             .copied()
             .collect();
         h.write_u64(roots.len() as u64);
@@ -469,8 +501,19 @@ impl<'h> Mutator<'h> {
 impl<'h, 's> Scope<'h, 's> {
     /// Roots `gc` in this scope.
     pub fn root<T: Referent>(&self, m: &Mutator<'h>, gc: Gc<'h, '_, T>) -> Root<'h, 's, T> {
+        self.root_slot(m, gc.slot)
+    }
+
+    /// Roots the JS value `v` in this scope: a reference is traced and
+    /// updated like any root; a small integer is kept as it is. Read it
+    /// back with [`Root::get_value`].
+    pub fn root_value(&self, m: &Mutator<'h>, v: Value<'h, '_>) -> Root<'h, 's, Any> {
+        self.root_slot(m, value_slot(v))
+    }
+
+    fn root_slot<T: Referent>(&self, m: &Mutator<'h>, slot: Slot) -> Root<'h, 's, T> {
         let mut roots = m.state.roots.borrow_mut();
-        roots.push(gc.slot);
+        roots.push(slot);
         Root {
             index: roots.len() - 1,
             _h: PhantomData,
@@ -501,6 +544,27 @@ impl<'h, T: Referent> Root<'h, '_, T> {
     pub fn set(&self, m: &Mutator<'h>, gc: Gc<'h, '_, T>) {
         if let Some(s) = m.state.roots.borrow_mut().get_mut(self.index) {
             *s = gc.slot;
+        }
+    }
+}
+
+impl<'h> Root<'h, '_, Any> {
+    /// The rooted JS value, for as long as the mutator is borrowed.
+    pub fn get_value<'m>(&self, m: &'m Mutator<'h>) -> Value<'h, 'm> {
+        let slot = m
+            .state
+            .roots
+            .borrow()
+            .get(self.index)
+            .copied()
+            .unwrap_or(Slot::ZERO);
+        slot_value(slot)
+    }
+
+    /// Makes this root hold the JS value `v` instead.
+    pub fn set_value(&self, m: &Mutator<'h>, v: Value<'h, '_>) {
+        if let Some(s) = m.state.roots.borrow_mut().get_mut(self.index) {
+            *s = value_slot(v);
         }
     }
 }
@@ -723,11 +787,17 @@ impl State {
         // Roots: the scopes' slots and the kept-alive list.
         let mut roots = core::mem::take(self.roots.get_mut());
         let mut kept = core::mem::take(self.kept.get_mut());
-        for s in roots.iter_mut().chain(kept.iter_mut()) {
+        let mut pending = core::mem::take(self.cleared.get_mut());
+        for s in roots
+            .iter_mut()
+            .chain(kept.iter_mut())
+            .chain(pending.iter_mut())
+        {
             *s = self.visit(*s, &evacuating, &mut forward, &mut work);
         }
         *self.roots.get_mut() = roots;
         *self.kept.get_mut() = kept;
+        *self.cleared.get_mut() = pending;
 
         // Trace.
         while let Some(off) = work.pop() {
@@ -777,6 +847,7 @@ impl State {
             let Some((layout, _)) = self.shape(now) else {
                 continue;
             };
+            let before = cleared;
             for i in layout.traced..layout.traced.saturating_add(layout.weak) {
                 let at = now + Layout::slot_offset(i);
                 let s = Slot::from_raw(self.cage.load32(at));
@@ -793,6 +864,11 @@ impl State {
                         cleared += 1;
                     }
                 }
+            }
+            if cleared != before
+                && let Some(slot) = Slot::reference(now)
+            {
+                self.cleared.get_mut().push(slot);
             }
         }
         self.weak_holders = live_holders;
