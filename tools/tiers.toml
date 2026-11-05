@@ -134,7 +134,7 @@ why = "JS spec 6.3 and G16: the operation generator, a build-time tool that read
 [crates.hg-js-number]
 tier = "R"
 layer = "L2e"
-why = "JS spec 6.15: Number's own conversions (Number::toString's shortest round trip, StringToNumber, ToInt32, exponentiation) for the JS engine; built here, no library (M-1 part 3)"
+why = "JS spec 6.13 (Numbers): Number::toString's shortest round trip, StringToNumber and ToInt32/ToUint32, its own crate so hg-js-bytecode can read number literals without depending on hg-js-runtime (owner decision, 4 November 2026; 6.15's table gains the row in the JS-M0 spec amendments); its exponentiation is interim until hg-math, which 6.9 makes the one implementation; built here, no library (HGBA-2 M-1 part 1)"
 
 [crates.hg-js-bytecode]
 tier = "R"
