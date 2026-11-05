@@ -109,6 +109,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-js-oracle"
+version = "0.0.0"
+dependencies = [
+ "hg-heap",
+ "hg-js-bytecode",
+ "hg-js-ops",
+ "hg-js-runtime",
+ "hg-substrate",
+ "hg-substrate-os",
+]
+
+[[package]]
 name = "hg-js-runtime"
 version = "0.0.0"
 dependencies = [
@@ -216,6 +228,10 @@ dependencies = [
  "hg-substrate-os",
  "hg-types",
 ]
+
+[[package]]
+name = "hg-test262"
+version = "0.0.0"
 
 [[package]]
 name = "hg-types"
