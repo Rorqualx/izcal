@@ -1046,6 +1046,41 @@ pub(crate) fn read_blocking(h: &OwnedHandle, cap: usize, timeout_ms: u32) -> io:
     Ok(buf)
 }
 
+/// Tests only: pins the calling thread to the processor it is running on
+/// and returns its previous affinity mask, for [`unpin`]. Windows hands a
+/// freed handle value back to the next allocation made on the processor
+/// that freed it, not to one made on another: a probe on rig253 (5 Nov
+/// 2026, 2,000 trials each) got the value back on the first allocation
+/// every time on one processor, and missed it within 256 allocations in
+/// 58% of trials when the close and the allocations ran on two. A test
+/// that frees a value to have it reused frees and allocates pinned.
+///
+/// # Errors
+/// The OS error.
+#[cfg(test)]
+pub(crate) fn pin_to_this_processor() -> io::Result<usize> {
+    use windows_sys::Win32::System::Threading::{GetCurrentProcessorNumber, SetThreadAffinityMask};
+    // SAFETY: no arguments; reads the calling thread's processor.
+    let cpu = unsafe { GetCurrentProcessorNumber() };
+    // SAFETY: the current-thread pseudo-handle; a mask of one processor
+    // of the thread's own group (the number is within the group, < 64).
+    let old = unsafe { SetThreadAffinityMask(current_thread_pseudo(), 1usize << cpu) };
+    if old == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(old)
+    }
+}
+
+/// Tests only: gives the calling thread back the affinity mask
+/// [`pin_to_this_processor`] returned.
+#[cfg(test)]
+pub(crate) fn unpin(old: usize) {
+    use windows_sys::Win32::System::Threading::SetThreadAffinityMask;
+    // SAFETY: the current-thread pseudo-handle; a mask the thread had.
+    unsafe { SetThreadAffinityMask(current_thread_pseudo(), old) };
+}
+
 /// What a read left pending by a former holder got (W3 tests): the
 /// `OVERLAPPED` status (0 for success, `STATUS_PENDING` = 0x103 if it
 /// never completed) and the bytes read.
