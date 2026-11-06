@@ -1,0 +1,36 @@
+[package]
+name = "hg-opgen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's operation generator (tier T, JS spec 6.3 and 6.15, G16): parses and checks the .hgop operation descriptions and writes the opcode table, the reference interpreter, the operation facts and the anchor index (design review R0-O1 to R0-O10)"
+
+[[bin]]
+name = "hg-opgen"
+path = "src/main.rs"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+# Tier T: the base table (coding standard A.1) with A.2's tier T changes.
+# unsafe_code is forbid, not deny: the crate is not in the inventory (G5).
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"

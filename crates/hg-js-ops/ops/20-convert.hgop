@@ -1,0 +1,86 @@
+// Conversions and unary logic: opcodes 0x0A-0x0F.
+
+op ToBoolean() acc inout
+  effects { }
+  anchor ecma262 "sec-toboolean"
+{
+  acc = bool(ToBooleanValue(acc));
+  next;
+}
+
+op ToNumber(fb: slot<unary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-unary-plus-operator-runtime-semantics-evaluation"
+{
+  match acc {
+    Num(_) => path number speculate fb.number anchor ecma262 "sec-tonumber" {
+      next;                              // a Number converts to itself
+    }
+    _ => path generic anchor ecma262 "sec-tonumber" {
+      acc = rt_to_number(acc);
+      next;
+    }
+  }
+}
+
+op ToNumeric(fb: slot<unary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-tonumeric"
+{
+  match acc {
+    Num(_) => path number speculate fb.number { next; }
+    Ref<BigInt>(_) => path bigint { next; }
+    _ => path generic {
+      acc = rt_to_numeric(acc);
+      next;
+    }
+  }
+}
+
+op ToString() acc inout after_call result
+  effects { alloc(string_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-tostring"
+{
+  match acc {
+    Ref<String>(_) => path string { next; }
+    Num(n) => path number anchor ecma262 "sec-numeric-types-number-tostring" {
+      acc = rt_number_to_string(n);
+      next;
+    }
+    _ => path generic {
+      acc = rt_to_string(acc);
+      next;
+    }
+  }
+}
+
+op Not() acc inout
+  effects { }
+  anchor ecma262 "sec-logical-not-operator-runtime-semantics-evaluation"
+{
+  acc = bool(!ToBooleanValue(acc));
+  next;
+}
+
+op TypeOf() acc inout
+  effects { }
+  anchor ecma262 "sec-typeof-operator-runtime-semantics-evaluation"
+{
+  let tag: i32 = match acc {
+    Undefined => TYPEOF_UNDEFINED,
+    Null => TYPEOF_OBJECT,
+    True | False => TYPEOF_BOOLEAN,
+    Num(_) => TYPEOF_NUMBER,
+    Ref<String>(_) => TYPEOF_STRING,
+    Ref<Symbol>(_) => TYPEOF_SYMBOL,
+    Ref<BigInt>(_) => TYPEOF_BIGINT,
+    Ref<Object>(o) if Object.is_htmldda(o) => path htmldda
+        anchor ecma262 "sec-IsHTMLDDA-internal-slot-typeof" {
+      TYPEOF_UNDEFINED
+    }
+    Ref<Object>(o) if Object.is_callable(o) => TYPEOF_FUNCTION,
+    Ref<Object>(_) => TYPEOF_OBJECT,
+  };
+  acc = rt_typeof_name(tag);             // a static string: no allocation
+  next;
+}
