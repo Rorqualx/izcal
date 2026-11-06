@@ -65,7 +65,8 @@ fn workload(seed: u64, crashes: bool) -> World {
                     target,
                     Task::new(move || {
                         let r = s2.mem.reserve(64 * 1024, MemoryKind::PerAgent).unwrap();
-                        let _ = s2.mem.commit(&r, 8 * 1024);
+                        let page = s2.mem.page_size();
+                        let _ = s2.mem.commit(&r, 0, page, MemoryKind::PerAgent);
                         s2.mem.release(r);
                         let guard = inbox.lock().unwrap();
                         if let Some((rs, seq)) = guard.as_ref() {
@@ -222,8 +223,9 @@ fn a_restart_runs_the_entry_again_with_a_fresh_substrate_and_frees_memory() {
     let pid = w.spawn("p", Arc::clone(&back) as Arc<dyn Memory>, true, move |s| {
         *count.lock().unwrap() += 1;
         let r = s.mem.reserve(1 << 20, MemoryKind::ProcessPart).unwrap();
-        s.mem.commit(&r, 4096).unwrap();
-        assert_eq!(s.mem.stats().committed, 4096);
+        let page = s.mem.page_size();
+        s.mem.commit(&r, 0, page, MemoryKind::ProcessPart).unwrap();
+        assert_eq!(s.mem.stats().committed, page as u64);
         // The region stays reserved and committed until the crash.
         let _held = r;
     });
@@ -241,17 +243,29 @@ fn a_restart_runs_the_entry_again_with_a_fresh_substrate_and_frees_memory() {
 
 #[test]
 fn the_budget_and_commit_faults_refuse_commits() {
+    // The simulator's page is its own (4 KiB) or the host's, if larger.
+    let page = OsMemory::new().page_size().max(4096);
     let mut config = SimConfig::new(5);
-    config.memory_budget = Some(8192);
+    config.memory_budget = Some(2 * page as u64);
     let w = World::new(config);
-    w.spawn("p", backing(), false, |s| {
+    w.spawn("p", backing(), false, move |s| {
+        assert_eq!(s.mem.page_size(), page);
         let r = s.mem.reserve(1 << 20, MemoryKind::PerAgent).unwrap();
-        s.mem.commit(&r, 8192).unwrap();
-        assert_eq!(s.mem.commit(&r, 8193), Err(MemoryError::CommitFailed));
-        s.mem.decommit(&r, 4096);
-        assert_eq!(s.mem.stats().committed, 4096);
+        s.mem.commit(&r, 0, 2 * page, MemoryKind::PerAgent).unwrap();
+        assert_eq!(
+            s.mem.commit(&r, 2 * page, page, MemoryKind::PerAgent),
+            Err(MemoryError::CommitFailed)
+        );
+        assert_eq!(
+            s.mem.commit(&r, 1, page, MemoryKind::PerAgent),
+            Err(MemoryError::Misaligned)
+        );
+        assert_eq!(s.mem.decommit(&r, page, page), Ok(()));
+        assert_eq!(s.mem.stats().committed, page as u64);
+        assert_eq!(s.mem.stats().committed_by_kind, [0, page as u64, 0]);
         s.mem.release(r);
         assert_eq!(s.mem.stats().reserved, 0);
+        assert_eq!(s.mem.stats().committed, 0);
     });
     w.run(LIMITS);
 
@@ -260,7 +274,11 @@ fn the_budget_and_commit_faults_refuse_commits() {
     let w = World::new(config);
     w.spawn("p", backing(), false, |s| {
         let r = s.mem.reserve(1 << 16, MemoryKind::PerAgent).unwrap();
-        assert_eq!(s.mem.commit(&r, 1), Err(MemoryError::CommitFailed));
+        let page = s.mem.page_size();
+        assert_eq!(
+            s.mem.commit(&r, 0, page, MemoryKind::PerAgent),
+            Err(MemoryError::CommitFailed)
+        );
         s.mem.release(r);
     });
     assert_eq!(w.run(LIMITS), RunEnd::Idle);
