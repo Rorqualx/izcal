@@ -22,12 +22,17 @@ impl DecisionLog for Log {
 const CAGE: u64 = 4 << 20;
 
 fn heap(stress: Stress, trigger: u64) -> (Heap, Arc<Log>) {
+    heap_in(CAGE, stress, trigger)
+}
+
+/// A heap in a cage of `cage_bytes`.
+fn heap_in(cage_bytes: u64, stress: Stress, trigger: u64) -> (Heap, Arc<Log>) {
     let log = Arc::new(Log::default());
     let h = Heap::new(
         Arc::new(TestMemory::default()),
         Arc::clone(&log) as Arc<dyn DecisionLog>,
         HeapConfig {
-            cage_bytes: CAGE,
+            cage_bytes,
             trigger,
             stress,
             agent: 7,
@@ -487,10 +492,11 @@ fn an_outer_root_made_in_an_inner_scope_outlives_the_inner_scope() {
 
 /// A moving cycle with no room left for the copies keeps the blocks it
 /// could not empty: every live object reads back what it held. They used
-/// to be freed and poisoned with the evacuated blocks.
+/// to be freed and poisoned with the evacuated blocks. The cage is the
+/// smallest that holds a heap (two chunks), so Miri fills it quickly.
 #[test]
 fn an_evacuation_that_runs_out_of_room_keeps_its_live_objects() {
-    let (mut h, _) = heap(Stress::MoveAtSafepoint, 1 << 40);
+    let (mut h, _) = heap_in(2 * crate::cage::CHUNK, Stress::MoveAtSafepoint, 1 << 40);
     h.enter(|m| {
         m.scope(|m, s| {
             let mut kept = Vec::new();
@@ -501,7 +507,7 @@ fn an_evacuation_that_runs_out_of_room_keeps_its_live_objects() {
                 a.get(m).set_tail(m, 0, Value::Small(i));
                 kept.push((i, a));
             }
-            assert!(kept.len() > 100, "the cage filled: {}", kept.len());
+            assert!(kept.len() > 20, "the cage filled: {}", kept.len());
             m.safepoint();
             for (i, a) in &kept {
                 assert_eq!(a.get(m).tail(m, 0), Some(Value::Small(*i)), "array {i}");
