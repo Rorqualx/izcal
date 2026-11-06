@@ -17,6 +17,7 @@
 //! milestones that first use them (Stage 1 design 3.1 lists all of them).
 
 mod clock;
+pub mod decision;
 mod entropy;
 mod executor;
 pub mod install;
@@ -29,12 +30,13 @@ pub mod prng;
 use std::sync::Arc;
 
 pub use clock::Clock;
+pub use decision::{DecisionKind, DecisionLog, NotRecording, Position};
 pub use entropy::{CryptoRandom, Entropy, EntropyError, EntropyPurpose, RandomStream};
 pub use executor::{Executor, PhasePool, PostError, Priority, SequenceHandle, Task};
 pub use install::InstallDevice;
 pub use ipc::Ipc;
 pub use launch::Launcher;
-pub use memory::{Memory, MemoryError, MemoryKind, MemoryStats, Region};
+pub use memory::{Access, Memory, MemoryError, MemoryKind, MemoryStats, Region, check_range};
 pub use os::OsPort;
 
 /// The substrate a process runs on: one instance per (real or simulated)
@@ -56,6 +58,8 @@ pub struct Substrate {
     pub os: Option<Arc<dyn OsPort>>,
     /// Starts child processes (M1 phase E): `Some` in the broker only.
     pub launcher: Option<Arc<dyn Launcher>>,
+    /// The process's decision-point log (JS-D15).
+    pub decisions: Arc<dyn DecisionLog>,
 }
 
 #[cfg(test)]
@@ -139,11 +143,36 @@ mod tests {
         fn reserve(&self, _bytes: usize, _kind: MemoryKind) -> Result<Region, MemoryError> {
             Err(MemoryError::OutOfAddressSpace)
         }
-        fn commit(&self, _region: &Region, _bytes: usize) -> Result<(), MemoryError> {
+        fn page_size(&self) -> usize {
+            4096
+        }
+        fn commit(
+            &self,
+            _region: &Region,
+            _offset: usize,
+            _len: usize,
+            _kind: MemoryKind,
+        ) -> Result<(), MemoryError> {
             Err(MemoryError::CommitFailed)
         }
-        fn decommit(&self, _region: &Region, _bytes: usize) {}
-        fn purge(&self, _region: &Region, _bytes: usize) {}
+        fn decommit(
+            &self,
+            _region: &Region,
+            _offset: usize,
+            _len: usize,
+        ) -> Result<(), MemoryError> {
+            Err(MemoryError::OutOfRange)
+        }
+        fn purge(&self, _region: &Region, _offset: usize, _len: usize) {}
+        fn protect(
+            &self,
+            _region: &Region,
+            _offset: usize,
+            _len: usize,
+            _access: Access,
+        ) -> Result<(), MemoryError> {
+            Err(MemoryError::NotCommitted)
+        }
         fn release(&self, _region: Region) {}
         fn stats(&self) -> MemoryStats {
             MemoryStats::default()
@@ -198,6 +227,7 @@ mod tests {
             ipc: Arc::new(NoIpc),
             os: None,
             launcher: None,
+            decisions: Arc::new(NotRecording),
         }
     }
 

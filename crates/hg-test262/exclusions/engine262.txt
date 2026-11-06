@@ -1,0 +1,32 @@
+# What engine262 (the pinned commit, tools/test-data.toml) does not
+# implement, so hg-test262 reports these tests as excluded rather than
+# failed. Each entry was probed black-box through engine262's CLI on
+# 31 Oct 2026 (measurements/milestones/js-m0/test262-engine262.md);
+# none comes from reading engine262's code.
+#
+# `feature <tag>` matches test262's `features:`; `path <prefix>` matches
+# the path under test/.
+
+# No ECMA-402: `typeof Intl` is "undefined". INTERPRETING.md,
+# "Implementations without ECMA-402": skip these folders.
+path intl402/
+path staging/intl402/
+
+# No `SharedArrayBuffer` and no `Atomics` global.
+feature SharedArrayBuffer
+feature Atomics
+
+# Annex B is mostly absent: no `escape`, `unescape`, `String.prototype.substr`
+# or `Date.prototype.getYear`, no HTML-like comments, no Annex B block
+# function hoisting (`{ function f(){} } typeof f` is "undefined"). Run in
+# full, 161 of the 1,051 annexB files that ran pass.
+path annexB/
+
+# No proper tail calls: the strict-mode tail-call tests exhaust Node's own
+# stack (34 of the 35 tagged runs crashed the host; 1 passed).
+feature tail-call-optimization
+
+# The CLI host resolves no `<module source>` specifier ("Cannot load module
+# <module source>"); INTERPRETING.md, Modules, guards those tests with this
+# feature.
+feature source-phase-imports-module-source
