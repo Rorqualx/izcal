@@ -1,0 +1,345 @@
+// Arithmetic and bitwise operators: opcodes 0x10-0x1F. The left operand
+// is in a register, the right in the accumulator (bytecode note 4.4).
+
+op Add(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc(string_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];                      // frame-backed until reg[lhs] is written
+  let y = acc;                           // frame-backed until acc is written
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi
+        anchor ecma262 "sec-numeric-types-number-add" {
+      acc = number(f64(i64(a) + i64(b)));   // |a|, |b| <= 2^30: the i64 sum cannot overflow
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number
+        anchor ecma262 "sec-numeric-types-number-add" {
+      acc = number(f64.add(a, b));       // a heap number if the sum is not a small integer
+      next;
+    }
+    (Ref<String>(a), Ref<String>(b)) => path strings speculate fb.string
+        anchor ecma262 "sec-applystringornumericbinaryoperator" step "1.c" {
+      acc = StringConcat(a, b);
+      next;
+    }
+    _ => path generic {                  // ToPrimitive, ToString, ToNumeric, BigInt, mixed types
+      acc = rt_add(x, y);
+      next;
+    }
+  }
+}
+
+op Sub(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-subtract" {
+      acc = number(f64(i64(a) - i64(b)));
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-subtract" {
+      acc = number(f64.sub(a, b));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_SUB, x, y);
+      next;
+    }
+  }
+}
+
+op Mul(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-multiply" {
+      acc = number(f64.mul(f64(a), f64(b)));
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-multiply" {
+      acc = number(f64.mul(a, b));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_MUL, x, y);
+      next;
+    }
+  }
+}
+
+op Div(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-divide" {
+      acc = number(f64.div(f64(a), f64(b)));
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-divide" {
+      acc = number(f64.div(a, b));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_DIV, x, y);
+      next;
+    }
+  }
+}
+
+op Mod(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-remainder" {
+      acc = number(f64.fmod(f64(a), f64(b)));
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-remainder" {
+      acc = number(f64.fmod(a, b));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_MOD, x, y);
+      next;
+    }
+  }
+}
+
+op Exp(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-exponentiate" {
+      acc = number(rt_exponentiate(a, b));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_EXP, x, y);
+      next;
+    }
+  }
+}
+
+op BitAnd(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-bitwiseAND" {
+      acc = smi(a & b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-bitwiseAND" {
+      acc = number(f64(f64.to_int32(a) & f64.to_int32(b)));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_BIT_AND, x, y);
+      next;
+    }
+  }
+}
+
+op BitOr(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-bitwiseOR" {
+      acc = smi(a | b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-bitwiseOR" {
+      acc = number(f64(f64.to_int32(a) | f64.to_int32(b)));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_BIT_OR, x, y);
+      next;
+    }
+  }
+}
+
+op BitXor(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-bitwiseXOR" {
+      acc = smi(a ^ b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-bitwiseXOR" {
+      acc = number(f64(f64.to_int32(a) ^ f64.to_int32(b)));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_BIT_XOR, x, y);
+      next;
+    }
+  }
+}
+
+op Shl(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-leftShift" {
+      acc = number(f64(a << b));
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-leftShift" {
+      acc = number(f64(f64.to_int32(a) << f64.to_uint32(b)));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_SHL, x, y);
+      next;
+    }
+  }
+}
+
+op Sar(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-signedRightShift" {
+      acc = number(f64(a >> b));
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-signedRightShift" {
+      acc = number(f64(f64.to_int32(a) >> f64.to_uint32(b)));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_SAR, x, y);
+      next;
+    }
+  }
+}
+
+op Shr(lhs: reg, fb: slot<binary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-unsignedRightShift" {
+      acc = number(f64(f64.to_uint32(a) >>> f64.to_uint32(b)));
+      next;
+    }
+    _ => path generic {                  // ToNumeric of both, BigInt, mixed types
+      acc = rt_numeric(OP_SHR, x, y);
+      next;
+    }
+  }
+}
+
+op Neg(fb: slot<unary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-unary-minus-operator-runtime-semantics-evaluation"
+{
+  match acc {
+    Smi(a) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-unaryMinus" {
+      acc = number(f64.neg(f64(a)));   // -0 is a heap number
+      next;
+    }
+    Num(a) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-unaryMinus" {
+      acc = number(f64.neg(a));
+      next;
+    }
+    _ => path generic {
+      acc = rt_unary(UN_NEG, acc);
+      next;
+    }
+  }
+}
+
+op BitNot(fb: slot<unary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-bitwise-not-operator-runtime-semantics-evaluation"
+{
+  match acc {
+    Smi(a) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-bitwiseNOT" {
+      acc = smi(~a);
+      next;
+    }
+    Num(a) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-bitwiseNOT" {
+      acc = number(f64(~f64.to_int32(a)));
+      next;
+    }
+    _ => path generic {
+      acc = rt_unary(UN_BIT_NOT, acc);
+      next;
+    }
+  }
+}
+
+op Inc(fb: slot<unary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-prefix-increment-operator-runtime-semantics-evaluation"
+{
+  match acc {
+    Smi(a) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-add" {
+      acc = number(f64(i64(a) + 1));
+      next;
+    }
+    Num(a) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-add" {
+      acc = number(f64.add(a, 1.0));
+      next;
+    }
+    _ => path generic {
+      acc = rt_unary(UN_INC, acc);
+      next;
+    }
+  }
+}
+
+op Dec(fb: slot<unary>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-prefix-decrement-operator-runtime-semantics-evaluation"
+{
+  match acc {
+    Smi(a) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-subtract" {
+      acc = number(f64(i64(a) - 1));
+      next;
+    }
+    Num(a) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-subtract" {
+      acc = number(f64.sub(a, 1.0));
+      next;
+    }
+    _ => path generic {
+      acc = rt_unary(UN_DEC, acc);
+      next;
+    }
+  }
+}

@@ -247,6 +247,8 @@ pub(crate) fn broker_with(
         ipc,
         os: None,
         launcher: Some(Arc::new(launcher)),
+        // Production recording is not built yet (JS-D15).
+        decisions: Arc::new(hg_substrate::NotRecording),
     })
 }
 
@@ -297,6 +299,8 @@ fn start(
         // The broker's launcher is set by the broker's start-up (phase E);
         // a plain substrate has none.
         launcher: None,
+        // Production recording is not built yet (JS-D15).
+        decisions: Arc::new(hg_substrate::NotRecording),
     };
     Ok((s, main_exec))
 }

@@ -1,0 +1,63 @@
+// Constants, canonical-units formulas and the layouts descriptions read
+// (bytecode note Sections 4.4 and 6; language note Section 4).
+
+const MAX_STRING_LENGTH: i64 = 1073741823;   // 2^30 - 1 code units† (bytecode note, Section 6)
+const ROPE_MIN_LENGTH: i64 = 9;              // shorter results are copied flat† (language note 9.4)
+
+// Generic numeric operators, as rt_numeric's first argument.
+const OP_SUB: i32 = 1;
+const OP_MUL: i32 = 2;
+const OP_DIV: i32 = 3;
+const OP_MOD: i32 = 4;
+const OP_EXP: i32 = 5;
+const OP_BIT_AND: i32 = 6;
+const OP_BIT_OR: i32 = 7;
+const OP_BIT_XOR: i32 = 8;
+const OP_SHL: i32 = 9;
+const OP_SAR: i32 = 10;
+const OP_SHR: i32 = 11;
+
+// Generic unary operators, as rt_unary's first argument.
+const UN_NEG: i32 = 1;
+const UN_BIT_NOT: i32 = 2;
+const UN_INC: i32 = 3;
+const UN_DEC: i32 = 4;
+
+// Relational comparisons, as rt_compare's first argument.
+const CMP_LT: i32 = 1;
+const CMP_GT: i32 = 2;
+const CMP_LE: i32 = 3;
+const CMP_GE: i32 = 4;
+
+// typeof results, as rt_typeof_name's argument (static strings).
+const TYPEOF_UNDEFINED: i32 = 0;
+const TYPEOF_OBJECT: i32 = 1;
+const TYPEOF_BOOLEAN: i32 = 2;
+const TYPEOF_NUMBER: i32 = 3;
+const TYPEOF_STRING: i32 = 4;
+const TYPEOF_SYMBOL: i32 = 5;
+const TYPEOF_BIGINT: i32 = 6;
+const TYPEOF_FUNCTION: i32 = 7;
+
+// Canonical allocation units† (bytecode note Section 6, R0-B10). One unit
+// is 8 nominal bytes; the values are fixed per description.
+units string_units(n: i64) = 2 + (n + 3) / 4;   // a 16-byte nominal header, 2 bytes per code unit
+units dict_units() = 4;
+units property_units() = 2;
+units error_units() = 6;                        // an error object and its message property; JS-M0's engine errors carry no message
+units weakref_units() = 2;
+units finreg_units() = 4;
+units cell_units() = 3;
+units hostfn_units() = 4;
+
+// The fields descriptions read. Every field here is immutable after the
+// object is published (OC-9), except a WeakRef's target, which a
+// canonical cycle clears (category weak, gc_mutable).
+layout HeapNumber { value: f64 immutable; }
+layout String     { length: u32 immutable; }
+layout BigInt     { is_zero: bool immutable; }
+layout Object     { kind: ObjectKind immutable; is_callable: bool immutable; is_htmldda: bool immutable; }
+layout WeakRef    { target: Empty | Value in weak; }
+layout FinReg     { cleanup: Value immutable; host_defined: i64 immutable; }
+layout HostFn     { id: i32 immutable; }
+layout Rope is String { left: Ref<String> immutable; right: Ref<String> immutable; length: u32 immutable; }

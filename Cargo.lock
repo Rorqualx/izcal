@@ -53,6 +53,14 @@ name = "hg-graph-lint"
 version = "0.0.0"
 
 [[package]]
+name = "hg-heap"
+version = "0.0.0"
+dependencies = [
+ "hg-substrate",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-ipc"
 version = "0.0.0"
 dependencies = [
@@ -76,6 +84,51 @@ dependencies = [
  "hg-substrate-os",
  "hg-substrate-sim",
  "hg-types",
+]
+
+[[package]]
+name = "hg-js-bytecode"
+version = "0.0.0"
+dependencies = [
+ "hg-heap",
+ "hg-js-number",
+]
+
+[[package]]
+name = "hg-js-number"
+version = "0.0.0"
+
+[[package]]
+name = "hg-js-ops"
+version = "0.0.0"
+dependencies = [
+ "hg-heap",
+ "hg-js-bytecode",
+ "hg-js-number",
+ "hg-substrate",
+]
+
+[[package]]
+name = "hg-js-oracle"
+version = "0.0.0"
+dependencies = [
+ "hg-heap",
+ "hg-js-bytecode",
+ "hg-js-ops",
+ "hg-js-runtime",
+ "hg-substrate",
+ "hg-substrate-os",
+]
+
+[[package]]
+name = "hg-js-runtime"
+version = "0.0.0"
+dependencies = [
+ "hg-heap",
+ "hg-js-bytecode",
+ "hg-js-number",
+ "hg-js-ops",
+ "hg-substrate",
 ]
 
 [[package]]
@@ -114,6 +167,10 @@ dependencies = [
  "hg-substrate",
  "hg-types",
 ]
+
+[[package]]
+name = "hg-opgen"
+version = "0.0.0"
 
 [[package]]
 name = "hg-os-types"
@@ -171,6 +228,10 @@ dependencies = [
  "hg-substrate-os",
  "hg-types",
 ]
+
+[[package]]
+name = "hg-test262"
+version = "0.0.0"
 
 [[package]]
 name = "hg-types"

@@ -1,0 +1,75 @@
+// Loads and register transfers: opcodes 0x01-0x09 (bytecode note Section 5).
+
+op LoadUndefined() acc out
+  effects { }
+  anchor ecma262 "sec-ecmascript-language-types-undefined-type"
+{
+  acc = Undefined;
+  next;
+}
+
+op LoadNull() acc out
+  effects { }
+  anchor ecma262 "sec-literals-runtime-semantics-evaluation"
+{
+  acc = Null;
+  next;
+}
+
+op LoadTrue() acc out
+  effects { }
+  anchor ecma262 "sec-literals-runtime-semantics-evaluation"
+{
+  acc = True;
+  next;
+}
+
+op LoadFalse() acc out
+  effects { }
+  anchor ecma262 "sec-literals-runtime-semantics-evaluation"
+{
+  acc = False;
+  next;
+}
+
+// The verifier keeps the immediate a small integer (bytecode note 4.2),
+// which is the range proof `smi` needs.
+op LoadInt(value: imm) acc out
+  effects { }
+  anchor ecma262 "sec-literals-runtime-semantics-evaluation"
+{
+  acc = smi(value);
+  next;
+}
+
+op LoadConst(k: const<number|string>) acc out
+  effects { }
+  anchor ecma262 "sec-literals-runtime-semantics-evaluation"
+{
+  acc = const[k];
+  next;
+}
+
+op LoadReg(src: reg) acc out
+  effects { }
+  anchor izcal "register transfer: no specification step"
+{
+  acc = reg[src];
+  next;
+}
+
+op StoreReg(dst: reg) acc in
+  effects { }
+  anchor izcal "register transfer: no specification step"
+{
+  reg[dst] = acc;
+  next;
+}
+
+op Copy(src: reg, dst: reg) acc none
+  effects { }
+  anchor izcal "register transfer: no specification step"
+{
+  reg[dst] = reg[src];
+  next;
+}
