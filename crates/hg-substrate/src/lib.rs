@@ -17,6 +17,7 @@
 //! milestones that first use them (Stage 1 design 3.1 lists all of them).
 
 mod clock;
+pub mod decision;
 mod entropy;
 mod executor;
 pub mod install;
@@ -29,6 +30,7 @@ pub mod prng;
 use std::sync::Arc;
 
 pub use clock::Clock;
+pub use decision::{DecisionKind, DecisionLog, NotRecording, Position};
 pub use entropy::{CryptoRandom, Entropy, EntropyError, EntropyPurpose, RandomStream};
 pub use executor::{Executor, PhasePool, PostError, Priority, SequenceHandle, Task};
 pub use install::InstallDevice;
@@ -56,6 +58,8 @@ pub struct Substrate {
     pub os: Option<Arc<dyn OsPort>>,
     /// Starts child processes (M1 phase E): `Some` in the broker only.
     pub launcher: Option<Arc<dyn Launcher>>,
+    /// The process's decision-point log (JS-D15).
+    pub decisions: Arc<dyn DecisionLog>,
 }
 
 #[cfg(test)]
@@ -223,6 +227,7 @@ mod tests {
             ipc: Arc::new(NoIpc),
             os: None,
             launcher: None,
+            decisions: Arc::new(NotRecording),
         }
     }
 

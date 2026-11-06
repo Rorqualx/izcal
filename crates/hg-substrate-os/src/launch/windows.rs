@@ -505,6 +505,8 @@ pub(crate) fn broker_with(
         ipc,
         os: None,
         launcher: Some(Arc::new(launcher)),
+        // Production recording is not built yet (JS-D15).
+        decisions: Arc::new(hg_substrate::NotRecording),
     })
 }
 
