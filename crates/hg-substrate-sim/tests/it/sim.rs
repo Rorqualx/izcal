@@ -3,8 +3,8 @@
 use std::sync::{Arc, Mutex};
 
 use hg_substrate::{
-    EntropyPurpose, Memory, MemoryError, MemoryKind, PostError, Priority, SequenceHandle,
-    Substrate, Task,
+    DecisionKind, EntropyPurpose, Memory, MemoryError, MemoryKind, Position, PostError, Priority,
+    SequenceHandle, Substrate, Task,
 };
 use hg_substrate_os::memory::OsMemory;
 use hg_substrate_sim::{FaultPlan, Limits, RunEnd, SEQUENCE_CAPACITY, SimConfig, World};
@@ -439,4 +439,49 @@ fn the_install_model_keeps_open_files_across_an_update() {
         w.summary().trace_hash,
         World::new(SimConfig::new(9)).summary().trace_hash
     );
+}
+
+/// JS-D15: a process's decision points are lines of the run's trace, in
+/// the order applied, so the decision log (the trace) and its hash cover
+/// them; a different decision at the same position changes the hash, and
+/// a crashed process records nothing.
+#[test]
+fn decision_points_enter_the_trace_in_order() {
+    let run = |detail: u64| {
+        let mut config = SimConfig::new(11);
+        config.keep_trace_text = true;
+        let w = World::new(config);
+        let held: Arc<Mutex<Option<Substrate>>> = Arc::new(Mutex::new(None));
+        let keep = Arc::clone(&held);
+        let pid = w.spawn("r", backing(), false, move |s| {
+            let gc = Position {
+                agent: 0,
+                progress: 7,
+            };
+            s.decisions.record(DecisionKind::GC_COMPLETE, gc, detail);
+            let install = Position {
+                agent: 1,
+                progress: 9,
+            };
+            s.decisions.record(DecisionKind::CODE_INSTALL, install, 0);
+            *keep.lock().unwrap() = Some(s);
+        });
+        let _ = w.run(LIMITS);
+        w.crash(pid);
+        let stale = held.lock().unwrap().take().unwrap();
+        let at = Position {
+            agent: 0,
+            progress: 8,
+        };
+        stale.decisions.record(DecisionKind::GC_COMPLETE, at, 1);
+        (w.summary().trace_hash, w.trace_text().unwrap())
+    };
+    let (hash, text) = run(3);
+    assert!(
+        text.contains("decide r.0 k2 a0 p7 d3\ndecide r.0 k1 a1 p9 d0\n"),
+        "{text}"
+    );
+    assert!(!text.contains("p8"), "a crashed process decided: {text}");
+    assert_eq!(run(3).0, hash);
+    assert_ne!(run(4).0, hash);
 }
