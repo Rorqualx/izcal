@@ -100,6 +100,26 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
+  # JS spec 6.5 step 8 and JS-14: the heap's inventoried unsafe code runs
+  # under Miri, with the moving test collector (it moves every object on
+  # every allocation). Miri needs a nightly; this one is pinned.
+  miri:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MIRI_TOOLCHAIN: nightly-2026-10-17
+      MIRIFLAGS: -Zmiri-permissive-provenance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Install Miri
+        run: rustup toolchain install "$MIRI_TOOLCHAIN" --profile minimal --component miri,rust-src
+
+      - name: Miri
+        run: cargo +"$MIRI_TOOLCHAIN" miri test -p hg-heap --lib --locked
+
   # VER-1 (Stage 1 4.1; security scope 6.6): every Kani harness in the
   # IPC crates, through tools/kani.sh, which also fails on a cover no
   # input reaches. Kani 0.68.0 is pinned and its bundle checked against

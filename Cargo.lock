@@ -53,6 +53,14 @@ name = "hg-graph-lint"
 version = "0.0.0"
 
 [[package]]
+name = "hg-heap"
+version = "0.0.0"
+dependencies = [
+ "hg-substrate",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-ipc"
 version = "0.0.0"
 dependencies = [
