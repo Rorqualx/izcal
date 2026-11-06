@@ -1,0 +1,53 @@
+// Helpers: descriptions shared by several operations and intrinsics.
+
+helper ToBooleanValue(v: Value) -> bool
+  effects { }
+  anchor ecma262 "sec-toboolean"
+{
+  match v {
+    True => true,
+    False | Undefined | Null => false,
+    Smi(i) => i != 0,
+    Ref<HeapNumber>(h) => {               // canonical form: never +0, but may be -0 or NaN
+      let d = HeapNumber.value(h);
+      !(d == 0.0 || f64.is_nan(d))
+    }
+    Ref<String>(s) => String.length(s) != 0,
+    Ref<BigInt>(n) => !BigInt.is_zero(n),
+    Ref<Symbol>(_) => true,
+    Ref<Object>(o) => path htmldda
+        anchor ecma262 "sec-IsHTMLDDA-internal-slot-to-boolean" {
+      !Object.is_htmldda(o)               // Annex B: document.all-like objects are falsy
+    }
+  }
+}
+
+helper CanBeHeldWeakly(v: Value) -> bool
+  effects { }
+  anchor ecma262 "sec-canbeheldweakly"
+{
+  match v {
+    Ref<Object>(_) => true,
+    Ref<Symbol>(s) => path symbol anchor ecma262 "sec-canbeheldweakly" step "2" {
+      !rt_symbol_registered(s)            // a Symbol.for symbol has no identity
+    }
+    _ => false,
+  }
+}
+
+helper StringConcat(a: frame Ref<String>, b: frame Ref<String>) -> Ref<String>
+  effects { alloc(string_units), alloc_internal, throw(RangeError) }
+  anchor ecma262 "string-concatenation"
+{
+  let n: i64 = i64(String.length(a)) + i64(String.length(b));
+  if n > MAX_STRING_LENGTH {
+    path too_long anchor izcal "canonical string-length limit (R0-B10)" { throw RangeError; }
+  }
+  charge(string_units(n));               // semantic: the same in every tier and representation
+  if String.length(a) == 0 { return b; }
+  if String.length(b) == 0 { return a; }
+  if n < ROPE_MIN_LENGTH {
+    path flat { return rt_string_flat_concat(a, b, i32(n)); }
+  }
+  path rope { return alloc Rope { left: a, right: b, length: u32(n) }; }
+}

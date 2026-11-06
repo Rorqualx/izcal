@@ -1,0 +1,171 @@
+// Equality and relational operators: opcodes 0x20-0x25. Every result is a
+// Boolean; the generic paths map IsLessThan's undefined inside the runtime
+// call, so the call stays the path's last effect (OC-17).
+
+op LooseEq(lhs: reg, fb: slot<compare>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-islooselyequal"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-equal" {
+      acc = bool(a == b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-equal" {
+      acc = bool(a == b);                // IEEE equality: NaN is unequal, +0 equals -0
+      next;
+    }
+    (Ref<String>(a), Ref<String>(b)) => path strings speculate fb.string anchor ecma262 "sec-samevaluenonnumber" {
+      acc = bool(rt_string_equal(a, b));
+      next;
+    }
+    (Undefined | Null, Undefined | Null) => path nullish anchor ecma262 "sec-islooselyequal" step "2" {
+      acc = True;
+      next;
+    }
+    _ => path generic {
+      acc = rt_loose_equal(x, y);
+      next;
+    }
+  }
+}
+
+op StrictEq(lhs: reg, fb: slot<compare>) acc inout
+  effects { }
+  anchor ecma262 "sec-isstrictlyequal"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-equal" {
+      acc = bool(a == b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-equal" {
+      acc = bool(a == b);
+      next;
+    }
+    (Ref<String>(a), Ref<String>(b)) => path strings speculate fb.string anchor ecma262 "sec-samevaluenonnumber" {
+      acc = bool(rt_string_equal(a, b));
+      next;
+    }
+    (Ref<BigInt>(a), Ref<BigInt>(b)) => path bigints anchor ecma262 "sec-numeric-types-bigint-equal" {
+      acc = bool(rt_bigint_equal(a, b));
+      next;
+    }
+    _ => path identity anchor ecma262 "sec-samevaluenonnumber" {
+      acc = bool(x == y);                // different types, or the same oddball, object or symbol
+      next;
+    }
+  }
+}
+
+// x < y
+op Lt(lhs: reg, fb: slot<compare>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-relational-operators-runtime-semantics-evaluation"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-lessThan" {
+      acc = bool(a < b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-lessThan" {
+      acc = bool(f64.lt(a, b));          // ordered: false when either is NaN
+      next;
+    }
+    (Ref<String>(a), Ref<String>(b)) => path strings speculate fb.string anchor ecma262 "sec-islessthan" step "3" {
+      acc = bool(rt_string_less_than(a, b));
+      next;
+    }
+    _ => path generic anchor ecma262 "sec-islessthan" {
+      acc = rt_compare(CMP_LT, x, y);
+      next;
+    }
+  }
+}
+
+// x > y: IsLessThan(y, x) with LeftFirst false
+op Gt(lhs: reg, fb: slot<compare>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-relational-operators-runtime-semantics-evaluation"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-lessThan" {
+      acc = bool(a > b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-lessThan" {
+      acc = bool(f64.gt(a, b));          // ordered: false when either is NaN
+      next;
+    }
+    (Ref<String>(a), Ref<String>(b)) => path strings speculate fb.string anchor ecma262 "sec-islessthan" step "3" {
+      acc = bool(rt_string_less_than(b, a));
+      next;
+    }
+    _ => path generic anchor ecma262 "sec-islessthan" {
+      acc = rt_compare(CMP_GT, x, y);
+      next;
+    }
+  }
+}
+
+// x <= y: not IsLessThan(y, x), undefined is false
+op Le(lhs: reg, fb: slot<compare>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-relational-operators-runtime-semantics-evaluation"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-lessThan" {
+      acc = bool(a <= b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-lessThan" {
+      acc = bool(f64.le(a, b));          // ordered: false when either is NaN
+      next;
+    }
+    (Ref<String>(a), Ref<String>(b)) => path strings speculate fb.string anchor ecma262 "sec-islessthan" step "3" {
+      acc = bool(!rt_string_less_than(b, a));
+      next;
+    }
+    _ => path generic anchor ecma262 "sec-islessthan" {
+      acc = rt_compare(CMP_LE, x, y);
+      next;
+    }
+  }
+}
+
+// x >= y: not IsLessThan(x, y), undefined is false
+op Ge(lhs: reg, fb: slot<compare>) acc inout after_call result
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-relational-operators-runtime-semantics-evaluation"
+{
+  let x = reg[lhs];
+  let y = acc;
+  match (x, y) {
+    (Smi(a), Smi(b)) => path smi speculate fb.smi anchor ecma262 "sec-numeric-types-number-lessThan" {
+      acc = bool(a >= b);
+      next;
+    }
+    (Num(a), Num(b)) => path number speculate fb.number anchor ecma262 "sec-numeric-types-number-lessThan" {
+      acc = bool(f64.ge(a, b));          // ordered: false when either is NaN
+      next;
+    }
+    (Ref<String>(a), Ref<String>(b)) => path strings speculate fb.string anchor ecma262 "sec-islessthan" step "3" {
+      acc = bool(!rt_string_less_than(a, b));
+      next;
+    }
+    _ => path generic anchor ecma262 "sec-islessthan" {
+      acc = rt_compare(CMP_GE, x, y);
+      next;
+    }
+  }
+}

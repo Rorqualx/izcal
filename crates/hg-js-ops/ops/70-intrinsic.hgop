@@ -1,0 +1,160 @@
+// CallIntrinsic (0x31) and the nine intrinsics (bytecode note 4.9 and
+// Section 5). An intrinsic runs in the calling frame: its parameters are
+// the registers of the argument list, which it cannot write, so they are
+// frame-backed across its GC points.
+
+op CallIntrinsic(id: intr, args: reg, count: cnt) acc out
+  effects { alloc(dict_units), alloc(weakref_units), alloc(finreg_units), alloc(cell_units),
+            alloc(hostfn_units), alloc_internal, reads(weak), writes(kept, weak, realm),
+            throw(TypeError), host(HostMakeJobCallback), host(HostSystemUTCEpochNanoseconds),
+            input(entropy), input(clock) }
+  anchor izcal "dispatch to the intrinsic the operand names (bytecode note 4.9)"
+{
+  acc = intrinsic(id, args, count);
+  next;
+}
+
+intrinsic %ObjectCreate(proto: Value) -> Value
+  effects { alloc(dict_units), alloc_internal, throw(TypeError) }
+  anchor ecma262 "sec-object.create"
+{
+  match proto {
+    Null | Ref<Object>(_) => path create anchor ecma262 "sec-object.create" step "2" {
+      charge(dict_units());
+      return rt_dict_new(proto);         // OrdinaryObjectCreate(proto)
+    }
+    _ => path not_an_object anchor ecma262 "sec-object.create" step "1" {
+      throw TypeError;
+    }
+  }
+}
+
+intrinsic %WeakRefCreate(target: Value) -> Value
+  effects { alloc(weakref_units), alloc_internal, writes(kept), throw(TypeError) }
+  anchor ecma262 "sec-weak-ref-target"
+{
+  if !CanBeHeldWeakly(target) {
+    path not_holdable anchor ecma262 "sec-weak-ref-target" step "2" { throw TypeError; }
+  }
+  charge(weakref_units());
+  let w = alloc WeakRef { target: target };   // step 3, with step 5's target
+  kept.push(target);                          // step 4: AddToKeptObjects, not a GC point
+  return w;
+}
+
+intrinsic %WeakRefDeref(this: Value) -> Value
+  effects { reads(weak), writes(kept), throw(TypeError) }
+  anchor ecma262 "sec-weak-ref.prototype.deref"
+{
+  match this {
+    Ref<WeakRef>(w) => path deref anchor ecma262 "sec-weakrefderef" {
+      match WeakRef.target(w) {
+        Empty => return Undefined;
+        Value(v) => {
+          kept.push(v);                  // AddToKeptObjects: not a GC point
+          return v;
+        }
+      }
+    }
+    _ => path not_a_weakref anchor ecma262 "sec-requireinternalslot" {
+      throw TypeError;
+    }
+  }
+}
+
+intrinsic %FinalizationRegistryCreate(cleanup: Value) -> Value
+  effects { alloc(finreg_units), alloc_internal, host(HostMakeJobCallback), throw(TypeError) }
+  anchor ecma262 "sec-finalization-registry-cleanup-callback"
+{
+  match cleanup {
+    Ref<Object>(f) if Object.is_callable(f) => path create
+        anchor ecma262 "sec-finalization-registry-cleanup-callback" step "3" {
+      let job = rt_make_job_callback(f);  // step 6: HostMakeJobCallback, no GC point
+      charge(finreg_units());
+      return alloc FinReg { cleanup: cleanup, host_defined: job };
+    }
+    _ => path not_callable anchor ecma262 "sec-finalization-registry-cleanup-callback" step "2" {
+      throw TypeError;
+    }
+  }
+}
+
+intrinsic %FinalizationRegistryRegister(registry: Value, target: Value, held: Value, token: Value) -> Value
+  effects { alloc(cell_units), alloc_internal, writes(weak), throw(TypeError) }
+  anchor ecma262 "sec-finalization-registry.prototype.register"
+{
+  match registry {
+    Ref<FinReg>(r) => path register anchor ecma262 "sec-finalization-registry.prototype.register" {
+      if !CanBeHeldWeakly(target) {
+        path bad_target anchor ecma262 "sec-finalization-registry.prototype.register" step "3" {
+          throw TypeError;
+        }
+      }
+      if target == held {                // SameValue: the target is an object or a symbol here
+        path same_value anchor ecma262 "sec-finalization-registry.prototype.register" step "4" {
+          throw TypeError;
+        }
+      }
+      let has_token = CanBeHeldWeakly(token);
+      if !has_token && token != Undefined {
+        path bad_token anchor ecma262 "sec-finalization-registry.prototype.register" step "5.a" {
+          throw TypeError;
+        }
+      }
+      charge(cell_units());
+      rt_finreg_register(r, target, held, token, has_token);
+      return Undefined;
+    }
+    _ => path not_a_registry anchor ecma262 "sec-requireinternalslot" {
+      throw TypeError;
+    }
+  }
+}
+
+intrinsic %FinalizationRegistryUnregister(registry: Value, token: Value) -> Value
+  effects { writes(weak), throw(TypeError) }
+  anchor ecma262 "sec-finalization-registry.prototype.unregister"
+{
+  match registry {
+    Ref<FinReg>(r) => path unregister anchor ecma262 "sec-finalization-registry.prototype.unregister" {
+      if !CanBeHeldWeakly(token) {
+        path bad_token anchor ecma262 "sec-finalization-registry.prototype.unregister" step "3" {
+          throw TypeError;
+        }
+      }
+      return bool(rt_finreg_unregister(r, token));
+    }
+    _ => path not_a_registry anchor ecma262 "sec-requireinternalslot" {
+      throw TypeError;
+    }
+  }
+}
+
+intrinsic %MathRandom() -> Value
+  effects { input(entropy), writes(realm), alloc_internal }
+  anchor ecma262 "sec-math.random"
+{
+  return number(rt_math_random());       // the 53 high bits of the realm stream's next draw, times 2^-53
+}
+
+intrinsic %DateNow() -> Value
+  effects { host(HostSystemUTCEpochNanoseconds), input(clock), alloc_internal }
+  anchor temporal "sec-temporal-date.now"
+{
+  return number(rt_date_now());          // floor(ns / 10^6): about 1.8 * 10^12, always a heap number
+}
+
+intrinsic %CreateHostFunction(id: Value) -> Value
+  effects { alloc(hostfn_units), alloc_internal, throw(TypeError) }
+  anchor ecma262 "sec-createbuiltinfunction"
+{
+  match id {
+    Smi(n) => path create anchor ecma262 "sec-createbuiltinfunction" {
+      charge(hostfn_units());
+      return alloc HostFn { id: n };
+    }
+    _ => path not_an_id anchor izcal "an embedder function is named by a small integer" {
+      throw TypeError;
+    }
+  }
+}

@@ -23,6 +23,7 @@
 #![forbid(unsafe_code)]
 
 mod clock;
+mod decision;
 mod entropy;
 mod exec;
 mod install;
@@ -92,6 +93,11 @@ pub(crate) fn substrate_for(
         os,
         launcher: children.map(|table| -> Arc<dyn hg_substrate::Launcher> {
             Arc::new(launch::SimLauncher::new(Arc::clone(shared), pid, table))
+        }),
+        decisions: Arc::new(decision::SimDecisions {
+            shared: Arc::clone(shared),
+            pid,
+            generation,
         }),
     }
 }
