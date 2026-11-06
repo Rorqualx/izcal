@@ -1,0 +1,24 @@
+[package]
+name = "hg-js-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's JS-M0 runtime (L2e, tier R; JS spec 6.3): the agent, its jobs and ClearKeptObjects, and the Runtime the generated interpreter calls (conversions, strings, dictionary properties, finalization cleanup)"
+
+[dependencies]
+hg-heap = { path = "../hg-heap" }
+hg-js-bytecode = { path = "../hg-js-bytecode" }
+hg-js-number = { path = "../hg-js-number" }
+hg-js-ops = { path = "../hg-js-ops" }
+hg-substrate = { path = "../hg-substrate" }
+
+[dev-dependencies]
+hg-heap = { path = "../hg-heap", features = ["testing"] }
+
+[lints]
+workspace = true
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

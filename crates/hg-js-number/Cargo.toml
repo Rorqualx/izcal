@@ -1,0 +1,10 @@
+[package]
+name = "hg-js-number"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's JS Number conversions (L2e, tier R): ECMA-262 Number::toString with shortest round-trip digits, StringToNumber with correct rounding, exact Number::remainder, ToInt32/ToUint32 and a deterministic exponentiation, std only"
+
+[lints]
+workspace = true
