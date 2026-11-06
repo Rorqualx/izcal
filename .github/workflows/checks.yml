@@ -105,7 +105,8 @@ jobs:
   # every allocation). Miri needs a nightly; this one is pinned.
   miri:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # 25 min on an M-series Mac for hg-heap's 14 tests (31 Oct 2026).
+    timeout-minutes: 60
     env:
       MIRI_TOOLCHAIN: nightly-2026-10-17
       MIRIFLAGS: -Zmiri-permissive-provenance
@@ -119,6 +120,32 @@ jobs:
 
       - name: Miri
         run: cargo +"$MIRI_TOOLCHAIN" miri test -p hg-heap --lib --locked
+
+  # ORC-1 (JS-M0 plan, Phase 1): every core operation of the reference
+  # interpreter on 74 edge operands (99,308 cases), checked against
+  # engine262 run black-box under Node. engine262 is the pinned npm
+  # package in tools/test-data.toml, fetched with its SHA-256 checked;
+  # it is test-only, never linked or shipped. 8 s on the Mac with 6 jobs
+  # (31 Oct 2026).
+  js-oracle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.0
+
+      - name: Fetch engine262
+        run: tools/fetch-test-data.sh engine262
+
+      - name: Operation-level oracle
+        run: |
+          commit=$(awk '/^\[engine262\]$/ { t = 1; next } /^\[/ { t = 0 } t && $1 == "commit" { gsub(/"/, "", $3); print $3 }' tools/test-data.toml)
+          cargo run --release --locked -p hg-js-oracle -- ops --engine262 "$HOME/.cache/izcal/test-data/engine262-$commit"
 
   # VER-1 (Stage 1 4.1; security scope 6.6): every Kani harness in the
   # IPC crates, through tools/kani.sh, which also fails on a cover no

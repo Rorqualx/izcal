@@ -13,20 +13,51 @@
 //! change a value but never cause a data race.
 #![expect(unsafe_code, reason = "G5: cage (every cage memory access)")]
 
-use std::sync::Arc;
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use hg_substrate::{Memory, MemoryError, MemoryKind, Region};
 
 use crate::slot::MAX_CAGE_BYTES;
 
-/// The cage: its reservation and the memory interface that made it.
+/// Bytes the cage hands an agent heap at a time: a multiple of every page
+/// size Izcal runs on (4, 16 and 64 KiB), so commits are aligned on every
+/// OS and the simulator's ledger is the same everywhere (heap design H-5).
+pub(crate) const CHUNK: u64 = 1 << 20;
+
+/// Which chunks are free. Chunk 0 is never handed out, so no object lives
+/// at cage offset 0.
+#[derive(Debug)]
+struct Pool {
+    /// The first chunk never handed out.
+    next: u64,
+    /// Chunks handed out and returned, lowest first.
+    free: BTreeSet<u64>,
+    /// Chunks returned whose decommit the OS refused. They keep their old
+    /// contents, so they are never handed out again; they stay committed
+    /// and charged until the cage goes.
+    kept: u64,
+}
+
+/// The cage: its reservation, the memory interface that made it, and the
+/// pool of chunks its agent heaps draw from (JS-D17: one cage per
+/// process; each agent heap owns its own chunks).
 pub(crate) struct Cage {
     mem: Arc<dyn Memory>,
     region: Option<Region>,
     base: *mut u8,
     len: u64,
+    pool: Mutex<Pool>,
 }
+
+// SAFETY: the raw base pointer is never written after `new`, every access
+// through it is atomic (this module's condition), and the chunk pool is
+// behind a mutex; so agent heaps on different threads may share the cage.
+unsafe impl Send for Cage {}
+// SAFETY: as for `Send`: shared references only perform atomic accesses
+// and locked pool operations.
+unsafe impl Sync for Cage {}
 
 impl core::fmt::Debug for Cage {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -63,16 +94,114 @@ impl Cage {
             region: Some(region),
             base,
             len,
+            pool: Mutex::new(Pool {
+                next: CHUNK,
+                free: BTreeSet::new(),
+                kept: 0,
+            }),
         })
     }
 
-    /// The cage's length in bytes.
-    pub(crate) const fn len(&self) -> u64 {
-        self.len
+    /// Hands out `n` adjacent chunks, committed and charged to the
+    /// per-agent ledger line; returns the first one's offset. The lowest
+    /// run of `n` returned chunks is reused; otherwise the run comes from
+    /// fresh space.
+    pub(crate) fn acquire(&self, n: u64) -> Result<u64, CageError> {
+        let mut pool = self
+            .pool
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let reuse = Self::free_run(&pool.free, n);
+        if let Some(at) = reuse {
+            for i in 0..n {
+                pool.free.remove(&(at + i * CHUNK));
+            }
+        }
+        let at = match reuse {
+            Some(at) => at,
+            None => {
+                let at = pool.next;
+                let end = n
+                    .checked_mul(CHUNK)
+                    .and_then(|b| at.checked_add(b))
+                    .ok_or(CageError::BadLength)?;
+                if end > self.len {
+                    return Err(CageError::BadLength);
+                }
+                pool.next = end;
+                at
+            }
+        };
+        if let Err(e) = self.commit(at, n * CHUNK, MemoryKind::PerAgent) {
+            // Nothing was committed: the chunks go back as they were.
+            if reuse.is_some() {
+                for i in 0..n {
+                    pool.free.insert(at + i * CHUNK);
+                }
+            } else if pool.next == at + n * CHUNK {
+                pool.next = at;
+            }
+            return Err(e);
+        }
+        Ok(at)
+    }
+
+    /// The lowest run of `n` adjacent chunks in `free`, if any.
+    fn free_run(free: &BTreeSet<u64>, n: u64) -> Option<u64> {
+        let mut run_start = 0;
+        let mut run_len = 0;
+        let mut prev = None;
+        for &c in free {
+            if prev.is_some_and(|p: u64| p.checked_add(CHUNK) == Some(c)) {
+                run_len += 1;
+            } else {
+                run_start = c;
+                run_len = 1;
+            }
+            if run_len == n {
+                return Some(run_start);
+            }
+            prev = Some(c);
+        }
+        None
+    }
+
+    /// Takes back the chunk at `offset`: its pages are decommitted, so
+    /// they read as zero, or fault, never as old data (I-2), and it is
+    /// reused. If the decommit is refused, the chunk still holds the old
+    /// heap's data: it is kept out of the pool for the cage's life.
+    pub(crate) fn release(&self, offset: u64) {
+        let decommitted = match (
+            self.region.as_ref(),
+            usize::try_from(offset),
+            usize::try_from(CHUNK),
+        ) {
+            (Some(region), Ok(o), Ok(l)) => self.mem.decommit(region, o, l).is_ok(),
+            _ => false,
+        };
+        let mut pool = self
+            .pool
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if decommitted {
+            pool.free.insert(offset);
+        } else {
+            pool.kept += 1;
+        }
+    }
+
+    /// How many returned chunks were kept out of the pool because their
+    /// decommit was refused.
+    #[cfg(test)]
+    pub(crate) fn kept(&self) -> u64 {
+        self.pool
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .kept
     }
 
     /// Commits `[offset, offset + len)`, charged to `kind`.
-    pub(crate) fn commit(&self, offset: u64, len: u64, kind: MemoryKind) -> Result<(), CageError> {
+    fn commit(&self, offset: u64, len: u64, kind: MemoryKind) -> Result<(), CageError> {
         let (Some(region), Ok(o), Ok(l)) = (
             self.region.as_ref(),
             usize::try_from(offset),
@@ -156,24 +285,38 @@ impl Drop for Cage {
 }
 
 /// Memory for tests: each reservation is an ordinary zeroed allocation,
-/// so Miri can run the heap (it cannot map a real reservation).
-#[cfg(test)]
-pub(crate) mod test_memory {
+/// so Miri can run the heap (it cannot map a real reservation). Built for
+/// this crate's tests and, through the `testing` feature, for the tests of
+/// crates built on the heap (never for a shipping build: only
+/// dev-dependencies enable the feature).
+#[cfg(any(test, feature = "testing"))]
+pub mod test_memory {
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use hg_substrate::{Access, Memory, MemoryError, MemoryKind, MemoryStats, Region};
 
-    /// Memory for tests: each reservation is a zeroed allocation.
-    #[derive(Default)]
-    pub(crate) struct TestMemory {
+    /// Memory for tests: each reservation is a zeroed allocation, and a
+    /// decommit zeroes its range, as the OS's fresh pages read.
+    #[derive(Debug, Default)]
+    pub struct TestMemory {
         live: Mutex<Vec<(usize, std::alloc::Layout)>>,
         protects: Mutex<Vec<(usize, usize, Access)>>,
+        refuse_decommit: AtomicBool,
     }
 
     impl TestMemory {
+        /// Makes every later decommit fail, leaving its pages as they are.
+        pub fn refuse_decommit(&self, refuse: bool) {
+            self.refuse_decommit.store(refuse, Ordering::SeqCst);
+        }
+
         /// Every protection change asked for, in order.
-        pub(crate) fn protects(&self) -> Vec<(usize, usize, Access)> {
-            self.protects.lock().unwrap().clone()
+        pub fn protects(&self) -> Vec<(usize, usize, Access)> {
+            self.protects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
         }
     }
 
@@ -190,22 +333,45 @@ pub(crate) mod test_memory {
                 return Err(MemoryError::OutOfAddressSpace);
             }
             let base = p.expose_provenance();
-            self.live.lock().unwrap().push((base, layout));
+            self.live
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push((base, layout));
             Ok(Region::new(base, bytes, kind))
         }
         fn commit(&self, _: &Region, _: usize, _: usize, _: MemoryKind) -> Result<(), MemoryError> {
             Ok(())
         }
-        fn decommit(&self, _: &Region, _: usize, _: usize) -> Result<(), MemoryError> {
+        fn decommit(&self, region: &Region, offset: usize, len: usize) -> Result<(), MemoryError> {
+            if self.refuse_decommit.load(Ordering::SeqCst) {
+                return Err(MemoryError::DecommitFailed);
+            }
+            let end = offset.checked_add(len).ok_or(MemoryError::OutOfRange)?;
+            if end > region.len() {
+                return Err(MemoryError::OutOfRange);
+            }
+            // SAFETY: `[offset, end)` is inside the live allocation behind
+            // `region` (checked above), and the cage does not access a
+            // chunk while it is being returned.
+            unsafe {
+                std::ptr::with_exposed_provenance_mut::<u8>(region.base() + offset)
+                    .write_bytes(0, len);
+            }
             Ok(())
         }
         fn purge(&self, _: &Region, _: usize, _: usize) {}
         fn protect(&self, _: &Region, o: usize, l: usize, a: Access) -> Result<(), MemoryError> {
-            self.protects.lock().unwrap().push((o, l, a));
+            self.protects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push((o, l, a));
             Ok(())
         }
         fn release(&self, region: Region) {
-            let mut live = self.live.lock().unwrap();
+            let mut live = self
+                .live
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(i) = live.iter().position(|(b, _)| *b == region.base()) {
                 let (base, layout) = live.remove(i);
                 // SAFETY: `base` came from `alloc_zeroed` with `layout`, and the
@@ -218,5 +384,61 @@ pub(crate) mod test_memory {
         fn stats(&self) -> MemoryStats {
             MemoryStats::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::test_memory::TestMemory;
+    use super::{CHUNK, Cage};
+
+    /// A released chunk comes back zeroed. One whose decommit was refused
+    /// still holds the old heap's data, so it is never handed out again.
+    #[test]
+    fn a_chunk_whose_decommit_was_refused_is_never_reused() {
+        let mem = Arc::new(TestMemory::default());
+        let cage = Cage::new(mem.clone(), 8 * CHUNK).unwrap();
+        let a = cage.acquire(1).unwrap();
+        cage.store64(a, 0x5EC2E7);
+        cage.release(a);
+        assert_eq!(cage.acquire(1).unwrap(), a, "a decommitted chunk is reused");
+        assert_eq!(cage.load64(a), 0, "and reads as zero");
+
+        cage.store64(a, 0x5EC2E7);
+        mem.refuse_decommit(true);
+        cage.release(a);
+        mem.refuse_decommit(false);
+        assert_eq!(cage.kept(), 1);
+        let b = cage.acquire(1).unwrap();
+        assert_ne!(b, a, "a chunk that kept its data is not handed out");
+        assert_eq!(cage.load64(a), 0x5EC2E7);
+        assert_eq!(cage.load64(b), 0);
+    }
+
+    /// A run of chunks reuses adjacent returned chunks, so heaps that come
+    /// and go cannot use up the cage for large objects.
+    #[test]
+    fn a_run_reuses_adjacent_returned_chunks() {
+        // Chunk 0 is never handed out, so this cage has three to give.
+        let cage = Cage::new(Arc::new(TestMemory::default()), 4 * CHUNK).unwrap();
+        let chunks: Vec<u64> = (0..3).map(|_| cage.acquire(1).unwrap()).collect();
+        assert!(cage.acquire(1).is_err(), "the cage is full");
+        // Returned out of order, with a gap: no run of three yet.
+        cage.release(chunks[2]);
+        cage.release(chunks[0]);
+        assert!(
+            cage.acquire(3).is_err(),
+            "two returned chunks are no run of three"
+        );
+        assert_eq!(
+            cage.acquire(2).ok(),
+            None,
+            "nor of two: they are not adjacent"
+        );
+        cage.release(chunks[1]);
+        assert_eq!(cage.acquire(3).unwrap(), chunks[0]);
+        assert!(cage.acquire(1).is_err(), "the run took all three");
     }
 }

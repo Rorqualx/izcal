@@ -15,8 +15,18 @@ mod tests;
 mod trusted;
 
 pub use cage::CageError;
-pub use heap::{Gc, Heap, HeapConfig, HeapError, HeapStats, Mutator, Root, Scope, Stress, Value};
+pub use heap::{
+    Gc, Heap, HeapConfig, HeapError, HeapStats, Mutator, ProcessCage, Root, Scope, Stress, Value,
+};
 pub use object::{Any, Layout, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
 pub use slot::{MAX_CAGE_BYTES, Slot};
 pub use space::AllocError;
 pub use trusted::{TrustedError, TrustedId, TrustedKind, TrustedRegion};
+
+/// Support for the tests of crates built on the heap: memory backed by an
+/// ordinary allocation, as this crate's own tests use (feature `testing`,
+/// enabled only by dev-dependencies).
+#[cfg(feature = "testing")]
+pub mod testing {
+    pub use crate::cage::test_memory::TestMemory;
+}

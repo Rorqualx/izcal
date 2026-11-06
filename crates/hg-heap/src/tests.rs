@@ -7,7 +7,7 @@ use hg_substrate::{DecisionKind, DecisionLog, Position};
 
 use crate::cage::test_memory::TestMemory;
 
-use crate::{Any, Heap, HeapConfig, Object, Stress, Value};
+use crate::{Any, Heap, HeapConfig, Object, ProcessCage, Stress, Value};
 
 /// A decision log that keeps every entry.
 #[derive(Default)]
@@ -304,4 +304,155 @@ fn corrupted_slots_and_headers_stay_inside_the_cage() {
             });
         });
     }
+}
+
+#[test]
+fn value_roots_hold_small_integers_and_follow_moved_references() {
+    for stress in [Stress::None, Stress::MoveOnAlloc] {
+        let (mut h, _) = heap(stress, 1 << 40);
+        h.enter(|m| {
+            m.scope(|m, s| {
+                let small = s.root_value(m, Value::Small(-7));
+                let cell = m.alloc::<Cell>(s, 0).unwrap();
+                cell.get(m).set_raw(m, Cell::N, 99);
+                let v = Value::Ref(cell.get(m).erase());
+                let r = s.root_value(m, v);
+                let _ = m.alloc::<Cell>(s, 0).unwrap(); // moves everything under stress
+                assert_eq!(small.get_value(m), Value::Small(-7));
+                let Value::Ref(g) = r.get_value(m) else {
+                    panic!("a reference stays a reference")
+                };
+                assert_eq!(g.cast::<Cell>(m).unwrap().raw(m, Cell::N), 99);
+                assert_eq!(g, cell.get(m).erase());
+                r.set_value(m, Value::Small(3));
+                assert_eq!(r.get_value(m), Value::Small(3));
+            });
+        });
+    }
+}
+
+#[test]
+fn canonical_cycles_report_the_holders_whose_weak_slots_they_cleared() {
+    for stress in [Stress::None, Stress::MoveOnAlloc, Stress::MoveAtSafepoint] {
+        let (mut h, _) = heap(stress, 1 << 40);
+        h.enter(|m| {
+            m.scope(|m, s| {
+                let a = m.alloc::<WeakCell>(s, 0).unwrap();
+                let b = m.alloc::<WeakCell>(s, 0).unwrap();
+                let c = m.alloc::<WeakCell>(s, 0).unwrap();
+                let alive = m.alloc::<Cell>(s, 0).unwrap();
+                m.scope(|m, s2| {
+                    let d1 = m.alloc::<Cell>(s2, 0).unwrap();
+                    let d2 = m.alloc::<Cell>(s2, 0).unwrap();
+                    a.get(m)
+                        .set_weak(m, WeakCell::TARGET, Some(d1.get(m).erase()));
+                    b.get(m)
+                        .set_weak(m, WeakCell::TARGET, Some(alive.get(m).erase()));
+                    c.get(m)
+                        .set_weak(m, WeakCell::TARGET, Some(d2.get(m).erase()));
+                });
+                // Nothing is reported before a canonical cycle, nor by a
+                // stress cycle.
+                m.safepoint();
+                assert!(m.take_cleared(s).is_empty());
+                m.collect();
+                // The report survives a moving cycle before it is taken.
+                let _ = m.alloc::<Cell>(s, 0).unwrap();
+                m.safepoint();
+                let got = m.take_cleared(s);
+                assert_eq!(got.len(), 2, "{stress:?}");
+                assert_eq!(got[0].get(m), a.get(m).erase());
+                assert_eq!(got[1].get(m), c.get(m).erase());
+                assert!(m.take_cleared(s).is_empty());
+                m.collect();
+                assert!(m.take_cleared(s).is_empty());
+            });
+        });
+    }
+}
+
+/// JS-D17: several agent heaps share the process's cage, each owning its
+/// own chunks. Interleaved work in two heaps gives each the digest it has
+/// alone; a slot pointing into the other heap's chunks is never followed;
+/// a dropped heap's chunks are reused.
+#[test]
+fn agent_heaps_share_one_cage_and_own_their_chunks() {
+    let build = |m: &mut crate::Mutator<'_>, n: u32, seed: i32| -> u64 {
+        m.scope(|m, s| {
+            let head = m.alloc::<Cell>(s, 0).unwrap();
+            for i in 0..n {
+                let c = m.alloc::<Cell>(s, 0).unwrap();
+                let (hd, cg) = (head.get(m), c.get(m));
+                cg.set(m, Cell::NEXT, hd.get(m, Cell::NEXT));
+                cg.set_value(
+                    m,
+                    Cell::VALUE,
+                    Value::Small(seed + i32::try_from(i).unwrap()),
+                );
+                hd.set(m, Cell::NEXT, Some(cg));
+            }
+            m.collect();
+            m.digest()
+        })
+    };
+    let alone = |seed| {
+        let (mut h, _) = heap(Stress::MoveOnAlloc, 1 << 40);
+        h.enter(|m| build(m, 40, seed))
+    };
+    let (da, db) = (alone(0), alone(1000));
+
+    let mem = Arc::new(TestMemory::default());
+    let cage = ProcessCage::new(mem, CAGE).unwrap();
+    let config = HeapConfig {
+        cage_bytes: 0,
+        trigger: 1 << 40,
+        stress: Stress::MoveOnAlloc,
+        agent: 1,
+    };
+    let mut a = Heap::in_cage(&cage, Arc::new(Log::default()), config);
+    let mut b = Heap::in_cage(
+        &cage,
+        Arc::new(Log::default()),
+        HeapConfig { agent: 2, ..config },
+    );
+    // Interleave: a, then b, then a again (each rebuild moves everything).
+    let a1 = a.enter(|m| build(m, 40, 0));
+    let b1 = b.enter(|m| build(m, 40, 1000));
+    let a2 = a.enter(|m| build(m, 40, 0));
+    assert_eq!((a1, a2, b1), (da, da, db));
+
+    // A slot of heap a planted to point at an object of heap b is not
+    // followed: a's collection neither marks nor moves b's object, and a's
+    // digest counts it as a reference to nothing.
+    b.enter(|mb| {
+        mb.scope(|mb, sb| {
+            let theirs = mb.alloc::<Cell>(sb, 0).unwrap();
+            theirs.get(mb).set_value(mb, Cell::VALUE, Value::Small(77));
+            let slot = theirs.get(mb).slot();
+            a.enter(|ma| {
+                ma.scope(|ma, sa| {
+                    let mine = ma.alloc::<Cell>(sa, 0).unwrap();
+                    let off = mine.get(ma).slot().as_reference().unwrap();
+                    ma.state_for_tests().cage.store32(off + 8, slot.raw());
+                    ma.collect();
+                    let off = mine.get(ma).slot().as_reference().unwrap();
+                    assert_eq!(ma.state_for_tests().cage.load32(off + 8), slot.raw());
+                });
+            });
+            assert_eq!(theirs.get(mb).slot(), slot);
+            assert_eq!(theirs.get(mb).get_value(mb, Cell::VALUE), Value::Small(77));
+        });
+    });
+
+    let before = b.stats().blocks;
+    drop(b);
+    let c = Heap::in_cage(
+        &cage,
+        Arc::new(Log::default()),
+        HeapConfig { agent: 3, ..config },
+    );
+    let mut c = c;
+    let dc = c.enter(|m| build(m, 40, 1000));
+    assert_eq!(dc, db);
+    assert!(before > 0);
 }

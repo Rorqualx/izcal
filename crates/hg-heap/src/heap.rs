@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use hg_types::HashMap;
 use std::sync::Arc;
 
-use hg_substrate::{DecisionKind, DecisionLog, Memory, MemoryKind, Position};
+use hg_substrate::{DecisionKind, DecisionLog, Memory, Position};
 
 use crate::cage::{Cage, CageError};
 use crate::object::{Any, Layout, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
@@ -75,7 +75,7 @@ pub struct HeapStats {
 }
 
 pub(crate) struct State {
-    pub(crate) cage: Cage,
+    pub(crate) cage: Arc<Cage>,
     space: Space,
     /// The type table: index → layout (outside the cage, H-4).
     types: Vec<Layout>,
@@ -84,6 +84,10 @@ pub(crate) struct State {
     roots: RefCell<Vec<Slot>>,
     /// The agent's [[KeptAlive]] list (ECMA-262 9.10).
     kept: RefCell<Vec<Slot>>,
+    /// Objects that had a weak slot cleared by a canonical cycle and that
+    /// the embedder has not taken yet ([`Mutator::take_cleared`]). Traced
+    /// as roots until taken, in the order the cycle cleared them.
+    cleared: RefCell<Vec<Slot>>,
     /// Objects whose layout has weak slots, to clear after a cycle.
     weak_holders: Vec<u64>,
     debt: u64,
@@ -93,9 +97,41 @@ pub(crate) struct State {
     stats: HeapStats,
 }
 
+/// The process's cage (JS spec 6.1, JS-D17): one reservation that every
+/// agent heap of the process allocates its chunks from. Cloning it shares
+/// the same cage.
+#[derive(Clone)]
+pub struct ProcessCage(Arc<Cage>);
+
+impl core::fmt::Debug for ProcessCage {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("ProcessCage").field(&self.0).finish()
+    }
+}
+
+impl ProcessCage {
+    /// Reserves the process's cage: `bytes` is a power of two from 1 MiB
+    /// to 16 GiB (production uses 16 GiB, JS-D17; tests use small cages).
+    ///
+    /// # Errors
+    /// [`HeapError::Cage`] if the cage cannot be reserved.
+    pub fn new(mem: Arc<dyn Memory>, bytes: u64) -> Result<Self, HeapError> {
+        Ok(Self(Arc::new(
+            Cage::new(mem, bytes).map_err(HeapError::Cage)?,
+        )))
+    }
+}
+
 /// One agent heap. It is entered for each turn of its agent's work.
 pub struct Heap {
     state: State,
+}
+
+impl Drop for Heap {
+    fn drop(&mut self) {
+        let st = &mut self.state;
+        st.space.release(&st.cage);
+    }
 }
 
 impl core::fmt::Debug for Heap {
@@ -174,8 +210,10 @@ pub enum Value<'h, 'm> {
 }
 
 impl Heap {
-    /// A heap in a fresh cage reserved through `mem`, logging its
-    /// decisions to `decisions`.
+    /// A heap in a cage of its own, reserved through `mem`, logging its
+    /// decisions to `decisions`. A process with several agents makes one
+    /// [`ProcessCage`] and puts each agent's heap in it with
+    /// [`Heap::in_cage`] (JS-D17).
     ///
     /// # Errors
     /// [`HeapError::Cage`] if the cage cannot be reserved.
@@ -184,15 +222,28 @@ impl Heap {
         decisions: Arc<dyn DecisionLog>,
         config: HeapConfig,
     ) -> Result<Self, HeapError> {
-        let cage = Cage::new(mem, config.cage_bytes).map_err(HeapError::Cage)?;
-        Ok(Self {
+        let cage = ProcessCage::new(mem, config.cage_bytes)?;
+        Ok(Self::in_cage(&cage, decisions, config))
+    }
+
+    /// An agent heap in the process's cage: it owns the chunks it takes
+    /// from the cage, and gives them all back when it is dropped (JS spec
+    /// 6.5: a destroyed agent's heap is released whole, without a trace).
+    /// `config.cage_bytes` is ignored; the cage's own size applies.
+    pub fn in_cage(
+        cage: &ProcessCage,
+        decisions: Arc<dyn DecisionLog>,
+        config: HeapConfig,
+    ) -> Self {
+        Self {
             state: State {
-                cage,
-                space: Space::new(MemoryKind::PerAgent),
+                cage: Arc::clone(&cage.0),
+                space: Space::new(),
                 types: Vec::new(),
                 type_index: HashMap::default(),
                 roots: RefCell::new(Vec::new()),
                 kept: RefCell::new(Vec::new()),
+                cleared: RefCell::new(Vec::new()),
                 weak_holders: Vec::new(),
                 debt: 0,
                 config,
@@ -200,7 +251,7 @@ impl Heap {
                 progress: 0,
                 stats: HeapStats::default(),
             },
-        })
+        }
     }
 
     /// Runs `f` with this heap's mutator under a fresh brand.
@@ -325,6 +376,32 @@ impl<'h> Mutator<'h> {
         self.state.kept.borrow_mut().clear();
     }
 
+    /// Takes the objects whose weak slots canonical cycles have cleared
+    /// since the last call, rooted in `s`, in the order the cycles cleared
+    /// them (allocation order within a cycle). An object appears once per
+    /// cycle that cleared at least one of its weak slots. The engine uses
+    /// it to find the finalization cells whose targets died (ECMA-262
+    /// [Execution](https://tc39.es/ecma262/#sec-weakref-execution)); until
+    /// taken, the objects are roots, so a cell cannot be lost between the
+    /// cycle and the embedder's look. Not a GC point.
+    pub fn take_cleared<'s>(&self, s: &Scope<'h, 's>) -> Vec<Root<'h, 's, Any>> {
+        let _ = s;
+        let taken = core::mem::take(&mut *self.state.cleared.borrow_mut());
+        let mut roots = self.state.roots.borrow_mut();
+        taken
+            .into_iter()
+            .map(|slot| {
+                roots.push(slot);
+                Root {
+                    index: roots.len() - 1,
+                    _h: PhantomData,
+                    _s: PhantomData,
+                    _t: PhantomData,
+                }
+            })
+            .collect()
+    }
+
     /// The heap's counters, with the block counts as they are now.
     pub fn stats(&self) -> HeapStats {
         let (blocks, used) = self.state.space.census();
@@ -374,6 +451,7 @@ impl<'h> Mutator<'h> {
             .borrow()
             .iter()
             .chain(st.kept.borrow().iter())
+            .chain(st.cleared.borrow().iter())
             .copied()
             .collect();
         h.write_u64(roots.len() as u64);
@@ -423,8 +501,19 @@ impl<'h> Mutator<'h> {
 impl<'h, 's> Scope<'h, 's> {
     /// Roots `gc` in this scope.
     pub fn root<T: Referent>(&self, m: &Mutator<'h>, gc: Gc<'h, '_, T>) -> Root<'h, 's, T> {
+        self.root_slot(m, gc.slot)
+    }
+
+    /// Roots the JS value `v` in this scope: a reference is traced and
+    /// updated like any root; a small integer is kept as it is. Read it
+    /// back with [`Root::get_value`].
+    pub fn root_value(&self, m: &Mutator<'h>, v: Value<'h, '_>) -> Root<'h, 's, Any> {
+        self.root_slot(m, value_slot(v))
+    }
+
+    fn root_slot<T: Referent>(&self, m: &Mutator<'h>, slot: Slot) -> Root<'h, 's, T> {
         let mut roots = m.state.roots.borrow_mut();
-        roots.push(gc.slot);
+        roots.push(slot);
         Root {
             index: roots.len() - 1,
             _h: PhantomData,
@@ -455,6 +544,27 @@ impl<'h, T: Referent> Root<'h, '_, T> {
     pub fn set(&self, m: &Mutator<'h>, gc: Gc<'h, '_, T>) {
         if let Some(s) = m.state.roots.borrow_mut().get_mut(self.index) {
             *s = gc.slot;
+        }
+    }
+}
+
+impl<'h> Root<'h, '_, Any> {
+    /// The rooted JS value, for as long as the mutator is borrowed.
+    pub fn get_value<'m>(&self, m: &'m Mutator<'h>) -> Value<'h, 'm> {
+        let slot = m
+            .state
+            .roots
+            .borrow()
+            .get(self.index)
+            .copied()
+            .unwrap_or(Slot::ZERO);
+        slot_value(slot)
+    }
+
+    /// Makes this root hold the JS value `v` instead.
+    pub fn set_value(&self, m: &Mutator<'h>, v: Value<'h, '_>) {
+        if let Some(s) = m.state.roots.borrow_mut().get_mut(self.index) {
+            *s = value_slot(v);
         }
     }
 }
@@ -677,11 +787,17 @@ impl State {
         // Roots: the scopes' slots and the kept-alive list.
         let mut roots = core::mem::take(self.roots.get_mut());
         let mut kept = core::mem::take(self.kept.get_mut());
-        for s in roots.iter_mut().chain(kept.iter_mut()) {
+        let mut pending = core::mem::take(self.cleared.get_mut());
+        for s in roots
+            .iter_mut()
+            .chain(kept.iter_mut())
+            .chain(pending.iter_mut())
+        {
             *s = self.visit(*s, &evacuating, &mut forward, &mut work);
         }
         *self.roots.get_mut() = roots;
         *self.kept.get_mut() = kept;
+        *self.cleared.get_mut() = pending;
 
         // Trace.
         while let Some(off) = work.pop() {
@@ -731,6 +847,7 @@ impl State {
             let Some((layout, _)) = self.shape(now) else {
                 continue;
             };
+            let before = cleared;
             for i in layout.traced..layout.traced.saturating_add(layout.weak) {
                 let at = now + Layout::slot_offset(i);
                 let s = Slot::from_raw(self.cage.load32(at));
@@ -747,6 +864,11 @@ impl State {
                         cleared += 1;
                     }
                 }
+            }
+            if cleared != before
+                && let Some(slot) = Slot::reference(now)
+            {
+                self.cleared.get_mut().push(slot);
             }
         }
         self.weak_holders = live_holders;
@@ -801,8 +923,11 @@ impl State {
         let Some((_, size)) = self.shape(off) else {
             return s;
         };
-        let block = usize::try_from(off / crate::space::BLOCK).unwrap_or(usize::MAX);
-        let evacuate = evacuating.get(block).copied().unwrap_or(false) && self.space.is_small(off);
+        let evacuate = self
+            .space
+            .block_index(off)
+            .is_some_and(|b| evacuating.get(b).copied().unwrap_or(false))
+            && self.space.is_small(off);
         if evacuate
             && !self.space.is_marked(off)
             && let Ok(to) = self.space.alloc_copy(&self.cage, size, evacuating)
