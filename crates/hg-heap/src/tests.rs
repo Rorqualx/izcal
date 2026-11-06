@@ -456,3 +456,62 @@ fn agent_heaps_share_one_cage_and_own_their_chunks() {
     assert_eq!(dc, db);
     assert!(before > 0);
 }
+
+/// A root made in an outer scope from inside an inner one lives as long
+/// as the outer scope (JS spec 6.5, rule 3), not the inner one: the inner
+/// exit used to drop it, and the next root took its place.
+#[test]
+fn an_outer_root_made_in_an_inner_scope_outlives_the_inner_scope() {
+    for stress in [Stress::None, Stress::MoveOnAlloc] {
+        let (mut h, _) = heap(stress, 1 << 40);
+        h.enter(|m| {
+            m.scope(|m, outer| {
+                let (r, v) = m.scope(|m, inner| {
+                    let _short = m.alloc::<Cell>(inner, 0).unwrap();
+                    let r = m.alloc::<Cell>(outer, 0).unwrap();
+                    r.get(m).set_raw(m, Cell::N, 42);
+                    let v = outer.root_value(m, Value::Small(5));
+                    (r, v)
+                });
+                assert_eq!(r.get(m).raw(m, Cell::N), 42);
+                let other = m.alloc::<Cell>(outer, 0).unwrap();
+                other.get(m).set_raw(m, Cell::N, 7);
+                m.safepoint();
+                assert_eq!(r.get(m).raw(m, Cell::N), 42);
+                assert_eq!(v.get_value(m), Value::Small(5));
+                assert_eq!(other.get(m).raw(m, Cell::N), 7);
+            });
+        });
+    }
+}
+
+/// A moving cycle with no room left for the copies keeps the blocks it
+/// could not empty: every live object reads back what it held. They used
+/// to be freed and poisoned with the evacuated blocks.
+#[test]
+fn an_evacuation_that_runs_out_of_room_keeps_its_live_objects() {
+    let (mut h, _) = heap(Stress::MoveAtSafepoint, 1 << 40);
+    h.enter(|m| {
+        m.scope(|m, s| {
+            let mut kept = Vec::new();
+            for i in 0.. {
+                let Ok(a) = m.alloc::<Array>(s, 1000) else {
+                    break;
+                };
+                a.get(m).set_tail(m, 0, Value::Small(i));
+                kept.push((i, a));
+            }
+            assert!(kept.len() > 100, "the cage filled: {}", kept.len());
+            m.safepoint();
+            for (i, a) in &kept {
+                assert_eq!(a.get(m).tail(m, 0), Some(Value::Small(*i)), "array {i}");
+            }
+            // The heap still works: what was freed can be allocated again.
+            drop(kept);
+        });
+        m.scope(|m, s| {
+            m.safepoint();
+            assert!(m.alloc::<Array>(s, 1000).is_ok());
+        });
+    });
+}
