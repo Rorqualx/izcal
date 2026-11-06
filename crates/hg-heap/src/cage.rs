@@ -196,7 +196,9 @@ pub(crate) mod test_memory {
         fn commit(&self, _: &Region, _: usize, _: usize, _: MemoryKind) -> Result<(), MemoryError> {
             Ok(())
         }
-        fn decommit(&self, _: &Region, _: usize, _: usize) {}
+        fn decommit(&self, _: &Region, _: usize, _: usize) -> Result<(), MemoryError> {
+            Ok(())
+        }
         fn purge(&self, _: &Region, _: usize, _: usize) {}
         fn protect(&self, _: &Region, o: usize, l: usize, a: Access) -> Result<(), MemoryError> {
             self.protects.lock().unwrap().push((o, l, a));
