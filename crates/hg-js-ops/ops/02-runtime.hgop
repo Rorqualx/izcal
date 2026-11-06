@@ -1,0 +1,106 @@
+// Runtime functions: the loops and the user-code paths descriptions call
+// into (language note 5.1). Their declared effects become the generated
+// `Runtime` trait's signatures, so rustc checks them a second time.
+// hg-js-runtime implements them by hand.
+
+// --- Operators: the generic paths (OC-17: each is its path's last effect,
+// and does any post-call work itself) ---------------------------------------
+
+runtime rt_add(x: Value, y: Value) -> Value
+  effects { alloc(string_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator";
+runtime rt_numeric(op: i32, x: Value, y: Value) -> Value
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-applystringornumericbinaryoperator";
+runtime rt_unary(op: i32, x: Value) -> Value
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-tonumeric";
+runtime rt_exponentiate(base: f64, exponent: f64) -> f64
+  effects { }
+  anchor ecma262 "sec-numeric-types-number-exponentiate";
+runtime rt_compare(op: i32, x: Value, y: Value) -> Value
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-islessthan"
+  ensures result is True | False;     // IsLessThan, with the operator's mapping of undefined
+runtime rt_loose_equal(x: Value, y: Value) -> Value
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-islooselyequal"
+  ensures result is True | False;
+
+// --- Conversions -----------------------------------------------------------
+
+runtime rt_to_number(x: Value) -> Value
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-tonumber";
+runtime rt_to_numeric(x: Value) -> Value
+  effects { alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-tonumeric";
+runtime rt_to_string(x: Value) -> Value
+  effects { alloc(string_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-tostring";
+runtime rt_number_to_string(x: f64) -> Ref<String>
+  effects { alloc(string_units), alloc_internal }
+  anchor ecma262 "sec-numeric-types-number-tostring";
+runtime rt_typeof_name(tag: i32) -> Ref<String>
+  effects { }
+  anchor ecma262 "sec-typeof-operator-runtime-semantics-evaluation";
+
+// --- Strings and other primitives: loops over code units or digits --------
+
+runtime rt_string_equal(a: Ref<String>, b: Ref<String>) -> bool
+  effects { }
+  anchor ecma262 "sec-samevaluenonnumber";
+runtime rt_string_less_than(a: Ref<String>, b: Ref<String>) -> bool
+  effects { }
+  anchor ecma262 "sec-islessthan" step "3";
+runtime rt_string_flat_concat(a: Ref<String>, b: Ref<String>, length: i32) -> Ref<String>
+  effects { alloc_internal }
+  anchor izcal "flat copy of both operands; a loop over code units";
+runtime rt_bigint_equal(a: Ref<BigInt>, b: Ref<BigInt>) -> bool
+  effects { }
+  anchor ecma262 "sec-numeric-types-bigint-equal";
+runtime rt_symbol_registered(s: Ref<Symbol>) -> bool
+  effects { }
+  anchor ecma262 "sec-canbeheldweakly" step "2";
+
+// --- Properties ------------------------------------------------------------
+
+runtime rt_ordinary_get(o: Ref<Object>, k: Key, receiver: Value) -> Value
+  effects { reads(Field(any)), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-ordinaryget";
+runtime rt_get(base: Value, k: Key) -> Value
+  effects { reads(Field(any)), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-getv";
+runtime rt_get_keyed(base: Value, key: Value) -> Value
+  effects { reads(Field(any)), alloc(string_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-getvalue" step "3.c";
+runtime rt_ordinary_set(o: Ref<Object>, k: Key, v: Value, receiver: Value, strict: bool) -> bool
+  effects { reads(Field(any)), writes(Field(any)), alloc(property_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-ordinaryset";
+runtime rt_set(base: Value, k: Key, v: Value, strict: bool) -> bool
+  effects { reads(Field(any)), writes(Field(any)), alloc(property_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-putvalue" step "3.d";
+runtime rt_set_keyed(base: Value, key: Value, v: Value, strict: bool) -> bool
+  effects { reads(Field(any)), writes(Field(any)), alloc(property_units), alloc(string_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-putvalue" step "3.c";
+
+// --- Objects, weak state and inputs ----------------------------------------
+
+runtime rt_dict_new(proto: Value) -> Ref<Object>
+  effects { alloc_internal }
+  anchor ecma262 "sec-ordinaryobjectcreate";
+runtime rt_finreg_register(r: Ref<FinReg>, target: Value, held: Value, token: Value, has_token: bool) -> bool
+  effects { writes(weak), alloc_internal }
+  anchor ecma262 "sec-finalization-registry.prototype.register" step "7";
+runtime rt_finreg_unregister(r: Ref<FinReg>, token: Value) -> bool
+  effects { writes(weak) }
+  anchor ecma262 "sec-finalization-registry.prototype.unregister" step "5";
+runtime rt_math_random() -> f64
+  effects { input(entropy), writes(realm) }
+  anchor ecma262 "sec-math.random";
+runtime rt_date_now() -> f64
+  effects { host(HostSystemUTCEpochNanoseconds), input(clock) }
+  anchor temporal "sec-temporal-date.now";
+runtime rt_make_job_callback(callback: Ref<Object>) -> i64
+  effects { host(HostMakeJobCallback) }
+  anchor ecma262 "sec-hostmakejobcallback";

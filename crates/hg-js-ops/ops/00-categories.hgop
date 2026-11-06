@@ -1,0 +1,20 @@
+// The heap categories and fact kinds, declared once (R0-O12). This tree
+// is part 2's (optimizer-ir.md Section 7) with the three categories
+// JS-M0 adds under Heap: weak (gc_mutable: a cycle clears weak slots),
+// kept and realm. T2's effect bitset and the operation facts are
+// generated from this list. The Wasm categories arrive with W2.
+
+category Heap;
+category Field(key: i32) under Heap;        // named slots by key class; Field(any) is every key
+category Elements(layout: i32) under Heap;  // indexed elements by layout
+category FactHolder under Heap;             // slots and elements of objects with registered facts
+category Context under Heap;                // scope slots
+category Buffer(n: i32) under Heap;         // a buffer-table entry's backing store
+category External(kind: i32) under Heap;    // node columns and external strings
+category weak under Heap gc_mutable;        // weak slots: WeakRef targets, finalization cells
+category kept under Heap;                   // the agent's [[KeptAlive]] list (outside the cage)
+category realm under Heap;                  // the realm's random stream
+
+// No fact kind exists at JS-M0: facts and their ledger arrive with T2
+// (part 2, code-table-and-ledger.md). The declaration form is
+//   fact NAME on FactHolder;

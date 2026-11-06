@@ -1,0 +1,70 @@
+# The ECMA-262 and proposal clause ids the .hgop descriptions anchor to,
+# each verified to exist in the rendered specification at the revision
+# below (OC-12). Written by `hg-opgen pin`; do not edit. A new anchor
+# needs a re-pin against the then-current pinned specification.
+# revision ecma262 draft of 2026-10-31 (https://tc39.es/ecma262/, sha256 5e70776ecee707c8…)
+# revision temporal draft of 2026-10-31 (https://tc39.es/proposal-temporal/, sha256 fc35bf6d3ae565bd…)
+ecma262 sec-IsHTMLDDA-internal-slot-to-boolean
+ecma262 sec-IsHTMLDDA-internal-slot-typeof
+ecma262 sec-applystringornumericbinaryoperator
+ecma262 sec-bitwise-not-operator-runtime-semantics-evaluation
+ecma262 sec-canbeheldweakly
+ecma262 sec-createbuiltinfunction
+ecma262 sec-ecmascript-language-types-undefined-type
+ecma262 sec-evaluate-property-access-with-expression-key
+ecma262 sec-evaluate-property-access-with-identifier-key
+ecma262 sec-finalization-registry-cleanup-callback
+ecma262 sec-finalization-registry.prototype.register
+ecma262 sec-finalization-registry.prototype.unregister
+ecma262 sec-getv
+ecma262 sec-getvalue
+ecma262 sec-hostmakejobcallback
+ecma262 sec-if-statement-runtime-semantics-evaluation
+ecma262 sec-islessthan
+ecma262 sec-islooselyequal
+ecma262 sec-isstrictlyequal
+ecma262 sec-literals-runtime-semantics-evaluation
+ecma262 sec-logical-not-operator-runtime-semantics-evaluation
+ecma262 sec-loopcontinues
+ecma262 sec-math.random
+ecma262 sec-numeric-types-bigint-equal
+ecma262 sec-numeric-types-number-add
+ecma262 sec-numeric-types-number-bitwiseAND
+ecma262 sec-numeric-types-number-bitwiseNOT
+ecma262 sec-numeric-types-number-bitwiseOR
+ecma262 sec-numeric-types-number-bitwiseXOR
+ecma262 sec-numeric-types-number-divide
+ecma262 sec-numeric-types-number-equal
+ecma262 sec-numeric-types-number-exponentiate
+ecma262 sec-numeric-types-number-leftShift
+ecma262 sec-numeric-types-number-lessThan
+ecma262 sec-numeric-types-number-multiply
+ecma262 sec-numeric-types-number-remainder
+ecma262 sec-numeric-types-number-signedRightShift
+ecma262 sec-numeric-types-number-subtract
+ecma262 sec-numeric-types-number-tostring
+ecma262 sec-numeric-types-number-unaryMinus
+ecma262 sec-numeric-types-number-unsignedRightShift
+ecma262 sec-object.create
+ecma262 sec-ordinaryget
+ecma262 sec-ordinaryobjectcreate
+ecma262 sec-ordinaryset
+ecma262 sec-prefix-decrement-operator-runtime-semantics-evaluation
+ecma262 sec-prefix-increment-operator-runtime-semantics-evaluation
+ecma262 sec-putvalue
+ecma262 sec-relational-operators-runtime-semantics-evaluation
+ecma262 sec-requireinternalslot
+ecma262 sec-return-statement-runtime-semantics-evaluation
+ecma262 sec-samevaluenonnumber
+ecma262 sec-toboolean
+ecma262 sec-tonumber
+ecma262 sec-tonumeric
+ecma262 sec-tostring
+ecma262 sec-typeof-operator-runtime-semantics-evaluation
+ecma262 sec-unary-minus-operator-runtime-semantics-evaluation
+ecma262 sec-unary-plus-operator-runtime-semantics-evaluation
+ecma262 sec-weak-ref-target
+ecma262 sec-weak-ref.prototype.deref
+ecma262 sec-weakrefderef
+ecma262 string-concatenation
+temporal sec-temporal-date.now

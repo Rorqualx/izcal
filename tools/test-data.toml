@@ -1,0 +1,45 @@
+# Izcal's pinned test-only data sets: oracles and conformance suites that
+# are fetched into a cache outside the repository, never committed, never
+# linked and never shipped (CONTRIBUTING.md, License: "test-only crates and
+# suites that never ship (dev-dependencies, WPT, test262, oracles), whatever
+# their licence"; HGBA-2 M-1 part 1).
+#
+# tools/fetch-test-data.sh downloads each `url`, checks `sha256` against the
+# archive's bytes, and unpacks it into $IZCAL_TEST_DATA/<name>-<short
+# commit>/ (default ~/.cache/izcal/test-data). `--check` verifies what is
+# already there without downloading.
+#
+# Format (read by the script with awk; keep it this flat): one [table] per
+# data set, string values only, one `key = "value"` per line.
+#
+# A pin moves in its own commit, with the new hashes and the date, and the
+# hg-test262 measurement re-run (measurements/milestones/js-m0/).
+
+[test262]
+# tc39/test262, BSD-3-Clause. The ECMAScript conformance suite: test data
+# only. hg-test262 reads its front matter and runs its files; it reads the
+# prose of INTERPRETING.md, never another runner's code (M-1 part 3).
+# main at 29 Oct 2026, "Increase coverage of iterator helpers on abrupt
+# completion (#5099)"; the same revision test262.fyi ran on 31 Oct 2026.
+commit = "91c70759363c46557b694792bf34a2551a7af5ba"
+date = "2026-10-29"
+licence = "BSD-3-Clause"
+url = "https://codeload.github.com/tc39/test262/tar.gz/91c70759363c46557b694792bf34a2551a7af5ba"
+sha256 = "9869ee47ade3ed1f4d08c06e1b9a7c7e84391394575e2267064335917decb903"
+strip = "1"
+
+[engine262]
+# engine262/engine262, MIT. A JavaScript implementation used strictly as a
+# black-box, test-only oracle for hg-test262's own validation at JS-M0
+# (ORC-1): run under Node through its documented CLI, never linked, never
+# vendored, its source never read. The npm package its CI publishes for
+# each main commit (README, "Using engine262": install from npm), so no
+# build step runs here; the package has no runtime dependencies.
+# main at 23 Oct 2026 (npm `latest` on 31 Oct 2026). Needs a recent Node.js
+# (README, "Requirements"); measured with Node 26.13.0.
+commit = "d553e7b52501fbc47eae981c8d0fa7a5c26d0171"
+date = "2026-10-23"
+licence = "MIT"
+url = "https://registry.npmjs.org/@engine262/engine262/-/engine262-0.0.1-d553e7b52501fbc47eae981c8d0fa7a5c26d0171.tgz"
+sha256 = "1966b1f909d522741c56c394973c4c5c4d70f4e7cb70b74b511cea8fe76c5018"
+strip = "1"

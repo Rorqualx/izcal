@@ -1,0 +1,82 @@
+// Property access: opcodes 0x2D-0x30. ToObject on the base (GetValue and
+// PutValue step 3.a) precedes ToPropertyKey of the key (step 3.c).
+
+op GetNamed(obj: reg, key: const<key>, fb: slot<load>) acc out after_call result
+  effects { reads(Field(any)), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-evaluate-property-access-with-identifier-key"
+{
+  let o = reg[obj];
+  let k = const[key];                    // a Key: the trusted constant kind guarantees the kind
+  match o {
+    Undefined | Null => path nullish anchor ecma262 "sec-getvalue" step "3.a" {
+      throw TypeError;                   // ToObject throws on undefined and null
+    }
+    Ref<Object>(d) if Object.kind(d) == Dict => path dictionary
+        anchor ecma262 "sec-ordinaryget" {
+      acc = rt_ordinary_get(d, k, o);    // hash lookup, then the prototype walk: unbounded
+      next;
+    }
+    Ref<Object>(x) => path other_object anchor ecma262 "sec-getv" {
+      acc = rt_get(x, k);                // exotic and host objects ([[Get]] dispatch)
+      next;
+    }
+    _ => path primitive anchor ecma262 "sec-getv" {
+      acc = rt_get(o, k);                // wrapper prototypes: JS-M1's realm
+      next;
+    }
+  }
+}
+
+op SetNamed(obj: reg, key: const<key>, fb: slot<store>) acc in after_call preserve
+  effects { reads(Field(any)), writes(Field(any)), alloc(property_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-putvalue"
+{
+  let o = reg[obj];
+  let k = const[key];
+  match o {
+    Undefined | Null => path nullish anchor ecma262 "sec-putvalue" step "3.a" {
+      throw TypeError;
+    }
+    Ref<Object>(d) if Object.kind(d) == Dict => path dictionary
+        anchor ecma262 "sec-ordinaryset" {
+      rt_ordinary_set(d, k, acc, o, unit.strict());   // step 3.e's strict TypeError is inside the call
+      next;
+    }
+    _ => path other anchor ecma262 "sec-putvalue" step "3.d" {
+      rt_set(o, k, acc, unit.strict());
+      next;
+    }
+  }
+}
+
+op GetKeyed(obj: reg, fb: slot<keyed-load>) acc inout after_call result
+  effects { reads(Field(any)), alloc(string_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-evaluate-property-access-with-expression-key"
+{
+  let o = reg[obj];
+  match o {
+    Undefined | Null => path nullish anchor ecma262 "sec-getvalue" step "3.a" {
+      throw TypeError;
+    }
+    _ => path keyed anchor ecma262 "sec-getvalue" step "3.c" {
+      acc = rt_get_keyed(o, acc);        // ToPropertyKey, then [[Get]]: one call, the path's last effect
+      next;
+    }
+  }
+}
+
+op SetKeyed(obj: reg, key: reg, fb: slot<keyed-store>) acc in after_call preserve
+  effects { reads(Field(any)), writes(Field(any)), alloc(property_units), alloc(string_units), alloc_internal, throw(any), call_user }
+  anchor ecma262 "sec-putvalue"
+{
+  let o = reg[obj];
+  match o {
+    Undefined | Null => path nullish anchor ecma262 "sec-putvalue" step "3.a" {
+      throw TypeError;
+    }
+    _ => path keyed anchor ecma262 "sec-putvalue" step "3.c" {
+      rt_set_keyed(o, reg[key], acc, unit.strict());
+      next;
+    }
+  }
+}
