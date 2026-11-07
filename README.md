@@ -10,9 +10,9 @@ The documents cite each other by ID. This table maps the IDs to files.
 |---|---|---|
 | HGBA-2 (spec; targets S-, C-, P-, R-, I-, decisions D1–D13) | `reports/HGBA 2 browser architecture spec.md` | 2.4.4, frozen (no superseded section) |
 | HGBA-3 (direction: oracles, data plane, determinism; B-, DET-, AG-) | `reports/Future software browser engine.md` | 3.3.3, direction document |
-| Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S12) | `reports/HGBA Stage 1 architecture design.md` | draft 0.14.7 |
+| Stage 1 design (process map, crates, IPC, milestones; owner decisions D-S1–D-S12) | `reports/HGBA Stage 1 architecture design.md` | draft 0.14.9 |
 | DevTools spec (native inspection protocol, `hg-devtools`, adapters; targets DT-) | `reports/Izcal DevTools spec.md` | draft 0.3.8, decisions accepted |
-| JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM, on x86-64, AArch64 and riscv64; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.4.4, decisions accepted; riscv64 first-class (JS-D22) |
+| JavaScript engine spec (Izcal's own JS and Wasm engine and the GC shared with the DOM, on x86-64, AArch64 and riscv64; targets JS-) | `reports/Izcal JavaScript engine.md` | draft 0.4.5, decisions accepted; riscv64 first-class (JS-D22) |
 | Resource footprint spec (memory, wakeups, energy, disk and GPU budgets, per ISA on x86-64, AArch64 and riscv64; targets FP-) | `reports/Izcal resource footprint.md` | draft 0.4.6, decisions accepted |
 | HTML and CSS parsing and style spec (HTML, XML and CSS parsers, selectors, cascade, invalidation; targets ST-) | `reports/Izcal HTML and CSS parsing and style.md` | draft 0.3.7, decisions accepted |
 | Fonts and text spec (font parsing, shaping, Unicode, rasterization, text input, Izcal's own font set; targets TX-) | `reports/Izcal fonts and text.md` | draft 0.3.7, decisions accepted |

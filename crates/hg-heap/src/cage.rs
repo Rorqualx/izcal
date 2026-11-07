@@ -303,12 +303,22 @@ pub mod test_memory {
         live: Mutex<Vec<(usize, std::alloc::Layout)>>,
         protects: Mutex<Vec<(usize, usize, Access)>>,
         refuse_decommit: AtomicBool,
+        refuse_protect: Mutex<Option<Access>>,
     }
 
     impl TestMemory {
         /// Makes every later decommit fail, leaving its pages as they are.
         pub fn refuse_decommit(&self, refuse: bool) {
             self.refuse_decommit.store(refuse, Ordering::SeqCst);
+        }
+
+        /// Makes every later protection change to `access` fail (`None`
+        /// allows them all again). Refused changes are not recorded.
+        pub fn refuse_protect(&self, access: Option<Access>) {
+            *self
+                .refuse_protect
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = access;
         }
 
         /// Every protection change asked for, in order.
@@ -361,6 +371,14 @@ pub mod test_memory {
         }
         fn purge(&self, _: &Region, _: usize, _: usize) {}
         fn protect(&self, _: &Region, o: usize, l: usize, a: Access) -> Result<(), MemoryError> {
+            if *self
+                .refuse_protect
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                == Some(a)
+            {
+                return Err(MemoryError::ProtectFailed);
+            }
             self.protects
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
