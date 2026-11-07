@@ -80,8 +80,10 @@ pub(crate) struct State {
     /// The type table: index → layout (outside the cage, H-4).
     types: Vec<Layout>,
     type_index: HashMap<TypeId, u32>,
-    /// Root slots, by scope order; a scope truncates on exit.
-    roots: RefCell<Vec<Slot>>,
+    /// Root slots, one segment per open scope, outermost first. A root
+    /// lives in its own scope's segment, so rooting into an outer scope
+    /// from inside an inner one survives the inner scope's exit.
+    roots: RefCell<Vec<Vec<Slot>>>,
     /// The agent's [[KeptAlive]] list (ECMA-262 9.10).
     kept: RefCell<Vec<Slot>>,
     /// Objects that had a weak slot cleared by a canonical cycle and that
@@ -181,12 +183,16 @@ impl<T: Referent> Eq for Gc<'_, '_, T> {}
 
 /// A root scope of heap `'h`; `'s` is fresh per [`Mutator::scope`].
 pub struct Scope<'h, 's> {
+    /// Its segment in [`State::roots`]: how many scopes enclose it.
+    level: usize,
     _h: Invariant<'h>,
     _s: Invariant<'s>,
 }
 
 /// A rooted reference: survives GC points, and cannot outlive scope `'s`.
 pub struct Root<'h, 's, T: Referent> {
+    /// Its scope's segment, and its place in it.
+    level: usize,
     index: usize,
     _h: Invariant<'h>,
     _s: Invariant<'s>,
@@ -273,13 +279,18 @@ impl Heap {
 impl<'h> Mutator<'h> {
     /// Runs `f` with a fresh root scope; its roots die when it returns.
     pub fn scope<R>(&mut self, f: impl for<'s> FnOnce(&mut Self, &Scope<'h, 's>) -> R) -> R {
-        let depth = self.state.roots.borrow().len();
+        let level = {
+            let mut roots = self.state.roots.borrow_mut();
+            roots.push(Vec::new());
+            roots.len() - 1
+        };
         let s = Scope {
+            level,
             _h: PhantomData,
             _s: PhantomData,
         };
         let r = f(self, &s);
-        self.state.roots.borrow_mut().truncate(depth);
+        self.state.roots.borrow_mut().truncate(level);
         r
     }
 
@@ -307,7 +318,6 @@ impl<'h> Mutator<'h> {
         s: &Scope<'h, 's>,
         len: u32,
     ) -> Result<Root<'h, 's, T>, AllocError> {
-        let _ = s;
         let st = &mut *self.state;
         let layout = T::LAYOUT;
         let len = if layout.tail == Tail::None { 0 } else { len };
@@ -324,14 +334,7 @@ impl<'h> Mutator<'h> {
             st.weak_holders.push(at);
         }
         let slot = Slot::reference(at).ok_or(AllocError::OutOfMemory)?;
-        let mut roots = st.roots.borrow_mut();
-        roots.push(slot);
-        Ok(Root {
-            index: roots.len() - 1,
-            _h: PhantomData,
-            _s: PhantomData,
-            _t: PhantomData,
-        })
+        Ok(push_root(&st.roots, s, slot))
     }
 
     /// The heap's internals, for the corruption tests.
@@ -385,20 +388,10 @@ impl<'h> Mutator<'h> {
     /// taken, the objects are roots, so a cell cannot be lost between the
     /// cycle and the embedder's look. Not a GC point.
     pub fn take_cleared<'s>(&self, s: &Scope<'h, 's>) -> Vec<Root<'h, 's, Any>> {
-        let _ = s;
         let taken = core::mem::take(&mut *self.state.cleared.borrow_mut());
-        let mut roots = self.state.roots.borrow_mut();
         taken
             .into_iter()
-            .map(|slot| {
-                roots.push(slot);
-                Root {
-                    index: roots.len() - 1,
-                    _h: PhantomData,
-                    _s: PhantomData,
-                    _t: PhantomData,
-                }
-            })
+            .map(|slot| push_root(&self.state.roots, s, slot))
             .collect()
     }
 
@@ -450,6 +443,7 @@ impl<'h> Mutator<'h> {
             .roots
             .borrow()
             .iter()
+            .flatten()
             .chain(st.kept.borrow().iter())
             .chain(st.cleared.borrow().iter())
             .copied()
@@ -498,6 +492,28 @@ impl<'h> Mutator<'h> {
     }
 }
 
+/// Roots `slot` in scope `s`'s own segment. The segment exists while `s`
+/// does: [`Mutator::scope`] pushes it before `s` is made and drops it
+/// only after `s`'s lifetime has ended.
+fn push_root<'h, 's, T: Referent>(
+    roots: &RefCell<Vec<Vec<Slot>>>,
+    s: &Scope<'h, 's>,
+    slot: Slot,
+) -> Root<'h, 's, T> {
+    let mut roots = roots.borrow_mut();
+    let index = roots.get_mut(s.level).map_or(0, |seg| {
+        seg.push(slot);
+        seg.len() - 1
+    });
+    Root {
+        level: s.level,
+        index,
+        _h: PhantomData,
+        _s: PhantomData,
+        _t: PhantomData,
+    }
+}
+
 impl<'h, 's> Scope<'h, 's> {
     /// Roots `gc` in this scope.
     pub fn root<T: Referent>(&self, m: &Mutator<'h>, gc: Gc<'h, '_, T>) -> Root<'h, 's, T> {
@@ -512,14 +528,7 @@ impl<'h, 's> Scope<'h, 's> {
     }
 
     fn root_slot<T: Referent>(&self, m: &Mutator<'h>, slot: Slot) -> Root<'h, 's, T> {
-        let mut roots = m.state.roots.borrow_mut();
-        roots.push(slot);
-        Root {
-            index: roots.len() - 1,
-            _h: PhantomData,
-            _s: PhantomData,
-            _t: PhantomData,
-        }
+        push_root(&m.state.roots, self, slot)
     }
 }
 
@@ -530,7 +539,8 @@ impl<'h, T: Referent> Root<'h, '_, T> {
             .state
             .roots
             .borrow()
-            .get(self.index)
+            .get(self.level)
+            .and_then(|seg| seg.get(self.index))
             .copied()
             .unwrap_or(Slot::ZERO);
         Gc {
@@ -542,7 +552,13 @@ impl<'h, T: Referent> Root<'h, '_, T> {
 
     /// Points this root at `gc` instead.
     pub fn set(&self, m: &Mutator<'h>, gc: Gc<'h, '_, T>) {
-        if let Some(s) = m.state.roots.borrow_mut().get_mut(self.index) {
+        if let Some(s) = m
+            .state
+            .roots
+            .borrow_mut()
+            .get_mut(self.level)
+            .and_then(|seg| seg.get_mut(self.index))
+        {
             *s = gc.slot;
         }
     }
@@ -555,7 +571,8 @@ impl<'h> Root<'h, '_, Any> {
             .state
             .roots
             .borrow()
-            .get(self.index)
+            .get(self.level)
+            .and_then(|seg| seg.get(self.index))
             .copied()
             .unwrap_or(Slot::ZERO);
         slot_value(slot)
@@ -563,7 +580,13 @@ impl<'h> Root<'h, '_, Any> {
 
     /// Makes this root hold the JS value `v` instead.
     pub fn set_value(&self, m: &Mutator<'h>, v: Value<'h, '_>) {
-        if let Some(s) = m.state.roots.borrow_mut().get_mut(self.index) {
+        if let Some(s) = m
+            .state
+            .roots
+            .borrow_mut()
+            .get_mut(self.level)
+            .and_then(|seg| seg.get_mut(self.index))
+        {
             *s = value_slot(v);
         }
     }
@@ -779,7 +802,7 @@ impl State {
     /// decision point (H-9); any other cycle treats weak slots as strong
     /// and moves every object, so it can change nothing observable.
     fn collect(&mut self, canonical: bool) {
-        let evacuating = self.space.candidates(!canonical);
+        let mut evacuating = self.space.candidates(!canonical);
         self.space.start_cycle();
         let mut forward: BTreeMap<u64, u64> = BTreeMap::new();
         let mut work: Vec<u64> = Vec::new();
@@ -790,10 +813,11 @@ impl State {
         let mut pending = core::mem::take(self.cleared.get_mut());
         for s in roots
             .iter_mut()
+            .flatten()
             .chain(kept.iter_mut())
             .chain(pending.iter_mut())
         {
-            *s = self.visit(*s, &evacuating, &mut forward, &mut work);
+            *s = self.visit(*s, &mut evacuating, &mut forward, &mut work);
         }
         *self.roots.get_mut() = roots;
         *self.kept.get_mut() = kept;
@@ -824,7 +848,7 @@ impl State {
                     continue;
                 }
                 let s = Slot::from_raw(self.cage.load32(at));
-                let n = self.visit(s, &evacuating, &mut forward, &mut work);
+                let n = self.visit(s, &mut evacuating, &mut forward, &mut work);
                 if n != s {
                     self.cage.store32(at, n.raw());
                 }
@@ -904,10 +928,14 @@ impl State {
 
     /// Follows slot `s`: marks (and, in an evacuated block, copies) its
     /// target, queues it for tracing, and returns the slot to store back.
+    /// When there is no room for a copy, the object is marked where it is
+    /// and its block leaves `evacuating`, so the sweep keeps the block and
+    /// frees only its unmarked lines. Objects already copied out of it
+    /// stay forwarded; their marked old copies go at the next cycle.
     fn visit(
         &mut self,
         s: Slot,
-        evacuating: &[bool],
+        evacuating: &mut [bool],
         forward: &mut BTreeMap<u64, u64>,
         work: &mut Vec<u64>,
     ) -> Slot {
@@ -923,22 +951,30 @@ impl State {
         let Some((_, size)) = self.shape(off) else {
             return s;
         };
-        let evacuate = self
+        let block = self
             .space
             .block_index(off)
-            .is_some_and(|b| evacuating.get(b).copied().unwrap_or(false))
-            && self.space.is_small(off);
-        if evacuate
+            .filter(|&b| evacuating.get(b).copied().unwrap_or(false))
+            .filter(|_| self.space.is_small(off));
+        if let Some(b) = block
             && !self.space.is_marked(off)
-            && let Ok(to) = self.space.alloc_copy(&self.cage, size, evacuating)
         {
-            self.cage.copy(off, to, size);
-            forward.insert(off, to);
-            self.space.mark(to, size);
-            // Mark the old copy too, so a second path finds `forward`.
-            self.space.mark(off, size);
-            work.push(to);
-            return Slot::reference(to).unwrap_or(s);
+            match self.space.alloc_copy(&self.cage, size, evacuating) {
+                Ok(to) => {
+                    self.cage.copy(off, to, size);
+                    forward.insert(off, to);
+                    self.space.mark(to, size);
+                    // Mark the old copy too, so a second path finds `forward`.
+                    self.space.mark(off, size);
+                    work.push(to);
+                    return Slot::reference(to).unwrap_or(s);
+                }
+                Err(_) => {
+                    if let Some(e) = evacuating.get_mut(b) {
+                        *e = false;
+                    }
+                }
+            }
         }
         if !self.space.mark(off, size) {
             work.push(off);
