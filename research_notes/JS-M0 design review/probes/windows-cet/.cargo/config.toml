@@ -1,0 +1,7 @@
+# The probe image is linked /CETCOMPAT, as an Izcal renderer would be.
+# The baseline image without it overrides these flags from the environment
+# (see run-functional.cmd):
+#   set CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS=-Cdebuginfo=0
+#   cargo build --release --target-dir target-nocet
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/CETCOMPAT"]

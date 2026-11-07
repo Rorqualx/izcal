@@ -1,0 +1,128 @@
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:50-06:00
+$ cetprobe launch off-nooop fiberbench
+SSP=0x0 policy 0x000 []
+TIME SwitchToFiber round trip (2 switches): n=301 median=55.7ns p10=55.6 p90=56.4 min=55.6 max=91.2
+TIME CreateFiberEx(64K commit,1M reserve)+DeleteFiber: n=201 median=5040.0ns p10=4960.0 p90=5240.0 min=4950.0 max=6745.0
+TIME CreateFiberEx+first SwitchToFiber round trip+DeleteFiber: n=201 median=5190.0ns p10=5160.0 p90=5240.0 min=5145.0 max=6340.0
+CHILD off-nooop ["fiberbench"] exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:51-06:00
+$ cetprobe launch on fiberbench
+SSP=0xb5c6dfefc0 policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+TIME SwitchToFiber round trip (2 switches): n=301 median=71.9ns p10=71.8 p90=72.3 min=71.8 max=100.7
+TIME CreateFiberEx(64K commit,1M reserve)+DeleteFiber: n=201 median=13365.0ns p10=13045.0 p90=13820.0 min=12865.0 max=14770.0
+TIME CreateFiberEx+first SwitchToFiber round trip+DeleteFiber: n=201 median=13345.0ns p10=13115.0 p90=13740.0 min=12950.0 max=14270.0
+CHILD on ["fiberbench"] exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:51-06:00
+$ cetprobe launch strict fiberbench
+SSP=0x1a54cfefc0 policy 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+TIME SwitchToFiber round trip (2 switches): n=301 median=73.2ns p10=70.2 p90=73.2 min=70.2 max=81.3
+TIME CreateFiberEx(64K commit,1M reserve)+DeleteFiber: n=201 median=12790.0ns p10=12600.0 p90=12980.0 min=12430.0 max=14490.0
+TIME CreateFiberEx+first SwitchToFiber round trip+DeleteFiber: n=201 median=12775.0ns p10=12365.0 p90=12950.0 min=11925.0 max=15280.0
+CHILD strict ["fiberbench"] exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:52-06:00
+$ cetprobe launch off-nooop own
+main: SSP=0 (shadow stack inactive)
+fiber A: 0 tokens in fresh fiber; running it once
+coroutine (own switch) running: SSP=0 (shadow stack inactive)
+coroutine rsp=0x1190485feb0 (own segment [0x11904760000,0x11904860000))
+coroutine: Rust work ok, sum=4999950000
+coroutine: catch_unwind of a panic -> caught=true
+coroutine: 20 x Sleep(1) (context switches) ok
+coroutine: thread spawn/join ok (7)
+main: back after coroutine suspended; SSP=0x0 (expect 0x0)
+coroutine: resumed, SSP=0x0
+main: coroutine finished; SSP=0x0; fiber A token now at 0x0 value 0x0 (same address: true)
+main: SwitchToFiber(A) after foreign use: fiber ran=true its SSP=0x0
+RESULT own-switch: ok
+fiber B: 0 tokens in fresh fiber; running it once
+TIME own ss_switch round trip (2 switches): n=301 median=21.8ns p10=21.5 p90=21.8 min=21.5 max=24.2
+TIME own ss_switch round trip + TIB bounds x2: n=301 median=22.0ns p10=22.0 p90=22.5 min=21.9 max=48.2
+CHILD off-nooop ["own"] exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:52-06:00
+$ cetprobe launch on own
+main: SSP=0x15398fefc0 region base=0x15398fe000 alloc=0x1539800000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+fiber A token at 0x153a0feff0 value 0x153a0feff9
+coroutine (own switch) running: SSP=0x153a0fefe8 region base=0x153a0fe000 alloc=0x153a000000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+coroutine rsp=0x193b2b4feb0 (own segment [0x193b2a50000,0x193b2b50000))
+coroutine: Rust work ok, sum=4999950000
+coroutine: catch_unwind of a panic -> caught=true
+coroutine: 20 x Sleep(1) (context switches) ok
+coroutine: thread spawn/join ok (7)
+main: back after coroutine suspended; SSP=0x15398fefc0 (expect 0x15398fefc0)
+main: coroutine's restore token at 0x153a0fefe0 value 0x153a0fefe9
+main: main's token slot after return 0x15398fefb8 = 0x7ff7c6a7ea91 (expect a consumed previous-ssp token)
+coroutine: resumed, SSP=0x153a0fefe8
+main: coroutine finished; SSP=0x15398fefc0; fiber A token now at 0x153a0feff0 value 0x153a0feff9 (same address: true)
+main: SwitchToFiber(A) after foreign use: fiber ran=true its SSP=0x153a0fefe8
+RESULT own-switch: ok
+TIME own ss_switch round trip (2 switches): n=301 median=34.8ns p10=34.7 p90=34.9 min=34.7 max=74.1
+TIME own ss_switch round trip + TIB bounds x2: n=301 median=35.0ns p10=35.0 p90=35.1 min=35.0 max=54.9
+CHILD on ["own"] exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:53-06:00
+$ cetprobe launch strict own
+main: SSP=0x4ab8bfefc0 region base=0x4ab8bfe000 alloc=0x4ab8b00000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+fiber A token at 0x4ab93feff0 value 0x4ab93feff9
+coroutine (own switch) running: SSP=0x4ab93fefe8 region base=0x4ab93fe000 alloc=0x4ab9300000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+coroutine rsp=0x1af9d57feb0 (own segment [0x1af9d480000,0x1af9d580000))
+coroutine: Rust work ok, sum=4999950000
+coroutine: catch_unwind of a panic -> caught=true
+coroutine: 20 x Sleep(1) (context switches) ok
+coroutine: thread spawn/join ok (7)
+main: back after coroutine suspended; SSP=0x4ab8bfefc0 (expect 0x4ab8bfefc0)
+main: coroutine's restore token at 0x4ab93fefe0 value 0x4ab93fefe9
+main: main's token slot after return 0x4ab8bfefb8 = 0x7ff7c6a7ea91 (expect a consumed previous-ssp token)
+coroutine: resumed, SSP=0x4ab93fefe8
+main: coroutine finished; SSP=0x4ab8bfefc0; fiber A token now at 0x4ab93feff0 value 0x4ab93feff9 (same address: true)
+main: SwitchToFiber(A) after foreign use: fiber ran=true its SSP=0x4ab93fefe8
+RESULT own-switch: ok
+TIME own ss_switch round trip (2 switches): n=301 median=34.8ns p10=34.7 p90=34.9 min=34.7 max=39.6
+TIME own ss_switch round trip + TIB bounds x2: n=301 median=35.0ns p10=35.0 p90=35.1 min=34.9 max=38.6
+CHILD strict ["own"] exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:54-06:00
+$ cetprobe broker strict-oop bench
+child policy 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+broker: child pid 4212 code region 0x185b89b0000+0x100000
+broker: with PROCESS_QUERY_LIMITED_INFORMATION only: Err(5)
+broker: register whole region with PROCESS_SET_INFORMATION: Ok(()) flags-out=0x3
+broker: EH continuation target: Ok(()) flags-out=0x3
+broker: register unallocated range: Ok(())
+broker: register unaligned 16-byte range: Err(487)
+broker: remove whole region: Ok(())
+TIME broker add+remove 1 page range (2 calls): n=201 median=7960.0ns p10=7930.0 p90=8360.0 min=7920.0 max=14960.0
+TIME broker add+remove 64 page ranges (2 calls): n=201 median=18740.0ns p10=18520.0 p90=19560.0 min=18430.0 max=21280.0
+broker: re-register whole region: Ok(())
+child: calling good JIT code at 0x185b89b0000
+RESULT jitchild good: returned 42
+CHILD broker strict-oop bench exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:54-06:00
+$ cetprobe broker on-oop bench
+child policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+broker: child pid 21132 code region 0x242afdf0000+0x100000
+broker: with PROCESS_QUERY_LIMITED_INFORMATION only: Err(5)
+broker: register whole region with PROCESS_SET_INFORMATION: Ok(()) flags-out=0x3
+broker: EH continuation target: Ok(()) flags-out=0x3
+broker: register unallocated range: Ok(())
+broker: register unaligned 16-byte range: Err(487)
+broker: remove whole region: Ok(())
+TIME broker add+remove 1 page range (2 calls): n=201 median=7970.0ns p10=7950.0 p90=8280.0 min=7940.0 max=14520.0
+TIME broker add+remove 64 page ranges (2 calls): n=201 median=18840.0ns p10=18640.0 p90=19410.0 min=18540.0 max=21880.0
+broker: re-register whole region: Ok(())
+child: calling good JIT code at 0x242afdf0000
+RESULT jitchild good: returned 42
+CHILD broker on-oop bench exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:55-06:00
+$ cetprobe launch on-nooop regbench
+policy 0x005 [EnableUserShadowStack SetContextIpValidation]
+TIME in-proc add+remove 1 page range (2 calls): n=201 median=6320.0ns p10=6300.0 p90=6570.0 min=6290.0 max=7210.0
+TIME in-proc add+remove 64 page ranges (2 calls): n=201 median=17030.0ns p10=16810.0 p90=17480.0 min=16730.0 max=19380.0
+CHILD on-nooop ["regbench"] exit=0x00000000
+rig check OK: rig253 kind=exclusive session=js-m0 | CPU% 9% (32 cpus) | bookings: b-6df736 exclusive cpu by js-m0 until 15:19 | game lock: free q0 | 2026-10-31T13:19:55-06:00
+$ cetprobe launch strict-nooop regbench
+policy 0x015 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode]
+TIME in-proc add+remove 1 page range (2 calls): n=201 median=6330.0ns p10=6320.0 p90=6570.0 min=6310.0 max=12580.0
+TIME in-proc add+remove 64 page ranges (2 calls): n=201 median=17060.0ns p10=16870.0 p90=17510.0 min=16810.0 max=19870.0
+CHILD strict-nooop ["regbench"] exit=0x00000000

@@ -1,0 +1,357 @@
+
+Microsoft Windows [Version 10.0.26300.9711]
+### baseline: CETCOMPAT image, no policy attribute; then the non-CETCOMPAT image
+policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+main thread: SSP=0x78b2dfefc0 region base=0x78b2dfe000 alloc=0x78b2d00000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+tib StackBase=0x78b2d00000 StackLimit=0x78b2cfc000; GetCurrentThreadStackLimits=[0x78b2c00000,0x78b2d00000)
+second thread: SSP=0x78b37fefd8 region base=0x78b37fe000 alloc=0x78b3600000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+main thread: SSP=0xd04c4fefc0 region base=0xd04c4fe000 alloc=0xd04c400000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+tib StackBase=0xd04c1b0000 StackLimit=0xd04c1ac000; GetCurrentThreadStackLimits=[0xd04c0b0000,0xd04c1b0000)
+second thread: SSP=0xd04cefefd8 region base=0xd04cefe000 alloc=0x0 size=0x1e170322000 ? ? protect=0x1 alloc_protect=0x0
+policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+main thread: SSP=0xaaa18fefc0 region base=0xaaa18fe000 alloc=0xaaa1800000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+tib StackBase=0xaaa1540000 StackLimit=0xaaa153c000; GetCurrentThreadStackLimits=[0xaaa1440000,0xaaa1540000)
+second thread: SSP=0xaaa22fefd8 region base=0xaaa22fe000 alloc=0xaaa2100000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+CHILD on ["policy"] exit=0x00000000
+policy 0x100 [CetDynamicApisOutOfProcOnly]
+main thread: SSP=0 (shadow stack inactive)
+tib StackBase=0x7400560000 StackLimit=0x740055c000; GetCurrentThreadStackLimits=[0x7400460000,0x7400560000)
+second thread: SSP=0 (shadow stack inactive)
+CHILD off ["policy"] exit=0x00000000
+policy 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+main thread: SSP=0x1f41fefc0 region base=0x1f41fe000 alloc=0x1f4100000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+tib StackBase=0x1f4100000 StackLimit=0x1f40fc000; GetCurrentThreadStackLimits=[0x1f4000000,0x1f4100000)
+second thread: SSP=0x1f4bfefd8 region base=0x1f4bfe000 alloc=0x1f4a00000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+CHILD strict ["policy"] exit=0x00000000
+policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+main thread: SSP=0xb44ecfefc0 region base=0xb44ecfe000 alloc=0xb44ec00000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+tib StackBase=0xb44e9a0000 StackLimit=0xb44e99c000; GetCurrentThreadStackLimits=[0xb44e8a0000,0xb44e9a0000)
+second thread: SSP=0xb44f6fefd8 region base=0xb44f6fe000 alloc=0xb44f500000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+CHILD on-oop ["policy"] exit=0x00000000
+policy 0x005 [EnableUserShadowStack SetContextIpValidation]
+main thread: SSP=0xb58d1fefc0 region base=0xb58d1fe000 alloc=0xb58d100000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+tib StackBase=0xb58d100000 StackLimit=0xb58d0fc000; GetCurrentThreadStackLimits=[0xb58d000000,0xb58d100000)
+second thread: SSP=0xb58dbfefd8 region base=0xb58dbfe000 alloc=0xb58da00000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+CHILD on-nooop ["policy"] exit=0x00000000
+policy 0x000 []
+main thread: SSP=0 (shadow stack inactive)
+tib StackBase=0xb830d00000 StackLimit=0xb830cfc000; GetCurrentThreadStackLimits=[0xb830c00000,0xb830d00000)
+second thread: SSP=0 (shadow stack inactive)
+CHILD off-nooop ["policy"] exit=0x00000000
+### runtime policy changes
+before 0x005 [EnableUserShadowStack SetContextIpValidation]
+set strict: Ok(())
+after 0x015 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode]
+set CetDynamicApisOutOfProcOnly: Ok(())
+after 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+try clear strict (downgrade): Err(5)
+try clear CetDynamicApisOutOfProcOnly: Err(5)
+final 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+CHILD on-nooop ["upgrade"] exit=0x00000000
+before 0x000 []
+set strict: Err(5)
+after 0x000 []
+set CetDynamicApisOutOfProcOnly: Ok(())
+after 0x100 [CetDynamicApisOutOfProcOnly]
+try clear strict (downgrade): Ok(())
+try clear CetDynamicApisOutOfProcOnly: Err(5)
+final 0x100 [CetDynamicApisOutOfProcOnly]
+CHILD off-nooop ["upgrade"] exit=0x00000000
+### Q2 fibers
+main fiber: SSP=0x4e5c6fefc0 region base=0x4e5c6fe000 alloc=0x4e5c600000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+CreateFiberEx#1 (not yet run): new region base=0x4e5cd00000 alloc=0x4e5cd00000 size=0xed000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4 tokens=[]
+CreateFiberEx#1 (not yet run): new region base=0x4e5cded000 alloc=0x4e5cd00000 size=0x3000 COMMIT PRIVATE protect=0x104 alloc_protect=0x4 tokens=[]
+CreateFiberEx#1 (not yet run): new region base=0x4e5cdf0000 alloc=0x4e5cd00000 size=0x10000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4 tokens=[]
+CreateFiberEx#1 (not yet run): new region base=0x4e5ce00000 alloc=0x4e5ce00000 size=0xfa000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+CreateFiberEx#1 (not yet run): new region base=0x4e5cefa000 alloc=0x4e5ce00000 size=0x1000 COMMIT PRIVATE protect=0x102 alloc_protect=0x2 tokens=[]
+CreateFiberEx#1 (not yet run): new region base=0x4e5cefb000 alloc=0x4e5ce00000 size=0x4000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2 tokens=[(4e5cefeff0, 4e5cefeff9)]
+CreateFiberEx#1 (not yet run): new region base=0x4e5ceff000 alloc=0x4e5ce00000 size=0x1000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber#1 running: SSP=0x4e5cefefe8 region base=0x4e5cefe000 alloc=0x4e5ce00000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+fiber#1 suspended: tokens in its region [(4e5cefefd8, 4e5cefefe1)] (fresh-fiber tokens were [(4e5cefeff0, 4e5cefeff9)])
+main SSP in fiber#1 region? false
+CreateFiberEx#2 (not yet run): new region base=0x4e5cf00000 alloc=0x4e5cf00000 size=0xed000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4 tokens=[]
+CreateFiberEx#2 (not yet run): new region base=0x4e5cfed000 alloc=0x4e5cf00000 size=0x3000 COMMIT PRIVATE protect=0x104 alloc_protect=0x4 tokens=[]
+CreateFiberEx#2 (not yet run): new region base=0x4e5cff0000 alloc=0x4e5cf00000 size=0x10000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4 tokens=[]
+CreateFiberEx#2 (not yet run): new region base=0x4e5d000000 alloc=0x4e5d000000 size=0xfa000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+CreateFiberEx#2 (not yet run): new region base=0x4e5d0fa000 alloc=0x4e5d000000 size=0x1000 COMMIT PRIVATE protect=0x102 alloc_protect=0x2 tokens=[]
+CreateFiberEx#2 (not yet run): new region base=0x4e5d0fb000 alloc=0x4e5d000000 size=0x4000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2 tokens=[(4e5d0feff0, 4e5d0feff9)]
+CreateFiberEx#2 (not yet run): new region base=0x4e5d0ff000 alloc=0x4e5d000000 size=0x1000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber#2 running: SSP=0x4e5d0fefe8 region base=0x4e5d0fe000 alloc=0x4e5d000000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+distinct shadow stacks: main/f1 true f1/f2 true main/f2 true
+fiber#1 resumed again: SSP=0x4e5cefefe8 runs=3
+DeleteFiber#2 freed/changed base=0x4e5cf00000 alloc=0x4e5cf00000 size=0xed000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4
+DeleteFiber#2 freed/changed base=0x4e5cfed000 alloc=0x4e5cf00000 size=0x3000 COMMIT PRIVATE protect=0x104 alloc_protect=0x4
+DeleteFiber#2 freed/changed base=0x4e5cff0000 alloc=0x4e5cf00000 size=0x10000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4
+DeleteFiber#2 freed/changed base=0x4e5d000000 alloc=0x4e5d000000 size=0xfa000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2
+DeleteFiber#2 freed/changed base=0x4e5d0fa000 alloc=0x4e5d000000 size=0x1000 COMMIT PRIVATE protect=0x102 alloc_protect=0x2
+DeleteFiber#2 freed/changed base=0x4e5d0fb000 alloc=0x4e5d000000 size=0x4000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+DeleteFiber#2 freed/changed base=0x4e5d0ff000 alloc=0x4e5d000000 size=0x1000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2
+CHILD on ["fiber"] exit=0x00000000
+CreateFiberEx(commit=0x1000, reserve=0x10000): allocation 0x48447f0000 reserved=0x10000 committed=0x4000 alloc_protect=0x4 other
+CreateFiberEx(commit=0x1000, reserve=0x10000): allocation 0x4844f00000 reserved=0x10000 committed=0x2000 alloc_protect=0x2 shadow stack (read-only allocation)
+CreateFiberEx(commit=0x1000, reserve=0x10000): allocation 0x16c68af0000 reserved=0x100000 committed=0x18000 alloc_protect=0x4 other
+CreateFiberEx(commit=0x10000, reserve=0x100000): allocation 0x4844f00000 reserved=0x100000 committed=0x13000 alloc_protect=0x4 other
+CreateFiberEx(commit=0x10000, reserve=0x100000): allocation 0x4845000000 reserved=0x100000 committed=0x5000 alloc_protect=0x2 shadow stack (read-only allocation)
+CreateFiberEx(commit=0x10000, reserve=0x800000): allocation 0x4844f00000 reserved=0x800000 committed=0x13000 alloc_protect=0x4 other
+CreateFiberEx(commit=0x10000, reserve=0x800000): allocation 0x4845700000 reserved=0x800000 committed=0x5000 alloc_protect=0x2 shadow stack (read-only allocation)
+CHILD strict ["fibersize"] exit=0x00000000
+### Q1 own switching, forged tokens, WRSS, shadow-stack page protection
+main: SSP=0x66dd3fefc0 region base=0x66dd3fe000 alloc=0x66dd300000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+fiber A: new region base=0x66dda00000 alloc=0x66dda00000 size=0xed000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4 tokens=[]
+fiber A: new region base=0x66ddaed000 alloc=0x66dda00000 size=0x3000 COMMIT PRIVATE protect=0x104 alloc_protect=0x4 tokens=[]
+fiber A: new region base=0x66ddaf0000 alloc=0x66dda00000 size=0x10000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4 tokens=[]
+fiber A: new region base=0x66ddb00000 alloc=0x66ddb00000 size=0xfa000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber A: new region base=0x66ddbfa000 alloc=0x66ddb00000 size=0x1000 COMMIT PRIVATE protect=0x102 alloc_protect=0x2 tokens=[]
+fiber A: new region base=0x66ddbfb000 alloc=0x66ddb00000 size=0x4000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2 tokens=[(66ddbfeff0, 66ddbfeff9)]
+fiber A: new region base=0x66ddbff000 alloc=0x66ddb00000 size=0x1000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber A: new region base=0x1ef7f120000 alloc=0x1ef7f120000 size=0x15000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4 tokens=[]
+fiber A: new region base=0x1ef7f135000 alloc=0x1ef7f120000 size=0xeb000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4 tokens=[]
+fiber A token at 0x66ddbfeff0 value 0x66ddbfeff9
+coroutine (own switch) running: SSP=0x66ddbfefe8 region base=0x66ddbfe000 alloc=0x66ddb00000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+coroutine rsp=0x1ef7f51feb0 (own segment [0x1ef7f420000,0x1ef7f520000))
+coroutine: Rust work ok, sum=4999950000
+coroutine: catch_unwind of a panic -> caught=true
+coroutine: 20 x Sleep(1) (context switches) ok
+coroutine: thread spawn/join ok (7)
+main: back after coroutine suspended; SSP=0x66dd3fefc0 (expect 0x66dd3fefc0)
+main: coroutine's restore token at 0x66ddbfefe0 value 0x66ddbfefe9
+main: main's token slot after return 0x66dd3fefb8 = 0x7ff65463ef91 (expect a consumed previous-ssp token)
+coroutine: resumed, SSP=0x66ddbfefe8
+main: coroutine finished; SSP=0x66dd3fefc0; fiber A token now at 0x66ddbfeff0 value 0x66ddbfeff9 (same address: true)
+main: SwitchToFiber(A) after foreign use: fiber ran=true its SSP=0x66ddbfefe8
+RESULT own-switch: ok
+fiber B: new region base=0x66ddc00000 alloc=0x66ddc00000 size=0xed000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4 tokens=[]
+fiber B: new region base=0x66ddced000 alloc=0x66ddc00000 size=0x3000 COMMIT PRIVATE protect=0x104 alloc_protect=0x4 tokens=[]
+fiber B: new region base=0x66ddcf0000 alloc=0x66ddc00000 size=0x10000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4 tokens=[]
+fiber B: new region base=0x66ddd00000 alloc=0x66ddd00000 size=0xfa000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber B: new region base=0x66dddfa000 alloc=0x66ddd00000 size=0x1000 COMMIT PRIVATE protect=0x102 alloc_protect=0x2 tokens=[]
+fiber B: new region base=0x66dddfb000 alloc=0x66ddd00000 size=0x4000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2 tokens=[(66dddfeff0, 66dddfeff9)]
+fiber B: new region base=0x66dddff000 alloc=0x66ddd00000 size=0x1000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+TIME own ss_switch round trip (2 switches): n=301 median=34.8ns p10=34.7 p90=34.9 min=34.7 max=126.7
+TIME own ss_switch round trip + TIB bounds x2: n=301 median=35.0ns p10=35.0 p90=35.1 min=35.0 max=55.6
+CHILD strict ["own"] exit=0x00000000
+main: SSP=0x2dd4dfefc0 region base=0x2dd4dfe000 alloc=0x2dd4d00000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+fiber A: new region base=0x2dd5400000 alloc=0x2dd5400000 size=0xed000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4 tokens=[]
+fiber A: new region base=0x2dd54ed000 alloc=0x2dd5400000 size=0x3000 COMMIT PRIVATE protect=0x104 alloc_protect=0x4 tokens=[]
+fiber A: new region base=0x2dd54f0000 alloc=0x2dd5400000 size=0x10000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4 tokens=[]
+fiber A: new region base=0x2dd5500000 alloc=0x2dd5500000 size=0xfa000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber A: new region base=0x2dd55fa000 alloc=0x2dd5500000 size=0x1000 COMMIT PRIVATE protect=0x102 alloc_protect=0x2 tokens=[]
+fiber A: new region base=0x2dd55fb000 alloc=0x2dd5500000 size=0x4000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2 tokens=[(2dd55feff0, 2dd55feff9)]
+fiber A: new region base=0x2dd55ff000 alloc=0x2dd5500000 size=0x1000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber A: new region base=0x1ab1e2f0000 alloc=0x1ab1e2f0000 size=0x15000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4 tokens=[]
+fiber A: new region base=0x1ab1e305000 alloc=0x1ab1e2f0000 size=0xeb000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4 tokens=[]
+fiber A: 1 tokens in fresh fiber; running it once
+fiber A: after one run tokens [(2dd55fefd8, 2dd55fefe1)]
+fiber A token at 0x2dd55fefd8 value 0x2dd55fefe1
+coroutine (own switch) running: SSP=0x2dd55fefd0 region base=0x2dd55fe000 alloc=0x2dd5500000 size=0x1000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2
+coroutine rsp=0x1ab1e74feb0 (own segment [0x1ab1e650000,0x1ab1e750000))
+coroutine: Rust work ok, sum=4999950000
+coroutine: catch_unwind of a panic -> caught=true
+coroutine: 20 x Sleep(1) (context switches) ok
+coroutine: thread spawn/join ok (7)
+main: back after coroutine suspended; SSP=0x2dd4dfefc0 (expect 0x2dd4dfefc0)
+main: coroutine's restore token at 0x2dd55fefc8 value 0x2dd55fefd1
+main: main's token slot after return 0x2dd4dfefb8 = 0x7ff65463ef91 (expect a consumed previous-ssp token)
+coroutine: resumed, SSP=0x2dd55fefd0
+main: coroutine finished; SSP=0x2dd4dfefc0; fiber A token now at 0x2dd55fefd8 value 0x2dd55fefe1 (same address: true)
+main: SwitchToFiber(A) after foreign use: fiber ran=true its SSP=0x2dd55fefe8
+RESULT own-switch: ok
+fiber B: new region base=0x2dd5600000 alloc=0x2dd5600000 size=0xed000 RESERVE PRIVATE protect=0x0 alloc_protect=0x4 tokens=[]
+fiber B: new region base=0x2dd56ed000 alloc=0x2dd5600000 size=0x3000 COMMIT PRIVATE protect=0x104 alloc_protect=0x4 tokens=[]
+fiber B: new region base=0x2dd56f0000 alloc=0x2dd5600000 size=0x10000 COMMIT PRIVATE protect=0x4 alloc_protect=0x4 tokens=[]
+fiber B: new region base=0x2dd5700000 alloc=0x2dd5700000 size=0xfa000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber B: new region base=0x2dd57fa000 alloc=0x2dd5700000 size=0x1000 COMMIT PRIVATE protect=0x102 alloc_protect=0x2 tokens=[]
+fiber B: new region base=0x2dd57fb000 alloc=0x2dd5700000 size=0x4000 COMMIT PRIVATE protect=0x2 alloc_protect=0x2 tokens=[(2dd57feff0, 2dd57feff9)]
+fiber B: new region base=0x2dd57ff000 alloc=0x2dd5700000 size=0x1000 RESERVE PRIVATE protect=0x0 alloc_protect=0x2 tokens=[]
+fiber B: 1 tokens in fresh fiber; running it once
+fiber B: after one run tokens [(2dd57fefd8, 2dd57fefe1)]
+TIME own ss_switch round trip (2 switches): n=301 median=34.8ns p10=34.7 p90=34.9 min=34.7 max=74.3
+TIME own ss_switch round trip + TIB bounds x2: n=301 median=35.0ns p10=35.0 p90=35.1 min=34.9 max=38.0
+CHILD strict ["own"] exit=0x00000000
+forge: RSTORSSP on a forged token in ordinary RW memory at 0x2946e6b0800
+CHILD strict ["forge"] exit=0xc0000005
+forge: RSTORSSP on a forged token in ordinary RW memory at 0x20f1f100800
+CHILD on ["forge"] exit=0xc0000005
+forge: RSTORSSP on a forged token in ordinary RW memory at 0x1f501b00800
+CHILD off ["forge"] exit=0xc000001d
+wrss: WRSSQ to the current shadow stack at 0x28aa5fef80
+CHILD strict ["wrss"] exit=0xc000001d
+VirtualProtect(own shadow-stack page, PAGE_READWRITE): ok=false err=87 old=0x1
+VirtualProtect(own shadow-stack page, PAGE_READONLY): ok=true err=6 old=0x2
+control: VirtualProtect(ordinary RO page, RW): ok=true
+CHILD strict ["ssprotect"] exit=0x00000000
+### Q4 segments
+segment [0x27ce7750000,0x27ce7850000) guard [0x27ce7650000,0x27ce7750000) mode=keep main SSP=0xff7c8fefc0
+seg basic: rsp=0x27ce784fdc0 on segment=true SSP=0xff7c8fefb0 GetCurrentThreadStackLimits=[0xff7c4a0000,0xff7c5a0000) strings=1000
+RESULT seg keep basic: returned normally
+CHILD strict ["seg", "keep", "basic"] exit=0x00000000
+segment [0x15973370000,0x15973470000) guard [0x15973270000,0x15973370000) mode=keep main SSP=0x29367fefc0
+seg bigframe (256 KiB frame, stack probes): 262144
+RESULT seg keep bigframe: returned normally
+CHILD strict ["seg", "keep", "bigframe"] exit=0x00000000
+segment [0x28fefef0000,0x28fefff0000) guard [0x28fefdf0000,0x28fefef0000) mode=keep main SSP=0xc63a2fefc0
+CHILD strict ["seg", "keep", "panic"] exit=0xe06d7363
+segment [0x2c9f47c0000,0x2c9f48c0000) guard [0x2c9f46c0000,0x2c9f47c0000) mode=keep main SSP=0xd4f0bfefc0
+seg backtrace: 19 frames; reaches main: true
+RESULT seg keep backtrace: returned normally
+CHILD strict ["seg", "keep", "backtrace"] exit=0x00000000
+segment [0x23db5120000,0x23db5220000) guard [0x23db5020000,0x23db5120000) mode=keep main SSP=0x4bf43fefc0
+seg thread: 5
+RESULT seg keep thread: returned normally
+CHILD strict ["seg", "keep", "thread"] exit=0x00000000
+segment [0x2711f840000,0x2711f940000) guard [0x2711f740000,0x2711f840000) mode=keep main SSP=0xbddd3fefc0
+CHILD strict ["seg", "keep", "overflow"] exit=0xc0000005
+segment [0x16de24b0000,0x16de25b0000) guard [0x16de23b0000,0x16de24b0000) mode=keep main SSP=0x33ca5fefc0
+CHILD strict ["seg", "keep", "overflow-noveh"] exit=0xc0000005
+guard pages [0x2172f1b0000,0x2172f1c0000) PAGE_GUARD
+segment [0x2172f1c0000,0x2172f2c0000) guard [0x2172f0c0000,0x2172f1c0000) mode=keep main SSP=0x58f26fefc0
+CHILD strict ["seg", "keep", "overflow-pg"] exit=0xc0000005
+guard pages [0x2905e140000,0x2905e150000) PAGE_GUARD
+segment [0x2905e150000,0x2905e250000) guard [0x2905e050000,0x2905e150000) mode=keep main SSP=0x979d2fefc0
+CHILD strict ["seg", "keep", "overflow-noveh-pg"] exit=0xc0000005
+segment [0x19d1aa50000,0x19d1ab50000) guard [0x19d1a950000,0x19d1aa50000) mode=update main SSP=0x3e761fefc0
+seg basic: rsp=0x19d1ab4fdc0 on segment=true SSP=0x3e761fefb0 GetCurrentThreadStackLimits=[0x3e76000000,0x19d1ab50000) strings=1000
+RESULT seg update basic: returned normally
+CHILD strict ["seg", "update", "basic"] exit=0x00000000
+segment [0x19647400000,0x19647500000) guard [0x19647300000,0x19647400000) mode=update main SSP=0x16797fefc0
+seg bigframe (256 KiB frame, stack probes): 262144
+RESULT seg update bigframe: returned normally
+CHILD strict ["seg", "update", "bigframe"] exit=0x00000000
+segment [0x21bf8870000,0x21bf8970000) guard [0x21bf8770000,0x21bf8870000) mode=update main SSP=0x22d7cfefc0
+seg panic: caught=true
+RESULT seg update panic: returned normally
+CHILD strict ["seg", "update", "panic"] exit=0x00000000
+segment [0x1c955260000,0x1c955360000) guard [0x1c955160000,0x1c955260000) mode=update main SSP=0x2f4dafefc0
+seg backtrace: 19 frames; reaches main: true
+RESULT seg update backtrace: returned normally
+CHILD strict ["seg", "update", "backtrace"] exit=0x00000000
+segment [0x1e897c50000,0x1e897d50000) guard [0x1e897b50000,0x1e897c50000) mode=update main SSP=0x9d2fbfefc0
+seg thread: 5
+RESULT seg update thread: returned normally
+CHILD strict ["seg", "update", "thread"] exit=0x00000000
+segment [0x2739ba10000,0x2739bb10000) guard [0x2739b910000,0x2739ba10000) mode=update main SSP=0x9406bfefc0
+CHILD strict ["seg", "update", "overflow"] exit=0xc0000005
+segment [0x23ea10c0000,0x23ea11c0000) guard [0x23ea0fc0000,0x23ea10c0000) mode=update main SSP=0x7531bfefc0
+CHILD strict ["seg", "update", "overflow-noveh"] exit=0xc0000005
+guard pages [0x14d01010000,0x14d01020000) PAGE_GUARD
+segment [0x14d01020000,0x14d01120000) guard [0x14d00f20000,0x14d01020000) mode=update main SSP=0x14d41fefc0
+VEH: exception 0xc00000fd caught on the segment
+CHILD strict ["seg", "update", "overflow-pg"] exit=0x00000077
+guard pages [0x216efc70000,0x216efc80000) PAGE_GUARD
+segment [0x216efc80000,0x216efd80000) guard [0x216efb80000,0x216efc80000) mode=update main SSP=0x534e8fefc0
+
+thread 'main' (18344) has overflowed its stack
+CHILD strict ["seg", "update", "overflow-noveh-pg"] exit=0xc00000fd
+### Q5 and Q3 JIT matrix
+policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+calling good JIT code at 0x23877440000
+RESULT jit good none: returned 42
+CHILD on ["jit", "good", "none"] exit=0x00000000
+policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+calling good JIT code at 0x14873e30000
+RESULT jit good inproc: returned 42
+CHILD on ["jit", "good", "inproc"] exit=0x00000000
+policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+calling bad JIT code at 0x1b381210000
+RESULT jit bad none: returned 7
+CHILD on ["jit", "bad", "none"] exit=0x00000000
+policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+calling bad JIT code at 0x2529f350000
+RESULT jit bad inproc: returned 7
+CHILD on ["jit", "bad", "inproc"] exit=0x00000000
+policy 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+calling good JIT code at 0x1ff953b0000
+RESULT jit good none: returned 42
+CHILD strict ["jit", "good", "none"] exit=0x00000000
+policy 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+calling good JIT code at 0x1c49b830000
+RESULT jit good inproc: returned 42
+CHILD strict ["jit", "good", "inproc"] exit=0x00000000
+policy 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+calling bad JIT code at 0x2f5a67e0000
+CHILD strict ["jit", "bad", "none"] exit=0xc0000409
+policy 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+calling bad JIT code at 0x19efaaf0000
+CHILD strict ["jit", "bad", "inproc"] exit=0xc0000409
+policy 0x005 [EnableUserShadowStack SetContextIpValidation]
+calling good JIT code at 0x20b96c30000
+RESULT jit good none: returned 42
+CHILD on-nooop ["jit", "good", "none"] exit=0x00000000
+policy 0x005 [EnableUserShadowStack SetContextIpValidation]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Ok(()) flags-out=0x3
+in-proc SetProcessDynamicEHContinuationTargets: Ok(()) flags-out=0x3
+calling good JIT code at 0x277bb150000
+RESULT jit good inproc: returned 42
+CHILD on-nooop ["jit", "good", "inproc"] exit=0x00000000
+policy 0x005 [EnableUserShadowStack SetContextIpValidation]
+calling bad JIT code at 0x1b5dc9e0000
+RESULT jit bad none: returned 7
+CHILD on-nooop ["jit", "bad", "none"] exit=0x00000000
+policy 0x005 [EnableUserShadowStack SetContextIpValidation]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Ok(()) flags-out=0x3
+in-proc SetProcessDynamicEHContinuationTargets: Ok(()) flags-out=0x3
+calling bad JIT code at 0x258bcfd0000
+CHILD on-nooop ["jit", "bad", "inproc"] exit=0xc0000409
+policy 0x015 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode]
+calling good JIT code at 0x13792e20000
+RESULT jit good none: returned 42
+CHILD strict-nooop ["jit", "good", "none"] exit=0x00000000
+policy 0x015 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Ok(()) flags-out=0x3
+in-proc SetProcessDynamicEHContinuationTargets: Ok(()) flags-out=0x3
+calling good JIT code at 0x1acc2700000
+RESULT jit good inproc: returned 42
+CHILD strict-nooop ["jit", "good", "inproc"] exit=0x00000000
+policy 0x015 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode]
+calling bad JIT code at 0x14fe6800000
+CHILD strict-nooop ["jit", "bad", "none"] exit=0xc0000409
+policy 0x015 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Ok(()) flags-out=0x3
+in-proc SetProcessDynamicEHContinuationTargets: Ok(()) flags-out=0x3
+calling bad JIT code at 0x1bf7e3e0000
+CHILD strict-nooop ["jit", "bad", "inproc"] exit=0xc0000409
+child policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+broker: child pid 18228 code region 0x18093e00000+0x100000
+broker: with PROCESS_QUERY_LIMITED_INFORMATION only: Err(5)
+broker: register whole region with PROCESS_SET_INFORMATION: Ok(()) flags-out=0x3
+broker: EH continuation target: Ok(()) flags-out=0x3
+child: calling bad JIT code at 0x18093e00000
+CHILD broker on-oop bad exit=0xc0000409
+child policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+broker: child pid 14192 code region 0x24bb51f0000+0x100000
+broker: with PROCESS_QUERY_LIMITED_INFORMATION only: Err(5)
+broker: register whole region with PROCESS_SET_INFORMATION: Ok(()) flags-out=0x3
+broker: EH continuation target: Ok(()) flags-out=0x3
+child: calling good JIT code at 0x24bb51f0000
+RESULT jitchild good: returned 42
+CHILD broker on-oop good exit=0x00000000
+child policy 0x105 [EnableUserShadowStack SetContextIpValidation CetDynamicApisOutOfProcOnly]
+broker: child pid 9068 code region 0x21ea5070000+0x100000
+broker: with PROCESS_QUERY_LIMITED_INFORMATION only: Err(5)
+broker: register whole region with PROCESS_SET_INFORMATION: Ok(()) flags-out=0x3
+broker: EH continuation target: Ok(()) flags-out=0x3
+child: calling bad JIT code committed after registration at 0x21ea5070000
+CHILD broker on-oop late exit=0xc0000409
+child policy 0x115 [EnableUserShadowStack SetContextIpValidation EnableUserShadowStackStrictMode CetDynamicApisOutOfProcOnly]
+in-proc SetProcessDynamicEnforcedCetCompatibleRanges: Err(5) flags-out=0x1
+in-proc SetProcessDynamicEHContinuationTargets: Err(5) flags-out=0x1
+broker: child pid 19304 code region 0x1cae8cf0000+0x100000
+broker: with PROCESS_QUERY_LIMITED_INFORMATION only: Err(5)
+broker: register whole region with PROCESS_SET_INFORMATION: Ok(()) flags-out=0x3
+broker: EH continuation target: Ok(()) flags-out=0x3
+child: calling good JIT code at 0x1cae8cf0000
+RESULT jitchild good: returned 42
+CHILD broker strict-oop good exit=0x00000000
