@@ -3,10 +3,16 @@
 //! ```text
 //! hg-dst run   <sim-binary> [--seeds A..B] [--jobs N] [--timeout-secs S] [-- ARGS...]
 //! hg-dst rerun <sim-binary> [same options]     # CS-T5: same seed, same trace
+//! hg-dst repeat <sim-binary> --seed N --times K [--jobs N] [--timeout-secs S] [-- ARGS...]
 //! ```
 //!
-//! Exit status: 0 when every seed passed (and, for `rerun`, matched), 1
-//! when any did not, 2 on a usage error.
+//! `repeat` runs one seed K times and groups the outcomes: the JS-M0
+//! decision-point probe (Stage 1 3.3) passes when all K runs report the
+//! same line, state hash included.
+//!
+//! Exit status: 0 when every seed passed (and, for `rerun`, matched; for
+//! `repeat`, every run was identical), 1 when any did not, 2 on a usage
+//! error.
 
 use std::ops::Range;
 use std::path::PathBuf;
@@ -15,24 +21,36 @@ use std::time::Duration;
 
 use hg_dst::{Outcome, Target, group_failures};
 
-const USAGE: &str = "usage: hg-dst run|rerun <sim-binary> [--seeds A..B] [--jobs N] [--timeout-secs S] [-- ARGS...]";
+const USAGE: &str = "usage: hg-dst run|rerun <sim-binary> [--seeds A..B] [--jobs N] [--timeout-secs S] [-- ARGS...]\n       hg-dst repeat <sim-binary> --seed N --times K [--jobs N] [--timeout-secs S] [-- ARGS...]";
+
+#[derive(PartialEq, Eq)]
+enum Mode {
+    Run,
+    Rerun,
+    Repeat,
+}
 
 struct Options {
-    rerun: bool,
+    mode: Mode,
     target: Target,
     seeds: Range<u64>,
+    seed: Option<u64>,
+    times: u64,
     jobs: usize,
 }
 
 fn parse() -> Result<Options, String> {
     let mut args = std::env::args().skip(1);
-    let rerun = match args.next().as_deref() {
-        Some("run") => false,
-        Some("rerun") => true,
+    let mode = match args.next().as_deref() {
+        Some("run") => Mode::Run,
+        Some("rerun") => Mode::Rerun,
+        Some("repeat") => Mode::Repeat,
         _ => return Err(USAGE.to_owned()),
     };
     let bin = PathBuf::from(args.next().ok_or(USAGE)?);
     let mut seeds = 0..100;
+    let mut seed = None;
+    let mut times = 1000;
     let mut jobs = std::thread::available_parallelism().map_or(4, |n| n.get());
     let mut timeout = Duration::from_secs(60);
     let mut extra = Vec::new();
@@ -42,6 +60,21 @@ fn parse() -> Result<Options, String> {
                 let v = args.next().ok_or(USAGE)?;
                 let (a, b) = v.split_once("..").ok_or("--seeds takes A..B")?;
                 seeds = a.parse().map_err(|_e| "bad seed")?..b.parse().map_err(|_e| "bad seed")?;
+            }
+            "--seed" => {
+                seed = Some(
+                    args.next()
+                        .ok_or(USAGE)?
+                        .parse()
+                        .map_err(|_e| "bad --seed")?,
+                );
+            }
+            "--times" => {
+                times = args
+                    .next()
+                    .ok_or(USAGE)?
+                    .parse()
+                    .map_err(|_e| "bad --times")?;
             }
             "--jobs" => {
                 jobs = args
@@ -62,8 +95,13 @@ fn parse() -> Result<Options, String> {
             other => return Err(format!("unknown option {other}\n{USAGE}")),
         }
     }
+    if mode == Mode::Repeat && seed.is_none() {
+        return Err(format!("repeat needs --seed\n{USAGE}"));
+    }
     Ok(Options {
-        rerun,
+        mode,
+        seed,
+        times,
         target: Target {
             bin,
             args: extra,
@@ -82,8 +120,26 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if opts.mode == Mode::Repeat {
+        let seed = opts.seed.unwrap_or_default();
+        let r = opts.target.repeat(seed, opts.times, opts.jobs);
+        for (outcome, count) in &r.outcomes {
+            println!("{count} run(s): {outcome:?}");
+        }
+        println!(
+            "repeat: seed={seed} runs={} distinct={}\n  replay: {}",
+            opts.times,
+            r.outcomes.len(),
+            opts.target.replay_command(seed)
+        );
+        return if r.all_identical() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
     let n = opts.seeds.end.saturating_sub(opts.seeds.start);
-    if opts.rerun {
+    if opts.mode == Mode::Rerun {
         let bad = opts.target.rerun_mismatches(opts.seeds, opts.jobs);
         for (a, b) in &bad {
             println!(

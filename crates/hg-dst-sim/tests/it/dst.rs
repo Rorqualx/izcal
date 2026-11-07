@@ -105,3 +105,26 @@ fn the_ipc_seeds_keep_their_traces() {
         "10996dfeec1ca7d40351ffec698e0bf225635ed56b82ac2672193408bac1961b"
     );
 }
+
+/// `repeat` (the JS-M0 probe's runner): one seed run many times groups
+/// into one passing outcome, and a seed that crashes only sometimes would
+/// show more than one; a planted bug on a seed that reaches it is one
+/// failing group.
+#[test]
+fn repeat_groups_identical_runs_of_one_seed() {
+    let t = smoke(&["--crash-ppm", "20000"]);
+    let r = t.repeat(3, 24, 4);
+    assert!(r.all_identical(), "{r:?}");
+    assert_eq!(r.outcomes.first().map(|(_, n)| *n), Some(24));
+
+    let bug = smoke(&["--bug"]);
+    let failing = bug
+        .run_seeds(0..40, 4)
+        .into_iter()
+        .find(|s| matches!(s.outcome, Outcome::Fail { .. }))
+        .expect("some seed reaches the planted bug");
+    let r = bug.repeat(failing.seed, 8, 4);
+    assert!(!r.all_identical());
+    assert_eq!(r.outcomes.len(), 1, "{r:?}");
+    assert_eq!(r.outcomes.first().map(|(_, n)| *n), Some(8));
+}
