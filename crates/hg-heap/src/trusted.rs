@@ -91,6 +91,9 @@ pub struct TrustedRegion {
     entries: Vec<Entry>,
     free: Vec<u32>,
     windows: u64,
+    /// A protection change failed and the committed pages may still be
+    /// writable; every insert first puts them back to read-only.
+    exposed: bool,
 }
 
 impl core::fmt::Debug for TrustedRegion {
@@ -130,6 +133,7 @@ impl TrustedRegion {
             entries: Vec::new(),
             free: Vec::new(),
             windows: 0,
+            exposed: false,
         })
     }
 
@@ -141,9 +145,57 @@ impl TrustedRegion {
     /// Copies `data` into the region as a new entry of `kind`, inside a
     /// write window, and returns its id.
     ///
+    /// No error leaves the region writable: if a protection change fails,
+    /// the committed pages are put back to read-only, and while that too
+    /// fails every insert refuses.
+    ///
     /// # Errors
     /// [`TrustedError::Full`] or [`TrustedError::Memory`].
     pub fn insert(&mut self, kind: TrustedKind, data: &[u8]) -> Result<TrustedId, TrustedError> {
+        if self.exposed {
+            self.seal()?;
+        }
+        let r = self.write(data);
+        if r.is_err() {
+            // New pages are committed read/write; a failed window may have
+            // left them so. Errors from sealing are kept in `exposed`.
+            let _ = self.seal();
+        }
+        let (at, end) = r?;
+        self.cursor = end;
+        let entry = Entry {
+            kind,
+            generation: 0,
+            offset: at,
+            len: u64::try_from(data.len()).map_err(|_| TrustedError::Full)?,
+            live: true,
+        };
+        let index = if let Some(i) = self.free.pop() {
+            let slot = self
+                .entries
+                .get_mut(to_usize(u64::from(i))?)
+                .ok_or(TrustedError::Full)?;
+            let generation = slot.generation.wrapping_add(1);
+            *slot = Entry {
+                generation,
+                ..entry
+            };
+            i
+        } else {
+            self.entries.push(entry);
+            u32::try_from(self.entries.len() - 1).map_err(|_| TrustedError::Full)?
+        };
+        let generation = self
+            .entries
+            .get(to_usize(u64::from(index))?)
+            .map_or(0, |e| e.generation);
+        Ok(TrustedId { index, generation })
+    }
+
+    /// Commits what an entry of `data` needs and copies it in, inside a
+    /// write window; returns where it starts and where the next entry may.
+    /// The cursor is not moved.
+    fn write(&mut self, data: &[u8]) -> Result<(u64, u64), TrustedError> {
         let region = self.region.as_ref().ok_or(TrustedError::Full)?;
         let size = u64::try_from(data.len())
             .map_err(|_| TrustedError::Full)?
@@ -178,34 +230,24 @@ impl TrustedRegion {
         self.mem
             .protect(region, wo, wl, Access::Read)
             .map_err(TrustedError::Memory)?;
-        self.cursor = end;
-        let entry = Entry {
-            kind,
-            generation: 0,
-            offset: at,
-            len: u64::try_from(data.len()).map_err(|_| TrustedError::Full)?,
-            live: true,
-        };
-        let index = if let Some(i) = self.free.pop() {
-            let slot = self
-                .entries
-                .get_mut(to_usize(u64::from(i))?)
-                .ok_or(TrustedError::Full)?;
-            let generation = slot.generation.wrapping_add(1);
-            *slot = Entry {
-                generation,
-                ..entry
-            };
-            i
+        Ok((at, end))
+    }
+
+    /// Makes every committed page read-only, and records whether that
+    /// failed.
+    fn seal(&mut self) -> Result<(), TrustedError> {
+        let region = self.region.as_ref().ok_or(TrustedError::Full)?;
+        let r = if self.committed == 0 {
+            Ok(())
         } else {
-            self.entries.push(entry);
-            u32::try_from(self.entries.len() - 1).map_err(|_| TrustedError::Full)?
+            to_usize(self.committed).and_then(|l| {
+                self.mem
+                    .protect(region, 0, l, Access::Read)
+                    .map_err(TrustedError::Memory)
+            })
         };
-        let generation = self
-            .entries
-            .get(to_usize(u64::from(index))?)
-            .map_or(0, |e| e.generation);
-        Ok(TrustedId { index, generation })
+        self.exposed = r.is_err();
+        r
     }
 
     /// The bytes of entry `id`, if it is live, of `kind`, and of the
@@ -295,6 +337,40 @@ mod tests {
             assert_eq!(pair[1].2, Access::Read);
             assert_eq!((pair[0].0, pair[0].1), (pair[1].0, pair[1].1));
         }
+    }
+
+    /// A failed protection change never leaves the region writable: the
+    /// committed pages go back to read-only, and while that fails too,
+    /// inserts refuse until it succeeds.
+    #[test]
+    fn a_failed_window_leaves_the_region_read_only() {
+        let mem = Arc::new(TestMemory::default());
+        let mut t = TrustedRegion::new(Arc::clone(&mem) as Arc<dyn Memory>, 8 * 4096).unwrap();
+        let a = t.insert(TrustedKind::BytecodeUnit, b"one").unwrap();
+
+        // The window cannot open: the new pages are sealed again.
+        mem.refuse_protect(Some(Access::ReadWrite));
+        let big = vec![1u8; 5000];
+        assert!(matches!(
+            t.insert(TrustedKind::StackMap, &big),
+            Err(TrustedError::Memory(_))
+        ));
+        assert_eq!(mem.protects().last(), Some(&(0, 2 * 4096, Access::Read)));
+        mem.refuse_protect(None);
+
+        // The window cannot close: nothing is sealed, so inserts refuse.
+        mem.refuse_protect(Some(Access::Read));
+        assert!(t.insert(TrustedKind::StackMap, b"two").is_err());
+        assert!(t.insert(TrustedKind::StackMap, b"three").is_err());
+        let before = mem.protects().len();
+        mem.refuse_protect(None);
+
+        // Once sealing works, the next insert seals first, then goes on.
+        let c = t.insert(TrustedKind::StackMap, b"four").unwrap();
+        assert_eq!(mem.protects()[before], (0, 2 * 4096, Access::Read));
+        assert_eq!(mem.protects().last().map(|p| p.2), Some(Access::Read));
+        assert_eq!(t.get(a, TrustedKind::BytecodeUnit), Some(&b"one"[..]));
+        assert_eq!(t.get(c, TrustedKind::StackMap), Some(&b"four"[..]));
     }
 
     #[test]
