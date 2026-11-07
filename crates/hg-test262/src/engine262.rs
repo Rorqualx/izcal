@@ -272,6 +272,14 @@ pub fn relative_specifiers(source: &str) -> Vec<String> {
     out
 }
 
+/// Whether `rel`, joined to a directory, names a path inside it: only
+/// plain names, so no root (`.//etc/x` trims to `/etc/x`, which `join`
+/// would take as the whole path), no Windows prefix (`./C:/x`), no `..`.
+fn stays_inside(rel: &str) -> bool {
+    let mut parts = Path::new(rel).components().peekable();
+    parts.peek().is_some() && parts.all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
 /// Copies the files `./` specifiers in `source` name, from `from_dir` into
 /// `to_dir`, recursively, skipping `skip`; `.js` copies are instrumented
 /// with the evaluation marker when `instrument` is set. Returns how many
@@ -288,7 +296,7 @@ fn copy_module_deps(
     let mut copied = 0;
     while let Some(spec) = queue.pop() {
         let rel = spec.trim_start_matches("./");
-        if rel.is_empty() || rel.contains("..") || seen.iter().any(|s| s == rel) {
+        if !stays_inside(rel) || seen.iter().any(|s| s == rel) {
             continue;
         }
         seen.push(rel.to_string());

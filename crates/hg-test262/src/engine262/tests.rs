@@ -62,6 +62,41 @@ fn finds_relative_specifiers() {
     assert_eq!(relative_specifiers(s), ["./a_FIXTURE.js", "./b.js", "./"]);
 }
 
+#[test]
+fn module_deps_stay_inside_the_test_directory() {
+    for rel in ["a.js", "sub/b_FIXTURE.js", "a..b.js"] {
+        assert!(stays_inside(rel), "{rel}");
+    }
+    for rel in [
+        "",
+        "/etc/x",
+        "../x.js",
+        "sub/../../x.js",
+        "//server/share/x",
+    ] {
+        assert!(!stays_inside(rel), "{rel}");
+    }
+    // Drive prefixes are paths only on Windows; elsewhere they are names.
+    for rel in ["C:/x", "C:x", r"\\server\share\x"] {
+        assert_eq!(stays_inside(rel), cfg!(not(windows)), "{rel}");
+    }
+}
+
+#[test]
+fn a_rooted_specifier_is_not_copied() {
+    let base = std::env::temp_dir().join(format!("hg-t262-root-{}", std::process::id()));
+    let (from, to) = (base.join("from"), base.join("to"));
+    std::fs::create_dir_all(&from).unwrap();
+    std::fs::create_dir_all(&to).unwrap();
+    std::fs::write(from.join("ok.js"), "").unwrap();
+    let outside = base.join("outside.js");
+    std::fs::write(&outside, "export {};").unwrap();
+    let src = format!("import './ok.js'; import './/{}';", outside.display());
+    let copied = copy_module_deps(&src, &from, &to, None, false).unwrap();
+    let _ = std::fs::remove_dir_all(&base);
+    assert_eq!(copied, 1);
+}
+
 fn report(lines: &[&str]) -> String {
     lines.iter().map(|l| format!("{l}\n")).collect()
 }
