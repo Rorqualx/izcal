@@ -605,6 +605,13 @@ fn child(case: &str) -> i32 {
             let Ok((sync, _client)) = super::sys::sync_pipe_with_read_pending() else {
                 return 18;
             };
+            // Frees `named` and allocates on one processor: Windows hands
+            // a freed value back on the processor that freed it (see
+            // `pin_to_this_processor`). Unpinned, a move between the two
+            // left the value unfound once on CI ("noswap", 30 Oct).
+            let Ok(affinity) = super::sys::pin_to_this_processor() else {
+                return 20;
+            };
             drop(copy);
             let mut extra = Vec::new();
             let mut swapped = false;
@@ -619,6 +626,7 @@ fn child(case: &str) -> i32 {
                 }
                 extra.push(h);
             }
+            super::sys::unpin(affinity);
             let report: &[u8] = if swapped { b"swapped" } else { b"noswap" };
             r.ipc.send(&up, report.to_vec(), Vec::new()).unwrap();
             let _ = from_parent.recv_timeout(Duration::from_secs(60));
@@ -1793,10 +1801,20 @@ fn serving(r: &Rig, b: &Kid) {
 /// While one child seals eight 64 MiB regions `immutable` (the broker
 /// copies each, review Q1), another child's relays and redeems (a
 /// receiver end sent to it and back) still finish within
-/// [`STALL_BOUND`].
+/// [`STALL_BOUND`]. Each step (the copies planned, made, then the
+/// regions delivered) is awaited by the broker's counts, not by a
+/// deadline on the whole: before, the test gave it all 120 s, which
+/// windows-2025's four vCPUs overran three times beside the other 4 GiB
+/// test, `a_child_dying_mid_copy_stalls_no_one_and_keeps_no_copy`
+/// (passing runs of this test binary took 70 to 112 s there, failing ones
+/// 132 to 136 s; on rig253 the pair took 36 s on four CPUs and 80 s on
+/// two, with no round trip over 109 ms).
 #[test]
 fn a_large_copy_stalls_no_other_child() {
     const MIB64: usize = 64 << 20;
+    /// Fails a step that never comes rather than hanging; never reached
+    /// on a working broker, however slow the machine.
+    const STEP_MAX: Duration = Duration::from_secs(600);
     let r = rig();
     let a = launch(&r, "region-big", true);
     let b = launch(&r, "echo", true);
@@ -1804,16 +1822,13 @@ fn a_large_copy_stalls_no_other_child() {
     let ws: Vec<Handle> = (0..8)
         .map(|_| r.ipc.allocate_region(MIB64, a.peer).unwrap().into_handle())
         .collect();
+    let inner = &r.ipc.inner;
+    let planned = inner.copies_planned.load(Ordering::Acquire);
+    let settled = inner.copies_settled.load(Ordering::Acquire);
     r.ipc.send(&a.to_child, b"fill".to_vec(), ws).unwrap();
     let mut times = Vec::new();
-    let started = std::time::Instant::now();
-    let big = loop {
-        match a.from_child.try_recv() {
-            Ok(Ev::Msg(m, hs)) => break (m, hs),
-            Ok(other) => panic!("{other:?}"),
-            Err(_) => {}
-        }
-        assert!(started.elapsed() < Duration::from_secs(120), "no regions");
+    // One round trip through `b`, timed.
+    let mut round_trip = || {
         let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
         let t = std::time::Instant::now();
         r.ipc
@@ -1823,17 +1838,34 @@ fn a_large_copy_stalls_no_other_child() {
         times.push(t.elapsed());
         assert_eq!(back.len(), 1);
     };
+    // Round trips until `done`, which must come within STEP_MAX.
+    let mut until = |what: &str, done: &mut dyn FnMut() -> bool| {
+        let since = std::time::Instant::now();
+        while !done() {
+            assert!(since.elapsed() < STEP_MAX, "{what} never came");
+            round_trip();
+        }
+    };
+    until("the copies' plan", &mut || {
+        inner.copies_planned.load(Ordering::Acquire) > planned
+    });
+    until("the copies", &mut || {
+        inner.copies_settled.load(Ordering::Acquire) > settled
+    });
+    let mut big = None;
+    until("the regions", &mut || match a.from_child.try_recv() {
+        Ok(Ev::Msg(m, hs)) => {
+            big = Some((m, hs));
+            true
+        }
+        Ok(other) => panic!("{other:?}"),
+        Err(_) => false,
+    });
     // A few more after the copies, so the window is covered.
     for _ in 0..5 {
-        let (_tx, rx) = r.ipc.channel(8, Transfer::Free).unwrap();
-        let t = std::time::Instant::now();
-        r.ipc
-            .send(&b.to_child, b"h".to_vec(), vec![rx.into_handle()])
-            .unwrap();
-        let _ = expect_msg(&b.from_child);
-        times.push(t.elapsed());
+        round_trip();
     }
-    let (m, hs) = big;
+    let (m, hs) = big.unwrap();
     assert_eq!(m, b"big");
     assert_eq!(hs.len(), 8);
     for (i, h) in hs.into_iter().enumerate() {
