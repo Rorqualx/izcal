@@ -21,6 +21,7 @@ entries = [
   "launch::macos::sys",         # the launch path on macOS: code-directory hashes (Security framework), F_GETPATH
   "launch::windows::sys",       # the launch path on Windows: holding the build's files (CreateFileW), TerminateJobObject
   "src/bin/hg-launch-probe.rs", # the spawner's test child: raw fd, prctl and syscall probes
+  "src/bin/hg-thread-census.rs", # the idle-thread test's census on Windows: Toolhelp thread list, OpenThread, NtQueryInformationThread start addresses
   "ipc::shm",                   # atomic byte and word access to a mapped shared-memory region (D6)
 ]
 

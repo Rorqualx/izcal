@@ -46,6 +46,10 @@ fn build_dir() -> &'static Path {
         for m in MAINS {
             cmd.args(["-p", m]);
         }
+        // The idle-thread test's census ([`census`]) is a substrate bin.
+        if cfg!(windows) {
+            cmd.args(["-p", "hg-substrate-os"]);
+        }
         // `dev` and `test` both build into `debug`.
         if profile == "debug" {
             cmd.args(["--profile", "dev"]);
@@ -184,8 +188,8 @@ fn a_broker_that_ends_leaves_no_profile() {
 }
 
 /// The OS threads of process `pid` now, read from outside: Linux
-/// `/proc/PID/status`, macOS `ps -M` (one line per thread), Windows
-/// `Get-Process` (FP-M0's counters, by process).
+/// `/proc/PID/status`, macOS `ps -M` (one line per thread).
+#[cfg(not(windows))]
 fn os_threads(pid: u32) -> Option<usize> {
     #[cfg(target_os = "linux")]
     {
@@ -203,18 +207,25 @@ fn os_threads(pid: u32) -> Option<usize> {
         let lines = String::from_utf8_lossy(&out.stdout).lines().count();
         lines.checked_sub(1).filter(|n| *n > 0)
     }
-    #[cfg(windows)]
-    {
-        let out = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                &format!("(Get-Process -Id {pid}).Threads.Count"),
-            ])
-            .output()
-            .ok()?;
-        String::from_utf8_lossy(&out.stdout).trim().parse().ok()
-    }
+}
+
+/// Windows: the threads of process `pid` now and where each starts,
+/// from `hg-thread-census` (one `thread TID ntdll|other 0x...` line per
+/// thread), read from outside as the same user.
+#[cfg(windows)]
+fn census(pid: u32) -> Vec<String> {
+    let exe = build_dir().join("hg-thread-census.exe");
+    let out = Command::new(&exe).arg(pid.to_string()).output().unwrap();
+    assert!(
+        out.status.success(),
+        "{} {pid}: {}",
+        exe.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect()
 }
 
 /// FP 6.3 and FP-32 (M1 phase G): an idle empty site process has two
@@ -222,18 +233,34 @@ fn os_threads(pid: u32) -> Option<usize> {
 /// child runs its sequences on `main` and its IPC on `hg-ipc-io`; a
 /// MayBlock worker and the timer thread start only when used (CS-AS-3:
 /// the substrate's count is the process's). Counted from outside, on
-/// each OS. On Windows the loader's own pool threads (FP-M0: three the
-/// process does not create) end by themselves within about 45 s, so the
-/// count is awaited for up to 90 s.
+/// each OS.
+///
+/// On Windows the process also holds thread-pool workers it does not
+/// create: the loader's at start, and one more whenever any ETW session
+/// enables a provider the process registered (Windows' telemetry service
+/// does so on its own schedule; rig253 trace, 7 Nov 2026). They start in
+/// `ntdll`, and Izcal never uses the Windows thread pool, so the count
+/// there is of the threads that start elsewhere: two, at every sample
+/// for 35 s (past the loader workers' 30 s idle timeout), with every
+/// other thread in `ntdll`.
 #[test]
 fn an_idle_child_runs_two_threads() {
     use std::io::BufRead as _;
+    /// Ends the broker (and so its children) on every way out.
+    struct Reap(std::process::Child);
+    impl Drop for Reap {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
     let mut broker = Command::new(tool())
         .args(["hold", "150"])
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
     let out = std::io::BufReader::new(broker.stdout.take().unwrap());
+    let broker = Reap(broker);
     let mut pids = Vec::new();
     for line in out.lines() {
         let line = line.unwrap();
@@ -248,20 +275,44 @@ fn an_idle_child_runs_two_threads() {
         assert!(!line.contains("FAIL"), "{line}");
     }
     assert_eq!(pids.len(), 2, "both children reported ready: {pids:?}");
-    let started = std::time::Instant::now();
-    let mut seen = Vec::new();
-    for (kind, pid) in &pids {
-        let mut n = os_threads(*pid);
-        while n != Some(2) && started.elapsed() < std::time::Duration::from_secs(90) {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            n = os_threads(*pid);
+    #[cfg(not(windows))]
+    {
+        let started = std::time::Instant::now();
+        let mut seen = Vec::new();
+        for (kind, pid) in &pids {
+            let mut n = os_threads(*pid);
+            while n != Some(2) && started.elapsed() < std::time::Duration::from_secs(90) {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                n = os_threads(*pid);
+            }
+            seen.push((kind.clone(), n));
         }
-        seen.push((kind.clone(), n));
+        drop(broker);
+        eprintln!("threads after {:?}: {seen:?}", started.elapsed());
+        for (kind, n) in seen {
+            assert_eq!(n, Some(2), "{kind}");
+        }
     }
-    let _ = broker.kill();
-    let _ = broker.wait();
-    eprintln!("threads after {:?}: {seen:?}", started.elapsed());
-    for (kind, n) in seen {
-        assert_eq!(n, Some(2), "{kind}");
+    #[cfg(windows)]
+    {
+        let started = std::time::Instant::now();
+        let mut last = Vec::new();
+        while started.elapsed() < std::time::Duration::from_secs(35) {
+            last.clear();
+            for (kind, pid) in &pids {
+                let threads = census(*pid);
+                let own = threads.iter().filter(|t| t.contains(" other ")).count();
+                if own != 2 {
+                    panic!(
+                        "{kind}: {own} threads start outside ntdll after {:?}: {threads:?}",
+                        started.elapsed()
+                    );
+                }
+                last.push((kind.clone(), threads));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        drop(broker);
+        eprintln!("threads after {:?}: {last:?}", started.elapsed());
     }
 }
