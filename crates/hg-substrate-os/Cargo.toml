@@ -54,6 +54,10 @@ windows-sys = { version = "0.61", features = [
   "Win32_Security_Authorization",
   "Wdk_Foundation",
   "Wdk_Storage_FileSystem",
+  # hg-thread-census (a test tool): thread lists and start addresses.
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_LibraryLoader",
+  "Wdk_System_Threading",
 ] }
 
 [[test]]
@@ -80,3 +84,8 @@ test = false
 [[bin]]
 name = "substrate-idle"
 path = "src/bin/substrate-idle.rs"
+
+[[bin]]
+name = "hg-thread-census"
+path = "src/bin/hg-thread-census.rs"
+test = false
