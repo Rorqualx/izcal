@@ -1,0 +1,42 @@
+reuse probe 2026-11-08T17:37:16 pid=18828 user=hueythesojurn\izcal-run build=10.0.26300.0
+SID is a function of the name: create=S-1-15-2-434706414-3696788626-4023690573-1113542472-3823040455-2053444712-2892265024 derive=S-1-15-2-434706414-3696788626-4023690573-1113542472-3823040455-2053444712-2892265024 equal=True
+after delete+create the same name: S-1-15-2-434706414-3696788626-4023690573-1113542472-3823040455-2053444712-2892265024 equal=True
+
+== C control: A planted and still running, B checks (the detector must find all six)
+folder C:\Users\izcal-run\AppData\Local\Packages\izcal.reuse.7a34519d60\AC
+procs in container: 4192=izp,16596=conhost; dir present
+B: found=[event,mutex,section,pipe,file,registry] (code 63)
+
+== S1 recycle: A plants and exits; wait clear; delete+recreate profile; B checks (want none)
+A plant: exit 0
+clear after 1.14 s
+folder before recycle: izp.txt
+delete hr=0x0, recreated
+folder after recycle: exists=True files=
+B: found=[] (code 0)
+
+== S2 same profile kept (no delete): A plants and exits; wait clear; B checks
+A plant: exit 0
+clear after 0.68 s
+B: found=[file,registry] (code 48)
+
+== S3 orphan: A plants, starts a grandchild in the container, exits
+A plant: exit 0
+procs in container after A: 708=izp,16596=conhost; dir present
+B reusing now (rule broken): found=[event,mutex,section,pipe,file,registry] (code 63)
+clear after 0.00 s
+delete hr=0x0, recreated
+B after the grandchild ends, recycle: found=[] (code 0)
+
+== S4 broker keeps a handle to A's event: A plants (stays), broker opens izp-ev, A killed
+broker holds izp-ev
+procs in container: ; dir gone
+delete hr=0x0, recreated
+B (event still held by the broker): found=[] (code 0)
+clear after 0.01 s
+B after the broker closes it: found=[] (code 0)
+
+== M SeLs cost of reuse (200 cycles each)
+one name, delete+recreate+launch x200 (clean checks 200): SeLs 853 -> 854 (+1)
+control, fresh name each x200 (clean checks 200): SeLs 854 -> 1054 (+200)
+idle 10 s: SeLs 1054 -> 1054 (+0)

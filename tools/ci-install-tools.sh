@@ -22,7 +22,16 @@ tools=(
 
 for t in "${tools[@]}"; do
   IFS='|' read -r name url sha inner <<< "$t"
-  curl -fsSL -o "$tmp/$name.archive" "$url"
+  # The release host answers 504 often enough to matter: three jobs failed
+  # that way on 9 November 2026 (two `checks`, one `kani`), each after a
+  # single attempt, which fails the whole job before a line of the repo is
+  # looked at. Retry transient HTTP and transport errors, with a growing
+  # delay, and fail only if every attempt does. The checksum below is what
+  # keeps a retry from installing something else, so retrying is free of
+  # supply risk: a truncated or substituted archive fails the digest.
+  curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+    --connect-timeout 20 --max-time 300 -o "$tmp/$name.archive" "$url" ||
+    { echo "download failed for $name after 5 attempts: $url" >&2; exit 1; }
   echo "$sha  $tmp/$name.archive" | sha256sum -c --quiet - || { echo "checksum mismatch for $name" >&2; exit 1; }
   case "$url" in
     *.zip) unzip -q -o "$tmp/$name.archive" "$inner" -d "$tmp" ;;
