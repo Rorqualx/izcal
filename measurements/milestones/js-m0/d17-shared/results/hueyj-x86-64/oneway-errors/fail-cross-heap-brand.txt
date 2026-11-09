@@ -1,0 +1,33 @@
+error[E0521]: borrowed data escapes outside of closure
+  --> /home/joe/src/izcal-d17/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-cross-heap-brand.rs:37:17
+   |
+33 |       a.enter(|ma| {
+   |                --
+   |                |
+   |                `ma` is a reference that is only valid in the closure body
+   |                has type `&mut Mutator<'1>`
+...
+37 | /                 mb.scope(|mb, sb| {
+38 | |                     let theirs = mb.alloc::<Cell>(sb, 0).expect("alloc");
+39 | |                     // Heap b's reference into heap a's object.
+40 | |                     mine.get(ma).set(ma, Cell::NEXT, Some(theirs.get(mb)));
+41 | |                 });
+   | |                  ^
+   | |                  |
+   | |__________________`ma` escapes the closure body here
+   |                    argument requires that `'1` must outlive `'static`
+
+error[E0521]: borrowed data escapes outside of closure
+  --> /home/joe/src/izcal-d17/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-cross-heap-brand.rs:40:21
+   |
+35 |             let mine = ma.alloc::<Cell>(sa, 0).expect("alloc");
+   |                 ---- `mine` declared here, outside of the closure body
+36 |             b.enter(|mb| {
+   |                      -- `mb` is a reference that is only valid in the closure body
+...
+40 |                     mine.get(ma).set(ma, Cell::NEXT, Some(theirs.get(mb)));
+   |                     ^^^^^^^^^^^^ `mb` escapes the closure body here
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0521`.

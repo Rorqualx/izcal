@@ -1,0 +1,1 @@
+rig check OK: local kind=exclusive session=js-m0 | load 0.35/cpu (4.19 / 12 cpus) | bookings: b-2fda6b exclusive cpu by js-m0 until 12:59am | game lock: free q0 | 2026-11-09T00:08:31-07:00

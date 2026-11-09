@@ -106,6 +106,11 @@ jobs:
   miri:
     runs-on: ubuntu-24.04
     # 25 min on an M-series Mac for hg-heap's 14 tests (31 Oct 2026).
+    # The heap verifier (Phase 2 item 4) now runs after every cycle in
+    # debug builds, which this job is. Measured cost on an M-series Mac,
+    # 9 Nov 2026, on the heaviest test (every collector mode, all three):
+    # 492.5 s with it against 388.2 s without, so +27%. The suite is 27
+    # tests now; the 60-minute budget still holds with room.
     timeout-minutes: 60
     env:
       MIRI_TOOLCHAIN: nightly-2026-10-17
