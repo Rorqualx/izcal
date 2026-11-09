@@ -1,0 +1,7 @@
+# cage base 0x7562c5800000 len 17179869184 (16 GiB); 8 agents, 64 churn rounds
+# substrate ledger: 1 reservation(s), reserved 17179869184 B, committed 58720256 B, 184 commits, 128 decommits (0 refused)
+# /proc/self/maps lines inside the cage:
+7562c5800000-7562c5900000 ---p 00000000 00:00 0 
+7562c5900000-7562c9100000 rw-p 00000000 00:00 0 
+7562c9100000-7566c5800000 ---p 00000000 00:00 0 
+# OS view: 32 mappings in all, 3 inside the cage, VmSize 17184858112 B, VmRSS 59088896 B, max_map_count 1048576

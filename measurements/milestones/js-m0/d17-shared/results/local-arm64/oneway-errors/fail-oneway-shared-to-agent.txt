@@ -1,0 +1,17 @@
+error[E0308]: mismatched types
+   --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-oneway-shared-to-agent.rs:27:37
+    |
+ 27 |                 sm.set_shared(root, mine);
+    |                    ----------       ^^^^ expected `SharedRef<'_>`, found `AgentRef<'_>`
+    |                    |
+    |                    arguments to this method are incorrect
+    |
+note: method defined here
+   --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/shared-brand.rs:142:12
+    |
+142 |     pub fn set_shared(&self, _at: SharedRef<'g>, _v: SharedRef<'g>) {}
+    |            ^^^^^^^^^^                            -----------------
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0308`.

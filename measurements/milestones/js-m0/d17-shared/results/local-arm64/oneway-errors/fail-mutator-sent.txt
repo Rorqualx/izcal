@@ -1,0 +1,35 @@
+error[E0277]: `*const ()` cannot be sent between threads safely
+   --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-mutator-sent.rs:28:22
+    |
+ 28 |               sc.spawn(move || {
+    |                  ----- ^------
+    |                  |     |
+    |  ________________|_____within this `{closure@fail-mutator-sent.rs:28:22}`
+    | |                |
+    | |                required by a bound introduced by this call
+ 29 | |                 m.scope(|_m, _s| {});
+ 30 | |             });
+    | |_____________^ `*const ()` cannot be sent between threads safely
+    |
+    = help: within `{closure@fail-mutator-sent.rs:28:22}`, the trait `Send` is not implemented for `*const ()`
+note: required because it appears within the type `PhantomData<*const ()>`
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/core/src/marker.rs:811:11
+note: required because it appears within the type `Mutator<'_>`
+   --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/crates/hg-heap/src/heap.rs:150:12
+    |
+150 | pub struct Mutator<'h> {
+    |            ^^^^^^^
+    = note: required because it appears within the type `&mut Mutator<'_>`
+note: required because it's used within this closure
+   --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-mutator-sent.rs:28:22
+    |
+ 28 |             sc.spawn(move || {
+    |                      ^^^^^^^
+note: required by a bound in `std::thread::Scope::<'scope, 'env>::spawn`
+   --> /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/std/src/thread/scoped.rs:201:4
+    = note: the full name for the type has been written to '/var/folders/cs/fmlg876j1qqg2jvn9ty34kyh0000gn/T//d17-oneway.wXHBl7/fail-mutator-sent.long-type-16556491087885486927.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0277`.
