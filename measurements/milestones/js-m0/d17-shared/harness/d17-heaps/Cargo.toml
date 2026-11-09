@@ -1,0 +1,24 @@
+# The JS-D17 spike's heap harness: a probe, never shipped, so it is its
+# own workspace (`[workspace]` below) and depends on Izcal's crates by
+# path. It measures the real `ProcessCage`, `Heap::in_cage` and the OS
+# memory substrate; nothing here is engine code.
+[package]
+name = "d17-heaps"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+description = "JS-D17 spike: address space, allocation contention and brand cost for several agent heaps in one cage"
+
+[workspace]
+
+[dependencies]
+hg-heap = { path = "../../../../../../crates/hg-heap" }
+hg-substrate = { path = "../../../../../../crates/hg-substrate" }
+hg-substrate-os = { path = "../../../../../../crates/hg-substrate-os" }
+
+[profile.release]
+debug = 1
+
+[lints.rust]
+unsafe_code = "forbid"

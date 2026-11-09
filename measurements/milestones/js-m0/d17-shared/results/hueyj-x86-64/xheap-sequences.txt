@@ -1,0 +1,47 @@
+# The sequences as the assembler emitted them, from the binary that produced
+# xheap.tsv. This is the check that each variant is the one JS spec 6.1 and
+# the JS-D17 row name. Each variant has its own walk loop (the dispatch is
+# hoisted out), and all four are inlined into main; the loops below are the
+# bodies between a backward jne and its target.
+
+== one_base / two_base_static: base + 4*v - 4 is the addressing mode, one instruction
+    1610:	89 f0                	mov    %esi,%eax
+    1612:	8b 74 83 fc          	mov    -0x4(%rbx,%rax,4),%esi
+    1616:	8b 04 83             	mov    (%rbx,%rax,4),%eax
+    1619:	89 c0                	mov    %eax,%eax
+    161b:	49 83 c0 01          	add    $0x1,%r8
+    161f:	48 01 c2             	add    %rax,%rdx
+    1622:	4d 39 c4             	cmp    %r8,%r12
+    1625:	75 e9                	jne    1610 <main+0x410>
+
+== brand_dynamic: (v - lo) < width, a predicted branch, then (a) load
+    17d8:	41 89 c2             	mov    %eax,%r10d
+    17db:	45 89 d3             	mov    %r10d,%r11d
+    17de:	45 29 f3             	sub    %r14d,%r11d
+    17e1:	45 39 eb             	cmp    %r13d,%r11d
+    17e4:	73 0b                	jae    17f1 <main+0x5f1>
+    17e6:	42 8b 44 93 fc       	mov    -0x4(%rbx,%r10,4),%eax
+    17eb:	42 8b 14 93          	mov    (%rbx,%r10,4),%edx
+    17ef:	eb 04                	jmp    17f5 <main+0x5f5>
+    17f1:	31 c0                	xor    %eax,%eax
+    17f3:	31 d2                	xor    %edx,%edx
+    17f5:	89 d2                	mov    %edx,%edx
+    17f7:	48 83 c7 01          	add    $0x1,%rdi
+    17fb:	48 01 d1             	add    %rdx,%rcx
+    17fe:	49 39 fc             	cmp    %rdi,%r12
+    1801:	75 d5                	jne    17d8 <main+0x5d8>
+
+== two_base_dynamic: testl $2 / cmovne picks the base, then one shift puts the slot back in (a) form
+    1b30:	89 ce                	mov    %ecx,%esi
+    1b32:	48 89 c3             	mov    %rax,%rbx
+    1b35:	f7 c6 02 00 00 00    	test   $0x2,%esi
+    1b3b:	48 0f 45 da          	cmovne %rdx,%rbx
+    1b3f:	89 f5                	mov    %esi,%ebp
+    1b41:	d1 ed                	shr    $1,%ebp
+    1b43:	8b 4c ab fc          	mov    -0x4(%rbx,%rbp,4),%ecx
+    1b47:	44 8b 0c ab          	mov    (%rbx,%rbp,4),%r9d
+    1b4b:	45 89 c9             	mov    %r9d,%r9d
+    1b4e:	48 83 c7 01          	add    $0x1,%rdi
+    1b52:	4d 01 c8             	add    %r9,%r8
+    1b55:	49 39 fc             	cmp    %rdi,%r12
+    1b58:	75 d6                	jne    1b30 <main+0x930>

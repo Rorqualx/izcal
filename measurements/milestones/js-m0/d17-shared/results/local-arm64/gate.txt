@@ -1,0 +1,10 @@
+PASS	one-reservation	1 reservation(s), 17179869184 bytes
+PASS	offsets-in-one-cage	24 chunk(s) seen, all in [1, 16384)
+PASS	chunks-disjoint	20 chunks, each one agent's
+PASS	pool-interleaved	8 runs of ownership across the cage's chunks (>4 means one pool)
+PASS	chunk-size	3 chunks of 1048576 bytes, contiguous: true
+PASS	work-checked	checksum 499500 (want 499500), 1001 allocs, 0 refused
+PASS	clock	OS max 0 MHz, mean 0 MHz; reference 0.643 ns/add = 0.00 cyc/add; checked true; cycles available: false
+PASS	os-view	332 mappings, VmSize 500513030144 B, max_map_count 0
+PASS	concurrency	overlap 1.000 of a 0.200 s window
+PASS	gate
