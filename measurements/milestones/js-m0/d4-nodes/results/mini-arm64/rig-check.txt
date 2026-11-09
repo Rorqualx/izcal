@@ -1,0 +1,1 @@
+rig check OK: mini kind=exclusive session=js-m0 | load 0.15/cpu (1.49 / 10 cpus) | bookings: b-4bb175 exclusive cpu by js-m0 until 1:18am | game lock: free q0 | 2026-11-09T00:48:55-07:00
