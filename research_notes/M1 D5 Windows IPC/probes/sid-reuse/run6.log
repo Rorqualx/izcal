@@ -1,0 +1,72 @@
+warning: constant `NO_WINDOW` is never used
+  --> izq.rs:26:7
+   |
+26 | const NO_WINDOW: u32 = 0x0800_0000;
+   |       ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `PS` is never used
+  --> izq.rs:27:7
+   |
+27 | const PS: &str = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+   |       ^^
+
+warning: function `GlobalAlloc` is never used
+  --> izq.rs:32:8
+   |
+32 |     fn GlobalAlloc(f: u32, b: usize) -> H;
+   |        ^^^^^^^^^^^
+
+warning: function `GlobalLock` is never used
+  --> izq.rs:33:8
+   |
+33 |     fn GlobalLock(h: H) -> *mut u8;
+   |        ^^^^^^^^^^
+
+warning: function `GlobalUnlock` is never used
+  --> izq.rs:34:8
+   |
+34 |     fn GlobalUnlock(h: H) -> i32;
+   |        ^^^^^^^^^^^^
+
+warning: 5 warnings emitted
+
+izq run 2026-11-08T21:18:56 pid=9964 user=hueythesojurn\izcal-run build=10.0.26300.0
+bounds: fs=95 paths (C:\ + top level, ProgramData +1, Packages +1), reg=51 keys (HKCU +1, Local Settings +1, HKLM top + HKLM\SOFTWARE +1)
+snapshot 0 fs : checked=87 unread=8 sidHits=[]
+snapshot 0 reg: checked=51 unread=0 sidHits=[]
+A=izcal.izq.37ae92329c sid=S-1-15-2-2397082484-4036114890-569586239-2336997077-3934570552-2604792724-329812390
+B sid=S-1-15-2-4204424427-2341178156-2403596556-680814827-1734602713-2330847145-1124139772 folder=C:\Users\izcal-run\AppData\Local\Packages\izcal.izq.b37ae92329c\AC
+snapshot 1 fs : checked=87 unread=8 sidHits=[]
+snapshot 1 reg: checked=51 unread=0 sidHits=[]
+helper into A: True; into B: True
+== plant (A) : cred_new=ERROR(1312) cookie_new=ok atom_new=ERROR(5) gev_new=ok gmap_new=ok gpipe_new=DENIED(5)
+== P0 A-alive (gate) : cred=ERROR(1312) credenum=ERROR(5) cookie=gone atom=gone gev=found gmap=found gpipe=gone wo1=DENIED(5) wo2=DENIED(5) wo3=DENIED(5)
+GATE: pass (2 plantable channels)
+== P1 B, A alive : cred=ERROR(1312) credenum=ERROR(5) cookie=gone atom=gone gev=gone gmap=gone gpipe=gone
+A after kill: clear after 0.0 s
+== P2 B, A exited : cred=ERROR(1312) credenum=ERROR(5) cookie=gone atom=gone gev=gone gmap=gone gpipe=gone
+del A hr=0x0
+snapshot 2 fs : checked=87 unread=8 sidHits=[]
+snapshot 2 reg: checked=51 unread=0 sidHits=[]
+recreate A: sid same=True
+== P3 recycled holder : cred=ERROR(1312) credenum=ERROR(5) cookie=gone atom=gone gev=gone gmap=gone gpipe=gone wo1=DENIED(5) wo2=DENIED(5) wo3=DENIED(5)
+snapshot 3 fs : checked=87 unread=8 sidHits=[]
+snapshot 3 reg: checked=51 unread=0 sidHits=[]
+== P4 plain user : cred=ERROR(203) credenum=ERROR(203) cookie=gone atom=gone gev=DENIED(259) gmap=DENIED(259) gpipe=gone
+-- summary (plant-time results in brackets)
+cred      plant=[ERROR(1312)] P0=ERROR(1312) P1=ERROR(1312) P2=ERROR(1312) P3=ERROR(1312) P4=ERROR(203)
+credenum  plant=[-] P0=ERROR(5) P1=ERROR(5) P2=ERROR(5) P3=ERROR(5) P4=ERROR(203)
+cookie    plant=[ok] P0=gone P1=gone P2=gone P3=gone P4=gone
+atom      plant=[ERROR(5)] P0=gone P1=gone P2=gone P3=gone P4=gone
+gev       plant=[ok] P0=found P1=gone P2=gone P3=gone P4=DENIED(259)
+gmap      plant=[ok] P0=found P1=gone P2=gone P3=gone P4=DENIED(259)
+gpipe     plant=[DENIED(5)] P0=gone P1=gone P2=gone P3=gone P4=gone
+wo opens P0: wo1=DENIED(5) wo2=DENIED(5) wo3=DENIED(5)
+wo opens P3: wo1=DENIED(5) wo2=DENIED(5) wo3=DENIED(5)
+-- cleanup
+cred delete: ERROR(203); now: ERROR(203)
+del A hr=0x0; del B hr=0x0
+A dir: gone; B dir: gone
+intentional leftovers: the cookie on izq-37ae92329c.probe (the probe only reads it back); the clipboard and PasswordVault channels were not probed (user32 fails DllMain inside the container in this session)

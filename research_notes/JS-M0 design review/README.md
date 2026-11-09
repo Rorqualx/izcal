@@ -21,6 +21,7 @@ The JS spec's JS-M0 row asks for a design review that fixes, together, the parts
 | [code-table-and-ledger.md](code-table-and-ledger.md) | 2 | Sealed and runtime-trusted data; the code tables and their 32-byte entry; calls through them; heap constants; facts, the ledger, installation, invalidation and discard |
 | [riscv64-abi.md](riscv64-abi.md) | 2 | Register roles on riscv64, AArch64 and x86-64; landing-pad kinds and labels; the segment-switch stub per ISA; validator rules |
 | `heap.md` (lands with the heap change) | heap | `hg-heap` at JS-M0: the cage module, layout, Immix geometry, tracing, debt, weak cells, brands |
+| [heap-node-space-amendments.md](heap-node-space-amendments.md) | heap | **Proposed, not accepted.** The four node-space decisions taken after the review, with their derivations: a `node` field kind amending H-4, node→wrapper strong amending Stage 1 5.2, an external node-root list, and the pull trait. Plus the choice H-4's missing forwarding bit leaves the owner, and WC-9's key-custody pass as an open JS-M0 item |
 
 **Identifiers.** Part 1's decisions are **R0-B** (bytecode), **R0-O** (`.hgop`) and **R0-H** (hooks), its targets **R0T**, its questions **Q-R0-1 to Q-R0-9** and its `.hgop` checks **OC-1 to OC-17**. Part 2's are **R2-**, **R2T-**, **Q-R2-**, **OQ-** and its contradictions **C1 to C16**. In part 1, **H-1** and **H-2** are the JS spec's invariants (6.1); heap.md's decisions are cited as "heap.md H-n". The critique's finding labels (H1, M1, L1) appear only in this header and in "Low findings recorded".
 

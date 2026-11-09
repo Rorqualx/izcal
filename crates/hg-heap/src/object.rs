@@ -30,6 +30,12 @@ pub struct Layout {
     pub traced: u32,
     /// Weak slots after the strong ones (heap design H-10).
     pub weak: u32,
+    /// Node slots after the weak ones: 8 bytes each, 8-aligned, each
+    /// naming a node of the heap's node space (heap design H-4 as
+    /// amended by decision 1; JS-D4 (a)). They come after the 32-bit
+    /// slots so that [`Layout::slot_offset`] is unchanged for the traced
+    /// and weak ones.
+    pub nodes: u32,
     /// Raw 64-bit words after the slots.
     pub raw_words: u32,
     /// The variable tail.
@@ -37,11 +43,27 @@ pub struct Layout {
 }
 
 impl Layout {
-    /// The bytes of the fixed body: the slots padded to 8, then the raw
-    /// words.
+    /// The bytes of the fixed body: the 32-bit slots padded to 8, then
+    /// the node slots, then the raw words.
     pub(crate) const fn fixed_body(&self) -> u64 {
+        self.nodes_end() - HEADER_BYTES + self.raw_words as u64 * 8
+    }
+
+    /// Where the 32-bit slots end, padded to 8 so the node slots and the
+    /// raw words are aligned.
+    const fn slots_end(&self) -> u64 {
         let slots = (self.traced as u64 + self.weak as u64) * 4;
-        slots.next_multiple_of(8) + self.raw_words as u64 * 8
+        HEADER_BYTES + slots.next_multiple_of(8)
+    }
+
+    /// Where the node slots end.
+    const fn nodes_end(&self) -> u64 {
+        self.slots_end() + self.nodes as u64 * 8
+    }
+
+    /// The byte offset of node slot `i` from the object's start.
+    pub(crate) const fn node_offset(&self, i: u32) -> u64 {
+        self.slots_end() + i as u64 * 8
     }
 
     /// The byte offset of slot `i` from the object's start.
@@ -51,8 +73,7 @@ impl Layout {
 
     /// The byte offset of raw word `i` from the object's start.
     pub(crate) const fn raw_offset(&self, i: u32) -> u64 {
-        let slots = (self.traced as u64 + self.weak as u64) * 4;
-        HEADER_BYTES + slots.next_multiple_of(8) + i as u64 * 8
+        self.nodes_end() + i as u64 * 8
     }
 
     /// The byte offset of the tail from the object's start.
@@ -105,6 +126,41 @@ pub struct Traced<T, U> {
 pub struct Weak<T, U> {
     index: u32,
     _p: PhantomData<fn() -> (T, U)>,
+}
+
+/// A node slot of `T`: a strong reference to a node of the heap's node
+/// space, 8 bytes holding its slot index and epoch (JS-D4 (a)). The
+/// lazily created wrapper of a node holds one of these, and because it is
+/// traced strongly the node cannot die while the wrapper lives — which
+/// is the half of "held strongly once created" that needs the collector's
+/// help (decision 2).
+#[derive(Debug)]
+pub struct Node<T> {
+    index: u32,
+    _p: PhantomData<fn() -> T>,
+}
+
+impl<T> Clone for Node<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for Node<T> {}
+
+impl<T> Node<T> {
+    /// The descriptor for index `index`. For [`object!`](crate::object).
+    #[doc(hidden)]
+    pub const fn new(index: u32) -> Self {
+        Self {
+            index,
+            _p: PhantomData,
+        }
+    }
+
+    /// The field's index.
+    pub const fn index(self) -> u32 {
+        self.index
+    }
 }
 
 /// A raw 64-bit word of `T` that holds a `V`.
@@ -207,6 +263,7 @@ impl RawValue for bool {
 ///         traced NEXT: Cell,
 ///         traced VALUE: hg_heap::Any,
 ///         weak OBSERVED: hg_heap::Any,
+///         node OWNER_NODE,
 ///         raw COUNT: u32,
 ///         tail none,
 ///     }
@@ -214,8 +271,9 @@ impl RawValue for bool {
 /// ```
 ///
 /// Every section must be present, in this order (`traced`, `weak`,
-/// `raw`), each with zero or more fields, and `tail` is `none`, `slots`
-/// or `bytes`.
+/// `node`, `raw`), each with zero or more fields, and `tail` is `none`,
+/// `slots` or `bytes`. A `node` field names no type: it references a node
+/// of the heap's node space, not another heap object.
 #[macro_export]
 macro_rules! object {
     (
@@ -223,6 +281,7 @@ macro_rules! object {
         $vis:vis $name:ident {
             $(traced $t:ident : $tt:ty,)*
             $(weak $w:ident : $wt:ty,)*
+            $(node $n:ident,)*
             $(raw $r:ident : $rt:ty,)*
             tail $tail:ident,
         }
@@ -238,6 +297,7 @@ macro_rules! object {
                 name: stringify!($name),
                 traced: $crate::object!(@count $($t)*),
                 weak: $crate::object!(@count $($w)*),
+                nodes: $crate::object!(@count $($n)*),
                 raw_words: $crate::object!(@count $($r)*),
                 tail: $crate::object!(@tail $tail),
             };
@@ -246,6 +306,7 @@ macro_rules! object {
         impl $name {
             $crate::object!(@fields $name, $vis, Traced, 0u32, $($t : $tt,)*);
             $crate::object!(@fields $name, $vis, Weak, $crate::object!(@count $($t)*), $($w : $wt,)*);
+            $crate::object!(@nodes $name, $vis, 0u32, $($n,)*);
             $crate::object!(@fields $name, $vis, Raw, 0u32, $($r : $rt,)*);
         }
     };
@@ -256,6 +317,12 @@ macro_rules! object {
         #[doc = concat!("The field `", stringify!($f), "`.")]
         $vis const $f: $crate::$kind<$name, $ft> = $crate::$kind::new($idx);
         $crate::object!(@fields $name, $vis, $kind, $idx + 1u32, $($rest)*);
+    };
+    (@nodes $name:ident, $vis:vis, $idx:expr, ) => {};
+    (@nodes $name:ident, $vis:vis, $idx:expr, $f:ident, $($rest:tt)*) => {
+        #[doc = concat!("The node field `", stringify!($f), "`.")]
+        $vis const $f: $crate::Node<$name> = $crate::Node::new($idx);
+        $crate::object!(@nodes $name, $vis, $idx + 1u32, $($rest)*);
     };
     (@tail none) => { $crate::Tail::None };
     (@tail slots) => { $crate::Tail::Slots };
