@@ -1,0 +1,2 @@
+rig check OK: hueyj kind=exclusive session=js-m0 | load 0.17/cpu (1.36 / 8 cpus) | bookings: b-24f95d exclusive cpu by js-m0 until Mon 12:32am | game lock: free q0 | 2026-11-08T23:51:07-07:00
+rig check OK: hueyj kind=exclusive session=js-m0 | load 0.22/cpu (1.79 / 8 cpus) | bookings: b-24f95d exclusive cpu by js-m0 until Mon 12:32am | game lock: free q0 | 2026-11-08T23:59:34-07:00

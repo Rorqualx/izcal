@@ -1,0 +1,6 @@
+# isa=aarch64 iters=16777216 reps=16 addend=2
+shape	sequence	instr	ns_per_add	cycles_per_add	min_ns	cell_mhz	check
+latency	flags	2	0.2273	1.021	0.2206	4493	ok
+throughput	flags	2	0.1005	0.452	0.0992	4496	ok
+latency	explicit	5	0.2480	1.115	0.2335	4497	ok
+throughput	explicit	5	0.1579	0.702	0.1454	4450	ok

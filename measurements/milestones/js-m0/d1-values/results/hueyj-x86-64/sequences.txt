@@ -1,0 +1,12 @@
+0000000000001f50 <chase_scaled32>:
+    1f50:	89 f0                	mov    %esi,%eax
+    1f52:	8b 44 87 fc          	mov    -0x4(%rdi,%rax,4),%eax
+    1f56:	48 ff ca             	dec    %rdx
+    1f59:	75 f7                	jne    1f52 <chase_scaled32+0x2>
+    1f5b:	c3                   	ret
+0000000000001f60 <chase_byte32>:
+    1f60:	89 f0                	mov    %esi,%eax
+    1f62:	8b 04 07             	mov    (%rdi,%rax,1),%eax
+    1f65:	48 ff ca             	dec    %rdx
+    1f68:	75 f8                	jne    1f62 <chase_byte32+0x2>
+    1f6a:	c3                   	ret
