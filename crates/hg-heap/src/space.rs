@@ -356,6 +356,15 @@ impl Space {
         }
     }
 
+    /// Whether `off` lies in a chunk this heap owns. A slot naming a
+    /// chunk of another agent heap, or one the cage has not handed out,
+    /// is never followed (heap design H-12); the verifier uses this to
+    /// tell that allowed case from a reference into this heap's own freed
+    /// memory, which is a collector bug.
+    pub(crate) fn owns(&self, off: u64) -> bool {
+        self.owned.contains_key(&(off / CHUNK))
+    }
+
     /// Whether `off` is in a small-object block of this heap.
     pub(crate) fn is_small(&self, off: u64) -> bool {
         self.meta(off).is_some_and(|m| m.state == State::Small)
@@ -412,6 +421,30 @@ impl Space {
             self.mark_lines(off, size);
         }
         false
+    }
+
+    /// Checks that every line the object at `off` of `size` bytes covers
+    /// is marked in its block, which is what stops the allocator handing
+    /// out memory inside a live object. Large objects hold whole blocks
+    /// and have no line marks, so they always pass.
+    ///
+    /// # Errors
+    /// The first unmarked line, counted from the start of the block.
+    pub(crate) fn lines_marked(&self, off: u64, size: u64) -> Result<(), usize> {
+        let Some(m) = self.meta(off) else {
+            return Ok(()); // not this heap's memory; `is_object` reports that
+        };
+        if m.state != State::Small {
+            return Ok(());
+        }
+        let first = ((off % BLOCK) / LINE) as usize;
+        let last = (((off % BLOCK) + size.max(1) - 1) / LINE) as usize;
+        for l in first..=last.min(LINES - 1) {
+            if !is_set(&m.lines, l) {
+                return Err(l);
+            }
+        }
+        Ok(())
     }
 
     /// Whether the object at `off` is marked.

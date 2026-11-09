@@ -1,0 +1,14 @@
+error[E0502]: cannot borrow `*m` as mutable because it is also borrowed as immutable
+  --> /home/joe/src/izcal-d17/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-gc-across-gc-point.rs:35:13
+   |
+33 |             let g = x.get(m);
+   |                           - immutable borrow occurs here
+34 |             // A GC point with `g` still live.
+35 |             m.collect();
+   |             ^^^^^^^^^^^ mutable borrow occurs here
+36 |             let _ = g.len(m);
+   |                     - immutable borrow later used here
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0502`.

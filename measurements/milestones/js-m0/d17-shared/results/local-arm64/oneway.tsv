@@ -1,0 +1,8 @@
+case	expect	outcome	verdict	note
+control-oneway-allowed	compiles	compiles	ok	
+control-same-heap	compiles	compiles	ok	
+fail-cross-heap-brand	refused	refused	ok	error[E0521]
+fail-gc-across-gc-point	refused	refused	ok	error[E0502]
+fail-mutator-sent	refused	refused	ok	error[E0277]
+fail-oneway-cross-agent	refused	refused	ok	error[E0521]
+fail-oneway-shared-to-agent	refused	refused	ok	error[E0308]
