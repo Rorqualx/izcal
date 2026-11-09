@@ -1,0 +1,18 @@
+izr 2026-11-08T21:32:40 pid=11332 user=hueythesojurn\izcal-run session=2 build=10.0.26300.0
+A=izcal.izr.2749256c25 sid=S-1-15-2-4291472075-253002636-274102176-3887143275-1847240058-1676300780-2011220618
+B sid=S-1-15-2-3164939476-4060972698-2717915342-4110805393-3208513034-549500044-2310652022 folder=C:\Users\izcal-run\AppData\Local\Packages\izcal.izr.b2749256c25\AC
+plant(A) : clip_new=DENIED(5) vault_new=ok cred_new=ERROR(5) cookie_new=ok
+P0alive : clip=gone vault=found
+GATE: pass (clip=gone vault=found)
+P1 : clip=gone vault=gone
+NOT clear: procs= dir=present
+P2 : clip=gone vault=gone
+NOT clear: procs= dir=present
+recreate A: sid same=True; folder exists=True
+P3 : clip=gone vault=found
+P4 plain user : clip=gone vault=gone cred=ERROR(0) credenum=ERROR(0)
+vault remove in A: ok
+cred delete: ERROR(183); now: ERROR(183)
+del A hr=0x0; del B hr=0x0
+clipboard: intentionally left (session-wide, transient); the token was izr-clip-2749256c25
+izr done
