@@ -13,6 +13,7 @@ mod space;
 #[cfg(test)]
 mod tests;
 mod trusted;
+pub mod verify;
 
 pub use cage::CageError;
 pub use heap::{
@@ -22,6 +23,7 @@ pub use object::{Any, Layout, Object, Raw, RawValue, Referent, Tail, Traced, Wea
 pub use slot::{MAX_CAGE_BYTES, Slot};
 pub use space::AllocError;
 pub use trusted::{TrustedError, TrustedId, TrustedKind, TrustedRegion};
+pub use verify::{Audit, Violation};
 
 /// Support for the tests of crates built on the heap: memory backed by an
 /// ordinary allocation, as this crate's own tests use (feature `testing`,

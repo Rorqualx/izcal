@@ -15,6 +15,7 @@ use crate::cage::{Cage, CageError};
 use crate::object::{Any, Layout, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
 use crate::slot::Slot;
 use crate::space::{AllocError, Space};
+use crate::verify::{Audit, Violation};
 
 /// An invariant lifetime marker: the brands `'h` and scopes `'s`.
 type Invariant<'a> = PhantomData<fn(&'a ()) -> &'a ()>;
@@ -76,20 +77,20 @@ pub struct HeapStats {
 
 pub(crate) struct State {
     pub(crate) cage: Arc<Cage>,
-    space: Space,
+    pub(crate) space: Space,
     /// The type table: index → layout (outside the cage, H-4).
     types: Vec<Layout>,
     type_index: HashMap<TypeId, u32>,
     /// Root slots, one segment per open scope, outermost first. A root
     /// lives in its own scope's segment, so rooting into an outer scope
     /// from inside an inner one survives the inner scope's exit.
-    roots: RefCell<Vec<Vec<Slot>>>,
+    pub(crate) roots: RefCell<Vec<Vec<Slot>>>,
     /// The agent's [[KeptAlive]] list (ECMA-262 9.10).
-    kept: RefCell<Vec<Slot>>,
+    pub(crate) kept: RefCell<Vec<Slot>>,
     /// Objects that had a weak slot cleared by a canonical cycle and that
     /// the embedder has not taken yet ([`Mutator::take_cleared`]). Traced
     /// as roots until taken, in the order the cycle cleared them.
-    cleared: RefCell<Vec<Slot>>,
+    pub(crate) cleared: RefCell<Vec<Slot>>,
     /// Objects whose layout has weak slots, to clear after a cycle.
     weak_holders: Vec<u64>,
     debt: u64,
@@ -97,6 +98,17 @@ pub(crate) struct State {
     decisions: Arc<dyn DecisionLog>,
     progress: u64,
     stats: HeapStats,
+    /// Whether anything has been allocated since the last cycle ended.
+    /// Allocation marks an object's lines but not its mark bit, so
+    /// between a cycle and the next one a live object can legitimately be
+    /// unmarked; the verifier skips its mark checks when this is set.
+    pub(crate) allocated_since_cycle: bool,
+    /// Whether a cycle runs the heap verifier after itself. On by default
+    /// in debug builds (JS-M0 plan Phase 2 item 4) and off in release,
+    /// where its walk would cost more than it is worth. A fuzzer that
+    /// writes arbitrary words into the cage turns it off: see
+    /// [`Mutator::set_verify`].
+    verify: bool,
 }
 
 /// The process's cage (JS spec 6.1, JS-D17): one reservation that every
@@ -256,6 +268,8 @@ impl Heap {
                 decisions,
                 progress: 0,
                 stats: HeapStats::default(),
+                allocated_since_cycle: false,
+                verify: cfg!(debug_assertions),
             },
         }
     }
@@ -273,6 +287,34 @@ impl Heap {
     /// The heap's counters.
     pub fn stats(&self) -> HeapStats {
         self.state.stats
+    }
+
+    /// Walks the heap from its roots and checks the collector's
+    /// invariants (JS-M0 plan Phase 2 item 4). A debug build runs this
+    /// after every cycle by itself; call it directly to check the heap at
+    /// a point of your choosing, or in a release build.
+    ///
+    /// Allocation marks an object's lines but not its mark bit, so
+    /// between one cycle and the next a live object is legitimately
+    /// unmarked. Called after an allocation, this skips the two mark
+    /// checks and says so in [`Audit::marks_checked`]; every other check
+    /// runs whenever it is called.
+    ///
+    /// # Errors
+    /// The first [`Violation`] found.
+    pub fn verify(&self) -> Result<Audit, Violation> {
+        crate::verify::verify(&self.state)
+    }
+
+    /// Turns after-every-cycle verification on or off. It starts on in
+    /// debug builds and off in release.
+    ///
+    /// Turn it **off** around an in-cage corruption fuzzer: under
+    /// arbitrary cage contents a slot may legitimately name a dead
+    /// object, which H-2 allows and the verifier does not (see the
+    /// [`verify`](crate::verify) module).
+    pub fn set_verify(&mut self, on: bool) {
+        self.state.verify = on;
     }
 }
 
@@ -333,6 +375,7 @@ impl<'h> Mutator<'h> {
         if layout.weak > 0 {
             st.weak_holders.push(at);
         }
+        st.allocated_since_cycle = true;
         let slot = Slot::reference(at).ok_or(AllocError::OutOfMemory)?;
         Ok(push_root(&st.roots, s, slot))
     }
@@ -403,6 +446,22 @@ impl<'h> Mutator<'h> {
             blocks_used: used as u64,
             ..self.state.stats
         }
+    }
+
+    /// Walks the heap from its roots and checks the collector's
+    /// invariants. Not a GC point. See [`Heap::verify`] for what is
+    /// checked when an allocation has happened since the last cycle.
+    ///
+    /// # Errors
+    /// The first [`Violation`] found.
+    pub fn verify(&self) -> Result<Audit, Violation> {
+        crate::verify::verify(self.state)
+    }
+
+    /// Turns after-every-cycle verification on or off for this heap; see
+    /// [`Heap::set_verify`].
+    pub fn set_verify(&mut self, on: bool) {
+        self.state.verify = on;
     }
 
     /// A digest of everything reachable from the roots and the kept-alive
@@ -790,7 +849,7 @@ impl State {
 
     /// The layout and size of the object at `off`, with the size clamped
     /// to the object's block (H-2: the header and length are cage data).
-    fn shape(&self, off: u64) -> Option<(Layout, u64)> {
+    pub(crate) fn shape(&self, off: u64) -> Option<(Layout, u64)> {
         let ty = usize::try_from(self.cage.load32(off)).ok()?;
         let layout = *self.types.get(ty)?;
         let len = self.cage.load32(off + 4);
@@ -914,6 +973,27 @@ impl State {
                 .record(DecisionKind::GC_COMPLETE, at, cleared);
         } else {
             self.stats.other_cycles += 1;
+        }
+        self.allocated_since_cycle = false;
+        self.run_verifier(canonical);
+    }
+
+    /// Runs the heap verifier, if this heap has it on. A violation is a
+    /// collector bug, so it panics: a heap that has lost an object must
+    /// not carry on and produce a plausible wrong answer.
+    fn run_verifier(&self, canonical: bool) {
+        if !self.verify {
+            return;
+        }
+        if let Err(v) = crate::verify::verify(self) {
+            panic!(
+                "hg-heap: the heap verifier failed after a {} cycle: {v}",
+                if canonical {
+                    "canonical"
+                } else {
+                    "non-canonical"
+                }
+            );
         }
     }
 
