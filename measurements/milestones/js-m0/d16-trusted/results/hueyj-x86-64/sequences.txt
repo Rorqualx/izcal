@@ -1,0 +1,128 @@
+seq_trusted_code 36 seq_caged_code 36 seq_trusted_table 136 seq_caged_frame 48
+
+000000000002e8f0 <_RNvCsgGuhPHZPQps_11d16_trusted14seq_caged_code>:
+   2e8f0:	cmp    $0x28,%rsi
+   2e8f4:	jb     2e90d <_RNvCsgGuhPHZPQps_11d16_trusted14seq_caged_code+0x1d>
+   2e8f6:	mov    0x24(%rdi),%eax
+   2e8f9:	cmp    $0x4000001,%rax
+   2e8ff:	setae  %cl
+   2e902:	cmp    $0x38,%rsi
+   2e906:	setb   %dl
+   2e909:	or     %cl,%dl
+   2e90b:	je     2e911 <_RNvCsgGuhPHZPQps_11d16_trusted14seq_caged_code+0x21>
+   2e90d:	xor    %edi,%edi
+   2e90f:	jmp    2e92d <_RNvCsgGuhPHZPQps_11d16_trusted14seq_caged_code+0x3d>
+   2e911:	mov    0x34(%rdi),%ecx
+   2e914:	lea    (%rcx,%rax,1),%rdx
+   2e918:	add    %rcx,%rdi
+   2e91b:	xor    %r8d,%r8d
+   2e91e:	cmp    %rsi,%rdx
+   2e921:	cmova  %r8,%rdi
+   2e925:	cmp    $0x58,%rcx
+   2e929:	cmovb  %r8,%rdi
+   2e92d:	mov    %rdi,-0x10(%rsp)
+   2e932:	mov    %rax,-0x8(%rsp)
+   2e937:	lea    -0x10(%rsp),%rax
+   2e93c:	mov    -0x10(%rsp),%rax
+   2e941:	test   %rax,%rax
+   2e944:	je     2e94b <_RNvCsgGuhPHZPQps_11d16_trusted14seq_caged_code+0x5b>
+   2e946:	mov    -0x8(%rsp),%rax
+   2e94b:	ret
+   2e94c:	int3
+   2e94d:	int3
+   2e94e:	int3
+   2e94f:	int3
+
+000000000002e950 <_RNvCsgGuhPHZPQps_11d16_trusted15seq_caged_frame>:
+   2e950:	xor    %eax,%eax
+   2e952:	mov    $0x0,%edx
+   2e957:	cmp    $0x2c,%rsi
+   2e95b:	jb     2e98a <_RNvCsgGuhPHZPQps_11d16_trusted15seq_caged_frame+0x3a>
+   2e95d:	mov    0x10(%rdi),%esi
+   2e960:	cmp    $0x10000,%esi
+   2e966:	ja     2e98a <_RNvCsgGuhPHZPQps_11d16_trusted15seq_caged_frame+0x3a>
+   2e968:	mov    0x14(%rdi),%r8d
+   2e96c:	cmp    $0x10000,%r8d
+   2e973:	ja     2e98a <_RNvCsgGuhPHZPQps_11d16_trusted15seq_caged_frame+0x3a>
+   2e975:	mov    0x28(%rdi),%ecx
+   2e978:	add    %esi,%r8d
+   2e97b:	lea    0x20(,%r8,4),%esi
+   2e983:	xor    %edx,%edx
+   2e985:	cmp    %esi,%ecx
+   2e987:	sete   %dl
+   2e98a:	mov    %edx,-0x8(%rsp)
+   2e98e:	mov    %ecx,-0x4(%rsp)
+   2e992:	lea    -0x8(%rsp),%rcx
+   2e997:	cmpb   $0x0,-0x8(%rsp)
+   2e99c:	je     2e9a2 <_RNvCsgGuhPHZPQps_11d16_trusted15seq_caged_frame+0x52>
+   2e99e:	mov    -0x4(%rsp),%eax
+   2e9a2:	ret
+   2e9a3:	int3
+   2e9a4:	int3
+   2e9a5:	int3
+   2e9a6:	int3
+   2e9a7:	int3
+   2e9a8:	int3
+   2e9a9:	int3
+   2e9aa:	int3
+   2e9ab:	int3
+   2e9ac:	int3
+   2e9ad:	int3
+   2e9ae:	int3
+   2e9af:	int3
+
+000000000002e9b0 <_RNvCsgGuhPHZPQps_11d16_trusted16seq_trusted_code>:
+   2e9b0:	mov    %rdi,-0x10(%rsp)
+   2e9b5:	mov    %rsi,-0x8(%rsp)
+   2e9ba:	lea    -0x10(%rsp),%rax
+   2e9bf:	mov    -0x10(%rsp),%rax
+   2e9c4:	test   %rax,%rax
+   2e9c7:	je     2e9ce <_RNvCsgGuhPHZPQps_11d16_trusted16seq_trusted_code+0x1e>
+   2e9c9:	mov    -0x8(%rsp),%rax
+   2e9ce:	ret
+   2e9cf:	int3
+
+000000000002e9d0 <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table>:
+   2e9d0:	mov    %esi,-0x10(%rsp)
+   2e9d4:	mov    %edx,-0xc(%rsp)
+   2e9d8:	lea    -0x10(%rsp),%rax
+   2e9dd:	mov    -0x10(%rsp),%eax
+   2e9e1:	cmp    %rax,0x10(%rdi)
+   2e9e5:	jbe    2ea29 <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table+0x59>
+   2e9e7:	mov    0x8(%rdi),%rcx
+   2e9eb:	lea    (%rax,%rax,2),%rax
+   2e9ef:	cmpb   $0x1,0x15(%rcx,%rax,8)
+   2e9f4:	jne    2ea29 <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table+0x59>
+   2e9f6:	lea    (%rcx,%rax,8),%rax
+   2e9fa:	cmpb   $0x0,0x14(%rax)
+   2e9fe:	jne    2ea29 <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table+0x59>
+   2ea00:	mov    -0xc(%rsp),%ecx
+   2ea04:	cmp    %ecx,0x10(%rax)
+   2ea07:	jne    2ea29 <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table+0x59>
+   2ea09:	mov    (%rax),%rdx
+   2ea0c:	mov    0x8(%rax),%rcx
+   2ea10:	xor    %eax,%eax
+   2ea12:	mov    %rcx,%rsi
+   2ea15:	add    %rdx,%rsi
+   2ea18:	jb     2ea2b <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table+0x5b>
+   2ea1a:	cmp    0x70(%rdi),%rsi
+   2ea1e:	ja     2ea2b <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table+0x5b>
+   2ea20:	add    0x58(%rdi),%rdx
+   2ea24:	mov    %rdx,%rax
+   2ea27:	jmp    2ea2b <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table+0x5b>
+   2ea29:	xor    %eax,%eax
+   2ea2b:	mov    %rax,-0x10(%rsp)
+   2ea30:	mov    %rcx,-0x8(%rsp)
+   2ea35:	lea    -0x10(%rsp),%rax
+   2ea3a:	mov    -0x10(%rsp),%rax
+   2ea3f:	test   %rax,%rax
+   2ea42:	je     2ea49 <_RNvCsgGuhPHZPQps_11d16_trusted17seq_trusted_table+0x79>
+   2ea44:	mov    -0x8(%rsp),%rax
+   2ea49:	ret
+   2ea4a:	int3
+   2ea4b:	int3
+   2ea4c:	int3
+   2ea4d:	int3
+   2ea4e:	int3
+   2ea4f:	int3
+

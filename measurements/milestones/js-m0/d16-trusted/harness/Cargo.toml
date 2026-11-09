@@ -1,0 +1,34 @@
+# A standalone measurement crate: its own `[workspace]` table keeps it out
+# of Izcal's workspace, so it is never built into anything shipped. It
+# depends on the engine crates by path and measures them black-box, through
+# their public APIs only.
+[package]
+name = "d16-trusted"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+description = "JS-D16 at the JS-M0 spike: the trusted region's call and dispatch cost against in-cage bytecode with operand re-checks"
+
+[workspace]
+
+[dependencies]
+hg-heap = { path = "../../../../../crates/hg-heap", features = ["testing"] }
+hg-js-bytecode = { path = "../../../../../crates/hg-js-bytecode" }
+hg-js-ops = { path = "../../../../../crates/hg-js-ops" }
+hg-js-runtime = { path = "../../../../../crates/hg-js-runtime" }
+hg-substrate = { path = "../../../../../crates/hg-substrate" }
+hg-substrate-os = { path = "../../../../../crates/hg-substrate-os" }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+# The measurement must not be reordered or folded away by the optimizer in
+# ways the gate cannot see, so it is read in the disassembly: one codegen
+# unit, no incremental, debug info kept.
+[profile.release]
+opt-level = 3
+debug = 1
+codegen-units = 1
+incremental = false
