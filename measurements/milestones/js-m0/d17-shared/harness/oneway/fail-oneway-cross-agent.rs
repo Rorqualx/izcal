@@ -4,6 +4,11 @@
 //!
 //! EXPECT: does not compile — the two `'h` brands do not unify.
 
+// EXPECT-ERROR: E0521
+// The two agent brands do not unify. The runner checks that rustc
+// reported this code: without that check a crate-version mismatch, a
+// missing crate or a typo would refuse the case and read as the rule
+// holding.
 mod shared_brand {
     include!("shared-brand.rs");
 }

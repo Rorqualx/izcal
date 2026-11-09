@@ -7,6 +7,11 @@
 //! EXPECT: does not compile — `SharedMutator::set_shared` takes a
 //! `SharedRef`, and there is no setter that takes an `AgentRef`.
 
+// EXPECT-ERROR: E0308
+// `AgentRef` is not a `SharedRef`. The runner checks that rustc
+// reported this code: without that check a crate-version mismatch, a
+// missing crate or a typo would refuse the case and read as the rule
+// holding.
 mod shared_brand {
     include!("shared-brand.rs");
 }

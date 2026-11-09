@@ -5,6 +5,11 @@
 //!
 //! EXPECT: does not compile — lifetime mismatch on the brand `'h`.
 
+// EXPECT-ERROR: E0521
+// The two heaps' brands do not unify. The runner checks that rustc
+// reported this code: without that check a crate-version mismatch, a
+// missing crate or a typo would refuse the case and read as the rule
+// holding.
 use std::sync::Arc;
 
 use hg_heap::{Heap, HeapConfig, ProcessCage, Stress};

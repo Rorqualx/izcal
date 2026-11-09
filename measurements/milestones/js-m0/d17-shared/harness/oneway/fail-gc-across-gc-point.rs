@@ -3,6 +3,11 @@
 //!
 //! EXPECT: does not compile — the mutator is borrowed.
 
+// EXPECT-ERROR: E0502
+// The mutator is already borrowed. The runner checks that rustc
+// reported this code: without that check a crate-version mismatch, a
+// missing crate or a typo would refuse the case and read as the rule
+// holding.
 use std::sync::Arc;
 
 use hg_heap::{Heap, HeapConfig, ProcessCage, Stress};

@@ -1,12 +1,12 @@
 error[E0502]: cannot borrow `*m` as mutable because it is also borrowed as immutable
-  --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-gc-across-gc-point.rs:35:13
+  --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-gc-across-gc-point.rs:40:13
    |
-33 |             let g = x.get(m);
+38 |             let g = x.get(m);
    |                           - immutable borrow occurs here
-34 |             // A GC point with `g` still live.
-35 |             m.collect();
+39 |             // A GC point with `g` still live.
+40 |             m.collect();
    |             ^^^^^^^^^^^ mutable borrow occurs here
-36 |             let _ = g.len(m);
+41 |             let _ = g.len(m);
    |                     - immutable borrow later used here
 
 error: aborting due to 1 previous error

@@ -1,12 +1,12 @@
 error[E0521]: borrowed data escapes outside of closure
-  --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-oneway-cross-agent.rs:19:17
+  --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-oneway-cross-agent.rs:24:17
    |
-16 |             let theirs = a.alloc();
+21 |             let theirs = a.alloc();
    |                 ------ `theirs` declared here, outside of the closure body
-17 |             heap.agent(|b| {
+22 |             heap.agent(|b| {
    |                         - `b` is a reference that is only valid in the closure body
-18 |                 let mine = b.alloc();
-19 |                 b.set_own(mine, theirs);
+23 |                 let mine = b.alloc();
+24 |                 b.set_own(mine, theirs);
    |                 ^^^^^^^^^^^^^^^^^^^^^^^ `b` escapes the closure body here
    |
    = note: requirement occurs because of the type `AgentRef<'_>`, which makes the generic argument `'_` invariant
@@ -14,15 +14,15 @@ error[E0521]: borrowed data escapes outside of closure
    = help: see <https://doc.rust-lang.org/nomicon/subtyping.html> for more information about variance
 
 error[E0521]: borrowed data escapes outside of closure
-  --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-oneway-cross-agent.rs:19:17
+  --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-oneway-cross-agent.rs:24:17
    |
-15 |         heap.agent(|a| {
+20 |         heap.agent(|a| {
    |                     -
    |                     |
    |                     `a` is a reference that is only valid in the closure body
    |                     has type `&AgentMutator<'1, '_>`
 ...
-19 |                 b.set_own(mine, theirs);
+24 |                 b.set_own(mine, theirs);
    |                 ^^^^^^^^^^^^^^^^^^^^^^^
    |                 |
    |                 `a` escapes the closure body here

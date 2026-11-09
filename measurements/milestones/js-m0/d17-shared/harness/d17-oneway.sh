@@ -7,8 +7,13 @@
 # must not. A case that compiles when it should not is the interesting
 # failure: it means the rule the spec states is not enforced. The
 # compiler's own message for each refusal is kept, because the message is
-# the evidence that it was refused for the stated reason and not for a
-# typo.
+# the evidence that it was refused for the stated reason.
+#
+# A refusal alone is not enough. Every `fail-*.rs` carries an
+# `// EXPECT-ERROR: E####` line, and a refusal that does not report that
+# code reads as FAIL: without that check a crate-version mismatch
+# (`E0460`, `E0464`), a missing crate (`E0463`) or a typo would refuse
+# every case and read as the rule holding.
 #
 # The cases that use `hg-heap` are compiled against the rlibs the harness
 # crate has already built; the one-way prototype cases need no crate at
@@ -61,18 +66,28 @@ for f in "$CASES"/control-*.rs "$CASES"/fail-*.rs; do
   args="--edition 2024 --crate-type bin -o $TMP/$name"
   [ "$needs_crates" = 1 ] && args="$args -L dependency=$DEPS $EXTERN"
   # shellcheck disable=SC2086 # args and EXTERN are flag lists
+  want_code=$(sed -n 's|^// EXPECT-ERROR: *\(E[0-9]*\).*|\1|p' "$f" | head -1)
   if rustc $args "$f" > "$OUT/oneway-errors/$name.txt" 2>&1; then
     outcome=compiles
   else
     outcome=refused
-    # The first error code, which says why it was refused.
-    note=$(grep -oE '^error(\[E[0-9]+\])?' "$OUT/oneway-errors/$name.txt" | head -1)
+    note=$(grep -oE 'error\[E[0-9]+\]' "$OUT/oneway-errors/$name.txt" | sort -u | tr '\n' ',' | sed 's/,$//')
   fi
-  if [ "$outcome" = "$expect" ]; then
-    verdict=ok
-  else
+  if [ "$outcome" != "$expect" ]; then
     verdict=FAIL
     fails=$((fails + 1))
+  elif [ "$expect" = refused ] && [ -n "$want_code" ] &&
+       ! grep -q "error\[$want_code\]" "$OUT/oneway-errors/$name.txt"; then
+    # Refused, but not for the reason the case is about.
+    verdict=FAIL
+    note="$note (expected $want_code)"
+    fails=$((fails + 1))
+  elif [ "$expect" = refused ] && [ -z "$want_code" ]; then
+    verdict=FAIL
+    note="no EXPECT-ERROR line in the case"
+    fails=$((fails + 1))
+  else
+    verdict=ok
   fi
   printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$expect" "$outcome" "$verdict" "$note" \
     >> "$OUT/oneway.tsv"

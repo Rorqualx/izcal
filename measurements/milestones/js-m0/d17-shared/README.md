@@ -306,10 +306,20 @@ message under `oneway-errors/`.
 heaps in the **same** `ProcessCage`, where a slot from one decodes off
 the same base to a real object in the other's blocks, so nothing in the
 encoding stops the write. The brand does, at compile time (`E0521`).
-Without a compiler every case would "fail to compile", which would read
-as the rule holding, so the script refuses to run without `rustc` — the
-first run on hueyj reported two controls as FAIL for exactly that
-reason, and the check was added.
+
+Two things guard against a refusal that reads as the rule holding when
+it is not. Without a compiler every case would "fail to compile", so the
+script refuses to run without `rustc` — the first run on hueyj reported
+two controls as FAIL for exactly that reason, and the check was added.
+And a refusal alone is not enough: each `fail-*.rs` carries an
+`// EXPECT-ERROR: E####` line and the runner requires that `rustc`
+reported **that** code, so a crate-version mismatch (`E0460`, `E0464`),
+a missing crate (`E0463`) or a typo reads as FAIL rather than as the
+brand doing its job. Changing one marker to a code `rustc` does not emit
+turns that case FAIL, which is how the check was tested. The hueyj table
+above was produced before this check existed; its stored compiler output
+carries each expected code, and the `results/local-arm64/` run is the
+one the strengthened runner produced.
 
 The last two rows are the **one-way rule, as a prototype**
 (`harness/oneway/shared-brand.rs`). `hg-heap` has no shared heap, so

@@ -1,7 +1,7 @@
 error[E0308]: mismatched types
-   --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-oneway-shared-to-agent.rs:22:37
+   --> /Users/joederas/Documents/Cline/code/izcal-wt/jsm0-d17-shared/measurements/milestones/js-m0/d17-shared/harness/oneway/fail-oneway-shared-to-agent.rs:27:37
     |
- 22 |                 sm.set_shared(root, mine);
+ 27 |                 sm.set_shared(root, mine);
     |                    ----------       ^^^^ expected `SharedRef<'_>`, found `AgentRef<'_>`
     |                    |
     |                    arguments to this method are incorrect
