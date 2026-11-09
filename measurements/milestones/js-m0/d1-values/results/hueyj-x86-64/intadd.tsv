@@ -1,0 +1,6 @@
+# isa=x86-64 iters=16777216 reps=16 addend=2
+shape	sequence	instr	ns_per_add	cycles_per_add	min_ns	cell_mhz	check
+latency	flags	2	0.2360	1.030	0.2283	4365	ok
+throughput	flags	2	0.2867	1.253	0.2854	4371	ok
+latency	explicit	6	0.4934	2.178	0.4513	4413	ok
+throughput	explicit	6	0.5777	2.544	0.5645	4403	ok

@@ -1,0 +1,1 @@
+rig check OK: hueyj kind=exclusive session=js-m0 | load 0.08/cpu (0.63 / 8 cpus) | bookings: b-2f87e4 exclusive cpu by js-m0 until 12:29am | game lock: free q0 | 2026-11-09T00:09:13-07:00
