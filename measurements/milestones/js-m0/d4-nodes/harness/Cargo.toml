@@ -1,0 +1,13 @@
+# JS-D4's spike harness. Its own workspace, so it is not a member of the
+# Izcal workspace: it is a measurement tool, not shipped code, and it
+# must not add a tiers.toml row (a gate file) to run.
+[package]
+name = "d4-nodes"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[profile.release]
+debug = true

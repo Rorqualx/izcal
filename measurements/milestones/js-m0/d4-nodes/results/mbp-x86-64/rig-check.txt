@@ -1,0 +1,1 @@
+rig check OK: mbp kind=exclusive session=js-m0 | load 0.16/cpu (1.31 / 8 cpus) | bookings: b-6e6624 exclusive cpu by js-m0 until 1:05am | game lock: free q0 | 2026-11-09T00:50:49-07:00
