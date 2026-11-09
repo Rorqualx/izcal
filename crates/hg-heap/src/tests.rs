@@ -272,6 +272,15 @@ fn corrupted_slots_and_headers_stay_inside_the_cage() {
     };
     for stress in [Stress::None, Stress::MoveOnAlloc] {
         let (mut h, _) = heap(stress, 64);
+        // The heap verifier is off for this test, and only for this test:
+        // it assumes the cage holds what the collector and the mutator
+        // put there, and this test's whole point is that it does not.
+        // Under arbitrary cage contents a slot may name a dead object of
+        // this very heap, which H-2 allows (wrong answers inside the
+        // cage) and the verifier reports as a collector bug. The two
+        // check different properties; see the `verify` module. Every
+        // assertion of this test is unchanged.
+        h.set_verify(false);
         h.enter(|m| {
             m.scope(|m, s| {
                 let arr = m.alloc::<Array>(s, 64).unwrap();
@@ -518,6 +527,265 @@ fn an_evacuation_that_runs_out_of_room_keeps_its_live_objects() {
         m.scope(|m, s| {
             m.safepoint();
             assert!(m.alloc::<Array>(s, 1000).is_ok());
+        });
+    });
+}
+
+// --- the heap verifier (JS-M0 plan Phase 2 item 4) --------------------------
+//
+// Every test above now runs with the verifier on after every cycle, which
+// is the real coverage. These tests check the verifier itself: that it
+// passes on a well-formed heap in all three collector modes, and that it
+// catches each invariant it claims to, planted one at a time. A verifier
+// that cannot fail is worth nothing, so each violation gets a test that
+// produces it.
+
+/// The offset a rooted reference currently lives at.
+fn offset_of<'h, T: crate::Referent>(m: &crate::Mutator<'h>, r: &crate::Root<'h, '_, T>) -> u64 {
+    r.get(m).slot().as_reference().expect("a reference")
+}
+
+#[test]
+fn the_verifier_passes_on_a_well_formed_heap_in_every_collector_mode() {
+    for stress in [Stress::None, Stress::MoveOnAlloc, Stress::MoveAtSafepoint] {
+        let (mut h, _) = heap(stress, 1 << 40);
+        let audit = h.enter(|m| {
+            m.scope(|m, s| {
+                // A graph with every slot kind: strong fields, a weak
+                // field, a slot tail and a byte tail.
+                let head = m.alloc::<Cell>(s, 0).unwrap();
+                let arr = m.alloc::<Array>(s, 8).unwrap();
+                let bytes = m.alloc::<Bytes>(s, 24).unwrap();
+                let watcher = m.alloc::<WeakCell>(s, 0).unwrap();
+                for i in 0..24u32 {
+                    let c = m.alloc::<Cell>(s, 0).unwrap();
+                    let (hd, cg) = (head.get(m), c.get(m));
+                    cg.set(m, Cell::NEXT, hd.get(m, Cell::NEXT));
+                    hd.set(m, Cell::NEXT, Some(cg));
+                    if i < 8 {
+                        arr.get(m).set_tail(m, i, Value::Ref(cg.erase()));
+                    }
+                    if i == 0 {
+                        watcher
+                            .get(m)
+                            .set_weak(m, WeakCell::TARGET, Some(cg.erase()));
+                    }
+                    bytes.get(m).set_byte(m, i, u8::try_from(i).unwrap());
+                    m.safepoint();
+                }
+                m.collect();
+                m.verify().expect("a well-formed heap verifies")
+            })
+        });
+        // The graph is 1 head + 24 cells + the array + the bytes + the
+        // watcher. Every mode must see the same live set, whatever it
+        // moved.
+        assert_eq!(audit.objects, 28, "{stress:?}");
+        assert_eq!(audit.weak_slots, 1, "{stress:?}");
+        assert_eq!(audit.foreign, 0, "{stress:?}");
+        assert!(audit.bytes > 0 && audit.slots > 0, "{stress:?}");
+    }
+}
+
+#[test]
+fn the_verifier_catches_an_evacuation_that_left_a_stale_reference() {
+    // The bug class the verifier exists for (heap design H-7: "every slot
+    // that reached it is updated"). It is planted the way a collector bug
+    // would leave it: a live object's slot keeps the address the target
+    // had *before* the cycle moved it. H-2 means that address still
+    // decodes to an 8-aligned offset inside the cage and reads back
+    // whatever lives there now, so nothing else notices.
+    let (mut h, _) = heap(Stress::MoveAtSafepoint, 1 << 40);
+    h.enter(|m| {
+        m.scope(|m, s| {
+            let a = m.alloc::<Cell>(s, 0).unwrap();
+            let b = m.alloc::<Cell>(s, 0).unwrap();
+            a.get(m).set(m, Cell::NEXT, Some(b.get(m)));
+            let before = offset_of(m, &b);
+
+            // A move-everything cycle; `safepoint` runs one and the
+            // verifier passes after it.
+            m.safepoint();
+            let after = offset_of(m, &b);
+            assert_ne!(before, after, "the cycle was supposed to move b");
+            assert!(m.verify().is_ok(), "the heap is sound before the plant");
+
+            // Plant the bug: a's NEXT keeps b's old address.
+            let a_off = offset_of(m, &a);
+            let slot = crate::Slot::reference(before).unwrap();
+            let at = a_off + crate::object::Layout::slot_offset(Cell::NEXT.index());
+            m.state_for_tests().cage.store32(at, slot.raw());
+
+            match m.verify() {
+                Err(crate::Violation::Dangling {
+                    holder,
+                    slot,
+                    target,
+                }) => {
+                    assert_eq!(holder, a_off);
+                    assert_eq!(slot, at);
+                    assert_eq!(target, before, "it names b's pre-cycle address");
+                }
+                other => panic!("the verifier missed a stale reference: {other:?}"),
+            }
+        });
+    });
+}
+
+#[test]
+fn the_verifier_catches_a_reference_to_an_object_the_cycle_did_not_mark() {
+    // A reference into a block that survived (its other lines are live)
+    // but to an object the cycle swept. The block is still a small-object
+    // block, so this is not `Dangling`; it is an unmarked object, which
+    // is what a collector that lost a mark bit would leave.
+    let (mut h, _) = heap(Stress::None, 1 << 40);
+    h.enter(|m| {
+        m.scope(|m, s| {
+            let keep = m.alloc::<Cell>(s, 0).unwrap();
+            let doomed_off = m.scope(|m, inner| {
+                let d = m.alloc::<Cell>(inner, 0).unwrap();
+                offset_of(m, &d)
+            });
+            m.collect();
+            // `keep` is still live, so its block was not freed whole.
+            let keep_off = offset_of(m, &keep);
+            assert!(m.verify().is_ok());
+
+            let at = keep_off + crate::object::Layout::slot_offset(Cell::NEXT.index());
+            let slot = crate::Slot::reference(doomed_off).unwrap();
+            m.state_for_tests().cage.store32(at, slot.raw());
+            match m.verify() {
+                Err(crate::Violation::Unmarked { at }) => assert_eq!(at, doomed_off),
+                Err(crate::Violation::Dangling { target, .. }) => {
+                    // Acceptable too: if the sweep freed the whole block,
+                    // the same plant is a dangling reference instead.
+                    assert_eq!(target, doomed_off);
+                }
+                other => panic!("the verifier missed a swept object: {other:?}"),
+            }
+        });
+    });
+}
+
+#[test]
+fn the_verifier_catches_a_weak_slot_left_naming_a_dead_object() {
+    // H-10: a canonical cycle clears a weak slot whose target died. A
+    // collector that skipped the clearing would leave this.
+    let (mut h, _) = heap(Stress::None, 1 << 40);
+    h.enter(|m| {
+        m.scope(|m, s| {
+            let w = m.alloc::<WeakCell>(s, 0).unwrap();
+            let dead_off = m.scope(|m, inner| {
+                let t = m.alloc::<Cell>(inner, 0).unwrap();
+                w.get(m)
+                    .set_weak(m, WeakCell::TARGET, Some(t.get(m).erase()));
+                offset_of(m, &t)
+            });
+            m.collect();
+            assert!(
+                w.get(m).get_weak(m, WeakCell::TARGET).is_none(),
+                "the cycle should have cleared it"
+            );
+            assert!(m.verify().is_ok());
+
+            let w_off = offset_of(m, &w);
+            let at = w_off + crate::object::Layout::slot_offset(WeakCell::TARGET.index());
+            m.state_for_tests()
+                .cage
+                .store32(at, crate::Slot::reference(dead_off).unwrap().raw());
+            match m.verify() {
+                Err(crate::Violation::DeadWeak {
+                    holder,
+                    slot,
+                    target,
+                }) => {
+                    assert_eq!((holder, slot, target), (w_off, at, dead_off));
+                }
+                other => panic!("the verifier missed an uncleared weak slot: {other:?}"),
+            }
+        });
+    });
+}
+
+#[test]
+fn the_verifier_counts_a_cross_heap_slot_as_foreign_rather_than_a_violation() {
+    // H-12: a slot naming another agent heap's chunk is never followed,
+    // so it is not a collector bug. It is counted, because safe code
+    // cannot create one.
+    let mem = Arc::new(TestMemory::default());
+    let cage = ProcessCage::new(mem, CAGE).unwrap();
+    let config = HeapConfig {
+        cage_bytes: 0,
+        trigger: 1 << 40,
+        stress: Stress::None,
+        agent: 1,
+    };
+    let mut a = Heap::in_cage(&cage, Arc::new(Log::default()), config);
+    let mut b = Heap::in_cage(
+        &cage,
+        Arc::new(Log::default()),
+        HeapConfig { agent: 2, ..config },
+    );
+    b.enter(|mb| {
+        mb.scope(|mb, sb| {
+            let theirs = mb.alloc::<Cell>(sb, 0).unwrap();
+            let slot = theirs.get(mb).slot();
+            a.enter(|ma| {
+                ma.scope(|ma, sa| {
+                    let mine = ma.alloc::<Cell>(sa, 0).unwrap();
+                    let off = offset_of(ma, &mine);
+                    let at = off + crate::object::Layout::slot_offset(Cell::NEXT.index());
+                    ma.state_for_tests().cage.store32(at, slot.raw());
+                    ma.collect();
+                    let audit = ma.verify().expect("a foreign slot is not a violation");
+                    assert_eq!(audit.foreign, 1);
+                });
+            });
+        });
+    });
+}
+
+#[test]
+fn verifying_after_an_allocation_does_not_report_a_false_unmarked() {
+    // Allocation marks an object's lines but not its mark bit, so between
+    // one cycle and the next a live object is legitimately unmarked. The
+    // first version of the verifier reported that as a violation, which
+    // made the public entry points unusable anywhere but immediately
+    // after a cycle. The mark checks are now skipped in that state, and
+    // the audit says so; every other check still runs.
+    let (mut h, _) = heap(Stress::None, 1 << 40);
+    h.enter(|m| {
+        m.scope(|m, s| {
+            let head = m.alloc::<Cell>(s, 0).unwrap();
+            m.collect();
+            let after_cycle = m.verify().expect("sound right after a cycle");
+            assert!(after_cycle.marks_checked);
+
+            // Allocate without collecting: the new object has no mark bit.
+            let fresh = m.alloc::<Cell>(s, 0).unwrap();
+            head.get(m).set(m, Cell::NEXT, Some(fresh.get(m)));
+            let after_alloc = m.verify().expect("an unmarked fresh object is not a bug");
+            assert!(!after_alloc.marks_checked);
+            assert_eq!(after_alloc.objects, 2);
+
+            // The checks that do not depend on marks still bite: a slot
+            // naming freed memory is caught whether or not marks are
+            // being checked.
+            let gone = m.scope(|m, inner| {
+                let d = m.alloc::<Array>(inner, 4000).unwrap();
+                offset_of(m, &d)
+            });
+            m.collect();
+            let fresh2 = m.alloc::<Cell>(s, 0).unwrap();
+            let at = offset_of(m, &fresh2)
+                + crate::object::Layout::slot_offset(Cell::NEXT.index());
+            m.state_for_tests()
+                .cage
+                .store32(at, crate::Slot::reference(gone).unwrap().raw());
+            assert!(
+                matches!(m.verify(), Err(crate::Violation::Dangling { target, .. }) if target == gone),
+                "a dangling slot must be caught with the mark checks off too"
+            );
         });
     });
 }
