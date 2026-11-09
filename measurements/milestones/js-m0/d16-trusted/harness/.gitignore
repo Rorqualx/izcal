@@ -1,0 +1,3 @@
+# The resolved versions are recorded with each run, in
+# results/<rig>/cargo-lock.txt, not here: this crate ships nothing.
+Cargo.lock

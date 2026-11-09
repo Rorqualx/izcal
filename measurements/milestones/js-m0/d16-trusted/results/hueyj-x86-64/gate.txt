@@ -1,0 +1,19 @@
+PASS G1-clock	0.4816 ns/add = 2.16 cyc/add at 4.495 GHz (from cpuinfo-max; with the chain as the clock that figure is 1.00 by construction and checks nothing); /proc/cpuinfo 800-4495 MHz; governor powersave
+PASS G2-agree[arith]	20000 instructions, digest 0x1945b0d1bf46f046, 5 variants agree: 0x1945b0d1bf46f046 0x1945b0d1bf46f046 0x1945b0d1bf46f046 0x1945b0d1bf46f046 0x1945b0d1bf46f046
+PASS G3-checks[arith]	5.56 checks/instruction under (b), 1.23 under (a)+admits, 0 under (a)
+PASS G4-poison[arith]	operand byte at 96 made a register outside the frame: harness refuses true, (b) refuses true, untouched (a) still runs true
+PASS G2-agree[consts8]	20000 instructions, digest 0xe9f676971ae4369c, 5 variants agree: 0xe9f676971ae4369c 0xe9f676971ae4369c 0xe9f676971ae4369c 0xe9f676971ae4369c 0xe9f676971ae4369c
+PASS G3-checks[consts8]	6.14 checks/instruction under (b), 1.33 under (a)+admits, 0 under (a)
+PASS G4-poison[consts8]	operand byte at 97 made a register outside the frame: harness refuses true, (b) refuses true, untouched (a) still runs true
+PASS G2-agree[consts64]	20000 instructions, digest 0x097e86d01e305d07, 5 variants agree: 0x97e86d01e305d07 0x97e86d01e305d07 0x97e86d01e305d07 0x97e86d01e305d07 0x97e86d01e305d07
+PASS G3-checks[consts64]	6.44 checks/instruction under (b), 1.47 under (a)+admits, 0 under (a)
+PASS G4-poison[consts64]	operand byte at 97 made a register outside the frame: harness refuses true, (b) refuses true, untouched (a) still runs true
+PASS G2-agree[props]	20000 instructions, digest 0x485963284caf63d3, 5 variants agree: 0x485963284caf63d3 0x485963284caf63d3 0x485963284caf63d3 0x485963284caf63d3 0x485963284caf63d3
+PASS G3-checks[props]	8.60 checks/instruction under (b), 2.80 under (a)+admits, 0 under (a)
+PASS G4-poison[props]	operand byte at 95 made a register outside the frame: harness refuses true, (b) refuses true, untouched (a) still runs true
+PASS G2-agree[branchy]	20000 instructions, digest 0xa4f936dcc1886a78, 5 variants agree: 0xa4f936dcc1886a78 0xa4f936dcc1886a78 0xa4f936dcc1886a78 0xa4f936dcc1886a78 0xa4f936dcc1886a78
+PASS G3-checks[branchy]	5.10 checks/instruction under (b), 1.00 under (a)+admits, 0 under (a)
+PASS G4-poison[branchy]	operand byte at 98 made a register outside the frame: harness refuses true, (b) refuses true, untouched (a) still runs true
+PASS G4b-real-admits	intact Ok(Number(500500.0)), corrupted Some(Err("BadBytecode(2)"))
+PASS G5-interpreter	sum 1..=1000 = 500500; (a) Some(Number(500500.0)), (b) Some(Number(500500.0))
+PASS G6-readonly	/proc/self/maps: 73ed68400000-73ed68401000 r--p 00000000 00:00 0  | 73ed68401000-73ed68800000 ---p 00000000 00:00 0 
