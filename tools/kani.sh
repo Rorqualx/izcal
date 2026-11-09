@@ -57,7 +57,14 @@ fi
 log=$(mktemp)
 trap 'rm -f "$log" "${pkg_log:-}"' EXIT
 status=0
-for pkg in hg-ipc hg-ipc-gen hg-os-types hg-launch-wire hg-launch-plan hg-substrate-os hg-heap; do
+# The packages to run, space-separated, from KANI_PACKAGES if it is set.
+# CI sets it to one package per job (checks.yml's kani matrix): the
+# binding constraint is memory, not cores, so parallelising by package
+# gives each run its own memory instead of racing for one job's. Running
+# the script with no KANI_PACKAGES does the whole set in order, which is
+# what a local or hueyj run wants.
+packages=${KANI_PACKAGES:-"hg-ipc hg-ipc-gen hg-os-types hg-launch-wire hg-launch-plan hg-substrate-os hg-heap"}
+for pkg in $packages; do
   echo "== cargo kani -p $pkg"
   # pipefail: the pipeline fails if cargo kani does.
   # -Z stubbing: the generated unknown-ordinal harnesses stub each

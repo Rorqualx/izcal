@@ -161,10 +161,36 @@ jobs:
   # and hg-launch-wire (7, about 5 min) the job needs longer.
   kani:
     runs-on: ubuntu-24.04
-    # Every harness runs in one job, and the set grows by phase: at D4
-    # hg-substrate-os alone took 43 min on this runner, and the whole M1
-    # set is about 2.5 h on hueyj. 360 is the hosted runner's maximum.
-    timeout-minutes: 360
+    # One job per package, because the binding constraint is memory, not
+    # cores. Measured on the 9 November run of main (job 129337943104):
+    # 433 harnesses, 8,444 s of verification in a 9,018 s job, so solving
+    # is 94% of it and codegen under 10 min; and a single `cbmc` peaked at
+    # 8,772 MB with 5,508 MB left on this runner. Two heavy harnesses in
+    # one 16 GB job would race for the last gigabyte, which is how a CBMC
+    # run once pressed hueyj's user slice until systemd-oomd killed the
+    # login manager (30 Oct 2026, see tools/kani.sh). A package per job
+    # gives each its own 16 GB and parallelises by the only axis that
+    # cannot run them out of memory. Wall clock becomes the slowest
+    # package instead of their sum.
+    #
+    # `fail-fast: false` so one failing package still reports the others:
+    # a proof that fails is a finding, and the rest are evidence.
+    strategy:
+      fail-fast: false
+      matrix:
+        # Kept in step with tools/kani.sh's default list.
+        pkg:
+          - hg-ipc
+          - hg-ipc-gen
+          - hg-os-types
+          - hg-launch-wire
+          - hg-launch-plan
+          - hg-substrate-os
+          - hg-heap
+    name: kani (${{ matrix.pkg }})
+    # The largest package measured about 65 min of the 141 above, and the
+    # set grows by phase, so this leaves room without the old 360.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
         with:
@@ -183,4 +209,4 @@ jobs:
           done &
           mon=$!
           trap 'kill "$mon"' EXIT
-          tools/kani.sh
+          KANI_PACKAGES='${{ matrix.pkg }}' tools/kani.sh
