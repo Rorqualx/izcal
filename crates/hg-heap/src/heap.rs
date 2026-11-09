@@ -7,12 +7,16 @@ use std::any::TypeId;
 use std::collections::BTreeMap;
 
 use hg_types::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use hg_substrate::{DecisionKind, DecisionLog, Memory, Position};
 
 use crate::cage::{Cage, CageError};
-use crate::object::{Any, Layout, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
+use crate::node::{
+    ExternalCell, NodeMarks, NodeRef, NodeRootEntry, NodeRootId, NodeScope, NodeSpace, NodeVisitor,
+};
+use crate::object::{Any, Layout, Node, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
 use crate::slot::Slot;
 use crate::space::{AllocError, Space};
 use crate::verify::{Audit, Violation};
@@ -91,6 +95,31 @@ pub(crate) struct State {
     /// the embedder has not taken yet ([`Mutator::take_cleared`]). Traced
     /// as roots until taken, in the order the cycle cleared them.
     pub(crate) cleared: RefCell<Vec<Slot>>,
+    /// The node space this heap traces, if the embedder set one
+    /// (JS-D4 (a)). Every method of it takes `&self`, so sharing one
+    /// `Rc` with the embedder needs no `RefCell` whose borrow could
+    /// straddle a GC point.
+    pub(crate) node_space: Option<Rc<dyn NodeSpace>>,
+    /// The node-root list (decision 3): what keeps a node alive that
+    /// nothing else names. A released entry becomes [`NodeRef::NONE`]
+    /// and its index is reused, so a handle never names another node.
+    pub(crate) node_roots: RefCell<Vec<NodeRootEntry>>,
+    /// Indices of released node-root entries, for reuse.
+    node_root_free: RefCell<Vec<u32>>,
+    /// The generation given to the next node root. It is per heap, not
+    /// per entry, so that `clear_node_roots` cannot hand a new entry a
+    /// generation a handle from before the clear already carries.
+    node_root_gen: core::cell::Cell<u32>,
+    /// Node slots a canonical cycle found unreachable, for the embedder
+    /// to release at an event-loop point (JS spec 6.5, release-by-ID).
+    node_release: RefCell<Vec<NodeRef>>,
+    /// Which (slot, epoch) pairs are already on `node_release`. A slot
+    /// the embedder has not released yet is found dead again by every
+    /// later cycle, and listing it twice would let a stale duplicate
+    /// release whatever has taken the slot by then. Keyed by the epoch as
+    /// well as the slot, so that a slot released, reused and dead again
+    /// is listed for its new occupant rather than suppressed.
+    node_release_pending: RefCell<std::collections::BTreeSet<(u32, u32)>>,
     /// Objects whose layout has weak slots, to clear after a cycle.
     weak_holders: Vec<u64>,
     debt: u64,
@@ -262,6 +291,12 @@ impl Heap {
                 roots: RefCell::new(Vec::new()),
                 kept: RefCell::new(Vec::new()),
                 cleared: RefCell::new(Vec::new()),
+                node_space: None,
+                node_roots: RefCell::new(Vec::new()),
+                node_root_free: RefCell::new(Vec::new()),
+                node_root_gen: core::cell::Cell::new(0),
+                node_release: RefCell::new(Vec::new()),
+                node_release_pending: RefCell::new(std::collections::BTreeSet::new()),
                 weak_holders: Vec::new(),
                 debt: 0,
                 config,
@@ -304,6 +339,12 @@ impl Heap {
     /// The first [`Violation`] found.
     pub fn verify(&self) -> Result<Audit, Violation> {
         crate::verify::verify(&self.state)
+    }
+
+    /// Gives this heap the node space it traces (JS-D4 (a)). Set once,
+    /// before the heap runs; a heap without one simply traces no nodes.
+    pub fn set_node_space(&mut self, space: Rc<dyn NodeSpace>) {
+        self.state.node_space = Some(space);
     }
 
     /// Turns after-every-cycle verification on or off. It starts on in
@@ -411,6 +452,13 @@ impl<'h> Mutator<'h> {
         self.state.collect(true);
     }
 
+    /// Whether `s` names an object of this heap, for the debug assertion
+    /// in [`ExternalSlot::set`](crate::ExternalSlot::set).
+    pub(crate) fn owns(&self, s: Slot) -> bool {
+        s.as_reference()
+            .is_some_and(|off| self.state.space.is_object(off))
+    }
+
     /// Adds `target` to the agent's kept-alive list ([[KeptAlive]]), as
     /// `WeakRef.prototype.deref` does.
     pub fn keep_alive<T: Referent>(&self, target: Gc<'h, '_, T>) {
@@ -436,6 +484,114 @@ impl<'h> Mutator<'h> {
             .into_iter()
             .map(|slot| push_root(&self.state.roots, s, slot))
             .collect()
+    }
+
+    /// Roots the node `r` so it stays alive while the root lives: the
+    /// document, and any detached subtree the embedder holds by ID alone
+    /// (decision 3). Not a GC point.
+    ///
+    /// The list is the embedder's to manage, as the kept-alive list is:
+    /// release one with [`Mutator::remove_node_root`] or empty the list
+    /// with [`Mutator::clear_node_roots`]. A forgotten root keeps its
+    /// node alive, which is the same exposure `keep_alive` already has.
+    pub fn add_node_root(&self, r: NodeRef) -> NodeRootId {
+        if r.is_none() {
+            // Rooting nothing takes no entry, and the handle it returns
+            // matches none: an entry holding `NONE` looks free but would
+            // never reach the free list, so each call would leak one.
+            return NodeRootId {
+                index: u32::MAX,
+                generation: 0,
+            };
+        }
+        let mut roots = self.state.node_roots.borrow_mut();
+        let index = match self.state.node_root_free.borrow_mut().pop() {
+            Some(i) => i,
+            None => {
+                roots.push(NodeRootEntry::default());
+                u32::try_from(roots.len() - 1).unwrap_or(u32::MAX)
+            }
+        };
+        let Some(entry) = roots.get_mut(index as usize) else {
+            return NodeRootId {
+                index,
+                generation: 0,
+            };
+        };
+        // The generation comes from the heap's own counter, so it is
+        // fresh across a `clear_node_roots` as well as across a reuse of
+        // this entry: a handle from before either no longer matches.
+        let g = self.state.node_root_gen.get().wrapping_add(1).max(1);
+        self.state.node_root_gen.set(g);
+        entry.generation = g;
+        entry.node = r;
+        NodeRootId {
+            index,
+            generation: g,
+        }
+    }
+
+    /// Runs `f` with a scope whose node roots are released when it
+    /// returns (decision 3), for a set of nodes that need only live as
+    /// long as one pass. Not a GC point in itself; `f` may contain any
+    /// number of them.
+    ///
+    /// The roots are released on a normal return only. A panic inside `f`
+    /// leaves them in the list, which keeps their nodes alive; shipping
+    /// and simulation builds abort on panic (CS-ER-2), so that window
+    /// exists only in a test build, where the roots go with the heap.
+    pub fn node_scope<R>(&mut self, f: impl FnOnce(&mut Self, &NodeScope) -> R) -> R {
+        let scope = NodeScope::default();
+        let r = f(self, &scope);
+        for id in scope.take() {
+            self.remove_node_root(id);
+        }
+        r
+    }
+
+    /// Releases a node root. Its entry is emptied and its index reused,
+    /// so a stale [`NodeRootId`] can never name another node.
+    pub fn remove_node_root(&self, id: NodeRootId) {
+        let mut roots = self.state.node_roots.borrow_mut();
+        // A handle whose generation does not match its entry is stale:
+        // the entry has been released and reused since, and honouring it
+        // would unroot — and so release — another node.
+        if let Some(entry) = roots.get_mut(id.index as usize)
+            && entry.generation == id.generation
+            && !entry.node.is_none()
+        {
+            entry.node = NodeRef::NONE;
+            self.state.node_root_free.borrow_mut().push(id.index);
+        }
+    }
+
+    /// Empties the node-root list, as `clear_kept_objects` empties the
+    /// kept-alive list.
+    /// The heap's generation counter is **not** reset, so a handle issued
+    /// before the clear cannot match an entry added after it.
+    pub fn clear_node_roots(&mut self) {
+        self.state.node_roots.borrow_mut().clear();
+        self.state.node_root_free.borrow_mut().clear();
+    }
+
+    /// How many node roots are live.
+    pub fn node_roots_len(&self) -> usize {
+        self.state
+            .node_roots
+            .borrow()
+            .iter()
+            .filter(|e| !e.node.is_none())
+            .count()
+    }
+
+    /// Takes the node slots canonical cycles have found unreachable since
+    /// the last call (JS spec 6.5, release-by-ID). The embedder releases
+    /// each one's payload at an event-loop point between tasks, never
+    /// inside a GC point, and bumps its epoch so a stale reference is
+    /// detected rather than aliased onto a new node. Not a GC point.
+    pub fn take_node_releases(&self) -> Vec<NodeRef> {
+        self.state.node_release_pending.borrow_mut().clear();
+        core::mem::take(&mut *self.state.node_release.borrow_mut())
     }
 
     /// The heap's counters, with the block counts as they are now.
@@ -511,6 +667,72 @@ impl<'h> Mutator<'h> {
         for s in roots {
             h.write_u64(slot_word(s, &mut ids, &mut queue));
         }
+        // The node space. Node slots never move (JS-D4 (a): the columns
+        // are non-moving), so walking the **reachable** ones in slot
+        // order is stable, and two runs that build the same tree hash the
+        // same however the collector evacuated the cage. Only reachable
+        // nodes: one a cycle found dead keeps its epoch until the
+        // embedder releases it, and that cycle did not trace it, so its
+        // external traced slots hold offsets from before the cage moved.
+        // Hashed before the cage queue is drained, so the objects the
+        // external traced slots name are numbered deterministically.
+        if let Some(space) = st.node_space.as_deref() {
+            let node_roots: Vec<NodeRef> = st
+                .node_roots
+                .borrow()
+                .iter()
+                .map(|e| e.node)
+                .filter(|r| !r.is_none())
+                .collect();
+            h.write_u64(node_roots.len() as u64);
+            for r in node_roots {
+                h.write_u32(r.id);
+                h.write_u32(r.epoch);
+            }
+            struct D<'a> {
+                h: &'a mut hg_types::ProcessHasher,
+                ids: &'a mut BTreeMap<u64, u64>,
+                queue: &'a mut std::collections::VecDeque<u64>,
+                st: &'a State,
+            }
+            impl NodeVisitor for D<'_> {
+                fn node(&mut self, id: u32) {
+                    self.h.write_u32(id);
+                }
+                fn external(&mut self, cell: &ExternalCell) {
+                    let s = cell.load();
+                    let w = match s.as_reference() {
+                        Some(off) if self.st.space.is_object(off) => {
+                            let next = self.ids.len() as u64;
+                            let n = *self.ids.entry(off).or_insert_with(|| {
+                                self.queue.push_back(off);
+                                next
+                            });
+                            (n << 2) | 1
+                        }
+                        Some(_) => 3,
+                        None => u64::from(s.raw()) << 2,
+                    };
+                    self.h.write_u64(w);
+                }
+            }
+            let live = st.reachable_nodes();
+            h.write_u64(live.len() as u64);
+            for &id in &live {
+                let Some(epoch) = space.epoch(id) else {
+                    continue;
+                };
+                h.write_u32(id);
+                h.write_u32(epoch);
+                let mut d = D {
+                    h: &mut h,
+                    ids: &mut ids,
+                    queue: &mut queue,
+                    st,
+                };
+                space.trace(id, &mut d);
+            }
+        }
         while let Some(off) = queue.pop_front() {
             let Some((layout, size)) = st.shape(off) else {
                 h.write_u64(u64::MAX);
@@ -521,6 +743,11 @@ impl<'h> Mutator<'h> {
             for i in 0..layout.traced.saturating_add(layout.weak) {
                 let s = Slot::from_raw(st.cage.load32(off + Layout::slot_offset(i)));
                 h.write_u64(slot_word(s, &mut ids, &mut queue));
+            }
+            for i in 0..layout.nodes {
+                let r = NodeRef::from_bits(st.cage.load64(off + layout.node_offset(i)));
+                h.write_u32(r.id);
+                h.write_u32(r.epoch);
             }
             for i in 0..layout.raw_words {
                 h.write_u64(st.cage.load64(off + layout.raw_offset(i)));
@@ -656,6 +883,16 @@ impl<'h, 'm, T: Referent> Gc<'h, 'm, T> {
         self.slot.as_reference().unwrap_or(0)
     }
 
+    /// A reference from the slot `s`. For the crate's own readers of
+    /// traced storage, inside and outside the cage.
+    pub(crate) fn from_slot(s: Slot) -> Self {
+        Self {
+            slot: s,
+            _borrow: PhantomData,
+            _t: PhantomData,
+        }
+    }
+
     /// The slot this reference is stored as.
     pub fn slot(self) -> Slot {
         self.slot
@@ -757,6 +994,29 @@ impl<'h, 'm, T: Object> Gc<'h, 'm, T> {
             .store32(self.off() + Layout::slot_offset(f.index()), s.raw());
     }
 
+    /// Reads node field `f`: the node it names, or `None` if it names
+    /// none. The value comes out of the cage, so it is untrusted (H-2):
+    /// the collector bounds-checks it and compares its epoch with the
+    /// space's before following it, and the binding path re-checks it on
+    /// every call (JS spec 6.2).
+    pub fn node(self, m: &'m Mutator<'h>, f: Node<T>) -> Option<NodeRef> {
+        let bits = m
+            .state
+            .cage
+            .load64(self.off() + T::LAYOUT.node_offset(f.index()));
+        let r = NodeRef::from_bits(bits);
+        (!r.is_none()).then_some(r)
+    }
+
+    /// Writes node field `f`. Traced strongly, so once a wrapper names
+    /// its node the node cannot die while the wrapper lives (decision 2).
+    pub fn set_node(self, m: &Mutator<'h>, f: Node<T>, v: Option<NodeRef>) {
+        m.state.cage.store64(
+            self.off() + T::LAYOUT.node_offset(f.index()),
+            v.unwrap_or(NodeRef::NONE).to_bits(),
+        );
+    }
+
     /// Reads raw field `f`.
     pub fn raw<V: RawValue>(self, m: &'m Mutator<'h>, f: Raw<T, V>) -> V {
         V::from_bits(
@@ -833,6 +1093,168 @@ fn value_slot(v: Value<'_, '_>) -> Slot {
     }
 }
 
+impl State {
+    /// The nodes reachable from the node roots and from the node slots of
+    /// reachable cage objects: the same closure a cycle computes, marking
+    /// and moving nothing.
+    ///
+    /// [`Mutator::digest`] needs it. A node a canonical cycle found dead
+    /// keeps its epoch until the embedder releases it, and that cycle did
+    /// not trace it, so its external traced slots were not updated when
+    /// the cage moved under them. Hashing such a node would hash a stale
+    /// offset, which names different memory in each collector mode — so
+    /// the digest hashes only the reachable ones.
+    pub(crate) fn reachable_nodes(&self) -> std::collections::BTreeSet<u32> {
+        let mut live = std::collections::BTreeSet::new();
+        let Some(space) = self.node_space.as_deref() else {
+            return live;
+        };
+        let mut nq: Vec<u32> = Vec::new();
+        for e in self.node_roots.borrow().iter() {
+            if live_node(space, e.node) && live.insert(e.node.id) {
+                nq.push(e.node.id);
+            }
+        }
+        let mut cq: Vec<u64> = Vec::new();
+        let mut seen: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
+        for s in self
+            .roots
+            .borrow()
+            .iter()
+            .flatten()
+            .chain(self.kept.borrow().iter())
+            .chain(self.cleared.borrow().iter())
+        {
+            if let Some(off) = s.as_reference()
+                && self.space.is_object(off)
+                && seen.insert(off)
+            {
+                cq.push(off);
+            }
+        }
+        struct R<'a> {
+            space: &'a dyn NodeSpace,
+            live: &'a mut std::collections::BTreeSet<u32>,
+            nq: &'a mut Vec<u32>,
+            cq: &'a mut Vec<u64>,
+            seen: &'a mut std::collections::BTreeSet<u64>,
+            st: &'a State,
+        }
+        impl NodeVisitor for R<'_> {
+            fn node(&mut self, id: u32) {
+                if id != 0 && self.space.epoch(id).is_some() && self.live.insert(id) {
+                    self.nq.push(id);
+                }
+            }
+            fn external(&mut self, cell: &ExternalCell) {
+                if let Some(off) = cell.load().as_reference()
+                    && self.st.space.is_object(off)
+                    && self.seen.insert(off)
+                {
+                    self.cq.push(off);
+                }
+            }
+        }
+        loop {
+            while let Some(off) = cq.pop() {
+                let Some((layout, size)) = self.shape(off) else {
+                    continue;
+                };
+                let mut at_slots: Vec<u64> = (0..layout.traced.saturating_add(layout.weak))
+                    .map(|i| off + Layout::slot_offset(i))
+                    .collect();
+                if layout.tail == Tail::Slots {
+                    let mut at = off + layout.tail_offset();
+                    while at + 4 <= off + size {
+                        at_slots.push(at);
+                        at += 4;
+                    }
+                }
+                for at in at_slots {
+                    if at + 4 > off + size {
+                        continue;
+                    }
+                    if let Some(t) = Slot::from_raw(self.cage.load32(at)).as_reference()
+                        && self.space.is_object(t)
+                        && seen.insert(t)
+                    {
+                        cq.push(t);
+                    }
+                }
+                for i in 0..layout.nodes {
+                    let at = off + layout.node_offset(i);
+                    if at + 8 > off + size {
+                        continue;
+                    }
+                    let r = NodeRef::from_bits(self.cage.load64(at));
+                    if live_node(space, r) && live.insert(r.id) {
+                        nq.push(r.id);
+                    }
+                }
+            }
+            let Some(id) = nq.pop() else { break };
+            let mut v = R {
+                space,
+                live: &mut live,
+                nq: &mut nq,
+                cq: &mut cq,
+                seen: &mut seen,
+                st: self,
+            };
+            space.trace(id, &mut v);
+        }
+        live
+    }
+}
+
+/// Whether `r` names a node the space still holds, at the epoch `r` was
+/// taken at. A reference read out of the cage is untrusted (H-2), so the
+/// index is bounds-checked against the space's slot count and the epoch
+/// is compared with the space's own; a mismatch means a stale or forged
+/// reference, and it is not followed. In a well-formed heap a strong node
+/// reference can never be stale, because the edge keeps its target alive
+/// (decision 2), so a mismatch means corruption.
+pub(crate) fn live_node(space: &dyn NodeSpace, r: NodeRef) -> bool {
+    !r.is_none() && r.id < space.slots() && space.epoch(r.id) == Some(r.epoch)
+}
+
+/// Traces one node's edges, into the node worklist for its links and into
+/// the cage worklist for its external traced slots.
+struct NodeTracer<'a> {
+    st: &'a mut State,
+    evacuating: &'a mut [bool],
+    forward: &'a mut BTreeMap<u64, u64>,
+    work: &'a mut Vec<u64>,
+    marks: &'a mut NodeMarks,
+    node_work: &'a mut Vec<u32>,
+    space: &'a dyn NodeSpace,
+}
+
+impl NodeVisitor for NodeTracer<'_> {
+    fn node(&mut self, id: u32) {
+        // A link comes from the space's own columns, so it carries no
+        // epoch; the index is still bounds-checked and a slot holding no
+        // live node is never followed.
+        if id == 0 || id >= self.space.slots() || self.space.epoch(id).is_none() {
+            return;
+        }
+        if !self.marks.mark(id) {
+            self.node_work.push(id);
+        }
+    }
+
+    fn external(&mut self, cell: &ExternalCell) {
+        // The one place an external traced slot is followed. The node
+        // space never moves, but the cage object it names can, so the
+        // slot is written back wherever the target now lives.
+        let s = cell.load();
+        let n = self.st.visit(s, self.evacuating, self.forward, self.work);
+        if n != s {
+            cell.store(n);
+        }
+    }
+}
+
 // --- The collector ----------------------------------------------------------
 
 impl State {
@@ -866,6 +1288,23 @@ impl State {
         let mut forward: BTreeMap<u64, u64> = BTreeMap::new();
         let mut work: Vec<u64> = Vec::new();
 
+        // The node space's per-cycle state: the side mark bitmap of JS
+        // spec 6.2, one bit per slot, and its own worklist. Both are
+        // locals, because both are per-cycle; the space itself is an `Rc`
+        // cloned out so the tracer below can hold `&mut State` as well.
+        let ns = self.node_space.clone();
+        let mut node_marks = ns
+            .as_ref()
+            .map_or_else(NodeMarks::default, |s| NodeMarks::for_slots(s.slots()));
+        let mut node_work: Vec<u32> = Vec::new();
+        if let Some(space) = ns.as_deref() {
+            for e in self.node_roots.borrow().iter() {
+                if live_node(space, e.node) && !node_marks.mark(e.node.id) {
+                    node_work.push(e.node.id);
+                }
+            }
+        }
+
         // Roots: the scopes' slots and the kept-alive list.
         let mut roots = core::mem::take(self.roots.get_mut());
         let mut kept = core::mem::take(self.kept.get_mut());
@@ -882,7 +1321,79 @@ impl State {
         *self.kept.get_mut() = kept;
         *self.cleared.get_mut() = pending;
 
-        // Trace.
+        // Trace. The two worklists are one closure: a cage object's node
+        // slot makes a node live, and a node's external traced slot makes
+        // a cage object live, so neither can be finished before the
+        // other. Cycles among JS, DOM and Wasm objects are ordinary
+        // cycles (JS spec 6.5).
+        loop {
+            self.trace_cage(
+                canonical,
+                &mut evacuating,
+                &mut forward,
+                &mut work,
+                ns.as_deref(),
+                &mut node_marks,
+                &mut node_work,
+            );
+            let Some(space) = ns.as_deref() else { break };
+            if node_work.is_empty() {
+                break;
+            }
+            while let Some(id) = node_work.pop() {
+                let mut found: Vec<u32> = Vec::new();
+                {
+                    let mut t = NodeTracer {
+                        st: self,
+                        evacuating: &mut evacuating,
+                        forward: &mut forward,
+                        work: &mut work,
+                        marks: &mut node_marks,
+                        node_work: &mut found,
+                        space,
+                    };
+                    space.trace(id, &mut t);
+                }
+                node_work.append(&mut found);
+            }
+        }
+
+        // Dead node slots go on the release list, which the embedder
+        // drains at an event-loop point (JS spec 6.5, release-by-ID).
+        // Only a canonical cycle releases: a stress cycle traces weak
+        // slots as strong, so a node reachable only through a weak
+        // wrapper lives there and would die here, which would make the
+        // collector's mode observable.
+        if canonical && let Some(space) = ns.as_deref() {
+            let mut pending = self.node_release_pending.borrow_mut();
+            let mut list = self.node_release.borrow_mut();
+            for id in 1..space.slots() {
+                if let Some(epoch) = space.epoch(id)
+                    && !node_marks.is_marked(id)
+                    && pending.insert((id, epoch))
+                {
+                    list.push(NodeRef::new(id, epoch));
+                }
+            }
+        }
+        self.finish_cycle(canonical, &evacuating, &forward);
+    }
+
+    /// Drains the cage worklist, pushing any node a node slot names.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one cycle's state, threaded rather than put in State: it is per-cycle"
+    )]
+    fn trace_cage(
+        &mut self,
+        canonical: bool,
+        evacuating: &mut [bool],
+        forward: &mut BTreeMap<u64, u64>,
+        work: &mut Vec<u64>,
+        space: Option<&dyn NodeSpace>,
+        node_marks: &mut NodeMarks,
+        node_work: &mut Vec<u32>,
+    ) {
         while let Some(off) = work.pop() {
             let Some((layout, size)) = self.shape(off) else {
                 continue;
@@ -907,20 +1418,38 @@ impl State {
                     continue;
                 }
                 let s = Slot::from_raw(self.cage.load32(at));
-                let n = self.visit(s, &mut evacuating, &mut forward, &mut work);
+                let n = self.visit(s, evacuating, forward, work);
                 if n != s {
                     self.cage.store32(at, n.raw());
                 }
             }
+            // Node slots: a strong edge from the cage into the node
+            // space. This is the half of "the wrapper holds the node"
+            // that needs the collector (decision 2).
+            if let Some(space) = space {
+                for i in 0..layout.nodes {
+                    let at = off + layout.node_offset(i);
+                    if at + 8 > off + size {
+                        continue;
+                    }
+                    let r = NodeRef::from_bits(self.cage.load64(at));
+                    if live_node(space, r) && !node_marks.mark(r.id) {
+                        node_work.push(r.id);
+                    }
+                }
+            }
         }
+    }
 
+    /// The weak pass, the sweep and the cycle's bookkeeping.
+    fn finish_cycle(&mut self, canonical: bool, evacuating: &[bool], forward: &BTreeMap<u64, u64>) {
         // Weak slots (canonical cycles clear dead targets; others moved
         // them as strong edges above).
         let mut cleared = 0u64;
         let holders = core::mem::take(&mut self.weak_holders);
         let mut live_holders = Vec::with_capacity(holders.len());
         for h in holders {
-            let Some(now) = self.live_at(h, &forward) else {
+            let Some(now) = self.live_at(h, forward) else {
                 continue;
             };
             live_holders.push(now);
@@ -935,7 +1464,7 @@ impl State {
                 let at = now + Layout::slot_offset(i);
                 let s = Slot::from_raw(self.cage.load32(at));
                 let Some(t) = s.as_reference() else { continue };
-                match self.live_at(t, &forward) {
+                match self.live_at(t, forward) {
                     Some(nt) if nt != t => {
                         if let Some(ns) = Slot::reference(nt) {
                             self.cage.store32(at, ns.raw());
@@ -956,7 +1485,7 @@ impl State {
         }
         self.weak_holders = live_holders;
 
-        self.space.sweep(&self.cage, &evacuating, canonical, POISON);
+        self.space.sweep(&self.cage, evacuating, canonical, POISON);
         self.stats.moved += forward.len() as u64;
         let (blocks, used) = self.space.census();
         self.stats.blocks = blocks as u64;
