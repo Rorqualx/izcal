@@ -7,6 +7,7 @@
 
 mod cage;
 mod heap;
+mod node;
 mod object;
 mod slot;
 mod space;
@@ -19,7 +20,8 @@ pub use cage::CageError;
 pub use heap::{
     Gc, Heap, HeapConfig, HeapError, HeapStats, Mutator, ProcessCage, Root, Scope, Stress, Value,
 };
-pub use object::{Any, Layout, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
+pub use node::{ExternalCell, ExternalSlot, NodeRef, NodeRootId, NodeSpace, NodeVisitor};
+pub use object::{Any, Layout, Node, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
 pub use slot::{MAX_CAGE_BYTES, Slot};
 pub use space::AllocError;
 pub use trusted::{TrustedError, TrustedId, TrustedKind, TrustedRegion};
@@ -31,4 +33,5 @@ pub use verify::{Audit, Violation};
 #[cfg(feature = "testing")]
 pub mod testing {
     pub use crate::cage::test_memory::TestMemory;
+    pub use crate::node::TestNodeSpace;
 }

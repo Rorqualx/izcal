@@ -30,9 +30,10 @@
 //! collector bookkeeping it consults is ordinary Rust data outside the
 //! cage.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::heap::State;
+use crate::heap::{State, live_node};
+use crate::node::{ExternalCell, NodeRef, NodeSpace, NodeVisitor};
 use crate::object::{Layout, Tail};
 use crate::slot::Slot;
 
@@ -86,6 +87,36 @@ pub enum Violation {
         /// The next object's offset, which is inside it.
         next: u64,
     },
+    /// A node root names a slot the node space no longer holds at that
+    /// epoch (decision 3). A node root is what keeps a node alive, so
+    /// after a cycle it must still name a live slot; if it does not,
+    /// either the cycle released a rooted node or the embedder kept a
+    /// root past the node's release.
+    DeadNodeRoot {
+        /// The root's index in the node-root list.
+        index: usize,
+        /// What it names.
+        node: NodeRef,
+    },
+    /// A reachable cage object's node slot names a node that is not
+    /// live. The edge is traced strongly (decision 2), so the node it
+    /// names cannot have died while the object holding it lives.
+    DeadNodeRef {
+        /// The object holding the node slot.
+        holder: u64,
+        /// The slot's cage offset.
+        slot: u64,
+        /// What it names.
+        node: NodeRef,
+    },
+    /// A link of a live node names a slot the space no longer holds, so
+    /// the tree has an edge into released memory.
+    DeadNodeLink {
+        /// The node holding the link.
+        from: u32,
+        /// What it names.
+        to: u32,
+    },
     /// A weak slot still names an object that is not live, after a cycle
     /// that should have cleared or updated it (heap design H-10).
     DeadWeak {
@@ -121,6 +152,19 @@ impl core::fmt::Display for Violation {
                 f,
                 "live object {at:#x} of {size} bytes overlaps the next live object at {next:#x}"
             ),
+            Self::DeadNodeRoot { index, node } => write!(
+                f,
+                "node root {index} names slot {} at epoch {}, which the node space no longer holds",
+                node.id, node.epoch
+            ),
+            Self::DeadNodeRef { holder, slot, node } => write!(
+                f,
+                "node slot {slot:#x} of object {holder:#x} names node slot {} at epoch {}, which is not live",
+                node.id, node.epoch
+            ),
+            Self::DeadNodeLink { from, to } => {
+                write!(f, "node slot {from} links to slot {to}, which is not live")
+            }
             Self::DeadWeak {
                 holder,
                 slot,
@@ -154,6 +198,13 @@ pub struct Audit {
     /// create one — the brands make a cross-heap store a type error — so
     /// a non-zero count means corruption or a test that planted one.
     pub foreign: u64,
+    /// Live nodes reachable from the node roots and from the node slots
+    /// of live cage objects.
+    pub nodes: u64,
+    /// Node roots examined.
+    pub node_roots: u64,
+    /// External traced slots examined.
+    pub external_slots: u64,
     /// Whether the mark checks ran. They are meaningful only when no
     /// allocation has happened since the last cycle: allocation marks an
     /// object's lines but not its mark bit, so a freshly allocated live
@@ -169,6 +220,10 @@ struct Walk {
     work: Vec<u64>,
     foreign: u64,
     marks: bool,
+    /// Live node slots found, and those still to trace.
+    nodes: BTreeSet<u32>,
+    node_work: Vec<u32>,
+    external_slots: u64,
 }
 
 /// Walks the heap from its roots and checks the collector's invariants.
@@ -190,7 +245,30 @@ pub(crate) fn verify(st: &State) -> Result<Audit, Violation> {
         work: Vec::new(),
         foreign: 0,
         marks,
+        nodes: BTreeSet::new(),
+        node_work: Vec::new(),
+        external_slots: 0,
     };
+
+    // The node roots: what keeps a node alive that nothing else names.
+    // Each must still name a live slot after a cycle (decision 3).
+    if let Some(space) = st.node_space.as_deref() {
+        for (index, e) in st.node_roots.borrow().iter().enumerate() {
+            if e.node.is_none() {
+                continue;
+            }
+            audit.node_roots += 1;
+            if !live_node(space, e.node) {
+                return Err(Violation::DeadNodeRoot {
+                    index,
+                    node: e.node,
+                });
+            }
+            if w.nodes.insert(e.node.id) {
+                w.node_work.push(e.node.id);
+            }
+        }
+    }
 
     {
         // Roots, the agent's kept-alive list, and the objects whose weak
@@ -210,7 +288,20 @@ pub(crate) fn verify(st: &State) -> Result<Audit, Violation> {
         }
     }
 
-    while let Some(off) = w.work.pop() {
+    loop {
+        let Some(off) = w.work.pop() else {
+            // The cage worklist is empty: drain the node worklist, which
+            // may put more cage objects on it, and go round again. The
+            // two are one closure, exactly as they are in the collector.
+            let Some(space) = st.node_space.as_deref() else {
+                break;
+            };
+            let Some(id) = w.node_work.pop() else {
+                break;
+            };
+            trace_node(st, space, id, &mut w)?;
+            continue;
+        };
         let Some((layout, size)) = st.shape(off) else {
             return Err(Violation::BadHeader { at: off });
         };
@@ -258,7 +349,33 @@ pub(crate) fn verify(st: &State) -> Result<Audit, Violation> {
                 at += 4;
             }
         }
+        // Node slots: a strong edge from the cage into the node space,
+        // so after a cycle it must name a live node (decision 2).
+        if let Some(space) = st.node_space.as_deref() {
+            for i in 0..layout.nodes {
+                let at = off + layout.node_offset(i);
+                if at + 8 > off + size {
+                    continue;
+                }
+                let r = NodeRef::from_bits(st.cage.load64(at));
+                if r.is_none() {
+                    continue;
+                }
+                if !live_node(space, r) {
+                    return Err(Violation::DeadNodeRef {
+                        holder: off,
+                        slot: at,
+                        node: r,
+                    });
+                }
+                if w.nodes.insert(r.id) {
+                    w.node_work.push(r.id);
+                }
+            }
+        }
     }
+    audit.nodes = w.nodes.len() as u64;
+    audit.external_slots = w.external_slots;
 
     // No two live objects may overlap. `live` is ordered by offset, so
     // one pass over it is enough.
@@ -279,6 +396,62 @@ pub(crate) fn verify(st: &State) -> Result<Audit, Violation> {
         audit.bytes += size;
     }
     Ok(audit)
+}
+
+/// Checks every edge of one live node: each link must name a live slot,
+/// and each external traced slot must name a live, marked cage object.
+fn trace_node(st: &State, space: &dyn NodeSpace, id: u32, w: &mut Walk) -> Result<(), Violation> {
+    struct V<'a> {
+        st: &'a State,
+        space: &'a dyn NodeSpace,
+        from: u32,
+        w: &'a mut Walk,
+        err: Option<Violation>,
+    }
+    impl NodeVisitor for V<'_> {
+        fn node(&mut self, to: u32) {
+            if self.err.is_some() {
+                return;
+            }
+            // A link carries no epoch, so "live" means the space still
+            // holds a node in that slot.
+            if to == 0 || to >= self.space.slots() || self.space.epoch(to).is_none() {
+                self.err = Some(Violation::DeadNodeLink {
+                    from: self.from,
+                    to,
+                });
+                return;
+            }
+            if self.w.nodes.insert(to) {
+                self.w.node_work.push(to);
+            }
+        }
+
+        fn external(&mut self, cell: &ExternalCell) {
+            if self.err.is_some() {
+                return;
+            }
+            self.w.external_slots += 1;
+            // An external traced slot holds an ordinary heap reference,
+            // so it gets the same checks a cage slot does. `holder` is 0
+            // because the slot is not in the cage.
+            if let Err(e) = follow(self.st, 0, 0, cell.load(), self.w) {
+                self.err = Some(e);
+            }
+        }
+    }
+    let mut v = V {
+        st,
+        space,
+        from: id,
+        w,
+        err: None,
+    };
+    space.trace(id, &mut v);
+    match v.err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 /// Checks the slot `s`, held at cage offset `slot` of object `holder`,
