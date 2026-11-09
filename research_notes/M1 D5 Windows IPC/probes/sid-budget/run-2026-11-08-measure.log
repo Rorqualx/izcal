@@ -1,0 +1,7 @@
+start: SeLs=48 Toke=2876 SeTd=2876 ObDi=3374 Proc=201 SeAt=13425
+A fresh profiles: ok=300 failed=0 
+A delta (300 fresh) : SeLs=+300 Toke=+54 SeTd=+54 ObDi=+116 Proc=-2 SeAt=+710
+B one profile: ok=300 failed=0 
+B delta (300 same) : SeLs=+1 Toke=-21 SeTd=-21 ObDi=-2 Proc=0 SeAt=-17
+C round-trips ok=20/20
+C delta (20 round-trips) : SeLs=+40 Toke=+15 SeTd=+15 ObDi=-15 Proc=+17 SeAt=+108
