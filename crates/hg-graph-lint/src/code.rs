@@ -146,6 +146,22 @@ rule:
     field: trait
     regex: '(^|::)({objects})(<.*>)?$'
 ---
+id: heap-object-alias
+language: rust
+severity: hint
+rule:
+  kind: use_as_clause
+  has:
+    field: path
+    regex: '(^|::)({objects})$'
+---
+id: heap-object-macro
+language: rust
+severity: hint
+rule:
+  kind: macro_definition
+  regex: '\b({objects})\b'
+---
 id: cfg-test-mod-decl
 language: rust
 severity: hint
@@ -462,10 +478,25 @@ pub fn check(inputs: &Inputs, scan: &Scan, report: &mut Report) {
     // `RawValue` is; what a hand-written impl can do is describe a layout
     // that miscounts the traced slots, which makes the tracer read the
     // wrong words of every object of that type.
+    //
+    // The rule reads the trait's spelling, so it takes all three of the
+    // ways a name is introduced, as Q-CS-1's rules do above: the impl
+    // itself, a renamed import, and a macro that writes the impl. A
+    // renamed import was measured to pass the impl rule on 10 November
+    // 2026 — `use hg_heap::Object as Obj; impl Obj for Evil` compiled
+    // and the rule reported nothing — which is JS-10 (b)'s case for
+    // mutating every planted bug rather than fixing the one spelling.
     for m in &scan.matches {
-        if m.rule != "heap-object-impl" {
-            continue;
-        }
+        let what = match m.rule.as_str() {
+            "heap-object-impl" => "a hand-written heap object impl",
+            "heap-object-alias" => {
+                "a renamed import of a heap object trait, which spells an impl past the rule above"
+            }
+            "heap-object-macro" => {
+                "a macro naming a heap object trait, which writes an impl past the rule above"
+            }
+            _ => continue,
+        };
         let Some((krate, _)) = owner(&members, &m.file) else {
             continue;
         };
@@ -477,7 +508,7 @@ pub fn check(inputs: &Inputs, scan: &Scan, report: &mut Report) {
             "H-3",
             krate,
             format!(
-                "{}:{}: a hand-written heap object impl ({first}); use hg_heap::object!, which is the only author of a layout",
+                "{}:{}: {what} ({first}); use hg_heap::object!, which is the only author of a layout",
                 rel(&m.file),
                 m.line,
             ),
