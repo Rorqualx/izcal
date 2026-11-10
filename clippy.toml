@@ -39,6 +39,16 @@ await-holding-invalid-types = [
 # Entries whose reason starts "G3", "CS-AS-3" or "CS-AS-4 select" are dropped from hg-substrate-os's generated copy,
 # and so are bounded-channel entries ("CS-AS-6 bounded"); every other entry stays (A.2).
 disallowed-methods = [
+  # H-3: `hg_heap::object!` is the only author of an object layout. The
+  # trait cannot be sealed (the macro expands in the calling crate), so
+  # the impl is made to name something instead: `Object::LAYOUT_WITNESS`,
+  # whose only value comes from this function. The macro calls it under
+  # an `#[expect]` of this rule, so an object type's author never sees it
+  # and every other caller does. This is the layer that resolves paths;
+  # H-3's ast-grep rules read them, and a renamed import gets past a
+  # reader but not a resolver (measured 10 November 2026). The path is
+  # the DEFINITION path, as `await-holding-invalid-types` explains above.
+  { path = "hg_heap::object::layout_witness", reason = "H-3: only object! authors a layout" },
   # CS-D3 criterion 1: the script token comes from a job, not from
   # anywhere that wants one. The two places that may mint one are the
   # agent's job loop and a FinalizationRegistry cleanup job, each with an

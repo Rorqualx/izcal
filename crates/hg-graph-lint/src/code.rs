@@ -64,7 +64,7 @@ fn after_cfg_test(indent: usize) -> String {
 
 /// The `ast-grep` rules. `traits` is a regex alternation of the crypto
 /// trait names and `objects` one of the heap's object-trait names.
-pub fn rules_yaml(traits: &str, objects: &str) -> String {
+pub fn rules_yaml(traits: &str, objects: &str, witness: &str) -> String {
     format!(
         r"id: forbid-unsafe
 language: rust
@@ -162,6 +162,13 @@ rule:
   kind: macro_definition
   regex: '\b({objects})\b'
 ---
+id: heap-object-witness
+language: rust
+severity: hint
+rule:
+  kind: identifier
+  regex: '^({witness})$'
+---
 id: cfg-test-mod-decl
 language: rust
 severity: hint
@@ -199,10 +206,11 @@ pub fn scan(ast_grep: &Path, inputs: &Inputs) -> Result<Scan, String> {
     }
     let traits = inputs.rules.crypto_traits.join("|");
     let objects = inputs.rules.object_traits.join("|");
+    let witness = inputs.rules.witness_names.join("|");
     let out = Command::new(ast_grep)
         .arg("scan")
         .arg("--inline-rules")
-        .arg(rules_yaml(&traits, &objects))
+        .arg(rules_yaml(&traits, &objects, &witness))
         .arg("--json=compact")
         .args(&dirs)
         .current_dir(&inputs.root)
@@ -494,6 +502,9 @@ pub fn check(inputs: &Inputs, scan: &Scan, report: &mut Report) {
             }
             "heap-object-macro" => {
                 "a macro naming a heap object trait, which writes an impl past the rule above"
+            }
+            "heap-object-witness" => {
+                "names the layout witness, which an impl `hg_heap::object!` did not write has to"
             }
             _ => continue,
         };

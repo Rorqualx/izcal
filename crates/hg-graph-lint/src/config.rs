@@ -329,6 +329,8 @@ pub struct Rules {
     pub object_traits: Vec<String>,
     /// The only crates that may write those impls by hand.
     pub object_authors: Vec<String>,
+    /// The names of the layout witness, which only `object!` may write.
+    pub witness_names: Vec<String>,
     /// Ambient-effect crates reachable only through `ambient_via`.
     pub ambient_crates: Vec<String>,
     /// The crates that may link ambient-effect crates.
@@ -431,6 +433,7 @@ impl Rules {
         let mut h = Strict::new("[h-3]", top.req("h-3")?)?;
         r.object_traits = h.strings("object-traits")?;
         r.object_authors = h.strings("object-authors")?;
+        r.witness_names = h.strings("witness-names")?;
         h.opt_string("why")?;
         h.finish()?;
 

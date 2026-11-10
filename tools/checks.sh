@@ -13,8 +13,8 @@
 #   IZCAL_REVIEW_MAX_LINES=4000      diff lines sent to the review
 #
 # Checks: conflict, size, binary, secrets, rustfmt, shellcheck, actionlint,
-#         kanipkgs, refusals, tokenaudit, mdlinks, revision, provenance,
-#         security, graph, review.
+#         kanipkgs, refusals, mutants, tokenaudit, mdlinks, revision,
+#         provenance, security, graph, review.
 # Bash 3.2 compatible (macOS /bin/bash).
 
 set -u
@@ -252,6 +252,35 @@ if ! skipped refusals; then
     else
       fail refusals
       printf '%s\n' "$out" | awk 'NR==1 || /FAIL/ || /refusals.sh/ || /did not behave/' | head -30 | indent
+    fi
+  fi
+fi
+
+# --- mutants: JS-10 (b)'s variants of each planted bug, still caught ----------
+# The refusals above are JS-10 (a): one planted case per class. (b) asks
+# for at least 20 mutation variants of each, because a mechanism can
+# catch the one spelling a case uses and miss the family — which is what
+# happened to H-3's lint, caught by the first variant written for it.
+# `tools/mutants.py` generates the variants from the axes the classes
+# turn on and `tools/mutants.sh` compiles each with its twin.
+#
+# The full set is 166 variants (18 s); outside CI this runs the thinner
+# `--sample` set, one variant per axis value (6 s), because the gate runs
+# on every commit and the covering array's value is in CI.
+if ! skipped mutants; then
+  if [ ! -x tools/mutants.sh ]; then
+    ok "mutants (no script)"
+  elif ! command -v cargo > /dev/null 2>&1; then
+    warn mutants
+    echo "cargo is not in PATH, so the planted-bug variants were not checked" | indent
+  else
+    mset=--sample
+    [ -n "${CI:-}" ] && mset=""
+    if out=$(tools/mutants.sh "$TMP/mutants" $mset 2>&1); then
+      ok "mutants ($(printf '%s' "$out" | tail -1))"
+    else
+      fail mutants
+      printf '%s\n' "$out" | awk 'NR==1 || /FAIL/ || /mutants\.(sh|py)/ || /did not behave/' | head -30 | indent
     fi
   fi
 fi

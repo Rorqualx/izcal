@@ -101,6 +101,46 @@ impl Layout {
 pub trait Object: Referent {
     /// The type's layout.
     const LAYOUT: Layout;
+
+    /// Proof that [`object!`](crate::object) wrote this impl.
+    ///
+    /// The trait cannot be sealed: the macro expands in the calling
+    /// crate, so a private supertrait would not be nameable there and
+    /// would seal nothing. What this const does instead is make the
+    /// impl *say a word*. A hand-written impl cannot leave it out —
+    /// that is `E0046`, a compile error — and cannot write it without
+    /// naming `LAYOUT_WITNESS` and some source for its value. Those
+    /// names belong to this mechanism and to nothing else in the tree,
+    /// so the H-3 rules can own them: `heap-object-witness` reports any
+    /// crate but `hg-heap` that names one, and clippy's
+    /// `disallowed-methods` carries [`layout_witness`] as a second
+    /// layer that resolves paths rather than reading them, so a renamed
+    /// import cannot spell its way past it.
+    ///
+    /// Measured 10 November 2026: the three text rules on the trait's
+    /// own name were all escaped by a macro that takes the trait as an
+    /// argument (`plant!(hg_heap::Object, Evil)` compiled, reported by
+    /// nothing), which is what put an unavoidable name in the impl
+    /// instead of another rule on an avoidable one.
+    #[doc(hidden)]
+    const LAYOUT_WITNESS: LayoutWitness;
+}
+
+/// Proof that [`object!`](crate::object) wrote an [`Object`] impl. It
+/// has one constructor, [`layout_witness`], and that function's name is
+/// in clippy's `disallowed-methods` and in H-3's lint.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub struct LayoutWitness(());
+
+/// The only way to make a [`LayoutWitness`]. Called by
+/// [`object!`](crate::object) under an `#[expect]` naming the clippy
+/// rule, so a legitimate object type costs its author nothing and every
+/// other caller is a finding.
+#[doc(hidden)]
+#[must_use]
+pub const fn layout_witness() -> LayoutWitness {
+    LayoutWitness(())
 }
 
 /// Something a slot can reference: an [`Object`] type or [`Any`].
@@ -317,7 +357,13 @@ macro_rules! object {
 
         impl $crate::Referent for $name {}
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "H-3: object! is the only author of a layout, and the witness is what says so"
+        )]
         impl $crate::Object for $name {
+            const LAYOUT_WITNESS: $crate::LayoutWitness = $crate::layout_witness();
+
             const LAYOUT: $crate::Layout = $crate::Layout {
                 name: stringify!($name),
                 traced: $crate::object!(@count $($t)*),
