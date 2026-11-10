@@ -31,6 +31,15 @@ allow-print-in-tests = true
 # Entries whose reason starts "G3", "CS-AS-3" or "CS-AS-4 select" are dropped from hg-substrate-os's generated copy,
 # and so are bounded-channel entries ("CS-AS-6 bounded"); every other entry stays (A.2).
 disallowed-methods = [
+  # H-3 and CS-D3 criterion 1. Neither path exists in this crate's graph,
+  # so clippy resolves neither and both are dead here. They are kept
+  # because A.2 says every entry but the dropped reasons stays, and
+  # because `hg_heap::object!` and the job loops expand an `#[expect]`
+  # of this rule: a crate with its own clippy.toml that used either and
+  # did not carry the entry would get an unfulfilled expectation, which
+  # is a warning, and an error under `-D warnings`.
+  { path = "hg_heap::object::layout_witness", reason = "H-3: only object! authors a layout" },
+  { path = "hg_js_ops::support::ScriptToken::for_job", reason = "CS-D3 criterion 1: only a job mints the script token" },
   # G3 / CS-AS-1: ambient effects (replacement: the substrate)
   # CS-AS-3: the substrate owns every thread
   # CS-AS-4: no third-party executor
