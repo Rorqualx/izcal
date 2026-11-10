@@ -13,7 +13,8 @@
 #   IZCAL_REVIEW_MAX_LINES=4000      diff lines sent to the review
 #
 # Checks: conflict, size, binary, secrets, rustfmt, shellcheck, actionlint,
-#         mdlinks, revision, provenance, security, graph, review.
+#         kanipkgs, heapui, mdlinks, revision, provenance, security, graph,
+#         review.
 # Bash 3.2 compatible (macOS /bin/bash).
 
 set -u
@@ -224,6 +225,31 @@ if ! skipped kanipkgs; then
       diff <(echo "$from_wf") <(echo "$from_sh") | sed 's/^</  only in the workflow: /;s/^>/  only in kani.sh: /' | indent
     else
       ok "kanipkgs ($(echo "$from_sh" | wc -l | tr -d ' ') packages)"
+    fi
+  fi
+fi
+
+# --- heapui: the heap's brand discipline still refuses what it must -----------
+# `hg-heap`'s soundness rests on what its types make unsayable (JS-D18,
+# CS-TY-10): a `Gc` cannot cross a GC point, a `Root` cannot leave its
+# scope, and nothing of one agent heap can be used with another's mutator.
+# None of that is a runtime check, so no test can observe it; the only
+# evidence is that the compiler refuses the code. The failure is silent in
+# the direction that matters — a variance or signature change that quietly
+# makes one of them legal breaks no test — so the refusals are checked
+# here (tools/heap-ui.sh; CS-D3 criterion 1 and the four cross-heap cases).
+if ! skipped heapui; then
+  if [ ! -x tools/heap-ui.sh ]; then
+    ok "heapui (no script)"
+  elif ! command -v cargo > /dev/null 2>&1; then
+    warn heapui
+    echo "cargo is not in PATH, so the brand discipline was not checked" | indent
+  else
+    if out=$(tools/heap-ui.sh "$TMP/heapui" 2>&1); then
+      ok "heapui ($(printf '%s' "$out" | tail -1))"
+    else
+      fail heapui
+      printf '%s\n' "$out" | awk 'NR==1 || /FAIL/ || /heap-ui.sh/ || /did not behave/' | head -30 | indent
     fi
   fi
 fi

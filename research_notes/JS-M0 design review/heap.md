@@ -33,7 +33,7 @@ The copy used by evacuation (H-7) is a loop of word-sized atomic loads and store
 
 - **Miri** runs the heap's tests with the moving test collector on a small cage backed by an ordinary allocation (a `Memory` implementation for tests), since Miri cannot map a real reservation.
 - **Kani** proves the slot encoding: `decode(encode(x)) == x` for every offset and small integer, and that every decompressed offset is inside the cage.
-- **The four cross-heap cases** (read through the wrong mutator, store across heaps, root through the wrong mutator, a `Gc` with two heaps on one thread) are compile-fail tests.
+- **The four cross-heap cases** (store across heaps, read through the wrong mutator, root through the wrong mutator, a `Gc` of one heap written into an external traced slot through another's mutator) are compile-fail tests, in `crates/hg-heap/tests/ui/` with the rest of the brand discipline. `tools/heap-ui.sh` runs them and `tools/checks.sh`'s `heapui` check calls it, so a variance or signature change that quietly makes one of them legal fails CI rather than passing silently. Each case names the error code it must be refused with, and the brand cases also name the note where rustc says which of the heap's types is invariant over `'h`: without that second check, `fail-cross-heap-store` passed while being refused for an unrelated borrow, with the brand never consulted.
 - **The in-cage corruption fuzzer** writes arbitrary words into the cage between operations and checks that nothing faults outside the cage.
 
 ## The CS-D3 re-run
