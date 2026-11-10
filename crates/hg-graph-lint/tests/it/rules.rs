@@ -227,25 +227,49 @@ fn a_hand_written_heap_object_impl_fails() {
     // the tracer read the wrong words of every object of that type. The
     // macro writes its impls into the calling crate, so the trait cannot
     // be sealed the way `RawValue` is, and the rule is this lint.
+    //
+    // A renamed import and a macro are the two ways to write the impl
+    // without spelling the trait where the impl rule looks, so they are
+    // findings in their own right (JS-10 (b): the mutation variants of a
+    // planted bug are what show a mechanism fixed one spelling).
     let Some(_) = ast_grep() else { return };
-    for line in [
-        "impl hg_heap::Object for Forged {}",
-        "impl Object for Forged {}",
-        "impl hg_heap::Referent for Forged {}",
-        "impl Referent for Forged {}",
+    for (src, want) in [
+        (
+            "impl hg_heap::Object for Forged {}",
+            "a hand-written heap object impl",
+        ),
+        (
+            "impl Object for Forged {}",
+            "a hand-written heap object impl",
+        ),
+        (
+            "impl hg_heap::Referent for Forged {}",
+            "a hand-written heap object impl",
+        ),
+        (
+            "impl Referent for Forged {}",
+            "a hand-written heap object impl",
+        ),
+        (
+            "use hg_heap::Object as Obj;\nimpl Obj for Forged {}",
+            "a renamed import of a heap object trait",
+        ),
+        (
+            "use hg_heap::{Referent as Ref};\nimpl Ref for Forged {}",
+            "a renamed import of a heap object trait",
+        ),
+        (
+            "macro_rules! planted { ($t:ty) => { impl hg_heap::Object for $t {} } }",
+            "a macro naming a heap object trait",
+        ),
     ] {
         let mut f = Fixture::baseline();
         f.edit(
             "crates/hg-types/src/lib.rs",
             "//! Types.\n",
-            &format!("//! Types.\npub enum Forged {{}}\n{line}\n"),
+            &format!("//! Types.\npub enum Forged {{}}\n{src}\n"),
         );
-        assert_finding(
-            &f.lint(&[], true),
-            "H-3",
-            "hg-types",
-            "a hand-written heap object impl",
-        );
+        assert_finding(&f.lint(&[], true), "H-3", "hg-types", want);
     }
 
     // The baseline, which writes none, passes: so the finding above is
