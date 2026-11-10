@@ -1467,3 +1467,91 @@ fn the_same_mutation_without_the_node_scope_loses_the_detached_node() {
         m.remove_node_root(doc_root);
     });
 }
+
+// --- CS-D3 criterion 3: the external slot's tracing obligation --------------
+
+/// A node space that forgets one of its external traced slots: the
+/// mistake `ExternalSlot`'s documentation says the type system cannot
+/// see. Its `trace` visits the links and nothing else.
+#[derive(Debug)]
+struct ForgetfulSpace {
+    inner: TestNodeSpace,
+}
+
+impl NodeSpace for ForgetfulSpace {
+    fn slots(&self) -> u32 {
+        self.inner.slots()
+    }
+
+    fn epoch(&self, id: u32) -> Option<u32> {
+        self.inner.epoch(id)
+    }
+
+    fn trace(&self, id: u32, v: &mut dyn crate::NodeVisitor) {
+        for child in self.inner.children(id) {
+            v.node(child);
+        }
+        // and never `v.external(...)`, which is the whole point.
+    }
+}
+
+#[test]
+#[should_panic(expected = "was not traced by the last cycle")]
+fn a_node_space_that_forgets_an_external_slot_is_caught_on_the_next_read() {
+    // The obligation `ExternalSlot` carries is the one thing in the node
+    // interface the type system cannot check: only the space knows which
+    // slots a node owns. The stamp turns it into a debug check, so a
+    // space that forgets a slot panics on the first read after a cycle
+    // instead of answering with the offset the object used to have.
+    //
+    // The wrapper is rooted in the cage as well, so it genuinely
+    // survives and genuinely moves: this is about the slot being stale,
+    // not about the object being dead.
+    let (mut h, _) = heap(Stress::MoveOnAlloc, 1 << 40);
+    let ns = Rc::new(ForgetfulSpace {
+        inner: TestNodeSpace::new(16),
+    });
+    h.set_node_space(Rc::clone(&ns) as Rc<dyn NodeSpace>);
+    let node = ns.inner.create(1);
+    h.enter(|m| {
+        let node_root = m.add_node_root(node);
+        m.scope(|m, s| {
+            let w = m.alloc::<Wrapper>(s, 0).unwrap();
+            w.get(m).set_node(m, Wrapper::NODE, Some(node));
+            ns.inner.wrapper(1).set(m, Some(w.get(m).erase()));
+            m.collect();
+            // The cycle did not visit the slot, so its stamp is older
+            // than the cycle count: this read is the one that reports it.
+            let _ = ns.inner.wrapper(1).get(m);
+        });
+        m.remove_node_root(node_root);
+    });
+}
+
+#[test]
+fn the_same_space_passes_once_it_visits_the_slot() {
+    // The control for the test above: the only difference is that this
+    // space's `trace` visits the external slot, so the stamp is current
+    // and the read is allowed — and the slot was updated, so the
+    // reference it answers with is where the wrapper is now.
+    let (mut h, ns) = heap_with_nodes(Stress::MoveOnAlloc, 16);
+    let node = ns.create(1);
+    h.enter(|m| {
+        let node_root = m.add_node_root(node);
+        m.scope(|m, s| {
+            let w = m.alloc::<Wrapper>(s, 0).unwrap();
+            w.get(m).set_node(m, Wrapper::NODE, Some(node));
+            ns.wrapper(1).set(m, Some(w.get(m).erase()));
+            m.collect();
+            let now = ns.wrapper(1).get(m).expect("the wrapper is still there");
+            assert_eq!(
+                now.cast::<Wrapper>(m)
+                    .expect("still a wrapper")
+                    .node(m, Wrapper::NODE),
+                Some(node),
+                "and it still names its node"
+            );
+        });
+        m.remove_node_root(node_root);
+    });
+}

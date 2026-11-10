@@ -248,6 +248,23 @@ exist if the owner wants one, and both are larger than this change:
 is also where Q-JS-10 is settled), since it is exactly the question of
 what a token has to guard. Recorded here so that re-run has it.
 
+**Answered by the re-run (9 November 2026), with a third direction.**
+Neither of the two above: the obligation is not made a type error, it is
+made a *checked* obligation. Each slot now remembers the cycle it was
+last written or traced in — `set` stamps it with the cycles completed so
+far, the collector stamps it again as it traces it, and `get` asserts in
+debug builds that the stamp is not older than the last completed cycle —
+so a space that forgets a slot panics on the first read after a cycle,
+naming the fault, instead of answering with a stale offset. It catches
+the omission per slot, where a declared-slot registry would catch it per
+space; it costs nothing in a release build, the stamp being a second
+`AtomicU32` present only under `debug_assertions`; and it runs under
+Miri with the moving test collector. The two structural directions above
+are decisions about `hg-dom`'s tables and stay open, unforeclosed, for
+M2. The cross-heap half keeps the debug assertion in `ExternalSlot::set`
+and stays open in the same terms. See
+`measurements/milestones/js-m0/cs-d3/README.md`.
+
 ## A choice for the owner: H-4's forwarding bit
 
 **The spec and the implementation disagree, and the gap costs the

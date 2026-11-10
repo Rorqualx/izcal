@@ -1,5 +1,7 @@
 # CS-D3 early spike: TokenCell / ScriptToken (18 October 2026)
 
+> **Superseded as evidence, 9 November 2026.** This is the 0.2 record: an early spike against a V8 fork, whose engine-internal findings are withdrawn under HGBA-2 2.4.1 2.3.1 and whose measurements stand for 0.2 only. The five criteria were re-run at JS-M0 against Izcal's own `Mutator`, `Root` and `ScriptToken`: see [the re-run](../../../../measurements/milestones/js-m0/cs-d3/README.md).
+
 **Code:** `m0/token-cell-spike/` (builds against the fork archives; `run_all.sh` reruns everything)
 - `token-cell/` is V8-free and Miri-able: `src/token.rs` (ScriptToken, `enter`/`lend`/`reenter`), `src/cell.rs` (TokenCell, `borrow_mut_2/3`), `src/traced.rs` (`NoTraced`, `no_traced!`), `src/dom.rs` (DOM model, `insert_before`), `src/bin/bench.rs`, and `tests/ui/` (13 compile-fail tests).
 - `token-cell-v8/` builds against the fork: `src/hg_script.rs` (token-taking wrappers, callback prologue, `binding!`), `src/event_loop.rs` (the only way to mint the outermost token), `src/member_cell.rs` and `src/gc.rs` (criterion 3: `MemberCell`, `gc_object!`), `src/holes.rs` (feature `holes` only), `src/misuse.rs`, `clippy.toml` (61 disallowed methods), `tests/v8_reentry.rs`, `tests/holes_compile.rs`, and `tests/ui/` (8 compile-fail tests).

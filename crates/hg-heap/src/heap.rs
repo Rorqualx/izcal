@@ -452,6 +452,15 @@ impl<'h> Mutator<'h> {
         self.state.collect(true);
     }
 
+    /// How many cycles this heap has run, canonical and otherwise: the
+    /// stamp [`ExternalSlot`](crate::ExternalSlot) compares against, so
+    /// that a slot the node space forgot to trace is caught on the first
+    /// read after a cycle rather than answering with a stale offset.
+    pub(crate) fn cycles_run(&self) -> u32 {
+        let st = &self.state.stats;
+        u32::try_from(st.canonical_cycles.saturating_add(st.other_cycles)).unwrap_or(u32::MAX)
+    }
+
     /// Whether `s` names an object of this heap, for the debug assertion
     /// in [`ExternalSlot::set`](crate::ExternalSlot::set).
     pub(crate) fn owns(&self, s: Slot) -> bool {
@@ -1252,6 +1261,12 @@ impl NodeVisitor for NodeTracer<'_> {
         if n != s {
             cell.store(n);
         }
+        // Stamped with the cycle in progress, which is one past the
+        // completed count: the counters are raised at the end of the
+        // cycle, so a slot this loop reaches ends up ahead of the count a
+        // later read compares it with, and a slot it never reaches does
+        // not (see `ExternalSlot`).
+        cell.stamp(self.st.cycles_in_progress());
     }
 }
 
@@ -1277,6 +1292,18 @@ impl State {
         let len = self.cage.load32(off + 4);
         let size = layout.size(len)?.min(self.space.room(off));
         Some((layout, size))
+    }
+
+    /// The number of the cycle now running: one past the cycles already
+    /// completed, since the counters are raised when a cycle ends.
+    fn cycles_in_progress(&self) -> u32 {
+        u32::try_from(
+            self.stats
+                .canonical_cycles
+                .saturating_add(self.stats.other_cycles)
+                .saturating_add(1),
+        )
+        .unwrap_or(u32::MAX)
     }
 
     /// Runs a cycle. A canonical cycle clears dead weak targets and is a

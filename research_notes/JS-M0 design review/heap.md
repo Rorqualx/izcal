@@ -40,3 +40,5 @@ The copy used by evacuation (H-7) is a loop of word-sized atomic loads and store
 ## The CS-D3 re-run
 
 The coding standard's five criteria for `TokenCell` (CS-D3) are re-run against this API in their own PR, with the compile-fail tests. That PR also settles Q-JS-10: whether `ScriptToken` stays separate from `Mutator`.
+
+**Done, 9 November 2026:** `measurements/milestones/js-m0/cs-d3/README.md`. No criterion failed in a way that triggers the fallback to option (b). Q-JS-10 is answered — the tokens stay separate, on the Q-CS-7 argument that merging would make every allocation end a `TokenCell` borrow. Two defects were found and fixed: `ScriptToken::for_job` took no arguments, so a token could be minted from nothing; and the external traced slot's tracing obligation was unchecked, which it now is. Criterion 5's loom half is deferred to JS-M1 with its reason.
