@@ -357,6 +357,12 @@ macro_rules! object {
 
         impl $crate::Referent for $name {}
 
+        // An `#[expect]`, not an `#[allow]`: if the clippy entry is ever
+        // dropped the lint stops firing, the expectation goes
+        // unfulfilled, and every object type's crate says so. The cost
+        // is that a crate carrying its own clippy.toml must carry the
+        // entry (A.2 keeps it in hg-substrate-os's generated copy, where
+        // the path does not even resolve).
         #[expect(
             clippy::disallowed_methods,
             reason = "H-3: object! is the only author of a layout, and the witness is what says so"
