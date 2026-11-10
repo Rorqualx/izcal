@@ -60,6 +60,18 @@ crypto-traits = ["CryptoRandom", "CryptoRng"]
 crypto-implementers = ["hg-substrate-os", "hg-substrate-sim"]
 why = "a seeded Entropy::crypto() must not exist in a binary that touches the network"
 
+# --- H-3 (JS-M0 heap design review): the object layout comes from the macro --
+# `hg_heap::object!` is the only source of an `Object`/`Referent` impl: the
+# layout it writes says which slots the collector traces, so a hand-written
+# one that miscounts them makes the tracer read the wrong words. H-3 keeps
+# the trait safe rather than unsafe precisely because the macro is the only
+# author, and it says the rule is a lint, which this is. `hg-heap` itself
+# writes the impls the macro expands to, and one for `Any`.
+[h-3]
+object-traits = ["Object", "Referent"]
+object-authors = ["hg-heap"]
+why = "H-3: a hand-written layout can only make the tracer read the wrong slots, which is an in-cage wrong answer (H-2); the macro is what keeps it from happening at all"
+
 # --- CS-AS-1 / G3 (A.6): ambient-effect crates only via the substrate -----
 # Follows dev-dependencies too (G3 binds test targets); tier T crates are
 # outside G3 and are neither checked nor looked through.

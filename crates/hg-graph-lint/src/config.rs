@@ -324,6 +324,11 @@ pub struct Rules {
     pub crypto_traits: Vec<String>,
     /// The only crates that may implement it outside test code.
     pub crypto_implementers: Vec<String>,
+    /// Names of the heap's object traits, which only `hg_heap::object!`
+    /// may implement (H-3).
+    pub object_traits: Vec<String>,
+    /// The only crates that may write those impls by hand.
+    pub object_authors: Vec<String>,
     /// Ambient-effect crates reachable only through `ambient_via`.
     pub ambient_crates: Vec<String>,
     /// The crates that may link ambient-effect crates.
@@ -422,6 +427,12 @@ impl Rules {
         r.crypto_implementers = q.strings("crypto-implementers")?;
         q.opt_string("why")?;
         q.finish()?;
+
+        let mut h = Strict::new("[h-3]", top.req("h-3")?)?;
+        r.object_traits = h.strings("object-traits")?;
+        r.object_authors = h.strings("object-authors")?;
+        h.opt_string("why")?;
+        h.finish()?;
 
         let mut a = Strict::new("[ambient]", top.req("ambient")?)?;
         r.ambient_crates = a.strings("crates")?;
