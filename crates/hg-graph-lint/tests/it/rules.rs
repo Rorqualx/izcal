@@ -262,6 +262,22 @@ fn a_hand_written_heap_object_impl_fails() {
             "macro_rules! planted { ($t:ty) => { impl hg_heap::Object for $t {} } }",
             "a macro naming a heap object trait",
         ),
+        // The spelling that escaped all three of those: the trait
+        // arrives as a macro argument, so no impl and no macro body
+        // names it. What the impl cannot avoid is the layout witness,
+        // and these are the ways to write it.
+        (
+            "const LAYOUT_WITNESS: hg_heap::LayoutWitness = hg_heap::layout_witness();",
+            "names the layout witness",
+        ),
+        (
+            "use hg_heap::layout_witness as mint;",
+            "names the layout witness",
+        ),
+        (
+            "macro_rules! planted { () => { const LAYOUT_WITNESS: W = w(); } }",
+            "names the layout witness",
+        ),
     ] {
         let mut f = Fixture::baseline();
         f.edit(

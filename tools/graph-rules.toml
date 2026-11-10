@@ -70,6 +70,13 @@ why = "a seeded Entropy::crypto() must not exist in a binary that touches the ne
 [h-3]
 object-traits = ["Object", "Referent"]
 object-authors = ["hg-heap"]
+# `Object::LAYOUT_WITNESS` is the item a hand-written impl cannot leave
+# out (E0046) and cannot write without naming one of these. Rules on the
+# trait's own name are escapable -- a macro that takes the trait as an
+# argument got past all three (10 November 2026) -- so H-3 owns these
+# three names instead, which nothing else in the tree has a reason to
+# use. Clippy carries `layout_witness` as well, where paths resolve.
+witness-names = ["LayoutWitness", "layout_witness", "LAYOUT_WITNESS"]
 why = "H-3: a hand-written layout can only make the tracer read the wrong slots, which is an in-cage wrong answer (H-2); the macro is what keeps it from happening at all"
 
 # --- CS-AS-1 / G3 (A.6): ambient-effect crates only via the substrate -----
