@@ -149,3 +149,67 @@ what each relies on:
   `hg-ipc` against any element at the generated bounds
   (`vec_of_any_element_validates_*`); `shape::VEC_LOOP_PROOFS` lists
   the bounds and a test checks each proof exists.
+
+## Does another SAT solver help? (9 November 2026)
+
+Measured on hueyj under exclusive booking b-983374, two `rig check` OK
+lines in `solver-bench-2026-11-09-rigcheck.txt`, raw data in
+`solver-bench-2026-11-09.tsv`. Harness picked as the four slowest of
+main's own run (job 129337943104). Clean clone of `671d4f0`, one run per
+cell, `/usr/bin/time -v` for peak RSS, each row kept only if CBMC
+printed `VERIFICATION:- SUCCESSFUL`.
+
+The premise usually quoted — "switch off the default MiniSat for a 2–8×
+win" — does not apply: **Kani 0.68.0 already defaults to CaDiCaL**, as
+its own `--help` states. So the open question was CaDiCaL against
+Kissat, with MiniSat on two cells to check the baseline claim.
+
+| Harness | CaDiCaL | Kissat | MiniSat |
+|---|---|---|---|
+| `ipc::unix::cmsg::…a_step_keeps_the_invariant` | 840.3 s | **675.2 s** | — |
+| `generated::os::verify_part_handler_target_validates` | 245.4 s | **231.0 s** | 305.2 s |
+| `ipc::unix::cmsg::proofs::parse_short_buffers` | **175.3 s** | 507.9 s | — |
+| `ipc::win::frame::proofs::ctl_round_trips_56` | 142.5 s | 188.6 s | **122.8 s** |
+| **total of the four** | **1,404 s** | 1,603 s (**+14%**) | — |
+
+**There is no global winner, and no solver change is warranted.** Kissat
+wins two cells (−20% on the slowest harness) and loses two (+190% on
+`parse_short_buffers`), coming out 14% worse over the set. MiniSat is not
+uniformly worse either: it beat CaDiCaL by 14% on `ctl_round_trips_56`.
+Nothing here reproduces a 2–8× effect, let alone 200×. CaDiCaL stays the
+default because it is the best single choice of the three for this set,
+not because any solver dominates.
+
+One targeted change is worth a follow-up: Kani takes a per-harness
+`#[kani::solver(kissat)]`, and on the slowest harness that is 165 s
+(−20%). These are single runs, and the same harness took 754 s in CI
+against 840 s here, so run-to-run and machine variance is around 11%;
+a 20% effect is probably real but should be confirmed with repeats
+before it is committed.
+
+### Peak memory, and what it rules out
+
+The same runs recorded peak RSS, which is the number that decides whether
+a package can take a `--jobs` above 1:
+
+| Harness | peak RSS (CaDiCaL) |
+|---|---|
+| `a_step_keeps_the_invariant` (slowest) | 1,441 MB |
+| `verify_part_handler_target_validates` | 5,397 MB |
+| `parse_short_buffers` | 6,603 MB |
+| `ctl_round_trips_56` | 6,490 MB |
+
+Two things follow. **Time and memory are anti-correlated here**: the
+slowest harness is the lightest, so elapsed time cannot be used as a
+proxy for memory when scheduling. And the `generated::os` validators —
+224 harnesses averaging 17.5 s, which looked like the obvious candidate
+for in-package parallelism — peak at **5.4 GB**, not the small footprint
+their runtime suggests. Two of those in one 16 GB job is about 12.4 GB
+with the runner's own overhead, and main's job log shows some harness
+reaching 8,772 MB, which would not survive being paired with anything.
+
+So `--jobs` inside a package is **not** safe on the strength of this
+data, and the earlier guess that the validators were light was wrong.
+Going further than one job per package would need peak RSS for all 433
+harnesses and a memory-aware schedule, which is a larger piece of work
+than it first appeared.

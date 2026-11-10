@@ -1,0 +1,11 @@
+harness	package	solver	seconds	peak_rss_mb	result
+ipc::unix::cmsg::proofs::a_step_keeps_the_invariant	hg-substrate-os	cadical	840.3	1441	ok
+ipc::unix::cmsg::proofs::a_step_keeps_the_invariant	hg-substrate-os	kissat	675.2	685	ok
+generated::os::verify_part_handler_target_validates	hg-os-types	cadical	245.4	5397	ok
+generated::os::verify_part_handler_target_validates	hg-os-types	kissat	231.0	4479	ok
+generated::os::verify_part_handler_target_validates	hg-os-types	minisat	305.2	4720	ok
+ipc::unix::cmsg::proofs::parse_short_buffers	hg-substrate-os	cadical	175.3	6603	ok
+ipc::unix::cmsg::proofs::parse_short_buffers	hg-substrate-os	kissat	507.9	3829	ok
+ipc::win::frame::proofs::ctl_round_trips_56	hg-substrate-os	cadical	142.5	6490	ok
+ipc::win::frame::proofs::ctl_round_trips_56	hg-substrate-os	kissat	188.6	4687	ok
+ipc::win::frame::proofs::ctl_round_trips_56	hg-substrate-os	minisat	122.8	5224	ok

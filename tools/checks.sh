@@ -199,6 +199,35 @@ $out"
   fi
 fi
 
+# --- kanipkgs: the Kani matrix lists the packages kani.sh runs ---------------
+# checks.yml's kani matrix and tools/kani.sh's default list are two copies
+# of the same set, and the failure is silent in the direction that matters:
+# a package added only to the script is never run in CI, so verification
+# coverage shrinks with every check still green. Compare them.
+if ! skipped kanipkgs; then
+  wf=.github/workflows/checks.yml
+  sh=tools/kani.sh
+  if [ ! -f "$wf" ] || [ ! -f "$sh" ]; then
+    ok "kanipkgs (no workflow or script)"
+  else
+    # the matrix's `- hg-…` entries, in order
+    from_wf=$(sed -n '/^  kani:/,/^  [a-z]/p' "$wf" | sed -n 's/^          - \(hg-[A-Za-z0-9_-]*\)$/\1/p' | sort -u)
+    # the script's default list, from its KANI_PACKAGES fallback
+    # shellcheck disable=SC2016 # a sed script: ${…} must not expand here
+    from_sh=$(sed -n 's/^packages=${KANI_PACKAGES:-"\(.*\)"}$/\1/p' "$sh" | tr ' ' '\n' | sed '/^$/d' | sort -u)
+    if [ -z "$from_wf" ] || [ -z "$from_sh" ]; then
+      fail kanipkgs
+      echo "could not read both package lists (workflow: $(echo "$from_wf" | tr '\n' ' '); script: $(echo "$from_sh" | tr '\n' ' '))" | indent
+    elif [ "$from_wf" != "$from_sh" ]; then
+      fail kanipkgs
+      echo "the kani matrix and tools/kani.sh disagree:" | indent
+      diff <(echo "$from_wf") <(echo "$from_sh") | sed 's/^</  only in the workflow: /;s/^>/  only in kani.sh: /' | indent
+    else
+      ok "kanipkgs ($(echo "$from_sh" | wc -l | tr -d ' ') packages)"
+    fi
+  fi
+fi
+
 # --- mdlinks: relative links in Markdown resolve -------------------------------
 if ! skipped mdlinks; then
   md=$(files_matching '\.md$' || true)
