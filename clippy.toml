@@ -39,6 +39,13 @@ await-holding-invalid-types = [
 # Entries whose reason starts "G3", "CS-AS-3" or "CS-AS-4 select" are dropped from hg-substrate-os's generated copy,
 # and so are bounded-channel entries ("CS-AS-6 bounded"); every other entry stays (A.2).
 disallowed-methods = [
+  # CS-D3 criterion 1: the script token comes from a job, not from
+  # anywhere that wants one. The two places that may mint one are the
+  # agent's job loop and a FinalizationRegistry cleanup job, each with an
+  # `#[expect]` naming this rule, so the list of minting sites is the list
+  # of exceptions. Checked by tools/token-audit.py, which also holds the
+  # token's reach to exactly the paths that declare `call_user`.
+  { path = "hg_js_ops::support::ScriptToken::for_job", reason = "CS-D3 criterion 1: only a job mints the script token" },
   # G3 / CS-AS-1: ambient effects (replacement: the substrate)
   { path = "std::time::Instant::now", reason = "G3", replacement = "hg_substrate::Clock::monotonic" },
   { path = "std::time::SystemTime::now", reason = "G3", replacement = "hg_substrate::Clock::wall" },

@@ -1329,3 +1329,141 @@ fn the_digest_ignores_a_dead_node_the_embedder_has_not_released() {
     assert_eq!(digests[0], digests[1], "None against MoveOnAlloc");
     assert_eq!(digests[0], digests[2], "None against MoveAtSafepoint");
 }
+
+// --- CS-D3 criterion 4: the multi-node mutation pattern ---------------------
+
+/// A document of four nodes: 1 with children 2, 3 and 4.
+fn wider_tree(ns: &TestNodeSpace) -> NodeRef {
+    let doc = ns.create(1);
+    for id in 2..=4 {
+        ns.create(id);
+        ns.append(1, id);
+    }
+    doc
+}
+
+#[test]
+fn a_multi_node_mutation_keeps_its_nodes_across_a_callback_and_a_cycle() {
+    // CS-D3 criterion 4, in the form JS-M0 has: `insertBefore` with a
+    // callback in the middle of it. The callback is where a
+    // MutationObserver or a custom-element reaction would run; at JS-M0
+    // it cannot run script (a host function reaches no mutator, which
+    // `tests/ui/fail-host-holds-the-agent.rs` shows), but it can do what
+    // makes the pattern necessary: allocate, and so reach a GC point
+    // while the tree is half-relinked.
+    //
+    // The pattern is the one the coding standard names: every node the
+    // mutation touches is rooted in a node scope for the mutation's
+    // duration, and no wrapper reference is held across a GC point —
+    // each is re-read from its slot afterwards.
+    for stress in [Stress::None, Stress::MoveOnAlloc, Stress::MoveAtSafepoint] {
+        let (mut h, ns) = heap_with_nodes(stress, 64);
+        let doc = wider_tree(&ns);
+        h.enter(|m| {
+            let doc_root = m.add_node_root(doc);
+            m.scope(|m, s| {
+                // A wrapper per child. They are made in a scope of
+                // their own, which is then left, so afterwards each
+                // wrapper is held by its node's external slot and
+                // nothing else: a wrapper still rooted here would keep
+                // its node alive by itself (JS-D4 (a)'s strong-once-
+                // created rule) and the node scope below would be
+                // proving nothing. The first version of this test made
+                // exactly that mistake, and its companion test caught
+                // it.
+                m.scope(|m, inner| {
+                    for id in 2..=4 {
+                        let w = m.alloc::<Wrapper>(inner, 0).unwrap();
+                        w.get(m).set_node(m, Wrapper::NODE, ns.node_ref(id));
+                        ns.wrapper(id).set(m, Some(w.get(m).erase()));
+                    }
+                });
+
+                // Move node 4 before node 2. Between the detach and the
+                // relink node 4 is reachable from nothing at all, so the
+                // node scope is what keeps it.
+                m.node_scope(|m, scope| {
+                    for id in 2..=4 {
+                        scope.root(m, ns.node_ref(id).expect("a live node"));
+                    }
+                    ns.detach(4);
+
+                    // The callback: it allocates, which is a GC point,
+                    // and under either stress mode moves every object.
+                    let _scratch = m.alloc::<Wrapper>(s, 0).unwrap();
+                    m.safepoint();
+                    m.collect();
+
+                    ns.insert_before(1, 4, 2);
+                });
+
+                assert_eq!(
+                    ns.children(1),
+                    vec![4, 2, 3],
+                    "the mutation completed, {stress:?}"
+                );
+                assert!(
+                    m.take_node_releases().is_empty(),
+                    "no node died during the mutation, {stress:?}"
+                );
+                // Every wrapper is still its node's, and the slots were
+                // updated if the cycle moved them.
+                for id in 2..=4 {
+                    let w = ns
+                        .wrapper(id)
+                        .get(m)
+                        .unwrap_or_else(|| panic!("node {id} kept its wrapper, {stress:?}"));
+                    assert_eq!(
+                        w.cast::<Wrapper>(m)
+                            .expect("still a wrapper")
+                            .node(m, Wrapper::NODE),
+                        ns.node_ref(id),
+                        "wrapper of {id} still names it, {stress:?}"
+                    );
+                }
+                m.verify().expect("the heap verifies after the mutation");
+            });
+            m.remove_node_root(doc_root);
+        });
+    }
+}
+
+#[test]
+fn the_same_mutation_without_the_node_scope_loses_the_detached_node() {
+    // The other half of criterion 4: the pattern is not decoration. The
+    // same mutation, with the node scope left out, reaches its GC point
+    // with node 4 named by nothing — and the cycle duly puts it on the
+    // release list, which is this heap's version of the "panic waiting
+    // to be triggered" that an unrooted reference is elsewhere. A node
+    // the embedder has been told to release is not a node it may go on
+    // mutating.
+    let (mut h, ns) = heap_with_nodes(Stress::None, 64);
+    let doc = wider_tree(&ns);
+    h.enter(|m| {
+        let doc_root = m.add_node_root(doc);
+        m.scope(|m, _s| {
+            m.scope(|m, inner| {
+                let w = m.alloc::<Wrapper>(inner, 0).unwrap();
+                w.get(m).set_node(m, Wrapper::NODE, ns.node_ref(4));
+                ns.wrapper(4).set(m, Some(w.get(m).erase()));
+            });
+
+            ns.detach(4);
+            m.collect();
+
+            let released = m.take_node_releases();
+            assert_eq!(
+                released,
+                vec![NodeRef::new(4, 1)],
+                "the detached node was released mid-mutation"
+            );
+            // And the embedder's release clears its wrapper slot, so the
+            // relink that followed would be building on a dead slot.
+            for r in released {
+                ns.release(r);
+            }
+            assert!(ns.node_ref(4).is_none(), "slot 4 holds no node now");
+        });
+        m.remove_node_root(doc_root);
+    });
+}

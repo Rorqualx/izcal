@@ -13,8 +13,8 @@
 #   IZCAL_REVIEW_MAX_LINES=4000      diff lines sent to the review
 #
 # Checks: conflict, size, binary, secrets, rustfmt, shellcheck, actionlint,
-#         kanipkgs, heapui, mdlinks, revision, provenance, security, graph,
-#         review.
+#         kanipkgs, refusals, tokenaudit, mdlinks, revision, provenance,
+#         security, graph, review.
 # Bash 3.2 compatible (macOS /bin/bash).
 
 set -u
@@ -229,27 +229,51 @@ if ! skipped kanipkgs; then
   fi
 fi
 
-# --- heapui: the heap's brand discipline still refuses what it must -----------
+# --- refusals: the code the compiler must refuse, still refused ---------------
 # `hg-heap`'s soundness rests on what its types make unsayable (JS-D18,
 # CS-TY-10): a `Gc` cannot cross a GC point, a `Root` cannot leave its
-# scope, and nothing of one agent heap can be used with another's mutator.
-# None of that is a runtime check, so no test can observe it; the only
-# evidence is that the compiler refuses the code. The failure is silent in
-# the direction that matters — a variance or signature change that quietly
+# scope, nothing of one agent heap can be used with another's mutator, and
+# no host function can reach a mutator, so script cannot re-enter. None of
+# that is a runtime check, so no test can observe it; the only evidence is
+# that the compiler refuses the code. The failure is silent in the
+# direction that matters — a variance or signature change that quietly
 # makes one of them legal breaks no test — so the refusals are checked
-# here (tools/heap-ui.sh; CS-D3 criterion 1 and the four cross-heap cases).
-if ! skipped heapui; then
-  if [ ! -x tools/heap-ui.sh ]; then
-    ok "heapui (no script)"
+# here (tools/refusals.sh; CS-D3 criteria 1 and 4, and the four cross-heap
+# cases).
+if ! skipped refusals; then
+  if [ ! -x tools/refusals.sh ]; then
+    ok "refusals (no script)"
   elif ! command -v cargo > /dev/null 2>&1; then
-    warn heapui
-    echo "cargo is not in PATH, so the brand discipline was not checked" | indent
+    warn refusals
+    echo "cargo is not in PATH, so the refusals were not checked" | indent
   else
-    if out=$(tools/heap-ui.sh "$TMP/heapui" 2>&1); then
-      ok "heapui ($(printf '%s' "$out" | tail -1))"
+    if out=$(tools/refusals.sh "$TMP/refusals" 2>&1); then
+      ok "refusals ($(printf '%s' "$out" | tail -1))"
     else
-      fail heapui
-      printf '%s\n' "$out" | awk 'NR==1 || /FAIL/ || /heap-ui.sh/ || /did not behave/' | head -30 | indent
+      fail refusals
+      printf '%s\n' "$out" | awk 'NR==1 || /FAIL/ || /refusals.sh/ || /did not behave/' | head -30 | indent
+    fi
+  fi
+fi
+
+# --- tokenaudit: the script token guards every path to user code --------------
+# CS-D3 criterion 2. Each `runtime` declaration in hg-js-ops/ops/*.hgop
+# says whether it `call_user`s, and hg-opgen gives a `&mut ScriptToken` to
+# exactly those; a drift either way means an operation can run user code
+# with nothing marking the re-entry, or the operation facts understate what
+# it does. Both are silent today: the code compiles and every test passes.
+if ! skipped tokenaudit; then
+  if [ ! -f tools/token-audit.py ]; then
+    ok "tokenaudit (no script)"
+  elif ! command -v python3 > /dev/null 2>&1; then
+    warn tokenaudit
+    echo "python3 is not in PATH, so the script token's reach was not checked" | indent
+  else
+    if out=$(python3 tools/token-audit.py . 2>&1); then
+      ok "tokenaudit ($(printf '%s' "$out" | sed 's/^token-audit.py: //' | tail -1))"
+    else
+      fail tokenaudit
+      printf '%s\n' "$out" | head -20 | indent
     fi
   fi
 fi

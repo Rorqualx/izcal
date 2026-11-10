@@ -411,6 +411,34 @@ impl TestNodeSpace {
         self.links[Self::LAST_CHILD][parent as usize].store(child, ORD);
     }
 
+    /// Links `child` under `parent` immediately before `before`, which
+    /// must already be a child of `parent`: the node-space half of
+    /// `insertBefore`, which CS-D3 criterion 4 names as the mutation to
+    /// exercise. `child` must be detached first.
+    pub fn insert_before(&self, parent: u32, child: u32, before: u32) {
+        let prev = self.links[Self::PREV][before as usize].load(ORD);
+        self.links[Self::PARENT][child as usize].store(parent, ORD);
+        self.links[Self::NEXT][child as usize].store(before, ORD);
+        self.links[Self::PREV][before as usize].store(child, ORD);
+        if prev == 0 {
+            self.links[Self::FIRST_CHILD][parent as usize].store(child, ORD);
+        } else {
+            self.links[Self::PREV][child as usize].store(prev, ORD);
+            self.links[Self::NEXT][prev as usize].store(child, ORD);
+        }
+    }
+
+    /// The children of `parent`, in order.
+    pub fn children(&self, parent: u32) -> Vec<u32> {
+        let mut out = Vec::new();
+        let mut at = self.links[Self::FIRST_CHILD][parent as usize].load(ORD);
+        while at != 0 && out.len() <= self.live.len() {
+            out.push(at);
+            at = self.links[Self::NEXT][at as usize].load(ORD);
+        }
+        out
+    }
+
     /// Unlinks `child` from its parent, leaving it detached. Its own
     /// children stay attached to it.
     pub fn detach(&self, child: u32) {

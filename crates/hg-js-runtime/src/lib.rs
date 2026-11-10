@@ -273,7 +273,13 @@ impl<'h, 'o> Agent<'h, 'o> {
                 roots.push(s.root_value(m, v));
             }
             let frame = Frame::new(m, s, &realm, unit.params(), unit.registers(), this, &roots)?;
-            let mut token = ScriptToken::for_job();
+            // CS-D3 criterion 1: the agent's job loop is one of the two
+            // places allowed to mint a script token.
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "CS-D3 criterion 1: the job loop mints the job's token"
+            )]
+            let mut token = ScriptToken::for_job(m);
             let mut cx = Cx {
                 t: &mut token,
                 rt: &mut self.rt,

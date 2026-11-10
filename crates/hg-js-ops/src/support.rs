@@ -147,15 +147,36 @@ pub enum CallKind {
 /// The capability to run script: only a runtime method that declares
 /// `call_user` receives it, so a method without it cannot run user code
 /// (language note 5.1). The agent makes one per job.
+///
+/// This is the **script** token of CS-D3 and Q-JS-10, deliberately not
+/// the same thing as `Mutator`, which is the **GC** token: running script
+/// takes both, and allocating takes only the mutator (Q-CS-7). It carries
+/// no data; what it carries is the fact that the path reached it from a
+/// job, which the generated signatures then propagate.
 #[derive(Debug)]
 pub struct ScriptToken {
     _p: (),
 }
 
 impl ScriptToken {
-    /// The token for one job. Only the agent's job loop calls this.
+    /// The token for one job. Only the agent's job loop calls this:
+    /// `clippy.toml` disallows it everywhere else, so the two places that
+    /// mint a token are the two that carry an `#[expect]` saying why.
+    ///
+    /// It takes the mutator because CS-D3 criterion 1 asks that the token
+    /// be derivable only from `&mut Mutator`. Before the JS-M0 re-run it
+    /// took nothing at all, so any crate could make one from thin air;
+    /// nothing came of it, because no path can run script without a
+    /// mutator either, but the criterion is about the mechanism and the
+    /// mechanism was a comment.
+    ///
+    /// The token is **not** branded with `'h`. A brand would stop it
+    /// outliving its heap, which sounds stronger and buys nothing here:
+    /// the token holds no heap data, and every method that consumes it
+    /// takes a `&mut Mutator<'h>` beside it, so a token that outlived its
+    /// `enter` could not be used with the next one's mutator anyway.
     #[doc(hidden)]
-    pub fn for_job() -> Self {
+    pub fn for_job(_m: &mut Mutator<'_>) -> Self {
         Self { _p: () }
     }
 }
