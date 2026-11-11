@@ -109,9 +109,27 @@ jobs:
     # The heap verifier (Phase 2 item 4) now runs after every cycle in
     # debug builds, which this job is. Measured cost on an M-series Mac,
     # 9 Nov 2026, on the heaviest test (every collector mode, all three):
-    # 492.5 s with it against 388.2 s without, so +27%. The suite is 27
-    # tests now; the 60-minute budget still holds with room.
-    timeout-minutes: 60
+    # 492.5 s with it against 388.2 s without, so +27%.
+    #
+    # The budget was 60 minutes. Over the twelve runs before this change
+    # the job took 30.9 to 54.9 minutes, median 43.8: a 24-minute spread
+    # on the same suite, with the worst run at 92% of the cap. The
+    # spread is what made 60 unsafe, not the suite's size -- a slow
+    # runner would have failed the job while saying nothing about the
+    # code. JS-10 (c)'s corruption harness adds
+    # three, measured on a Linux x86_64 host on 10 Nov 2026 at 106 s —
+    # the fuzzer 50.4 s, two agent heaps on two threads 36.7 s, the
+    # trusted index 18.5 s — with its fourth case ignored under Miri,
+    # because a bound over cage data is not an unsafe-code or a
+    # concurrency property and Miri adds nothing to it. That 106 s is
+    # the harness after it was sized for Miri; as first written it
+    # measured 3,109 s on the same host, which no budget here would
+    # have absorbed.
+    #
+    # 80 minutes leaves room for the next few. Raise it again rather
+    # than thin out what Miri sees: this job is where the heap's unsafe
+    # core and its races are checked.
+    timeout-minutes: 80
     env:
       MIRI_TOOLCHAIN: nightly-2026-10-17
       MIRIFLAGS: -Zmiri-permissive-provenance
