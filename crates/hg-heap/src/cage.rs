@@ -10,7 +10,10 @@
 //! which is page-aligned. An access may land on an uncommitted page and
 //! fault: a crash inside the cage, which H-2 allows (JS-10 counts faults
 //! outside it). Atomic accesses mean a concurrent corrupting write can
-//! change a value but never cause a data race.
+//! change a value but never cause a data race **at the same access
+//! width**; mixed-width overlapping accesses are undefined whatever
+//! their ordering, which is why nothing shares a cage word across
+//! threads (see the `Send` impl below).
 #![expect(unsafe_code, reason = "G5: cage (every cage memory access)")]
 
 use std::collections::BTreeSet;
@@ -51,12 +54,29 @@ pub(crate) struct Cage {
     pool: Mutex<Pool>,
 }
 
-// SAFETY: the raw base pointer is never written after `new`, every access
-// through it is atomic (this module's condition), and the chunk pool is
-// behind a mutex; so agent heaps on different threads may share the cage.
+// SAFETY: the raw base pointer is never written after `new`, the chunk
+// pool is behind a mutex, and **no two threads access the same cage
+// word**: an agent heap owns the chunks it was handed (`Space::owned`),
+// a `Heap` is `!Send` and a `Mutator` is `!Send`/`!Sync`, so one heap's
+// memory is reached from one thread, and its collection is
+// stop-the-world. So agent heaps on different threads may share the
+// cage.
+//
+// Disjointness, not atomicity, is what makes this sound, and the
+// distinction matters: this module accesses cage memory at **two
+// widths** — 32 bits for slots, headers, length words and tails, 64
+// bits for raw words, node slots, `copy` and `fill` — and `copy` and
+// `fill` cover the same bytes that slot accesses do. Overlapping
+// unsynchronised atomic accesses of different sizes are undefined
+// whatever their ordering, so atomicity alone would not license two
+// threads on one heap's memory. Measured 10 November 2026: the
+// corruption harness (JS-10 (c)) pointed a second thread at a live
+// heap's chunks and Miri reported exactly that, "overlapping
+// unsynchronized atomic accesses must use the same access size". A
+// concurrent marker or evacuator (JS-M1) is the configuration this
+// would bind, and the write-up records it for the owner.
 unsafe impl Send for Cage {}
-// SAFETY: as for `Send`: shared references only perform atomic accesses
-// and locked pool operations.
+// SAFETY: as for `Send`.
 unsafe impl Sync for Cage {}
 
 impl core::fmt::Debug for Cage {
@@ -200,6 +220,15 @@ impl Cage {
             .kept
     }
 
+    /// The cage's size in bytes: the range a corrupting write may name
+    /// (JS spec 6.1's in-cage corruption API, JS-10 (c)). Every offset
+    /// is masked into it anyway, so this is for a fuzzer's distribution,
+    /// not for safety.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) const fn len(&self) -> u64 {
+        self.len
+    }
+
     /// Commits `[offset, offset + len)`, charged to `kind`.
     fn commit(&self, offset: u64, len: u64, kind: MemoryKind) -> Result<(), CageError> {
         let (Some(region), Ok(o), Ok(l)) = (
@@ -289,6 +318,12 @@ impl Drop for Cage {
 /// this crate's tests and, through the `testing` feature, for the tests of
 /// crates built on the heap (never for a shipping build: only
 /// dev-dependencies enable the feature).
+///
+/// Every reservation is ringed with a canary ([`GUARD`] bytes either
+/// side), so that a write which leaves the reservation is *seen* rather
+/// than assumed not to happen: that is the detector behind JS-10 (c)'s
+/// "0 out-of-cage faults", and it works in an ordinary test run on every
+/// OS, not only under a sanitizer.
 #[cfg(any(test, feature = "testing"))]
 pub mod test_memory {
     use std::sync::Mutex;
@@ -296,17 +331,99 @@ pub mod test_memory {
 
     use hg_substrate::{Access, Memory, MemoryError, MemoryKind, MemoryStats, Region};
 
-    /// Memory for tests: each reservation is a zeroed allocation, and a
-    /// decommit zeroes its range, as the OS's fresh pages read.
+    /// Canary bytes either side of every reservation. A chunk is 1 MiB
+    /// and a block 32 KiB, so a write that ran one of either past the
+    /// end of the cage lands in the ring rather than in whatever the
+    /// allocator put next (where it would be seen only by a sanitizer,
+    /// or not at all).
+    ///
+    /// Under Miri the ring is two blocks rather than a chunk. The
+    /// corruption harness reads every ring back after every run, and
+    /// Miri interprets that scan: measured 10 November 2026, the
+    /// harness costs 106 s with a two-block ring and **257 s** with a
+    /// chunk-sized one, most of it in the scan rather than in the heap.
+    /// Two blocks still cover the overrun shapes this crate could
+    /// produce, because it addresses the cage in blocks and lines.
+    #[cfg(not(miri))]
+    pub const GUARD: usize = 1 << 20;
+    /// As above, two blocks under Miri.
+    #[cfg(miri)]
+    pub const GUARD: usize = 64 * 1024;
+
+    /// The byte the guard rings are filled with. Odd and non-zero: a
+    /// cage word of it decodes as a reference (bit 0 set), so a guard
+    /// read back into the heap is not mistaken for an empty slot.
+    const CANARY: u8 = 0xA5;
+
+    /// The canary as a 64-bit word, so the ring is read back eight
+    /// bytes at a time: the scan runs after every corruption run, and
+    /// under Miri every byte of it would be interpreted.
+    const CANARY_WORD: u64 = u64::from_ne_bytes([CANARY; 8]);
+
+    /// Where `bytes` first stops being the canary, in bytes.
+    fn broken(bytes: &[u8]) -> Option<usize> {
+        bytes
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .position(|&c| u64::from_ne_bytes(c) != CANARY_WORD)
+            .map(|i| i * 8)
+    }
+
+    /// One live reservation: what was handed out, what was allocated,
+    /// and with which layout.
+    #[derive(Debug, Clone, Copy)]
+    struct Live {
+        base: usize,
+        real: usize,
+        layout: std::alloc::Layout,
+    }
+
+    /// Memory for tests: each reservation is a zeroed allocation inside a
+    /// canary ring, and a decommit zeroes its range, as the OS's fresh
+    /// pages read.
     #[derive(Debug, Default)]
     pub struct TestMemory {
-        live: Mutex<Vec<(usize, std::alloc::Layout)>>,
+        live: Mutex<Vec<Live>>,
         protects: Mutex<Vec<(usize, usize, Access)>>,
         refuse_decommit: AtomicBool,
         refuse_protect: Mutex<Option<Access>>,
     }
 
     impl TestMemory {
+        /// Where the first byte of any live reservation's guard ring was
+        /// overwritten, as an offset from that reservation's base:
+        /// negative below it, `>= len` above it. `None` when every ring
+        /// is intact, which is what JS-10 (c) requires of every run.
+        ///
+        /// It reports the *lowest* broken byte of the first reservation
+        /// that has one, so the number says how far past the end (or how
+        /// far below the start) the write reached.
+        pub fn guard_break(&self) -> Option<i64> {
+            let live = self
+                .live
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for l in live.iter() {
+                let len = l.layout.size() - 2 * GUARD;
+                // SAFETY: `real` is the live allocation of `layout`, and
+                // the ring is its first and last GUARD bytes.
+                let all = unsafe {
+                    std::slice::from_raw_parts(
+                        std::ptr::with_exposed_provenance::<u8>(l.real),
+                        l.layout.size(),
+                    )
+                };
+                if let Some(i) = broken(&all[..GUARD]) {
+                    return Some(i as i64 - GUARD as i64);
+                }
+                if let Some(i) = broken(&all[GUARD + len..]) {
+                    return Some(i64::try_from(len + i).unwrap_or(i64::MAX));
+                }
+            }
+            None
+        }
+
         /// Makes every later decommit fail, leaving its pages as they are.
         pub fn refuse_decommit(&self, refuse: bool) {
             self.refuse_decommit.store(refuse, Ordering::SeqCst);
@@ -319,6 +436,33 @@ pub mod test_memory {
                 .refuse_protect
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = access;
+        }
+
+        /// Writes one byte `delta` bytes past the end of the
+        /// reservation whose base is `base`, for the test that the guard
+        /// ring reports such a write.
+        ///
+        /// It is the **only** out-of-cage write in the tree, and it
+        /// exists because no path in `hg-heap` can make one: every cage
+        /// access is masked into the reservation (this module's
+        /// verification condition), so without a write made on purpose
+        /// JS-10 (c)'s detector would never be exercised and "0
+        /// out-of-cage faults" would rest on a guard nobody had checked.
+        #[cfg(test)]
+        pub(crate) fn poke_past_end(&self, base: usize, len: usize, delta: usize) {
+            let live = self
+                .live
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some(l) = live.iter().find(|l| l.base == base) else {
+                return;
+            };
+            assert!(delta < GUARD, "the poke has to land in the ring");
+            let at = l.real + GUARD + len + delta;
+            // SAFETY: `[real, real + layout.size())` is the live
+            // allocation, and `GUARD + len + delta` is inside it because
+            // `delta < GUARD` and the layout is `2 * GUARD + len`.
+            unsafe { std::ptr::with_exposed_provenance_mut::<u8>(at).write(0) };
         }
 
         /// Every protection change asked for, in order.
@@ -335,18 +479,30 @@ pub mod test_memory {
             4096
         }
         fn reserve(&self, bytes: usize, kind: MemoryKind) -> Result<Region, MemoryError> {
-            let layout = std::alloc::Layout::from_size_align(bytes, 4096)
+            // GUARD is a multiple of the page size, so the base handed
+            // out is still page-aligned, which the cage's 8-byte
+            // alignment condition rests on.
+            let whole = bytes
+                .checked_add(2 * GUARD)
+                .ok_or(MemoryError::OutOfAddressSpace)?;
+            let layout = std::alloc::Layout::from_size_align(whole, 4096)
                 .map_err(|_| MemoryError::OutOfAddressSpace)?;
-            // SAFETY: the layout has a non-zero size (cages are at least 1 MiB).
+            // SAFETY: the layout has a non-zero size (the guard rings alone).
             let p = unsafe { std::alloc::alloc_zeroed(layout) };
             if p.is_null() {
                 return Err(MemoryError::OutOfAddressSpace);
             }
-            let base = p.expose_provenance();
+            // SAFETY: `[0, whole)` is the allocation just made, so both
+            // rings lie inside it.
+            let ring = unsafe { std::slice::from_raw_parts_mut(p, whole) };
+            ring[..GUARD].fill(CANARY);
+            ring[GUARD + bytes..].fill(CANARY);
+            let real = p.expose_provenance();
+            let base = real + GUARD;
             self.live
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push((base, layout));
+                .push(Live { base, real, layout });
             Ok(Region::new(base, bytes, kind))
         }
         fn commit(&self, _: &Region, _: usize, _: usize, _: MemoryKind) -> Result<(), MemoryError> {
@@ -390,12 +546,12 @@ pub mod test_memory {
                 .live
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(i) = live.iter().position(|(b, _)| *b == region.base()) {
-                let (base, layout) = live.remove(i);
-                // SAFETY: `base` came from `alloc_zeroed` with `layout`, and the
+            if let Some(i) = live.iter().position(|l| l.base == region.base()) {
+                let l = live.remove(i);
+                // SAFETY: `real` came from `alloc_zeroed` with `layout`, and the
                 // cage that used it is gone.
                 unsafe {
-                    std::alloc::dealloc(std::ptr::with_exposed_provenance_mut(base), layout);
+                    std::alloc::dealloc(std::ptr::with_exposed_provenance_mut(l.real), l.layout);
                 }
             }
         }
@@ -409,8 +565,40 @@ pub mod test_memory {
 mod tests {
     use std::sync::Arc;
 
-    use super::test_memory::TestMemory;
+    use hg_substrate::{Memory, MemoryKind};
+
+    use super::test_memory::{GUARD, TestMemory};
     use super::{CHUNK, Cage};
+
+    /// The guard ring reports a write that left the reservation, and
+    /// says how far past the end it reached. This is the detector behind
+    /// JS-10 (c)'s "0 out-of-cage faults": the corruption harness checks
+    /// the ring after every run, so the ring itself has to be checked
+    /// against a write that really leaves the cage, which nothing in
+    /// `hg-heap` can produce (`addr` masks every offset into the
+    /// reservation). Hence the deliberate one.
+    #[test]
+    fn the_guard_ring_reports_a_write_past_the_end_of_a_reservation() {
+        let mem = TestMemory::default();
+        let len = 2 * CHUNK as usize;
+        let region = mem.reserve(len, MemoryKind::ProcessPart).unwrap();
+        assert_eq!(mem.guard_break(), None, "a fresh ring is intact");
+
+        // Every offset a cage access can form is masked below `len`, so
+        // this is what a bug that forgot the mask would do: one block
+        // past the end.
+        let block = 32 * 1024;
+        mem.poke_past_end(region.base(), len, block);
+        // The ring is read eight bytes at a time, so it names the word
+        // the write landed in.
+        assert_eq!(
+            mem.guard_break(),
+            Some(i64::try_from(len + block).unwrap()),
+            "the ring names how far past the end the write reached"
+        );
+        assert!(block < GUARD, "a block past the end is inside the ring");
+        mem.release(region);
+    }
 
     /// A released chunk comes back zeroed. One whose decommit was refused
     /// still holds the old heap's data, so it is never handed out again.

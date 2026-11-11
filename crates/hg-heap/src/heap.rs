@@ -427,6 +427,21 @@ impl<'h> Mutator<'h> {
         self.state
     }
 
+    /// Arbitrary read and write inside the cage, as JS spec 6.1's
+    /// test-only in-cage corruption API grants it (JS-10 (c)). Present
+    /// in a test build only: `cfg(test)`, or the `testing` feature,
+    /// which only a dev-dependency enables.
+    ///
+    /// It takes `&self`, not `&mut self`: corrupting the cage is not a
+    /// GC point and holds no borrow of the mutator, so a fuzzer may
+    /// write between two reads of the same unrooted [`Gc`], which is
+    /// where a bug would be.
+    #[cfg(any(test, feature = "testing"))]
+    #[must_use]
+    pub fn corrupt(&self) -> crate::corrupt::Corrupt<'_> {
+        crate::corrupt::Corrupt::new(&self.state.cage, self.state.space.chunk_offsets())
+    }
+
     /// Charges `units` canonical allocation units of GC debt (JS spec
     /// 6.9), and runs a canonical cycle when the debt reaches the
     /// trigger. A GC point. Each operation that semantically allocates
