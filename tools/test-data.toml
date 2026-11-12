@@ -43,3 +43,18 @@ licence = "MIT"
 url = "https://registry.npmjs.org/@engine262/engine262/-/engine262-0.0.1-d553e7b52501fbc47eae981c8d0fa7a5c26d0171.tgz"
 sha256 = "1966b1f909d522741c56c394973c4c5c4d70f4e7cb70b74b511cea8fe76c5018"
 strip = "1"
+
+[wasm-spec]
+# WebAssembly/spec, Apache-2.0 for the two directories used here: `test/`
+# (the core test suite, 259 `.wast` script files) and `interpreter/` (the
+# reference interpreter). Test data and a black-box oracle only: hg-wast
+# reads the scripts, and the grammar it reads them by comes from the
+# specification's prose under `document/`, never from the interpreter's
+# code (M-1 part 3). Nothing here is linked, vendored or shipped.
+# main at 10 Nov 2026, "[interpreter] En/decode laneidx as byte".
+commit = "943c5df07e84f11d2b83078964df5812530afbd2"
+date = "2026-11-10"
+licence = "Apache-2.0"
+url = "https://codeload.github.com/WebAssembly/spec/tar.gz/943c5df07e84f11d2b83078964df5812530afbd2"
+sha256 = "b929c744276668db60aa53492607af39c570d03cb5fc4eb342829dbc992a9ac8"
+strip = "1"

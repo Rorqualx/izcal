@@ -170,6 +170,52 @@ jobs:
           commit=$(awk '/^\[engine262\]$/ { t = 1; next } /^\[/ { t = 0 } t && $1 == "commit" { gsub(/"/, "", $3); print $3 }' tools/test-data.toml)
           cargo run --release --locked -p hg-js-oracle -- ops --engine262 "$HOME/.cache/izcal/test-data/engine262-$commit"
 
+  # ORC-1 (JS-M0 plan, Phase 1): the WebAssembly specification's own
+  # test suite, read by hg-wast. The pinned spec tree (tools/
+  # test-data.toml, SHA-256 checked) holds 259 `.wast` files; every one
+  # must parse, and every module span in them must parse again on its
+  # own -- 7,200 of them -- because a span is what an engine would be
+  # handed. 0.7 s on the Mac (11 Nov 2026).
+  #
+  # The floors are the counts the pinned suite is known to hold. They
+  # are not decoration: a reader that quietly stopped recognising a
+  # command would still parse all 259 files and still report success,
+  # and only the census would show it. A pin moves in its own commit,
+  # which is where these numbers move with it.
+  #
+  # What this job does not yet do is run the scripts. The engine
+  # adapter, and the differential against the reference interpreter
+  # that validates the runner the way engine262 validates hg-test262,
+  # need an OCaml toolchain and follow separately.
+  wast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch the WebAssembly specification suite
+        run: tools/fetch-test-data.sh wasm-spec
+
+      - name: Read every script in the suite
+        run: |
+          commit=$(awk '/^\[wasm-spec\]$/ { t = 1; next } /^\[/ { t = 0 } t && $1 == "commit" { gsub(/"/, "", $3); print $3 }' tools/test-data.toml)
+          cargo run --release --locked -p hg-wast -- parse \
+            --suite "$HOME/.cache/izcal/test-data/wasm-spec-$commit/test/core" \
+            --quiet --verify \
+            --floor assert_return=52748 \
+            --floor assert_trap=4984 \
+            --floor assert_invalid=2732 \
+            --floor module=2269 \
+            --floor assert_malformed=1945 \
+            --floor invoke=359 \
+            --floor assert_unlinkable=200 \
+            --floor register=80 \
+            --floor assert_exception=18 \
+            --floor assert_exhaustion=15 \
+            --floor "module instance=3"
+
   # VER-1 (Stage 1 4.1; security scope 6.6): every Kani harness in the
   # IPC crates, through tools/kani.sh, which also fails on a cover no
   # input reaches. Kani 0.68.0 is pinned and its bundle checked against

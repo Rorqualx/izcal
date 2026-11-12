@@ -162,3 +162,8 @@ why = "JS-M0 plan Phase 1 (ORC-1): the operation-level oracle, which checks each
 tier = "T"
 layer = "tools"
 why = "JS engine spec, crate table: hg-test262, the test262 runner, tools, tier T; ORC-1's oracle, validated at JS-M0 against engine262 run black-box (test-only, never linked)"
+
+[crates.hg-wast]
+tier = "T"
+layer = "tools"
+why = "JS engine spec, crate table: hg-wast, the WebAssembly script runner, tools, tier T; JS-M0 Phase 1 (ORC-1). At JS-M0 it is the script reader, checked against the whole pinned spec suite; the engine adapter and the differential against the reference interpreter follow"
