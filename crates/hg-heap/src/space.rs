@@ -511,6 +511,15 @@ impl Space {
         self.to_space = Bump::default();
     }
 
+    /// The cage offsets of this heap's chunks, in the order it acquired
+    /// them: where a fuzzer with an in-cage write finds memory that is
+    /// committed and in use (JS-10 (c)). A uniform offset into a 16 GiB
+    /// cage almost never hits one.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) fn chunk_offsets(&self) -> &[u64] {
+        &self.chunks
+    }
+
     /// Blocks owned, and blocks holding objects.
     pub(crate) fn census(&self) -> (usize, usize) {
         let used = self

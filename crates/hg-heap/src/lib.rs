@@ -6,6 +6,11 @@
 //! decisions are in `research_notes/JS-M0 design review/heap.md`.
 
 mod cage;
+/// JS spec 6.1's in-cage corruption API (JS-10 (c)), in a test build
+/// only. One path, `hg_heap::corrupt::Corrupt`, rather than a second
+/// name under [`testing`].
+#[cfg(any(test, feature = "testing"))]
+pub mod corrupt;
 mod heap;
 mod node;
 mod object;
