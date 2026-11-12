@@ -22,6 +22,11 @@ pub use heap::{
 };
 pub use node::{ExternalCell, ExternalSlot, NodeRef, NodeRootId, NodeSpace, NodeVisitor};
 pub use object::{Any, Layout, Node, Object, Raw, RawValue, Referent, Tail, Traced, Weak};
+// H-3's witness: `object!` names these in the calling crate, and
+// nothing else has a reason to. Hidden from the docs, because an
+// object type's author never writes them.
+#[doc(hidden)]
+pub use object::{LayoutWitness, layout_witness};
 pub use slot::{MAX_CAGE_BYTES, Slot};
 pub use space::AllocError;
 pub use trusted::{TrustedError, TrustedId, TrustedKind, TrustedRegion};

@@ -221,6 +221,85 @@ fn a_crypto_source_outside_the_substrates_fails() {
 }
 
 #[test]
+fn a_hand_written_heap_object_impl_fails() {
+    // H-3: `hg_heap::object!` is the only author of an object layout,
+    // because a hand-written one that miscounts the traced slots makes
+    // the tracer read the wrong words of every object of that type. The
+    // macro writes its impls into the calling crate, so the trait cannot
+    // be sealed the way `RawValue` is, and the rule is this lint.
+    //
+    // A renamed import and a macro are the two ways to write the impl
+    // without spelling the trait where the impl rule looks, so they are
+    // findings in their own right (JS-10 (b): the mutation variants of a
+    // planted bug are what show a mechanism fixed one spelling).
+    let Some(_) = ast_grep() else { return };
+    for (src, want) in [
+        (
+            "impl hg_heap::Object for Forged {}",
+            "a hand-written heap object impl",
+        ),
+        (
+            "impl Object for Forged {}",
+            "a hand-written heap object impl",
+        ),
+        (
+            "impl hg_heap::Referent for Forged {}",
+            "a hand-written heap object impl",
+        ),
+        (
+            "impl Referent for Forged {}",
+            "a hand-written heap object impl",
+        ),
+        (
+            "use hg_heap::Object as Obj;\nimpl Obj for Forged {}",
+            "a renamed import of a heap object trait",
+        ),
+        (
+            "use hg_heap::{Referent as Ref};\nimpl Ref for Forged {}",
+            "a renamed import of a heap object trait",
+        ),
+        (
+            "macro_rules! planted { ($t:ty) => { impl hg_heap::Object for $t {} } }",
+            "a macro naming a heap object trait",
+        ),
+        // The spelling that escaped all three of those: the trait
+        // arrives as a macro argument, so no impl and no macro body
+        // names it. What the impl cannot avoid is the layout witness,
+        // and these are the ways to write it.
+        (
+            "const LAYOUT_WITNESS: hg_heap::LayoutWitness = hg_heap::layout_witness();",
+            "names the layout witness",
+        ),
+        (
+            "use hg_heap::layout_witness as mint;",
+            "names the layout witness",
+        ),
+        (
+            "macro_rules! planted { () => { const LAYOUT_WITNESS: W = w(); } }",
+            "names the layout witness",
+        ),
+    ] {
+        let mut f = Fixture::baseline();
+        f.edit(
+            "crates/hg-types/src/lib.rs",
+            "//! Types.\n",
+            &format!("//! Types.\npub enum Forged {{}}\n{src}\n"),
+        );
+        assert_finding(&f.lint(&[], true), "H-3", "hg-types", want);
+    }
+
+    // The baseline, which writes none, passes: so the finding above is
+    // the impl and not the fixture.
+    let f = Fixture::baseline();
+    let r = f.lint(&[], true);
+    assert!(
+        !r.findings().iter().any(|x| x.rule == "H-3"),
+        "the baseline writes no object impl; got:\n{}",
+        r.render()
+    );
+}
+
+#[test]
 fn test_only_crypto_fakes_are_allowed() {
     let Some(_) = ast_grep() else { return };
     let mut f = Fixture::baseline();

@@ -63,8 +63,8 @@ fn after_cfg_test(indent: usize) -> String {
 }
 
 /// The `ast-grep` rules. `traits` is a regex alternation of the crypto
-/// trait names.
-pub fn rules_yaml(traits: &str) -> String {
+/// trait names and `objects` one of the heap's object-trait names.
+pub fn rules_yaml(traits: &str, objects: &str, witness: &str) -> String {
     format!(
         r"id: forbid-unsafe
 language: rust
@@ -137,6 +137,38 @@ rule:
   kind: macro_definition
   regex: '\b({traits})\b'
 ---
+id: heap-object-impl
+language: rust
+severity: hint
+rule:
+  kind: impl_item
+  has:
+    field: trait
+    regex: '(^|::)({objects})(<.*>)?$'
+---
+id: heap-object-alias
+language: rust
+severity: hint
+rule:
+  kind: use_as_clause
+  has:
+    field: path
+    regex: '(^|::)({objects})$'
+---
+id: heap-object-macro
+language: rust
+severity: hint
+rule:
+  kind: macro_definition
+  regex: '\b({objects})\b'
+---
+id: heap-object-witness
+language: rust
+severity: hint
+rule:
+  kind: identifier
+  regex: '^({witness})$'
+---
 id: cfg-test-mod-decl
 language: rust
 severity: hint
@@ -173,10 +205,12 @@ pub fn scan(ast_grep: &Path, inputs: &Inputs) -> Result<Scan, String> {
         return Ok(Scan::default());
     }
     let traits = inputs.rules.crypto_traits.join("|");
+    let objects = inputs.rules.object_traits.join("|");
+    let witness = inputs.rules.witness_names.join("|");
     let out = Command::new(ast_grep)
         .arg("scan")
         .arg("--inline-rules")
-        .arg(rules_yaml(&traits))
+        .arg(rules_yaml(&traits, &objects, &witness))
         .arg("--json=compact")
         .args(&dirs)
         .current_dir(&inputs.root)
@@ -441,6 +475,53 @@ pub fn check(inputs: &Inputs, scan: &Scan, report: &mut Report) {
                 rel(&m.file),
                 m.line,
                 inputs.rules.crypto_implementers.join(" and ")
+            ),
+            None,
+        );
+    }
+
+    // H-3: the heap's object traits are implemented by
+    // `hg_heap::object!` and nobody else. The macro writes its impls into
+    // the calling crate, so it cannot be a sealed trait the way
+    // `RawValue` is; what a hand-written impl can do is describe a layout
+    // that miscounts the traced slots, which makes the tracer read the
+    // wrong words of every object of that type.
+    //
+    // The rule reads the trait's spelling, so it takes all three of the
+    // ways a name is introduced, as Q-CS-1's rules do above: the impl
+    // itself, a renamed import, and a macro that writes the impl. A
+    // renamed import was measured to pass the impl rule on 10 November
+    // 2026 — `use hg_heap::Object as Obj; impl Obj for Evil` compiled
+    // and the rule reported nothing — which is JS-10 (b)'s case for
+    // mutating every planted bug rather than fixing the one spelling.
+    for m in &scan.matches {
+        let what = match m.rule.as_str() {
+            "heap-object-impl" => "a hand-written heap object impl",
+            "heap-object-alias" => {
+                "a renamed import of a heap object trait, which spells an impl past the rule above"
+            }
+            "heap-object-macro" => {
+                "a macro naming a heap object trait, which writes an impl past the rule above"
+            }
+            "heap-object-witness" => {
+                "names the layout witness, which an impl `hg_heap::object!` did not write has to"
+            }
+            _ => continue,
+        };
+        let Some((krate, _)) = owner(&members, &m.file) else {
+            continue;
+        };
+        if inputs.rules.object_authors.contains(krate) {
+            continue;
+        }
+        let first = m.text.lines().next().unwrap_or("").trim();
+        report.add(
+            "H-3",
+            krate,
+            format!(
+                "{}:{}: {what} ({first}); use hg_heap::object!, which is the only author of a layout",
+                rel(&m.file),
+                m.line,
             ),
             None,
         );

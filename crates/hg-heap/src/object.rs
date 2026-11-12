@@ -101,6 +101,46 @@ impl Layout {
 pub trait Object: Referent {
     /// The type's layout.
     const LAYOUT: Layout;
+
+    /// Proof that [`object!`](crate::object) wrote this impl.
+    ///
+    /// The trait cannot be sealed: the macro expands in the calling
+    /// crate, so a private supertrait would not be nameable there and
+    /// would seal nothing. What this const does instead is make the
+    /// impl *say a word*. A hand-written impl cannot leave it out —
+    /// that is `E0046`, a compile error — and cannot write it without
+    /// naming `LAYOUT_WITNESS` and some source for its value. Those
+    /// names belong to this mechanism and to nothing else in the tree,
+    /// so the H-3 rules can own them: `heap-object-witness` reports any
+    /// crate but `hg-heap` that names one, and clippy's
+    /// `disallowed-methods` carries [`layout_witness`] as a second
+    /// layer that resolves paths rather than reading them, so a renamed
+    /// import cannot spell its way past it.
+    ///
+    /// Measured 10 November 2026: the three text rules on the trait's
+    /// own name were all escaped by a macro that takes the trait as an
+    /// argument (`plant!(hg_heap::Object, Evil)` compiled, reported by
+    /// nothing), which is what put an unavoidable name in the impl
+    /// instead of another rule on an avoidable one.
+    #[doc(hidden)]
+    const LAYOUT_WITNESS: LayoutWitness;
+}
+
+/// Proof that [`object!`](crate::object) wrote an [`Object`] impl. It
+/// has one constructor, [`layout_witness`], and that function's name is
+/// in clippy's `disallowed-methods` and in H-3's lint.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub struct LayoutWitness(());
+
+/// The only way to make a [`LayoutWitness`]. Called by
+/// [`object!`](crate::object) under an `#[expect]` naming the clippy
+/// rule, so a legitimate object type costs its author nothing and every
+/// other caller is a finding.
+#[doc(hidden)]
+#[must_use]
+pub const fn layout_witness() -> LayoutWitness {
+    LayoutWitness(())
 }
 
 /// Something a slot can reference: an [`Object`] type or [`Any`].
@@ -199,14 +239,35 @@ descriptor_impls!(Traced);
 descriptor_impls!(Weak);
 descriptor_impls!(Raw);
 
+/// Sealing supertraits. The module is private, so nothing outside
+/// `hg-heap` can name what is in it, and so nothing outside can
+/// implement a trait that requires it.
+mod sealed {
+    /// The seal on [`RawValue`](super::RawValue).
+    pub trait RawWord {}
+}
+
 /// A value a raw word can hold.
-pub trait RawValue: Copy {
+///
+/// **Sealed.** The implementations are the five below and no crate can
+/// add another, which is how H-1 — "no raw pointer can be stored in the
+/// cage" — is closed by construction rather than by a rule somebody has
+/// to remember. Before it was sealed, a crate could define
+/// `struct P(*const u8)` with `to_bits` returning `self.0 as u64` and
+/// store a host address in a raw word: that planted bug compiled, which
+/// is how the seal came to be written (JS-10's heap classes, JS-M0 plan
+/// Phase 2 item 8). The refusal is now a fixture.
+///
+/// A new raw type belongs here, beside these, where the question "is it
+/// a pointer?" is asked once.
+pub trait RawValue: Copy + sealed::RawWord {
     /// The value as 64 bits.
     fn to_bits(self) -> u64;
     /// The value from 64 bits read from the cage (any bits: H-2).
     fn from_bits(bits: u64) -> Self;
 }
 
+impl sealed::RawWord for u64 {}
 impl RawValue for u64 {
     fn to_bits(self) -> u64 {
         self
@@ -216,6 +277,7 @@ impl RawValue for u64 {
     }
 }
 
+impl sealed::RawWord for u32 {}
 impl RawValue for u32 {
     fn to_bits(self) -> u64 {
         u64::from(self)
@@ -226,6 +288,7 @@ impl RawValue for u32 {
     }
 }
 
+impl sealed::RawWord for i32 {}
 impl RawValue for i32 {
     fn to_bits(self) -> u64 {
         u64::from(self.cast_unsigned())
@@ -235,6 +298,7 @@ impl RawValue for i32 {
     }
 }
 
+impl sealed::RawWord for f64 {}
 impl RawValue for f64 {
     fn to_bits(self) -> u64 {
         f64::to_bits(self)
@@ -244,6 +308,7 @@ impl RawValue for f64 {
     }
 }
 
+impl sealed::RawWord for bool {}
 impl RawValue for bool {
     fn to_bits(self) -> u64 {
         u64::from(self)
@@ -292,7 +357,19 @@ macro_rules! object {
 
         impl $crate::Referent for $name {}
 
+        // An `#[expect]`, not an `#[allow]`: if the clippy entry is ever
+        // dropped the lint stops firing, the expectation goes
+        // unfulfilled, and every object type's crate says so. The cost
+        // is that a crate carrying its own clippy.toml must carry the
+        // entry (A.2 keeps it in hg-substrate-os's generated copy, where
+        // the path does not even resolve).
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "H-3: object! is the only author of a layout, and the witness is what says so"
+        )]
         impl $crate::Object for $name {
+            const LAYOUT_WITNESS: $crate::LayoutWitness = $crate::layout_witness();
+
             const LAYOUT: $crate::Layout = $crate::Layout {
                 name: stringify!($name),
                 traced: $crate::object!(@count $($t)*),
