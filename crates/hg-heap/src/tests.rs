@@ -1329,3 +1329,229 @@ fn the_digest_ignores_a_dead_node_the_embedder_has_not_released() {
     assert_eq!(digests[0], digests[1], "None against MoveOnAlloc");
     assert_eq!(digests[0], digests[2], "None against MoveAtSafepoint");
 }
+
+// --- CS-D3 criterion 4: the multi-node mutation pattern ---------------------
+
+/// A document of four nodes: 1 with children 2, 3 and 4.
+fn wider_tree(ns: &TestNodeSpace) -> NodeRef {
+    let doc = ns.create(1);
+    for id in 2..=4 {
+        ns.create(id);
+        ns.append(1, id);
+    }
+    doc
+}
+
+#[test]
+fn a_multi_node_mutation_keeps_its_nodes_across_a_callback_and_a_cycle() {
+    // CS-D3 criterion 4, in the form JS-M0 has: `insertBefore` with a
+    // callback in the middle of it. The callback is where a
+    // MutationObserver or a custom-element reaction would run; at JS-M0
+    // it cannot run script (a host function reaches no mutator, which
+    // `tests/ui/fail-host-holds-the-agent.rs` shows), but it can do what
+    // makes the pattern necessary: allocate, and so reach a GC point
+    // while the tree is half-relinked.
+    //
+    // The pattern is the one the coding standard names: every node the
+    // mutation touches is rooted in a node scope for the mutation's
+    // duration, and no wrapper reference is held across a GC point —
+    // each is re-read from its slot afterwards.
+    for stress in [Stress::None, Stress::MoveOnAlloc, Stress::MoveAtSafepoint] {
+        let (mut h, ns) = heap_with_nodes(stress, 64);
+        let doc = wider_tree(&ns);
+        h.enter(|m| {
+            let doc_root = m.add_node_root(doc);
+            m.scope(|m, s| {
+                // A wrapper per child. They are made in a scope of
+                // their own, which is then left, so afterwards each
+                // wrapper is held by its node's external slot and
+                // nothing else: a wrapper still rooted here would keep
+                // its node alive by itself (JS-D4 (a)'s strong-once-
+                // created rule) and the node scope below would be
+                // proving nothing. The first version of this test made
+                // exactly that mistake, and its companion test caught
+                // it.
+                m.scope(|m, inner| {
+                    for id in 2..=4 {
+                        let w = m.alloc::<Wrapper>(inner, 0).unwrap();
+                        w.get(m).set_node(m, Wrapper::NODE, ns.node_ref(id));
+                        ns.wrapper(id).set(m, Some(w.get(m).erase()));
+                    }
+                });
+
+                // Move node 4 before node 2. Between the detach and the
+                // relink node 4 is reachable from nothing at all, so the
+                // node scope is what keeps it.
+                m.node_scope(|m, scope| {
+                    for id in 2..=4 {
+                        scope.root(m, ns.node_ref(id).expect("a live node"));
+                    }
+                    ns.detach(4);
+
+                    // The callback: it allocates, which is a GC point,
+                    // and under either stress mode moves every object.
+                    let _scratch = m.alloc::<Wrapper>(s, 0).unwrap();
+                    m.safepoint();
+                    m.collect();
+
+                    ns.insert_before(1, 4, 2);
+                });
+
+                assert_eq!(
+                    ns.children(1),
+                    vec![4, 2, 3],
+                    "the mutation completed, {stress:?}"
+                );
+                assert!(
+                    m.take_node_releases().is_empty(),
+                    "no node died during the mutation, {stress:?}"
+                );
+                // Every wrapper is still its node's, and the slots were
+                // updated if the cycle moved them.
+                for id in 2..=4 {
+                    let w = ns
+                        .wrapper(id)
+                        .get(m)
+                        .unwrap_or_else(|| panic!("node {id} kept its wrapper, {stress:?}"));
+                    assert_eq!(
+                        w.cast::<Wrapper>(m)
+                            .expect("still a wrapper")
+                            .node(m, Wrapper::NODE),
+                        ns.node_ref(id),
+                        "wrapper of {id} still names it, {stress:?}"
+                    );
+                }
+                m.verify().expect("the heap verifies after the mutation");
+            });
+            m.remove_node_root(doc_root);
+        });
+    }
+}
+
+#[test]
+fn the_same_mutation_without_the_node_scope_loses_the_detached_node() {
+    // The other half of criterion 4: the pattern is not decoration. The
+    // same mutation, with the node scope left out, reaches its GC point
+    // with node 4 named by nothing — and the cycle duly puts it on the
+    // release list, which is this heap's version of the "panic waiting
+    // to be triggered" that an unrooted reference is elsewhere. A node
+    // the embedder has been told to release is not a node it may go on
+    // mutating.
+    let (mut h, ns) = heap_with_nodes(Stress::None, 64);
+    let doc = wider_tree(&ns);
+    h.enter(|m| {
+        let doc_root = m.add_node_root(doc);
+        m.scope(|m, _s| {
+            m.scope(|m, inner| {
+                let w = m.alloc::<Wrapper>(inner, 0).unwrap();
+                w.get(m).set_node(m, Wrapper::NODE, ns.node_ref(4));
+                ns.wrapper(4).set(m, Some(w.get(m).erase()));
+            });
+
+            ns.detach(4);
+            m.collect();
+
+            let released = m.take_node_releases();
+            assert_eq!(
+                released,
+                vec![NodeRef::new(4, 1)],
+                "the detached node was released mid-mutation"
+            );
+            // And the embedder's release clears its wrapper slot, so the
+            // relink that followed would be building on a dead slot.
+            for r in released {
+                ns.release(r);
+            }
+            assert!(ns.node_ref(4).is_none(), "slot 4 holds no node now");
+        });
+        m.remove_node_root(doc_root);
+    });
+}
+
+// --- CS-D3 criterion 3: the external slot's tracing obligation --------------
+
+/// A node space that forgets one of its external traced slots: the
+/// mistake `ExternalSlot`'s documentation says the type system cannot
+/// see. Its `trace` visits the links and nothing else.
+#[derive(Debug)]
+struct ForgetfulSpace {
+    inner: TestNodeSpace,
+}
+
+impl NodeSpace for ForgetfulSpace {
+    fn slots(&self) -> u32 {
+        self.inner.slots()
+    }
+
+    fn epoch(&self, id: u32) -> Option<u32> {
+        self.inner.epoch(id)
+    }
+
+    fn trace(&self, id: u32, v: &mut dyn crate::NodeVisitor) {
+        for child in self.inner.children(id) {
+            v.node(child);
+        }
+        // and never `v.external(...)`, which is the whole point.
+    }
+}
+
+#[test]
+#[should_panic(expected = "was not traced by the last cycle")]
+fn a_node_space_that_forgets_an_external_slot_is_caught_on_the_next_read() {
+    // The obligation `ExternalSlot` carries is the one thing in the node
+    // interface the type system cannot check: only the space knows which
+    // slots a node owns. The stamp turns it into a debug check, so a
+    // space that forgets a slot panics on the first read after a cycle
+    // instead of answering with the offset the object used to have.
+    //
+    // The wrapper is rooted in the cage as well, so it genuinely
+    // survives and genuinely moves: this is about the slot being stale,
+    // not about the object being dead.
+    let (mut h, _) = heap(Stress::MoveOnAlloc, 1 << 40);
+    let ns = Rc::new(ForgetfulSpace {
+        inner: TestNodeSpace::new(16),
+    });
+    h.set_node_space(Rc::clone(&ns) as Rc<dyn NodeSpace>);
+    let node = ns.inner.create(1);
+    h.enter(|m| {
+        let node_root = m.add_node_root(node);
+        m.scope(|m, s| {
+            let w = m.alloc::<Wrapper>(s, 0).unwrap();
+            w.get(m).set_node(m, Wrapper::NODE, Some(node));
+            ns.inner.wrapper(1).set(m, Some(w.get(m).erase()));
+            m.collect();
+            // The cycle did not visit the slot, so its stamp is older
+            // than the cycle count: this read is the one that reports it.
+            let _ = ns.inner.wrapper(1).get(m);
+        });
+        m.remove_node_root(node_root);
+    });
+}
+
+#[test]
+fn the_same_space_passes_once_it_visits_the_slot() {
+    // The control for the test above: the only difference is that this
+    // space's `trace` visits the external slot, so the stamp is current
+    // and the read is allowed — and the slot was updated, so the
+    // reference it answers with is where the wrapper is now.
+    let (mut h, ns) = heap_with_nodes(Stress::MoveOnAlloc, 16);
+    let node = ns.create(1);
+    h.enter(|m| {
+        let node_root = m.add_node_root(node);
+        m.scope(|m, s| {
+            let w = m.alloc::<Wrapper>(s, 0).unwrap();
+            w.get(m).set_node(m, Wrapper::NODE, Some(node));
+            ns.wrapper(1).set(m, Some(w.get(m).erase()));
+            m.collect();
+            let now = ns.wrapper(1).get(m).expect("the wrapper is still there");
+            assert_eq!(
+                now.cast::<Wrapper>(m)
+                    .expect("still a wrapper")
+                    .node(m, Wrapper::NODE),
+                Some(node),
+                "and it still names its node"
+            );
+        });
+        m.remove_node_root(node_root);
+    });
+}

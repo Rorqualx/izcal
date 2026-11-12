@@ -159,7 +159,13 @@ impl<'h> JsRuntime<'h, '_> {
         };
         registry.set_raw(m, FinRegObj::PENDING, 0);
         let mut calls = 0;
-        let mut token = ScriptToken::for_job();
+        // CS-D3 criterion 1: a cleanup job is a job, so this is the
+        // second and last place allowed to mint a script token.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "CS-D3 criterion 1: a cleanup job mints its own token"
+        )]
+        let mut token = ScriptToken::for_job(m);
         loop {
             // Find and unlink the first cleared cell (step 3.a-b).
             let found = {

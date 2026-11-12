@@ -17,17 +17,35 @@ allow-print-in-tests = true
 # M1-A: returns when hg_types::CssPx and DevicePx exist
 # arithmetic-side-effects-allowed = ["hg_types::CssPx", "hg_types::DevicePx"]
 
-# M1-A: returns when these guard types exist (A.3: "paths fixed when the types exist")
-# await-holding-invalid-types = [          # CS-AS-8; paths fixed when the types exist
-#   { path = "hg_heap::Root", reason = "CS-AS-8: GC root scope (S-4c)" },
-#   { path = "hg_substrate::SequenceBoundRef", reason = "CS-AS-8" },
-#   { path = "hg_dom::cell::TokenRef", reason = "CS-TY-10" },
-#   { path = "hg_dom::cell::TokenRefMut", reason = "CS-TY-10" },
-# ]
+# CS-AS-8: a guard that must not be held across an await. Each path is
+# added when its type exists (A.3: "paths fixed when the types exist").
+# `Root` arrived with the heap at JS-M0: a root is an index into its
+# scope's segment of the root list, so holding one across an await would
+# park a task owning a slot its scope truncates on return.
+#
+# The path is the type's DEFINITION path (`hg_heap::heap::Root`), not the
+# re-export the rest of the tree uses (`hg_heap::Root`). Measured 9 Nov
+# 2026 against an async fn holding a `Root` across an await: the
+# definition path lints, the re-export path matches nothing and the entry
+# is silently dead. The commented-out rows below carry the same warning.
+await-holding-invalid-types = [
+  { path = "hg_heap::heap::Root", reason = "CS-AS-8: GC root scope (S-4c)" },
+  # M1-A: these return when their types exist.
+  # { path = "hg_substrate::SequenceBoundRef", reason = "CS-AS-8" },
+  # { path = "hg_dom::cell::TokenRef", reason = "CS-TY-10" },
+  # { path = "hg_dom::cell::TokenRefMut", reason = "CS-TY-10" },
+]
 
 # Entries whose reason starts "G3", "CS-AS-3" or "CS-AS-4 select" are dropped from hg-substrate-os's generated copy,
 # and so are bounded-channel entries ("CS-AS-6 bounded"); every other entry stays (A.2).
 disallowed-methods = [
+  # CS-D3 criterion 1: the script token comes from a job, not from
+  # anywhere that wants one. The two places that may mint one are the
+  # agent's job loop and a FinalizationRegistry cleanup job, each with an
+  # `#[expect]` naming this rule, so the list of minting sites is the list
+  # of exceptions. Checked by tools/token-audit.py, which also holds the
+  # token's reach to exactly the paths that declare `call_user`.
+  { path = "hg_js_ops::support::ScriptToken::for_job", reason = "CS-D3 criterion 1: only a job mints the script token" },
   # G3 / CS-AS-1: ambient effects (replacement: the substrate)
   { path = "std::time::Instant::now", reason = "G3", replacement = "hg_substrate::Clock::monotonic" },
   { path = "std::time::SystemTime::now", reason = "G3", replacement = "hg_substrate::Clock::wall" },

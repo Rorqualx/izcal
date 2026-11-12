@@ -100,21 +100,41 @@ impl NodeRef {
 /// place an external edge is written, which is where the SATB barrier
 /// will sit when concurrent marking arrives.
 ///
-/// # The obligation this type carries
+/// # The obligation this type carries, and how it is checked
 ///
 /// A cage-side [`Field`](crate::Traced) is traced because its object's
 /// layout declares it. An external slot has no layout: it is traced
 /// because the space's [`NodeSpace::trace`] visits it. **Every external
 /// slot the space owns must be visited by `trace` for the node that owns
 /// it.** A slot that `trace` never visits is never updated, so after a
-/// cycle that moved its target [`ExternalSlot::get`] returns a reference
-/// to where the object used to be. H-2 keeps that inside the cage — a
-/// wrong answer, not an invalid access — but it is still a wrong answer
-/// the rooting rules are supposed to make impossible, and the type system
-/// cannot check it. It is the one obligation of this interface that rests
-/// on the embedder.
+/// cycle that moved its target [`ExternalSlot::get`] would return a
+/// reference to where the object used to be. H-2 keeps that inside the
+/// cage — a wrong answer, not an invalid access — but it is still a wrong
+/// answer the rooting rules are supposed to make impossible, and the type
+/// system cannot see it: the space's own `trace` is the only thing that
+/// knows which slots a node owns.
 ///
-/// A debug build does catch the cross-heap half of the same hazard:
+/// What the type system cannot check, a debug build does. Each slot
+/// remembers the cycle in which it was last written or traced.
+/// [`ExternalSlot::set`] stamps it with the number of cycles completed so
+/// far; the collector stamps it again as it traces it; and
+/// [`ExternalSlot::get`] asserts that the stamp is not older than the
+/// last completed cycle. A slot the space forgot to visit therefore
+/// panics on the first read after a cycle, naming the fault, instead of
+/// quietly answering with a stale offset. The stamp is a second
+/// `AtomicU32` present only in debug builds, so a release build pays
+/// nothing and the slot stays four bytes.
+///
+/// The check cannot tell that fault from the other reason a live-looking
+/// slot goes untraced: its node died in the last cycle and the embedder
+/// has not released it yet. That read was already a wrong answer — see
+/// [`ExternalSlot::get`] — so it is right that it now reports instead of
+/// answering, and the panic names both causes. An embedder that reads
+/// its nodes' slots between a cycle and
+/// [`Mutator::take_node_releases`](crate::Mutator::take_node_releases)
+/// will meet it, which is the intended outcome and not a false positive.
+///
+/// A debug build also catches the cross-heap half of the same hazard:
 /// [`ExternalSlot::set`] asserts that the reference it is given belongs
 /// to the writing mutator's own heap.
 #[derive(Debug, Default)]
@@ -138,13 +158,29 @@ impl<T: Referent> ExternalSlot<T> {
     /// Read it only for a node that is still live. Between the cycle that
     /// finds a node dead and the embedder's release of it
     /// ([`Mutator::take_node_releases`](crate::Mutator::take_node_releases)),
-    /// the node's slots were not traced, so this can return a reference
+    /// the node's slots were not traced, so this would return a reference
     /// to an object that has been swept or moved — a wrong answer inside
     /// the cage, which H-2 allows, but a wrong answer. The release step
     /// clears the slots, which closes the window.
-    pub fn get<'h, 'm>(&self, _m: &'m Mutator<'h>) -> Option<Gc<'h, 'm, T>> {
+    ///
+    /// # Panics
+    /// In a debug build, if the slot holds a reference the last cycle did
+    /// not trace: either a node space whose `trace` does not visit the
+    /// slot (see this type's documentation) or a read inside the release
+    /// window above. The panic names both, because the stamp cannot tell
+    /// them apart and both are faults.
+    pub fn get<'h, 'm>(&self, m: &'m Mutator<'h>) -> Option<Gc<'h, 'm, T>> {
         let s = self.cell.load();
-        s.is_reference().then(|| Gc::from_slot(s))
+        if !s.is_reference() {
+            return None;
+        }
+        debug_assert!(
+            self.cell.seen() >= m.cycles_run(),
+            "an external traced slot holding a reference was not traced by \
+             the last cycle: either the node space's `trace` does not visit \
+             it, or its node is dead and the embedder has not released it yet"
+        );
+        Some(Gc::from_slot(s))
     }
 
     /// Points this slot at `v`. The barrier's place for external edges.
@@ -162,6 +198,11 @@ impl<T: Referent> ExternalSlot<T> {
             "an external traced slot was given a reference from another heap"
         );
         self.cell.store(v.map_or(Slot::ZERO, |g| g.slot()));
+        // The next cycle is the one that must visit it, so the stamp is
+        // the count of cycles already completed: after that next cycle,
+        // a slot it traced carries the new count and a slot it missed
+        // still carries this one.
+        self.cell.stamp(m.cycles_run());
     }
 
     /// The untyped view the collector traces through.
@@ -174,20 +215,50 @@ impl<T: Referent> ExternalSlot<T> {
 /// needs: it reads the slot, follows the reference, and writes back
 /// wherever the target now lives, without knowing its type.
 #[derive(Debug, Default)]
-pub struct ExternalCell(AtomicU32);
+pub struct ExternalCell {
+    slot: AtomicU32,
+    /// The cycle in which this slot was last written or traced, for the
+    /// debug check in [`ExternalSlot::get`]. Debug builds only, so a
+    /// release build's slot is four bytes.
+    #[cfg(debug_assertions)]
+    seen: AtomicU32,
+}
 
 impl ExternalCell {
     /// An empty cell.
     pub const fn empty() -> Self {
-        Self(AtomicU32::new(0))
+        Self {
+            slot: AtomicU32::new(0),
+            #[cfg(debug_assertions)]
+            seen: AtomicU32::new(0),
+        }
     }
 
     pub(crate) fn load(&self) -> Slot {
-        Slot::from_raw(self.0.load(ORD))
+        Slot::from_raw(self.slot.load(ORD))
     }
 
     pub(crate) fn store(&self, s: Slot) {
-        self.0.store(s.raw(), ORD);
+        self.slot.store(s.raw(), ORD);
+    }
+
+    /// Records that this slot was written or traced in cycle `cycle`.
+    pub(crate) fn stamp(&self, cycle: u32) {
+        #[cfg(debug_assertions)]
+        self.seen.store(cycle, ORD);
+        #[cfg(not(debug_assertions))]
+        let _ = cycle;
+    }
+
+    /// The cycle this slot was last written or traced in. A release
+    /// build keeps no stamp, so it answers `u32::MAX` and the check in
+    /// [`ExternalSlot::get`] is vacuous there — as `debug_assert!`
+    /// already makes it.
+    pub(crate) fn seen(&self) -> u32 {
+        #[cfg(debug_assertions)]
+        return self.seen.load(ORD);
+        #[cfg(not(debug_assertions))]
+        return u32::MAX;
     }
 }
 
@@ -409,6 +480,34 @@ impl TestNodeSpace {
             self.links[Self::NEXT][prev as usize].store(child, ORD);
         }
         self.links[Self::LAST_CHILD][parent as usize].store(child, ORD);
+    }
+
+    /// Links `child` under `parent` immediately before `before`, which
+    /// must already be a child of `parent`: the node-space half of
+    /// `insertBefore`, which CS-D3 criterion 4 names as the mutation to
+    /// exercise. `child` must be detached first.
+    pub fn insert_before(&self, parent: u32, child: u32, before: u32) {
+        let prev = self.links[Self::PREV][before as usize].load(ORD);
+        self.links[Self::PARENT][child as usize].store(parent, ORD);
+        self.links[Self::NEXT][child as usize].store(before, ORD);
+        self.links[Self::PREV][before as usize].store(child, ORD);
+        if prev == 0 {
+            self.links[Self::FIRST_CHILD][parent as usize].store(child, ORD);
+        } else {
+            self.links[Self::PREV][child as usize].store(prev, ORD);
+            self.links[Self::NEXT][prev as usize].store(child, ORD);
+        }
+    }
+
+    /// The children of `parent`, in order.
+    pub fn children(&self, parent: u32) -> Vec<u32> {
+        let mut out = Vec::new();
+        let mut at = self.links[Self::FIRST_CHILD][parent as usize].load(ORD);
+        while at != 0 && out.len() <= self.live.len() {
+            out.push(at);
+            at = self.links[Self::NEXT][at as usize].load(ORD);
+        }
+        out
     }
 
     /// Unlinks `child` from its parent, leaving it detached. Its own
