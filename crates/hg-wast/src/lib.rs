@@ -41,7 +41,14 @@
 //! 3. [`value`] decodes the constants an action passes and the patterns
 //!    an assertion expects, including the NaN patterns, the `v128` lane
 //!    forms and `either`.
+//! 4. [`render`] writes what was parsed back out as a script. That is
+//!    not a convenience: it is how "it parsed" becomes a claim an
+//!    engine can refute, since a misread script re-rendered no longer
+//!    means what it meant.
 
+pub mod engine;
 pub mod lex;
+pub mod mutate;
+pub mod render;
 pub mod script;
 pub mod value;
