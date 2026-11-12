@@ -40,7 +40,7 @@
 //! | `layers` | A crate depends (normal or build) only on crates of its own or lower layers, with reviewed exceptions in `graph-rules.toml` | S1 2.1; CS-ST-2 |
 //! | `tiers` | Every member has a row in `tiers.toml`; declared tier ≥ the strictest tier of any binary that links it | CS 6.2, CS-ST-10 |
 //! | `tier-T` | No shipping binary (`hg-*-main`) links a tier T crate | CS 6.2, A.6 |
-//! | `Q-CS-1` | Only the listed packages' binaries link `hg-substrate-sim`; outside test code, only `hg-substrate-os` and `hg-substrate-sim` implement the cryptographic-randomness trait | S1 8.1 M1; CS Q-CS-1 |
+//! | `Q-CS-1` | Only the listed packages' binaries link `hg-substrate-sim`; outside test code, only `hg-substrate-os` and `hg-substrate-sim` implement the cryptographic-randomness trait, by any of the four spellings below, and no crate re-exports it under another name | S1 8.1 M1; CS Q-CS-1 |
 //! | `CS-AS-1` | `rand`, `getrandom`, `num_cpus`, `tokio`, `smol` reachable from a non-tier-T crate only through `hg-substrate-os` | CS-AS-1, A.6 |
 //! | `CS-ER-10` | `anyhow` linked only by tier T | CS-ER-10, A.6 |
 //! | `CS-ST-2` | Procedural macros only from the allowlist, and none (nor `syn`) in L1–L3 | CS-ST-2 |
@@ -66,18 +66,36 @@
 //!    the code; Stage 1 3.1 calls it `CryptoRng`, so both names are
 //!    checked). Outside test code, only `hg-substrate-os` (the OS CSPRNG,
 //!    in the inventoried `os::random`) and `hg-substrate-sim` may
-//!    implement it. An alias of the trait (`use ... as`) or a macro that
-//!    names it counts too, so a rename or a generated impl cannot hide
-//!    one. Test code (`#[cfg(test)]` items and modules, and files under
+//!    implement it. Four rules, because an impl need not write the
+//!    trait's name at its own site: `crypto-impl` on the impl,
+//!    `crypto-alias` on a rename, and `crypto-macro` and
+//!    `crypto-macro-call` on a macro's definition and its invocation.
+//!    The rename rule binds every crate, the allowed ones included.
+//!    Test code (`#[cfg(test)]` items and modules, and files under
 //!    `tests/`, `benches/` and `examples/`) is exempt: it never links
 //!    into a shipped binary, and test fakes of the trait are expected.
+//!
+//! **What check 2 is and is not.** It is defence in depth, and it is
+//! syntactic: every rule reads the trait's *name*. On 12 November 2026
+//! two spellings were measured getting a compiling, seeded
+//! `CryptoRandom` into `hg-net-service` — a crate `hg-net-main` links —
+//! with the lint reporting clean: a macro taking the trait as an
+//! argument, and an aliased re-export from an allowed crate
+//! (`measurements/milestones/m1-exit`, E1 and E2). Both are now rules
+//! above. What remains open is a macro **defined in another crate** and
+//! invoked with neither the trait's name nor an alias in sight; no rule
+//! on a name can see that, so check 2 must not be read as a guarantee.
+//! The guarantees are check 1, which resolves the real cargo graph
+//! rather than names, and `SimCrypto`/`SimEntropy` being `pub(crate)`
+//! in `hg-substrate-sim`, so the seeded source cannot be named even by a
+//! crate that links the simulator.
 //!
 //! `hg_substrate::prng::Xoshiro256StarStar::from_seed` is public in a
 //! crate every binary links, and stays out of scope on purpose: it is a
 //! non-cryptographic stream generator (the `RandomStream` trait, "Not
 //! cryptographic"), which production seeds from the OS source. Making a
 //! seeded stream cryptographic would need an implementation of the
-//! crypto trait, which check 2 catches.
+//! crypto trait, which check 2 catches at the three sites it can see.
 //!
 //! # Not checked here
 //!

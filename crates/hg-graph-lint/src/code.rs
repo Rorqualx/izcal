@@ -137,6 +137,13 @@ rule:
   kind: macro_definition
   regex: '\b({traits})\b'
 ---
+id: crypto-macro-call
+language: rust
+severity: hint
+rule:
+  kind: macro_invocation
+  regex: '\b({traits})\b'
+---
 id: heap-object-impl
 language: rust
 severity: hint
@@ -440,20 +447,26 @@ pub fn check(inputs: &Inputs, scan: &Scan, report: &mut Report) {
         }
     }
 
-    // Q-CS-1: the crypto trait is implemented, aliased or named in a
-    // macro only by the allowed crates, outside test code.
+    // Q-CS-1: the crypto trait is implemented, or named in a macro's
+    // definition or invocation, only by the allowed crates, outside test
+    // code. The rename rule binds *every* crate, the allowed ones
+    // included: an alias is how the trait's own name stops appearing at
+    // the implementing site, which the measurement of 12 November 2026
+    // showed is enough to hide an implementation from all three of the
+    // other rules (`measurements/milestones/m1-exit`, E2).
     let (test_dirs, test_files) = test_only_files(inputs, scan);
     for m in &scan.matches {
         if !matches!(
             m.rule.as_str(),
-            "crypto-impl" | "crypto-alias" | "crypto-macro"
+            "crypto-impl" | "crypto-alias" | "crypto-macro" | "crypto-macro-call"
         ) {
             continue;
         }
         let Some((krate, _)) = owner(&members, &m.file) else {
             continue;
         };
-        if inputs.rules.crypto_implementers.contains(krate) {
+        let binds_every_crate = m.rule == "crypto-alias";
+        if !binds_every_crate && inputs.rules.crypto_implementers.contains(krate) {
             continue;
         }
         let test_only =
@@ -464,17 +477,25 @@ pub fn check(inputs: &Inputs, scan: &Scan, report: &mut Report) {
         let what = match m.rule.as_str() {
             "crypto-impl" => "implements",
             "crypto-alias" => "renames",
+            "crypto-macro-call" => "names in a macro call",
             _ => "names in a macro",
         };
         let first = m.text.lines().next().unwrap_or("").trim();
+        let who = if binds_every_crate {
+            "no crate may, because an alias lets a later impl name the trait without writing its name".to_owned()
+        } else {
+            format!(
+                "only {} may, so a seeded crypto source exists only in the simulator",
+                inputs.rules.crypto_implementers.join(" and ")
+            )
+        };
         report.add(
             "Q-CS-1",
             krate,
             format!(
-                "{}:{}: {what} the cryptographic-randomness trait ({first}); only {} may, so a seeded crypto source exists only in the simulator",
+                "{}:{}: {what} the cryptographic-randomness trait ({first}); {who}",
                 rel(&m.file),
                 m.line,
-                inputs.rules.crypto_implementers.join(" and ")
             ),
             None,
         );

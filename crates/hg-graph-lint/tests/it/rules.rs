@@ -653,3 +653,48 @@ fn layout_name_version_and_publish() {
     assert_finding(&r, "CS-ST-14", "hg-types", "version is 0.1.0");
     assert_finding(&r, "CS-ST-14", "hg-types", "publish = false");
 }
+
+#[test]
+fn a_macro_argument_cannot_hide_a_crypto_source() {
+    let Some(_) = ast_grep() else { return };
+    // Measured 12 November 2026 (`measurements/milestones/m1-exit`, E1):
+    // this is the spelling that beat H-3's triple on 10 November. The
+    // trait is never written in the macro's definition, only passed to
+    // it, so neither `crypto-impl` (no `impl_item` names the trait) nor
+    // `crypto-macro` (the definition does not name it) fires.
+    // `crypto-macro-call` owns the invocation.
+    let mut f = Fixture::baseline();
+    f.edit(
+        "crates/hg-types/src/lib.rs",
+        "//! Types.\n",
+        "//! Types.\npub struct Seeded;\nmacro_rules! wire { ($tr:path, $t:ty) => { impl $tr for $t {} } }\nwire!(hg_substrate::CryptoRandom, Seeded);\n",
+    );
+    assert_finding(
+        &f.lint(&[], true),
+        "Q-CS-1",
+        "hg-types",
+        "names in a macro call",
+    );
+}
+
+#[test]
+fn an_aliased_re_export_cannot_hide_a_crypto_source() {
+    let Some(_) = ast_grep() else { return };
+    // Measured 12 November 2026 (`measurements/milestones/m1-exit`, E2):
+    // an allowed crate re-exports the trait under another name and the
+    // implementing crate then never writes the trait's own name at all.
+    // The rename rule therefore binds every crate, the allowed ones
+    // included, and fires at the re-export.
+    let mut f = Fixture::baseline();
+    f.edit(
+        "crates/hg-substrate-os/src/lib.rs",
+        "//! OS.\n",
+        "//! OS.\npub use hg_substrate::CryptoRandom as Rng;\n",
+    );
+    f.edit(
+        "crates/hg-types/src/lib.rs",
+        "//! Types.\n",
+        "//! Types.\npub struct Seeded;\nimpl hg_substrate_os::Rng for Seeded {}\n",
+    );
+    assert_finding(&f.lint(&[], true), "Q-CS-1", "hg-substrate-os", "renames");
+}
