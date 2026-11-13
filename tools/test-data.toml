@@ -165,3 +165,30 @@ licence = "MIT"
 url = "https://registry.npmjs.org/@webref/css/-/css-8.7.9.tgz"
 sha256 = "0f90d9b103922a94bc23c6324c5c574b03caab5882f65c58f74d83cdf2d05a3f"
 strip = "1"
+
+# The Encoding Standard's own data: the encodings and their labels, and
+# the index tables the legacy decoders and encoders are defined over.
+# Standards data that ships (style spec 7, ST-D16; HGBA-2 2.3.2 M-1
+# part 1 allows WHATWG tables): hg-encoding-build compiles them into
+# hg-encoding's checked-in tables. The JSON itself is not committed and
+# not linked. `encoding_rs` is excluded as engine work (ST-D16).
+#
+# Both are published from the standard's `source` and are not files in
+# the whatwg/encoding tree, so neither has a commit of its own and each
+# is pinned by its own content hash. Fetched 13 Nov 2026. At this pin:
+# 40 encodings, 228 labels, 34 index tables.
+[encoding-encodings]
+pin = "078212b3697f"
+date = "2026-11-13"
+licence = "CC-BY-4.0 (BSD-3-Clause where incorporated into source code)"
+url = "https://encoding.spec.whatwg.org/encodings.json"
+sha256 = "078212b3697f60b81225b6671bd9da2604497abff0aa8e96e4d46605c02ac9e7"
+format = "file"
+
+[encoding-indexes]
+pin = "b7c8961095f0"
+date = "2026-11-13"
+licence = "CC-BY-4.0 (BSD-3-Clause where incorporated into source code)"
+url = "https://encoding.spec.whatwg.org/indexes.json"
+sha256 = "b7c8961095f0b4cae8f4a16a5011e7c84047a60c1277e28ee8df9e56074ee509"
+format = "file"

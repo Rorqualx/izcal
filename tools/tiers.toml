@@ -193,6 +193,16 @@ tier = "T"
 layer = "tools"
 why = "Style spec 6.15 crate table: tools, tier T, output held to R. The .hgprop overlay language, the cross-check against the pinned @webref/css, and the hg-css-props table it emits (ST-D6)."
 
+[crates.hg-encoding]
+tier = "P"
+layer = "L2s"
+why = "Style spec 6.15 crate table: L2s, tier P — the network services and the broker link it through hg-url (G24). Every decoder and encoder the Encoding Standard defines, over tables hg-encoding-build generates; encoding_rs is excluded as engine work (ST-D16)."
+
+[crates.hg-encoding-build]
+tier = "T"
+layer = "tools"
+why = "Style spec 6.15: tools, tier T, output held to P. Compiles the Encoding Standard's pinned encodings.json and indexes.json into hg-encoding's checked-in tables (G29); the JSON is standards data, fetched and never committed."
+
 [crates.hg-fontfmt]
 tier = "R"
 layer = "L2t"

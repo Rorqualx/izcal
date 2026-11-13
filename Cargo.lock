@@ -64,6 +64,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-encoding"
+version = "0.0.0"
+
+[[package]]
+name = "hg-encoding-build"
+version = "0.0.0"
+dependencies = [
+ "hg-json",
+]
+
+[[package]]
 name = "hg-fontfmt"
 version = "0.0.0"
 

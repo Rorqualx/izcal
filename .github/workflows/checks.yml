@@ -284,6 +284,34 @@ jobs:
           cargo run --release --locked -p hg-html5lib
           cargo test --release --locked -p hg-html5lib --test it -- --nocapture
 
+  # ST-D16 (style spec 6.6): the Encoding Standard, from the
+  # standard's own published data. The tables hg-encoding ships are
+  # generated from encodings.json and indexes.json, so this job checks
+  # them fresh against the pin and then runs the decoders and encoders
+  # over every byte sequence the indexes define, in both directions.
+  encoding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch the Encoding Standard's data
+        run: tools/fetch-test-data.sh encoding-encodings encoding-indexes
+
+      - name: The generated tables are fresh
+        env:
+          IZCAL_REQUIRE_ENCODING_DATA: "1"
+        run: cargo run --locked -p hg-encoding-build -- check
+
+      - name: Every index entry, decoded and re-encoded
+        env:
+          IZCAL_REQUIRE_ENCODING_DATA: "1"
+        run: |
+          cargo test --release --locked -p hg-encoding-build --test it -- --nocapture
+          cargo test --release --locked -p hg-encoding --test it -- --nocapture
+
   # ST-D6 (style spec 6.6): the property table is generated from
   # @webref/css plus Izcal's .hgprop overlay, and the overlay restates
   # the webref fields the engine was written against. This job is where
