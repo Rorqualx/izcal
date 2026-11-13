@@ -6,8 +6,6 @@
 //! from what those contain: deep nesting, long arrays of objects,
 //! numbers that must stay exact, and escapes.
 
-#![expect(clippy::unwrap_used, reason = "tests: a failed unwrap is the failure")]
-
 use hg_json::{Json, parse};
 
 fn obj(text: &str) -> Vec<(String, Json)> {

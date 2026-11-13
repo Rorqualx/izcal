@@ -1,0 +1,568 @@
+# The closed set of computed-value kinds, and the classification of
+# every computed-value text @webref/css carries at the pinned version.
+#
+# A **kind** says which conversion a property needs to take a specified
+# value to a computed one -- not the value's *type*, which is
+# per-property and which the per-property parsers of ST-M1 will carry.
+# The specifications write the computed value as prose, in 169 distinct
+# forms at this pin, and that prose is what is classified here, once per
+# form rather than once per property. The style spec records 168 forms;
+# this pin has 169, which is the kind of movement the pin exists to make
+# visible.
+#
+# The classification is exhaustive in both directions. A form webref
+# carries and nothing here classifies leaves a property with no
+# conversion, and a classification of a form webref no longer carries is
+# a rule that has quietly stopped applying to anything. hg-cssgen fails
+# on either.
+#
+# Where the prose cannot be carried by a table at all -- `display`,
+# `font-weight`, the track-sizing properties, the four `overflow-*` --
+# the kind is `prose` and the property names a hand-written hook. That
+# is the honest place for them: twenty properties with a named function
+# each, rather than a classification that pretends to cover them.
+
+kind shorthand "No computed value of its own: the cascade stores the longhands it expands to."
+kind identity  "The computed value is the specified value, unchanged."
+kind length    "Lengths are made absolute; percentages and keywords pass through."
+kind number    "Resolved to a number, clamped where the specification states a range."
+kind angle     "Angles are normalized to a canonical unit."
+kind time      "Times are resolved to a canonical duration."
+kind frequency "Resolved to an absolute frequency."
+kind color     "Colors are resolved; everything else passes through."
+kind image     "`<image>` values are computed; everything else passes through."
+kind url       "`<url>` values are made absolute; everything else passes through."
+kind mixed     "More than one of the conversions above applies inside one value, so the conversion walks it."
+kind prose     "The specification defines the computed value in prose a table cannot carry; a named hook computes it."
+
+# --- shorthand (2 of 169) -------------------------------------
+
+# 4: -webkit-text-stroke, border-image, mask-border, and 1 more
+computed "See individual properties" => shorthand
+
+# 152: -webkit-line-clamp, all, animation, and 149 more
+computed "see individual properties" => shorthand
+
+# --- identity (57 of 169) --------------------------------------
+
+# 2: fill-repeat, stroke-repeat
+computed "A list, each item consisting of: two keywords, one per dimension" => identity
+
+# 1: touch-action
+computed "Same as specified value" => identity
+
+# 1: voice-rate
+computed "a keyword value, and optionally also a percentage relative to the keyword (if not 100%)" => identity
+
+# 3: pointer-timeline-axis, scroll-timeline-axis, view-timeline-axis
+computed "a list of the keywords specified" => identity
+
+# 1: stroke-miterlimit
+computed "a number" => identity
+
+# 1: margin-trim
+computed "a set of zero to two keywords indicating which sides to trim" => identity
+
+# 123: anchor-name, anchor-scope, animation-trigger, and 120 more
+computed "as specified" => identity
+
+# 1: border-image-slice
+computed "four values, each either a number or percentage; plus a fill keyword if specified" => identity
+
+# 1: animation-timing-function
+computed "list, each item a computed <easing-function>" => identity
+
+# 5: animation-composition, animation-direction, animation-fill-mode, and 2 more
+computed "list, each item a keyword as specified" => identity
+
+# 2: background-repeat, mask-repeat
+computed "list, each item a pair of keywords, one per dimension" => identity
+
+# 1: font-family
+computed "list, each item a string and/or <generic-font-family> keywords" => identity
+
+# 2: scroll-timeline-name, view-timeline-name
+computed "list, each item either a CSS identifier or the keyword none" => identity
+
+# 1: animation-name
+computed "list, each item either a case-sensitive css identifier or the keyword none" => identity
+
+# 1: animation-iteration-count
+computed "list, each item either a number or the keyword infinite" => identity
+
+# 1: animation-timeline
+computed "list, each item either the keyword none, the keyword auto, a case-sensitive css identifier, a computed scroll() function, or a computed view() function" => identity
+
+# 6: animation-range-end, animation-range-start, timeline-trigger-activation-range-end, and 3 more
+computed "list, each item either the keyword normal or a timeline range and progress percentage" => identity
+
+# 1: box-shadow-position
+computed "list, each item one of the keywords" => identity
+
+# 5: background-attachment, mask-clip, mask-composite, and 2 more
+computed "list, each item the keyword as specified" => identity
+
+# 1: voice-volume
+computed "silent, or a keyword value and optionally also a decibel offset (if not zero)" => identity
+
+# 4: order, orphans, reading-order, and 1 more
+computed "specified integer" => identity
+
+# 84: alignment-baseline, appearance, backface-visibility, and 81 more
+computed "specified keyword" => identity
+
+# 1: aspect-ratio
+computed "specified keyword or a pair of numbers" => identity
+
+# 2: float-defer, hyphenate-limit-lines
+computed "specified keyword or integer" => identity
+
+# 1: text-size-adjust
+computed "specified keyword or percentage" => identity
+
+# 22: align-content, align-items, align-self, and 19 more
+computed "specified keyword(s)" => identity
+
+# 4: grid-column-end, grid-column-start, grid-row-end, and 1 more
+computed "specified keyword, identifier, and/or integer" => identity
+
+# 1: text-combine-upright
+computed "specified keyword, plus integer if digits" => identity
+
+# 1: text-fit
+computed "specified keywords or computed <percentage> value" => identity
+
+# 1: flex-grow
+computed "specified number" => identity
+
+# 1: font-language-override
+computed "specified string or the keyword none" => identity
+
+# 28: block-ellipsis, bookmark-label, column-count, and 25 more
+computed "specified value" => identity
+
+# 1: max-lines
+computed "the keyword auto, or an integer, or both" => identity
+
+# 1: text-spacing-trim
+computed "the keyword auto, the keyword trim-all, or three keywords, one per controlled position (start, adjacent, end)" => identity
+
+# 1: transition-property
+computed "the keyword none else a list of identifiers" => identity
+
+# 1: pointer-timeline-name
+computed "the keyword none or a list of CSS identifiers" => identity
+
+# 1: grid-template-areas
+computed "the keyword none or a list of string values" => identity
+
+# 1: counter-reset
+computed "the keyword none or a list, each item an identifier or a reversed() function paired with an integer" => identity
+
+# 1: string-set
+computed "the keyword none or a list, each item an identifier paired with a list of string values" => identity
+
+# 2: counter-increment, counter-set
+computed "the keyword none or a list, each item an identifier paired with an integer" => identity
+
+# 1: position-area
+computed "the keyword none or a pair of keywords, see § 3.1.3 Computed Value and Serialization of <position-area>" => identity
+
+# 1: contain
+computed "the keyword none or one or more of size, layout, style, paint" => identity
+
+# 1: bookmark-level
+computed "the keyword none or the specified integer" => identity
+
+# 1: text-emphasis-style
+computed "the keyword none, a pair of keywords representing the shape and fill, or a string" => identity
+
+# 1: scale
+computed "the keyword none, or a list of 3 <number>s" => identity
+
+# 1: font-size-adjust
+computed "the keyword none, or a pair of a metric keyword and a <number>" => identity
+
+# 1: container-name
+computed "the keyword none, or an ordered list of identifiers" => identity
+
+# 1: timeline-scope
+computed "the keyword none, the keyword all, or a list of CSS identifiers" => identity
+
+# 1: quotes
+computed "the keyword none, the keyword auto, a content language, or a list, each item a pair of string values" => identity
+
+# 1: font-variation-settings
+computed "the keyword normal or a list, each item a string paired with a number" => identity
+
+# 1: initial-letter
+computed "the keyword normal or a number paired with an integer" => identity
+
+# 1: color-scheme
+computed "the keyword normal, or a color scheme support" => identity
+
+# 1: flex-line-count
+computed "the specified integer, computed" => identity
+
+# 4: line-fit-edge, text-box, text-box-edge, and 1 more
+computed "the specified keyword" => identity
+
+# 1: hyphenate-limit-chars
+computed "three values, each either the auto keyword or an integer" => identity
+
+# 1: scroll-snap-align
+computed "two keywords" => identity
+
+# 1: border-image-repeat
+computed "two keywords, one per axis" => identity
+
+# --- length (56 of 169) ----------------------------------------
+
+# 2: fill-position, stroke-position
+computed "A list, each item consisting of: a pair of offsets (horizontal and vertical) from the top left origin each given as a combination of an absolute length and a percentage" => length
+
+# 4: background-position-block, background-position-inline, background-position-x, and 1 more
+computed "A list, each item consisting of: an offset given as a computed <length-percentage> value, plus an origin keyword" => length
+
+# 4: margin-block-end, margin-block-start, margin-inline-end, and 1 more
+computed "Same as corresponding margin-* properties" => length
+
+# 4: padding-block-end, padding-block-start, padding-inline-end, and 1 more
+computed "Same as corresponding padding-* properties" => length
+
+# 1: offset-position
+computed "The normal or auto keywords, or a computed <position>" => length
+
+# 6: fit-tolerance, offset-distance, padding-bottom, and 3 more
+computed "a computed <length-percentage> value" => length
+
+# 1: view-timeline-inset
+computed "a list consisting of two-value pairs representing the start and end insets each as either the keyword auto or a computed <length-percentage> value" => length
+
+# 1: background-position
+computed "a list, each item a pair of offsets (horizontal and vertical) from the top left origin, each offset given as a computed <length-percentage> value" => length
+
+# 11: -webkit-text-stroke-width, line-height-step, line-padding, and 8 more
+computed "absolute length" => length
+
+# 1: outline-offset
+computed "absolute length or inset." => length
+
+# 1: stroke-dashcorner
+computed "absolute length or keyword specified" => length
+
+# 9: border-block-end-width, border-block-start-width, border-bottom-width, and 6 more
+computed "absolute length, snapped as a border width" => length
+
+# 2: mask-border-outset, mask-border-width
+computed "all <length>s made absolute, otherwise as specified" => length
+
+# 1: font-size
+computed "an absolute length" => length
+
+# 2: letter-spacing, word-spacing
+computed "an absolute length and/or a percentage" => length
+
+# 7: cx, cy, r, and 4 more
+computed "an absolute length or percentage" => length
+
+# 1: object-position
+computed "as for background-position" => length
+
+# 1: transform
+computed "as specified, but with lengths made absolute" => length
+
+# 2: fill-size, stroke-size
+computed "as specified, but with lengths made absolute and omitted auto keywords filled in" => length
+
+# 15: block-size, column-width, height, and 12 more
+computed "as specified, with <length-percentage> values computed" => length
+
+# 4: contain-intrinsic-block-size, contain-intrinsic-height, contain-intrinsic-inline-size, and 1 more
+computed "as specified, with <length> values computed" => length
+
+# 1: text-overflow
+computed "as specified, with lengths made absolute" => length
+
+# 4: float-offset, hyphenate-limit-zone, shape-margin, and 1 more
+computed "computed <length-percentage> value" => length
+
+# 1: text-indent
+computed "computed <length-percentage> value, plus any specified keywords" => length
+
+# 1: border-image-outset
+computed "four values, each a number or absolute length" => length
+
+# 1: border-image-width
+computed "four values, each either a number, the keyword auto, or a computed <length-percentage> value" => length
+
+# 2: column-rule-width, row-rule-width
+computed "list of absolute lengths, snapped as a border width" => length
+
+# 2: box-shadow-blur, box-shadow-spread
+computed "list, each item a <length>" => length
+
+# 1: background-size
+computed "list, each item a pair of sizes (one per axis) each represented as either a keyword or a computed <length-percentage> value" => length
+
+# 1: mask-size
+computed "list, each item as specified, but with lengths made absolute" => length
+
+# 1: mask-position
+computed "list, each item consists of two keywords representing the origin and two offsets from that origin, each given as an absolute length (if given a <length>), otherwise as a percentage." => length
+
+# 1: box-shadow-offset
+computed "list, each item either none or a pair of offsets (horizontal and vertical) from the element‘s box" => length
+
+# 1: animation-range-center
+computed "list, each item either the keyword normal or a timeline range center subject and a length-percentage value" => length
+
+# 8: border-block-end-clip, border-block-start-clip, border-bottom-clip, and 5 more
+computed "none, or a list consisting of absolute lengths, or percentages as specified" => length
+
+# 8: border-bottom-left-radius, border-bottom-right-radius, border-end-end-radius, and 5 more
+computed "pair of computed <length-percentage> values" => length
+
+# 1: scroll-margin
+computed "per side, an absolute length" => length
+
+# 1: scroll-padding
+computed "per side, either the keyword auto or a computed <length-percentage> value" => length
+
+# 2: perspective-origin, transform-origin
+computed "see background-position" => length
+
+# 1: flex-basis
+computed "specified keyword or a computed <length-percentage> value" => length
+
+# 2: block-step-size, text-decoration-inset
+computed "specified keyword or absolute length" => length
+
+# 1: initial-letter-wrap
+computed "specified keyword or computed <length-percentage> value" => length
+
+# 2: column-gap, row-gap
+computed "specified keyword, else a computed <length-percentage> value" => length
+
+# 1: object-view-box
+computed "specified keyword, or computed <basic-shape> function" => length
+
+# 2: stroke-dash-corner, stroke-dash-justify
+computed "specified value, with lengths made absolute" => length
+
+# 1: stroke-width
+computed "the absolute length, or percentage" => length
+
+# 1: offset-anchor
+computed "the auto keyword or a computed <position>" => length
+
+# 8: overflow-clip-margin-block-end, overflow-clip-margin-block-start, overflow-clip-margin-bottom, and 5 more
+computed "the computed <length> and a <visual-box> keyword" => length
+
+# 20: bottom, inset-block-end, inset-block-start, and 17 more
+computed "the keyword auto or a computed <length-percentage> value" => length
+
+# 1: column-height
+computed "the keyword auto or an absolute length" => length
+
+# 1: translate
+computed "the keyword none or a pair of computed <length-percentage> values and an absolute length" => length
+
+# 1: perspective
+computed "the keyword none or an absolute length" => length
+
+# 1: path-length
+computed "the keyword none, or an absolute length" => length
+
+# 1: baseline-shift
+computed "the specified keyword or a computed <length-percentage> value" => length
+
+# 1: line-height
+computed "the specified keyword, a number, or a computed <length> value" => length
+
+# 1: tab-size
+computed "the specified number or absolute length" => length
+
+# 1: border-spacing
+computed "two absolute lengths" => length
+
+# --- number (5 of 169) ----------------------------------------
+
+# 1: zoom
+computed "as specified, but with <percentage> converted to the equivalent <number>" => number
+
+# 2: opacity, shape-image-threshold
+computed "specified number, clamped to the range [0,1]" => number
+
+# 2: fill-opacity, stroke-opacity
+computed "the specified value converted to a <number>, clamped to the range [0,1]" => number
+
+# 1: flood-opacity
+computed "the specified value converted to a number, clamped to the range [0,1]" => number
+
+# 1: voice-balance
+computed "the specified value resolved to a <number> between -100 and 100 (inclusive)" => number
+
+# --- angle (4 of 169) -----------------------------------------
+
+# 1: offset-rotate
+computed "computed <angle> value, optionally preceded by auto" => angle
+
+# 1: rotate
+computed "the keyword none, or an <angle> with an axis consisting of a list of three <number>s" => angle
+
+# 1: font-style
+computed "the keyword specified, plus angle in degrees if specified" => angle
+
+# 1: image-orientation
+computed "the specified keyword, or an <angle>, rounded and normalized (see text), plus optionally a flip keyword" => angle
+
+# --- time (3 of 169) ------------------------------------------
+
+# 4: animation-delay-end, animation-delay-start, transition-delay, and 1 more
+computed "list, each item a duration" => time
+
+# 1: animation-duration
+computed "list, each item either a time or the keyword auto" => time
+
+# 2: interest-delay-end, interest-delay-start
+computed "the keyword normal or a computed time" => time
+
+# --- frequency (1 of 169) -------------------------------------
+
+# 2: voice-pitch, voice-range
+computed "one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)" => frequency
+
+# --- color (7 of 169) -----------------------------------------
+
+# 1: caret-color
+computed "The computed value for auto is auto. For <color> values, see CSS Color 4 § 15. Resolving <color> Values." => color
+
+# 5: -webkit-text-fill-color, -webkit-text-stroke-color, background-color, and 2 more
+computed "computed color" => color
+
+# 1: color
+computed "computed color, see resolving color values" => color
+
+# 2: border-shape, box-shadow-color
+computed "list, each item a computed color" => color
+
+# 1: scrollbar-color
+computed "specified keyword or two computed colors" => color
+
+# 2: fill-color, stroke-color
+computed "the computed color" => color
+
+# 1: accent-color
+computed "the keyword auto or a computed color" => color
+
+# --- image (5 of 169) -----------------------------------------
+
+# 2: fill-image, stroke-image
+computed "as specified, with any <image> computed" => image
+
+# 1: background-image
+computed "list, each item either an <image> or the keyword none" => image
+
+# 1: border-image-source
+computed "the keyword none or the computed <image>" => image
+
+# 1: list-style-image
+computed "the keyword noneor the computed <image>" => image
+
+# 1: mask-border-source
+computed "they keyword none or the computed <image>" => image
+
+# --- url (3 of 169) -------------------------------------------
+
+# 3: marker-end, marker-mid, marker-start
+computed "as specified, but with <url> values (that are part of a <marker-ref>) made absolute" => url
+
+# 1: clip-path
+computed "as specified, but with <url> values made absolute" => url
+
+# 1: cursor
+computed "as specified, except with any relative URLs converted to absolute" => url
+
+# --- mixed (6 of 169) -----------------------------------------
+
+# 1: shape-outside
+computed "as defined for <basic-shape> (with <shape-box> following, if supplied); else the computed <image>; else the keyword as specified" => mixed
+
+# 2: fill, stroke
+computed "as specified, but with <color> values computed and <url> values made absolute" => mixed
+
+# 1: shape-inside
+computed "computed lengths for <basic-shape>, the absolute URL for <url>, otherwise as specified" => mixed
+
+# 1: text-shadow
+computed "either the keyword none or a list, each item consisting of four absolute lengths plus a computed color and optionally also an inset keyword" => mixed
+
+# 1: mask-image
+computed "list, each item the keyword none, a computed <image>, or a computed <url>" => mixed
+
+# 8: border-block-end-color, border-block-start-color, border-bottom-color, and 5 more
+computed "the computed color and/or a one-dimensional image function" => mixed
+
+# --- prose (20 of 169) -----------------------------------------
+
+# 1: content
+computed "See prose below" => prose
+
+# 1: font-weight
+computed "a number, see below" => prose
+
+# 1: display
+computed "a pair of keywords representing the inner and outer display types plus optional list-item flag, or a <display-internal> or <display-box> keyword; see prose in a variety of specs for computation rules" => prose
+
+# 1: font-width
+computed "a percentage, see below" => prose
+
+# 1: math-depth
+computed "an integer, see below" => prose
+
+# 1: wrap-flow
+computed "as specified except for element’s whose float computed value is not none, in which case the computed value is auto." => prose
+
+# 2: text-align-all, text-align-last
+computed "keyword as specified, except for match-parent which computes as defined above" => prose
+
+# 1: list-style-position
+computed "keyword, but see prose" => prose
+
+# 1: glyph-orientation-vertical
+computed "n/a" => prose
+
+# 1: dynamic-range-limit
+computed "see Computed Value for dynamic-range-limit" => prose
+
+# 2: grid-auto-columns, grid-auto-rows
+computed "see Track Sizing" => prose
+
+# 1: outline-color
+computed "see below" => prose
+
+# 1: text-justify
+computed "specified keyword (except for the distribute legacy value)" => prose
+
+# 1: image-resolution
+computed "specified keyword(s) and/or <resolution> (possibly adjusted for snap, see below)" => prose
+
+# 1: text-decoration-skip-self
+computed "specified keyword(s) except for skip-all, see below" => prose
+
+# 1: justify-items
+computed "specified keyword(s), except for legacy (see prose)" => prose
+
+# 1: font-palette
+computed "specified keyword, identifier or <palette-mix()> function. <palette-mix()> must be simplified to a single keyword or identifier if resulting palette is equivalent." => prose
+
+# 8: corner-bottom-left-shape, corner-bottom-right-shape, corner-end-end-shape, and 5 more
+computed "the corresponding superellipse() value" => prose
+
+# 2: grid-template-columns, grid-template-rows
+computed "the keyword none or a computed track list" => prose
+
+# 4: overflow-block, overflow-inline, overflow-x, and 1 more
+computed "usually specified value, but see text" => prose
+

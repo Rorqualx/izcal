@@ -1,0 +1,72 @@
+# @bootstrapped once from @webref/css 8.7.9 on 13 November 2026, then
+# hand-maintained.
+#
+# The legacy aliases: names that are a second spelling of a property
+# rather than a property of their own. The Compatibility Standard
+# defines them, and Property::from_name resolves one to the property it
+# stands for, so the cascade never sees two spellings of one thing.
+
+alias -webkit-align-content => align-content
+alias -webkit-align-items => align-items
+alias -webkit-align-self => align-self
+alias -webkit-animation => animation
+alias -webkit-animation-delay => animation-delay
+alias -webkit-animation-direction => animation-direction
+alias -webkit-animation-duration => animation-duration
+alias -webkit-animation-fill-mode => animation-fill-mode
+alias -webkit-animation-iteration-count => animation-iteration-count
+alias -webkit-animation-name => animation-name
+alias -webkit-animation-play-state => animation-play-state
+alias -webkit-animation-timing-function => animation-timing-function
+alias -webkit-appearance => appearance
+alias -webkit-backface-visibility => backface-visibility
+alias -webkit-background-clip => background-clip
+alias -webkit-background-origin => background-origin
+alias -webkit-background-size => background-size
+alias -webkit-border-bottom-left-radius => border-bottom-left-radius
+alias -webkit-border-bottom-right-radius => border-bottom-right-radius
+alias -webkit-border-radius => border-radius
+alias -webkit-border-top-left-radius => border-top-left-radius
+alias -webkit-border-top-right-radius => border-top-right-radius
+alias -webkit-box-shadow => box-shadow
+alias -webkit-box-sizing => box-sizing
+alias -webkit-filter => filter
+alias -webkit-flex => flex
+alias -webkit-flex-basis => flex-basis
+alias -webkit-flex-direction => flex-direction
+alias -webkit-flex-flow => flex-flow
+alias -webkit-flex-grow => flex-grow
+alias -webkit-flex-shrink => flex-shrink
+alias -webkit-flex-wrap => flex-wrap
+alias -webkit-justify-content => justify-content
+alias -webkit-mask => mask
+alias -webkit-mask-box-image => mask-border
+alias -webkit-mask-box-image-outset => mask-border-outset
+alias -webkit-mask-box-image-repeat => mask-border-repeat
+alias -webkit-mask-box-image-slice => mask-border-slice
+alias -webkit-mask-box-image-source => mask-border-source
+alias -webkit-mask-box-image-width => mask-border-width
+alias -webkit-mask-clip => mask-clip
+alias -webkit-mask-composite => mask-composite
+alias -webkit-mask-image => mask-image
+alias -webkit-mask-origin => mask-origin
+alias -webkit-mask-position => mask-position
+alias -webkit-mask-repeat => mask-repeat
+alias -webkit-mask-size => mask-size
+alias -webkit-order => order
+alias -webkit-perspective => perspective
+alias -webkit-perspective-origin => perspective-origin
+alias -webkit-text-size-adjust => text-size-adjust
+alias -webkit-transform => transform
+alias -webkit-transform-origin => transform-origin
+alias -webkit-transform-style => transform-style
+alias -webkit-transition => transition
+alias -webkit-transition-delay => transition-delay
+alias -webkit-transition-duration => transition-duration
+alias -webkit-transition-property => transition-property
+alias -webkit-transition-timing-function => transition-timing-function
+alias font-stretch => font-width
+alias grid-column-gap => column-gap
+alias grid-gap => gap
+alias grid-row-gap => row-gap
+alias word-wrap => overflow-wrap

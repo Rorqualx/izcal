@@ -1,0 +1,106 @@
+# @bootstrapped once from @webref/css 8.7.9 on 13 November 2026, then
+# hand-maintained. Vendor-prefixed properties the Compatibility Standard defines as
+# properties of their own rather than as aliases.
+#
+# The `initial`, `inherited`, `computed`, `animation`, `syntax` and
+# `longhands` lines restate what the pinned @webref/css carries, and
+# hg-cssgen fails the build when they and webref disagree. That is what
+# they are for: the engine is written against these values, and a
+# specification change that moved one would otherwise be silent. A
+# disagreement is triaged line by line; this file is never regenerated
+# from webref to make one go away (ST-7).
+#
+# `affects` and `hook` are Izcal's own and have no counterpart in
+# webref. `affects unknown` records a decision not yet made rather than
+# guessing it, and hg-cssgen reports how many remain.
+
+property -webkit-box-align @ "https://compat.spec.whatwg.org/#propdef--webkit-box-align" {
+  # legacy flexbox, defined by the Compatibility Standard; not inherited
+  inherits  no
+  affects   unknown
+}
+
+property -webkit-box-flex @ "https://compat.spec.whatwg.org/#propdef--webkit-box-flex" {
+  # legacy flexbox; not inherited
+  inherits  no
+  affects   unknown
+}
+
+property -webkit-box-ordinal-group @ "https://compat.spec.whatwg.org/#propdef--webkit-box-ordinal-group" {
+  # legacy flexbox; not inherited
+  inherits  no
+  affects   unknown
+}
+
+property -webkit-box-orient @ "https://compat.spec.whatwg.org/#propdef--webkit-box-orient" {
+  # legacy flexbox; not inherited
+  inherits  no
+  affects   unknown
+}
+
+property -webkit-box-pack @ "https://compat.spec.whatwg.org/#propdef--webkit-box-pack" {
+  # legacy flexbox; not inherited
+  inherits  no
+  affects   unknown
+}
+
+property -webkit-line-clamp @ "https://drafts.csswg.org/css-overflow-4/#propdef--webkit-line-clamp" {
+  initial   "none"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "none | <integer [1,∞]>"
+  longhands max-lines, block-ellipsis, continue
+  affects   unknown
+}
+
+property -webkit-text-fill-color @ "https://compat.spec.whatwg.org/#propdef--webkit-text-fill-color" {
+  initial   "currentcolor"
+  inherited "yes"
+  inherits  yes
+  computed  "computed color"
+  animation "by computed value type"
+  syntax    "<color>"
+  affects   unknown
+}
+
+property -webkit-text-stroke @ "https://compat.spec.whatwg.org/#propdef--webkit-text-stroke" {
+  initial   "See individual properties"
+  inherited "yes"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "See individual properties"
+  animation "See individual properties"
+  syntax    "<line-width> || <color>"
+  longhands -webkit-text-stroke-width, -webkit-text-stroke-color
+  affects   unknown
+}
+
+property -webkit-text-stroke-color @ "https://compat.spec.whatwg.org/#propdef--webkit-text-stroke-color" {
+  initial   "currentcolor"
+  inherited "yes"
+  inherits  yes
+  computed  "computed color"
+  animation "by computed value type"
+  syntax    "<color>"
+  affects   unknown
+}
+
+property -webkit-text-stroke-width @ "https://compat.spec.whatwg.org/#propdef--webkit-text-stroke-width" {
+  initial   "0"
+  inherited "yes"
+  inherits  yes
+  computed  "absolute length"
+  animation "discrete"
+  syntax    "<line-width>"
+  affects   unknown
+}
+
+property -webkit-user-select @ "https://drafts.csswg.org/css-ui-4/#propdef--webkit-user-select" {
+  # follows user-select, which webref gives as `no`
+  inherits  no
+  syntax    "auto | text | none | contain | all"
+  affects   unknown
+}

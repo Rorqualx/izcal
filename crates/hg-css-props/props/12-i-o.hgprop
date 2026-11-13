@@ -1,0 +1,1445 @@
+# @bootstrapped once from @webref/css 8.7.9 on 13 November 2026, then
+# hand-maintained. Properties i to o.
+#
+# The `initial`, `inherited`, `computed`, `animation`, `syntax` and
+# `longhands` lines restate what the pinned @webref/css carries, and
+# hg-cssgen fails the build when they and webref disagree. That is what
+# they are for: the engine is written against these values, and a
+# specification change that moved one would otherwise be silent. A
+# disagreement is triaged line by line; this file is never regenerated
+# from webref to make one go away (ST-7).
+#
+# `affects` and `hook` are Izcal's own and have no counterpart in
+# webref. `affects unknown` records a decision not yet made rather than
+# guessing it, and hg-cssgen reports how many remain.
+
+property image-animation @ "https://drafts.csswg.org/css-image-animation-1/#propdef-image-animation" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | paused | stopped | running"
+  affects   unknown
+}
+
+property image-orientation @ "https://drafts.csswg.org/css-images-3/#propdef-image-orientation" {
+  initial   "from-image"
+  inherited "yes"
+  inherits  yes
+  computed  "the specified keyword, or an <angle>, rounded and normalized (see text), plus optionally a flip keyword"
+  animation "discrete"
+  syntax    "from-image | none | [ <angle> || flip ]"
+  affects   unknown
+}
+
+property image-rendering @ "https://drafts.csswg.org/css-images-3/#propdef-image-rendering" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | smooth | high-quality | pixelated | crisp-edges"
+  affects   paint
+}
+
+property image-resolution @ "https://drafts.csswg.org/css-images-4/#propdef-image-resolution" {
+  initial   "1dppx"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s) and/or <resolution> (possibly adjusted for snap, see below)"
+  animation "discrete"
+  syntax    "[ from-image || <resolution> ] && snap?"
+  affects   unknown
+  hook      image_resolution
+}
+
+property initial-letter @ "https://drafts.csswg.org/css-inline-3/#propdef-initial-letter" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "the keyword normal or a number paired with an integer"
+  animation "by computed value type"
+  syntax    "normal | <number [1,∞]> <integer [1,∞]> | <number [1,∞]> && [ drop | raise ]?"
+  affects   unknown
+}
+
+property initial-letter-align @ "https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-align" {
+  initial   "alphabetic"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "[ border-box? [ alphabetic | ideographic | hanging | leading ]? ]!"
+  affects   unknown
+}
+
+property initial-letter-wrap @ "https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-wrap" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword or computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "none | first | all | grid | <length-percentage>"
+  affects   unknown
+}
+
+property inline-size @ "https://drafts.csswg.org/css-sizing-3/#propdef-inline-size" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value type, recursing into fit-content()"
+  syntax    "auto | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property inline-sizing @ "https://drafts.csswg.org/css-inline-3/#propdef-inline-sizing" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "normal | stretch"
+  affects   unknown
+}
+
+property input-security @ "https://drafts.csswg.org/css-forms-1/#propdef-input-security" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value type"
+  syntax    "auto | none"
+  affects   unknown
+}
+
+property inset @ "https://drafts.csswg.org/css-position-3/#propdef-inset" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "<'top'>{1,4}"
+  longhands top, right, bottom, left
+  affects   layout
+}
+
+property inset-block @ "https://drafts.csswg.org/css-position-3/#propdef-inset-block" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "<'top'>{1,2}"
+  longhands inset-block-start, inset-block-end
+  affects   layout
+}
+
+property inset-block-end @ "https://drafts.csswg.org/css-position-3/#propdef-inset-block-end" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage>"
+  affects   layout
+}
+
+property inset-block-start @ "https://drafts.csswg.org/css-position-3/#propdef-inset-block-start" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage>"
+  affects   layout
+}
+
+property inset-inline @ "https://drafts.csswg.org/css-position-3/#propdef-inset-inline" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "<'top'>{1,2}"
+  longhands inset-inline-start, inset-inline-end
+  affects   layout
+}
+
+property inset-inline-end @ "https://drafts.csswg.org/css-position-3/#propdef-inset-inline-end" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage>"
+  affects   layout
+}
+
+property inset-inline-start @ "https://drafts.csswg.org/css-position-3/#propdef-inset-inline-start" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage>"
+  affects   layout
+}
+
+property interactivity @ "https://drafts.csswg.org/css-ui-4/#propdef-interactivity" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | inert"
+  affects   unknown
+}
+
+property interest-delay @ "https://drafts.csswg.org/css-ui-4/#propdef-interest-delay" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'interest-delay-start'>{1,2}"
+  longhands interest-delay-start, interest-delay-end
+  affects   unknown
+}
+
+property interest-delay-end @ "https://drafts.csswg.org/css-ui-4/#propdef-interest-delay-end" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword normal or a computed time"
+  animation "by computed value type"
+  syntax    "normal | <time>"
+  affects   unknown
+}
+
+property interest-delay-start @ "https://drafts.csswg.org/css-ui-4/#propdef-interest-delay-start" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword normal or a computed time"
+  animation "by computed value type"
+  syntax    "normal | <time>"
+  affects   unknown
+}
+
+property interpolate-size @ "https://drafts.csswg.org/css-sizing-4/#propdef-interpolate-size" {
+  initial   "numeric-only"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "numeric-only | allow-keywords"
+  affects   unknown
+}
+
+property isolation @ "https://drafts.csswg.org/compositing-2/#propdef-isolation" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "<isolation-mode>"
+  affects   paint
+}
+
+property justify-content @ "https://drafts.csswg.org/css-align-3/#propdef-justify-content" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "normal | <content-distribution> | <overflow-position>? [ <content-position> | left | right ]"
+  affects   layout
+}
+
+property justify-items @ "https://drafts.csswg.org/css-align-3/#propdef-justify-items" {
+  initial   "legacy"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s), except for legacy (see prose)"
+  animation "discrete"
+  syntax    "normal | stretch | <baseline-position> | <overflow-position>? [ <self-position> | left | right ] | legacy | legacy && [ left | right | center ]"
+  affects   layout
+  hook      justify_items
+}
+
+property justify-self @ "https://drafts.csswg.org/css-align-3/#propdef-justify-self" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "auto | <overflow-position>? [ normal | <self-position> | left | right ] | stretch | <baseline-position> | anchor-center"
+  affects   layout
+}
+
+property left @ "https://drafts.csswg.org/css-position-3/#propdef-left" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage> | <anchor()> | <anchor-size()>"
+  affects   layout
+}
+
+property letter-spacing @ "https://drafts.csswg.org/css-text-4/#propdef-letter-spacing" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "an absolute length and/or a percentage"
+  animation "by computed value type"
+  syntax    "normal | <length-percentage>"
+  affects   layout
+}
+
+property lighting-color @ "https://drafts.csswg.org/filter-effects-1/#propdef-lighting-color" {
+  initial   "white"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value"
+  syntax    "<color>"
+  affects   unknown
+}
+
+property line-break @ "https://drafts.csswg.org/css-text-4/#propdef-line-break" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | loose | normal | strict | anywhere"
+  affects   layout
+}
+
+property line-clamp @ "https://drafts.csswg.org/css-overflow-4/#propdef-line-clamp" {
+  initial   "none"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "none | [<integer [1,∞]> || auto || <block-ellipsis>] -webkit-legacy?"
+  longhands max-lines, block-ellipsis, continue
+  affects   unknown
+}
+
+property line-fit-edge @ "https://drafts.csswg.org/css-inline-3/#propdef-line-fit-edge" {
+  initial   "leading"
+  inherited "yes"
+  inherits  yes
+  computed  "the specified keyword"
+  animation "discrete"
+  syntax    "leading | <text-edge>"
+  affects   unknown
+}
+
+property line-grid @ "https://drafts.csswg.org/css-line-grid-1/#propdef-line-grid" {
+  initial   "match-parent"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "match-parent | create"
+  affects   unknown
+}
+
+property line-height @ "https://drafts.csswg.org/css-inline-3/#propdef-line-height" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "the specified keyword, a number, or a computed <length> value"
+  animation "by computed value type"
+  syntax    "normal | <number [0,∞]> | <length-percentage [0,∞]>"
+  affects   layout
+}
+
+property line-height-step @ "https://drafts.csswg.org/css-rhythm-1/#propdef-line-height-step" {
+  initial   "0"
+  inherited "yes"
+  inherits  yes
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length [0,∞]>"
+  affects   unknown
+}
+
+property line-padding @ "https://drafts.csswg.org/css-text-4/#propdef-line-padding" {
+  initial   "0"
+  inherited "yes"
+  inherits  yes
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property line-snap @ "https://drafts.csswg.org/css-line-grid-1/#propdef-line-snap" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "none | baseline | contain"
+  affects   unknown
+}
+
+property link-parameters @ "https://drafts.csswg.org/css-link-params-1/#propdef-link-parameters" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | <param()>#"
+  affects   unknown
+}
+
+property list-style @ "https://drafts.csswg.org/css-lists-3/#propdef-list-style" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'list-style-position'> || <'list-style-image'> || <'list-style-type'>"
+  longhands list-style-type, list-style-position, list-style-image
+  affects   layout
+}
+
+property list-style-image @ "https://drafts.csswg.org/css-lists-3/#propdef-list-style-image" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword noneor the computed <image>"
+  animation "discrete"
+  syntax    "<image> | none"
+  affects   unknown
+}
+
+property list-style-position @ "https://drafts.csswg.org/css-lists-3/#propdef-list-style-position" {
+  initial   "outside"
+  inherited "yes"
+  inherits  yes
+  computed  "keyword, but see prose"
+  animation "discrete"
+  syntax    "inside | outside"
+  affects   layout
+  hook      list_style_position
+}
+
+property list-style-type @ "https://drafts.csswg.org/css-lists-3/#propdef-list-style-type" {
+  initial   "disc"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value"
+  animation "discrete"
+  syntax    "<counter-style> | <string> | none"
+  affects   layout
+}
+
+property margin @ "https://drafts.csswg.org/css-box-4/#propdef-margin" {
+  initial   "0"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "<'margin-top'>{1,4}"
+  longhands margin-top, margin-right, margin-bottom, margin-left
+  affects   layout
+}
+
+property margin-block @ "https://drafts.csswg.org/css-logical-1/#propdef-margin-block" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'margin-top'>{1,2}"
+  longhands margin-block-start, margin-block-end
+  affects   layout
+}
+
+property margin-block-end @ "https://drafts.csswg.org/css-logical-1/#propdef-margin-block-end" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "Same as corresponding margin-* properties"
+  animation "by computed value type"
+  syntax    "<'margin-top'>"
+  affects   layout
+}
+
+property margin-block-start @ "https://drafts.csswg.org/css-logical-1/#propdef-margin-block-start" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "Same as corresponding margin-* properties"
+  animation "by computed value type"
+  syntax    "<'margin-top'>"
+  affects   layout
+}
+
+property margin-bottom @ "https://drafts.csswg.org/css-box-4/#propdef-margin-bottom" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage> | auto | <anchor-size()>"
+  affects   layout
+}
+
+property margin-break @ "https://drafts.csswg.org/css-break-4/#propdef-margin-break" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | keep | discard"
+  affects   unknown
+}
+
+property margin-inline @ "https://drafts.csswg.org/css-logical-1/#propdef-margin-inline" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'margin-top'>{1,2}"
+  longhands margin-inline-start, margin-inline-end
+  affects   layout
+}
+
+property margin-inline-end @ "https://drafts.csswg.org/css-logical-1/#propdef-margin-inline-end" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "Same as corresponding margin-* properties"
+  animation "by computed value type"
+  syntax    "<'margin-top'>"
+  affects   layout
+}
+
+property margin-inline-start @ "https://drafts.csswg.org/css-logical-1/#propdef-margin-inline-start" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "Same as corresponding margin-* properties"
+  animation "by computed value type"
+  syntax    "<'margin-top'>"
+  affects   layout
+}
+
+property margin-left @ "https://drafts.csswg.org/css-box-4/#propdef-margin-left" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage> | auto | <anchor-size()>"
+  affects   layout
+}
+
+property margin-right @ "https://drafts.csswg.org/css-box-4/#propdef-margin-right" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage> | auto | <anchor-size()>"
+  affects   layout
+}
+
+property margin-top @ "https://drafts.csswg.org/css-box-4/#propdef-margin-top" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage> | auto | <anchor-size()>"
+  affects   layout
+}
+
+property margin-trim @ "https://drafts.csswg.org/css-box-4/#propdef-margin-trim" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "a set of zero to two keywords indicating which sides to trim"
+  animation "discrete"
+  syntax    "none | block | [ block-start || block-end ]"
+  affects   unknown
+}
+
+property marker @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#MarkerProperty" {
+  initial   "not defined for shorthand properties"
+  inherited "yes"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "none | <marker-ref>"
+  longhands marker-start, marker-mid, marker-end
+  affects   unknown
+}
+
+property marker-end @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#MarkerEndProperty" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, but with <url> values (that are part of a <marker-ref>) made absolute"
+  animation "discrete"
+  syntax    "none | <marker-ref>"
+  affects   unknown
+}
+
+property marker-mid @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#MarkerMidProperty" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, but with <url> values (that are part of a <marker-ref>) made absolute"
+  animation "discrete"
+  syntax    "none | <marker-ref>"
+  affects   unknown
+}
+
+property marker-side @ "https://drafts.csswg.org/css-lists-3/#propdef-marker-side" {
+  initial   "match-self"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "match-self | match-parent"
+  affects   unknown
+}
+
+property marker-start @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#MarkerStartProperty" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, but with <url> values (that are part of a <marker-ref>) made absolute"
+  animation "discrete"
+  syntax    "none | <marker-ref>"
+  affects   unknown
+}
+
+property mask @ "https://drafts.csswg.org/css-masking-1/#propdef-mask" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<mask-layer>#"
+  longhands mask-image, mask-position, mask-size, mask-repeat, mask-origin, mask-clip, mask-composite, mask-mode
+  affects   unknown
+}
+
+property mask-border @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-border" {
+  initial   "See individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "See individual properties"
+  animation "See individual properties"
+  syntax    "<'mask-border-source'> || <'mask-border-slice'> [ / <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]? || <'mask-border-repeat'> || <'mask-border-mode'>"
+  longhands mask-border-source, mask-border-slice, mask-border-width, mask-border-outset, mask-border-repeat, mask-border-mode
+  affects   unknown
+}
+
+property mask-border-mode @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-border-mode" {
+  initial   "alpha"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "luminance | alpha"
+  affects   unknown
+}
+
+property mask-border-outset @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-border-outset" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "all <length>s made absolute, otherwise as specified"
+  animation "by computed value"
+  syntax    "<'border-image-outset'>"
+  affects   unknown
+}
+
+property mask-border-repeat @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-border-repeat" {
+  initial   "stretch"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "<'border-image-repeat'>"
+  affects   unknown
+}
+
+property mask-border-slice @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-border-slice" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value"
+  syntax    "<'border-image-slice'>"
+  affects   unknown
+}
+
+property mask-border-source @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-border-source" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "they keyword none or the computed <image>"
+  animation "discrete"
+  syntax    "<'border-image-source'>"
+  affects   unknown
+}
+
+property mask-border-width @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-border-width" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "all <length>s made absolute, otherwise as specified"
+  animation "by computed value"
+  syntax    "<'border-image-width'>"
+  affects   unknown
+}
+
+property mask-clip @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-clip" {
+  initial   "border-box"
+  inherited "no"
+  inherits  no
+  computed  "list, each item the keyword as specified"
+  animation "discrete"
+  syntax    "[ <coord-box> | no-clip ]#"
+  affects   unknown
+}
+
+property mask-composite @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-composite" {
+  initial   "add"
+  inherited "no"
+  inherits  no
+  computed  "list, each item the keyword as specified"
+  animation "discrete"
+  syntax    "<compositing-operator>#"
+  affects   unknown
+}
+
+property mask-image @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-image" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "list, each item the keyword none, a computed <image>, or a computed <url>"
+  animation "discrete"
+  syntax    "<mask-reference>#"
+  affects   paint
+}
+
+property mask-mode @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-mode" {
+  initial   "match-source"
+  inherited "no"
+  inherits  no
+  computed  "list, each item the keyword as specified"
+  animation "discrete"
+  syntax    "<masking-mode>#"
+  affects   unknown
+}
+
+property mask-origin @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-origin" {
+  initial   "border-box"
+  inherited "no"
+  inherits  no
+  computed  "list, each item the keyword as specified"
+  animation "discrete"
+  syntax    "<coord-box>#"
+  affects   unknown
+}
+
+property mask-position @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-position" {
+  initial   "0% 0%"
+  inherited "no"
+  inherits  no
+  computed  "list, each item consists of two keywords representing the origin and two offsets from that origin, each given as an absolute length (if given a <length>), otherwise as a percentage."
+  animation "repeatable list"
+  syntax    "<position>#"
+  affects   unknown
+}
+
+property mask-repeat @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-repeat" {
+  initial   "repeat"
+  inherited "no"
+  inherits  no
+  computed  "list, each item a pair of keywords, one per dimension"
+  animation "discrete"
+  syntax    "<repeat-style>#"
+  affects   unknown
+}
+
+property mask-size @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-size" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "list, each item as specified, but with lengths made absolute"
+  animation "repeatable list"
+  syntax    "<bg-size>#"
+  affects   unknown
+}
+
+property mask-type @ "https://drafts.csswg.org/css-masking-1/#propdef-mask-type" {
+  initial   "luminance"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "luminance | alpha"
+  affects   unknown
+}
+
+property math-depth @ "https://w3c.github.io/mathml-core/#propdef-math-depth" {
+  initial   "0"
+  inherited "yes"
+  inherits  yes
+  computed  "an integer, see below"
+  animation "by computed value type"
+  syntax    "auto-add | add(<integer>) | <integer>"
+  affects   unknown
+  hook      math_depth
+}
+
+property math-shift @ "https://w3c.github.io/mathml-core/#propdef-math-shift" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "by computed value type"
+  syntax    "normal | compact"
+  affects   unknown
+}
+
+property math-style @ "https://w3c.github.io/mathml-core/#propdef-math-style" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "by computed value type"
+  syntax    "normal | compact"
+  affects   unknown
+}
+
+property max-block-size @ "https://drafts.csswg.org/css-sizing-3/#propdef-max-block-size" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value, recursing into fit-content()"
+  syntax    "none | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property max-height @ "https://drafts.csswg.org/css-sizing-3/#propdef-max-height" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value, recursing into fit-content()"
+  syntax    "none | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property max-inline-size @ "https://drafts.csswg.org/css-sizing-3/#propdef-max-inline-size" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value, recursing into fit-content()"
+  syntax    "none | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property max-lines @ "https://drafts.csswg.org/css-overflow-4/#propdef-max-lines" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto, or an integer, or both"
+  animation "by computed value type"
+  syntax    "<integer [1,∞]> || auto"
+  affects   unknown
+}
+
+property max-size @ "https://drafts.csswg.org/css-sizing-4/#propdef-max-size" {
+  initial   "none"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'max-width'> <'max-height'>?"
+  longhands max-width, max-height
+  affects   unknown
+}
+
+property max-width @ "https://drafts.csswg.org/css-sizing-3/#propdef-max-width" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value, recursing into fit-content()"
+  syntax    "none | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property min-block-size @ "https://drafts.csswg.org/css-sizing-3/#propdef-min-block-size" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value, recursing into fit-content()"
+  syntax    "auto | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property min-height @ "https://drafts.csswg.org/css-sizing-3/#propdef-min-height" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value, recursing into fit-content()"
+  syntax    "auto | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property min-inline-size @ "https://drafts.csswg.org/css-sizing-3/#propdef-min-inline-size" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value, recursing into fit-content()"
+  syntax    "auto | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property min-intrinsic-sizing @ "https://drafts.csswg.org/css-sizing-4/#propdef-min-intrinsic-sizing" {
+  initial   "legacy"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "legacy | zero-if-scroll || zero-if-extrinsic"
+  affects   unknown
+}
+
+property min-size @ "https://drafts.csswg.org/css-sizing-4/#propdef-min-size" {
+  initial   "auto"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'min-width'> <'min-height'>?"
+  longhands min-width, min-height
+  affects   unknown
+}
+
+property min-width @ "https://drafts.csswg.org/css-sizing-3/#propdef-min-width" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value, recursing into fit-content()"
+  syntax    "auto | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property mix-blend-mode @ "https://drafts.csswg.org/compositing-2/#propdef-mix-blend-mode" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "<blend-mode> | plus-lighter"
+  affects   paint
+}
+
+property nav-down @ "https://drafts.csswg.org/css-ui-4/#propdef-nav-down" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | <id> [ current | root | <target-name> ]?"
+  affects   unknown
+}
+
+property nav-left @ "https://drafts.csswg.org/css-ui-4/#propdef-nav-left" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | <id> [ current | root | <target-name> ]?"
+  affects   unknown
+}
+
+property nav-right @ "https://drafts.csswg.org/css-ui-4/#propdef-nav-right" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | <id> [ current | root | <target-name> ]?"
+  affects   unknown
+}
+
+property nav-up @ "https://drafts.csswg.org/css-ui-4/#propdef-nav-up" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | <id> [ current | root | <target-name> ]?"
+  affects   unknown
+}
+
+property object-fit @ "https://drafts.csswg.org/css-images-4/#propdef-object-fit" {
+  initial   "fill"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "fill | none | [contain | cover] || scale-down"
+  affects   unknown
+}
+
+property object-position @ "https://drafts.csswg.org/css-images-3/#propdef-object-position" {
+  initial   "50% 50%"
+  inherited "no"
+  inherits  no
+  computed  "as for background-position"
+  animation "as for background-position"
+  syntax    "<position>"
+  affects   unknown
+}
+
+property object-view-box @ "https://drafts.csswg.org/css-images-5/#propdef-object-view-box" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword, or computed <basic-shape> function"
+  animation "as <basic-shape> if possible, otherwise discrete"
+  syntax    "none | <basic-shape-rect>"
+  affects   unknown
+}
+
+property offset @ "https://drafts.csswg.org/motion-1/#propdef-offset" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "[ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> || <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?"
+  longhands offset-path, offset-distance, offset-rotate, offset-anchor, offset-position
+  affects   unknown
+}
+
+property offset-anchor @ "https://drafts.csswg.org/motion-1/#propdef-offset-anchor" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the auto keyword or a computed <position>"
+  animation "by computed value"
+  syntax    "auto | <position>"
+  affects   unknown
+}
+
+property offset-distance @ "https://drafts.csswg.org/motion-1/#propdef-offset-distance" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "a computed <length-percentage> value"
+  animation "by computed value"
+  syntax    "<length-percentage>"
+  affects   unknown
+}
+
+property offset-path @ "https://drafts.csswg.org/motion-1/#propdef-offset-path" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value"
+  syntax    "none | <offset-path> || <coord-box>"
+  affects   unknown
+}
+
+property offset-position @ "https://drafts.csswg.org/motion-1/#propdef-offset-position" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "The normal or auto keywords, or a computed <position>"
+  animation "by computed value"
+  syntax    "normal | auto | <position>"
+  affects   unknown
+}
+
+property offset-rotate @ "https://drafts.csswg.org/motion-1/#propdef-offset-rotate" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "computed <angle> value, optionally preceded by auto"
+  animation "by computed value"
+  syntax    "[ auto | reverse ] || <angle>"
+  affects   unknown
+}
+
+property opacity @ "https://drafts.csswg.org/css-color-4/#propdef-opacity" {
+  initial   "1"
+  inherited "no"
+  inherits  no
+  computed  "specified number, clamped to the range [0,1]"
+  animation "by computed value type"
+  syntax    "<opacity-value>"
+  affects   composite
+}
+
+property order @ "https://drafts.csswg.org/css-display-4/#propdef-order" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "specified integer"
+  animation "by computed value type"
+  syntax    "<integer>"
+  affects   layout
+}
+
+property orphans @ "https://drafts.csswg.org/css-break-4/#propdef-orphans" {
+  initial   "2"
+  inherited "yes"
+  inherits  yes
+  computed  "specified integer"
+  animation "by computed value type"
+  syntax    "<integer [1,∞]>"
+  affects   unknown
+}
+
+property outline @ "https://drafts.csswg.org/css-ui-4/#propdef-outline" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'outline-width'> || <'outline-style'> || <'outline-color'>"
+  longhands outline-width, outline-style, outline-color
+  affects   paint
+}
+
+property outline-color @ "https://drafts.csswg.org/css-ui-4/#propdef-outline-color" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "see below"
+  animation "by computed value"
+  syntax    "auto | <'border-top-color'>"
+  affects   paint
+  hook      outline_color
+}
+
+property outline-offset @ "https://drafts.csswg.org/css-ui-4/#propdef-outline-offset" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length or inset."
+  animation "by computed value"
+  syntax    "<length> | inset"
+  affects   paint
+}
+
+property outline-style @ "https://drafts.csswg.org/css-ui-4/#propdef-outline-style" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "by computed value"
+  syntax    "auto | <outline-line-style>"
+  affects   paint
+}
+
+property outline-width @ "https://drafts.csswg.org/css-ui-4/#propdef-outline-width" {
+  initial   "medium"
+  inherited "no"
+  inherits  no
+  computed  "absolute length, snapped as a border width"
+  animation "by computed value"
+  syntax    "<line-width>"
+  affects   paint
+}
+
+property overflow @ "https://drafts.csswg.org/css-overflow-3/#propdef-overflow" {
+  initial   "visible"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "<'overflow-block'>{1,2}"
+  longhands overflow-x, overflow-y
+  affects   layout
+}
+
+property overflow-anchor @ "https://drafts.csswg.org/css-scroll-anchoring-1/#propdef-overflow-anchor" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | none"
+  affects   unknown
+}
+
+property overflow-block @ "https://drafts.csswg.org/css-overflow-3/#propdef-overflow-block" {
+  initial   "visible"
+  inherited "no"
+  inherits  no
+  computed  "usually specified value, but see text"
+  animation "discrete"
+  syntax    "visible | hidden | clip | scroll | auto"
+  affects   layout
+  hook      overflow_block
+}
+
+property overflow-clip-margin @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin" {
+  initial   "0px"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<visual-box> || <length>"
+  longhands overflow-clip-margin-top, overflow-clip-margin-right, overflow-clip-margin-bottom, overflow-clip-margin-left
+  affects   unknown
+}
+
+property overflow-clip-margin-block @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-block" {
+  initial   "0px"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<visual-box> || <length>"
+  longhands overflow-clip-margin-block-start, overflow-clip-margin-block-end
+  affects   unknown
+}
+
+property overflow-clip-margin-block-end @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-block-end" {
+  initial   "0px"
+  inherited "no"
+  inherits  no
+  computed  "the computed <length> and a <visual-box> keyword"
+  animation "per computed value if the <visual-box> values match; otherwise discrete"
+  syntax    "<visual-box> || <length>"
+  affects   unknown
+}
+
+property overflow-clip-margin-block-start @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-block-start" {
+  initial   "0px"
+  inherited "no"
+  inherits  no
+  computed  "the computed <length> and a <visual-box> keyword"
+  animation "per computed value if the <visual-box> values match; otherwise discrete"
+  syntax    "<visual-box> || <length>"
+  affects   unknown
+}
+
+property overflow-clip-margin-bottom @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-bottom" {
+  initial   "0px"
+  inherited "no"
+  inherits  no
+  computed  "the computed <length> and a <visual-box> keyword"
+  animation "per computed value if the <visual-box> values match; otherwise discrete"
+  syntax    "<visual-box> || <length>"
+  affects   unknown
+}
+
+property overflow-clip-margin-inline @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-inline" {
+  initial   "0px"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<visual-box> || <length>"
+  longhands overflow-clip-margin-inline-start, overflow-clip-margin-inline-end
+  affects   unknown
+}
+
+property overflow-clip-margin-inline-end @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-inline-end" {
+  initial   "0px"
+  inherited "no"
+  inherits  no
+  computed  "the computed <length> and a <visual-box> keyword"
+  animation "per computed value if the <visual-box> values match; otherwise discrete"
+  syntax    "<visual-box> || <length>"
+  affects   unknown
+}
+
+property overflow-clip-margin-inline-start @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-inline-start" {
+  initial   "0px"
+  inherited "no"
+  inherits  no
+  computed  "the computed <length> and a <visual-box> keyword"
+  animation "per computed value if the <visual-box> values match; otherwise discrete"
+  syntax    "<visual-box> || <length>"
+  affects   unknown
+}
+
+property overflow-clip-margin-left @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-left" {
+  initial   "0px"
+  inherited "no"
+  inherits  no
+  computed  "the computed <length> and a <visual-box> keyword"
+  animation "per computed value if the <visual-box> values match; otherwise discrete"
+  syntax    "<visual-box> || <length>"
+  affects   unknown
+}
+
+property overflow-clip-margin-right @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-right" {
+  initial   "0px"
+  inherited "no"
+  inherits  no
+  computed  "the computed <length> and a <visual-box> keyword"
+  animation "per computed value if the <visual-box> values match; otherwise discrete"
+  syntax    "<visual-box> || <length>"
+  affects   unknown
+}
+
+property overflow-clip-margin-top @ "https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin-top" {
+  initial   "0px"
+  inherited "no"
+  inherits  no
+  computed  "the computed <length> and a <visual-box> keyword"
+  animation "per computed value if the <visual-box> values match; otherwise discrete"
+  syntax    "<visual-box> || <length>"
+  affects   unknown
+}
+
+property overflow-inline @ "https://drafts.csswg.org/css-overflow-3/#propdef-overflow-inline" {
+  initial   "visible"
+  inherited "no"
+  inherits  no
+  computed  "usually specified value, but see text"
+  animation "discrete"
+  syntax    "visible | hidden | clip | scroll | auto"
+  affects   layout
+  hook      overflow_inline
+}
+
+property overflow-wrap @ "https://drafts.csswg.org/css-text-4/#propdef-overflow-wrap" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "normal | break-word | anywhere"
+  affects   layout
+}
+
+property overflow-x @ "https://drafts.csswg.org/css-overflow-3/#propdef-overflow-x" {
+  initial   "visible"
+  inherited "no"
+  inherits  no
+  computed  "usually specified value, but see text"
+  animation "discrete"
+  syntax    "visible | hidden | clip | scroll | auto"
+  affects   layout
+  hook      overflow_x
+}
+
+property overflow-y @ "https://drafts.csswg.org/css-overflow-3/#propdef-overflow-y" {
+  initial   "visible"
+  inherited "no"
+  inherits  no
+  computed  "usually specified value, but see text"
+  animation "discrete"
+  syntax    "visible | hidden | clip | scroll | auto"
+  affects   layout
+  hook      overflow_y
+}
+
+property overlay @ "https://drafts.csswg.org/css-position-4/#propdef-overlay" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "see prose"
+  syntax    "none | auto"
+  affects   unknown
+}
+
+property overscroll-behavior @ "https://drafts.csswg.org/css-overscroll-1/#propdef-overscroll-behavior" {
+  initial   "auto auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "[ contain | none | auto | chain ]{1,2}"
+  longhands overscroll-behavior-x, overscroll-behavior-y
+  affects   unknown
+}
+
+property overscroll-behavior-block @ "https://drafts.csswg.org/css-overscroll-1/#propdef-overscroll-behavior-block" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "contain | none | auto | chain"
+  affects   unknown
+}
+
+property overscroll-behavior-inline @ "https://drafts.csswg.org/css-overscroll-1/#propdef-overscroll-behavior-inline" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "contain | none | auto | chain"
+  affects   unknown
+}
+
+property overscroll-behavior-x @ "https://drafts.csswg.org/css-overscroll-1/#propdef-overscroll-behavior-x" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "contain | none | auto | chain"
+  affects   unknown
+}
+
+property overscroll-behavior-y @ "https://drafts.csswg.org/css-overscroll-1/#propdef-overscroll-behavior-y" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "contain | none | auto | chain"
+  affects   unknown
+}

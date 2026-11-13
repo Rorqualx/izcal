@@ -137,3 +137,31 @@ licence = "CC-BY-4.0 (BSD-3-Clause where incorporated into source code)"
 url = "https://html.spec.whatwg.org/entities.json"
 sha256 = "d741d877ac77c4194c4ad526b5b4a19aef8dfe411ab840a466891cdbb9f362e6"
 format = "file"
+
+# @webref/css, MIT: the CSS features the W3C scrapes from the published
+# specifications — for each property its value grammar, initial value,
+# inheritance, animation type, longhands and defining URL (style spec
+# 6.6, ST-D6). Standards data that ships: hg-cssgen checks Izcal's
+# .hgprop overlay against it and emits hg-css-props' tables, which are
+# checked in. The package itself is never committed and never linked.
+#
+# The package declares a peer dependency on css-tree, which its
+# JavaScript API uses to parse the grammars. Izcal does not install it
+# and does not call that API: the README states that the data "appears
+# in a standalone css.json file within the package" and "may be parsed
+# as JSON in any programming language to yield the same object". That
+# file is what hg-cssgen reads, through hg-json. Using webref's data is
+# M-1-clean; using CSSTree or any CSS parser library is not.
+#
+# 8.7.9, published 13 Nov 2026. At this version: 822 property entries,
+# of which 64 are legacy aliases, leaving 758 properties with 169
+# distinct computed-value texts. The spec records ~760 and 168, so one
+# text has been added since it was written — which is the drift this
+# pin and the overlay exist to make visible.
+[webref-css]
+commit = "8.7.9"
+date = "2026-11-13"
+licence = "MIT"
+url = "https://registry.npmjs.org/@webref/css/-/css-8.7.9.tgz"
+sha256 = "0f90d9b103922a94bc23c6324c5c574b03caab5882f65c58f74d83cdf2d05a3f"
+strip = "1"

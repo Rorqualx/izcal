@@ -183,6 +183,16 @@ tier = "T"
 layer = "tools"
 why = "Fonts and text 9.3, TX-M0: reads the pinned Unicode Character Database and writes hg-ucd's tables, whose freshness is a test (G16). Never linked; the database is test-only input and is never committed."
 
+[crates.hg-css-props]
+tier = "R"
+layer = "L2p"
+why = "Style spec 6.15 crate table: L2p, tier R, generated. The property table hg-cssgen emits from @webref/css and the .hgprop overlay; a hand edit fails CI (G29), and a disagreement between the overlay and the pinned webref fails the build (ST-D6, ST-7)."
+
+[crates.hg-cssgen]
+tier = "T"
+layer = "tools"
+why = "Style spec 6.15 crate table: tools, tier T, output held to R. The .hgprop overlay language, the cross-check against the pinned @webref/css, and the hg-css-props table it emits (ST-D6)."
+
 [crates.hg-fontfmt]
 tier = "R"
 layer = "L2t"

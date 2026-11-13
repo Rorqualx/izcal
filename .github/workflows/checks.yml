@@ -284,6 +284,42 @@ jobs:
           cargo run --release --locked -p hg-html5lib
           cargo test --release --locked -p hg-html5lib --test it -- --nocapture
 
+  # ST-D6 (style spec 6.6): the property table is generated from
+  # @webref/css plus Izcal's .hgprop overlay, and the overlay restates
+  # the webref fields the engine was written against. This job is where
+  # that restatement earns its keep -- it fails when the two disagree,
+  # so a specification change arrives as a named difference rather than
+  # as silent drift (ST-7).
+  #
+  # And then a disagreement is planted in each field in turn, and the
+  # check is required to *refuse* it, against the twin that has no
+  # plant and must pass. Without that, a cross-check that compared
+  # nothing would pass this job while testing nothing.
+  cssgen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch the pinned @webref/css
+        run: tools/fetch-test-data.sh webref-css
+
+      - name: ST-D6, the overlay against the pinned webref
+        env:
+          IZCAL_REQUIRE_CSS_DATA: "1"
+        run: |
+          cargo run --locked -p hg-cssgen -- report
+          cargo run --locked -p hg-cssgen -- check
+
+      - name: The planted disagreements, and their twins
+        env:
+          IZCAL_REQUIRE_CSS_DATA: "1"
+        run: |
+          cargo test --release --locked -p hg-cssgen --test it -- --nocapture
+          cargo test --release --locked -p hg-css-props --all-features
+
   # ORC-1 (JS-M0 plan, Phase 1), the other half: the differential.
   #
   # `wast` above shows that every script parses. That is not the same as

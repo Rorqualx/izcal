@@ -28,6 +28,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-css-props"
+version = "0.0.0"
+
+[[package]]
+name = "hg-cssgen"
+version = "0.0.0"
+dependencies = [
+ "hg-json",
+]
+
+[[package]]
 name = "hg-dst"
 version = "0.0.0"
 
