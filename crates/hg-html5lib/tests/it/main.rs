@@ -93,16 +93,39 @@ fn every_case_in_the_suite_is_read() {
 
 #[test]
 fn a_double_escaped_astral_character_survives_as_one_character() {
-    // The review found this: taking each `\uXXXX` on its own turns an
-    // astral character into two U+FFFD, on the input and on the
-    // expected output alike, so the case passes while testing nothing.
-    // No case at the pinned commit holds such a pair, which is why only
-    // a test says so.
+    // The review found this twice. First that `unescape_again` took
+    // each escape on its own, so a surrogate pair became two U+FFFD on
+    // the input *and* on the expected output, and the case would pass
+    // while testing nothing. Then that the test written for it held a
+    // literal emoji rather than the escapes, and so tested nothing
+    // either. The assertions below are checked against the file's own
+    // bytes by the one after them.
     use hg_html5lib::cases::unescape_again;
-    assert_eq!(unescape_again(r"a😀b"), "a\u{1F600}b");
-    assert_eq!(unescape_again(r"a\uD83Db").chars().count(), 3);
-    assert_eq!(unescape_again(r"a\uD83Db"), "a\u{FFFD}b");
-    assert_eq!(unescape_again(r"\uDE00"), "\u{FFFD}");
-    assert_eq!(unescape_again(r"AB"), "AB");
-    assert_eq!(unescape_again(r"no escapes"), "no escapes");
+    assert_eq!(unescape_again(PAIR), "a\u{1F600}b");
+    assert_eq!(unescape_again(LONE_HIGH), "a\u{FFFD}b");
+    assert_eq!(unescape_again(LONE_LOW), "\u{FFFD}");
+    assert_eq!(unescape_again(ASCII), "AB");
+    assert_eq!(unescape_again("no escapes"), "no escapes");
+    // The pair is one character, not two replacement characters.
+    assert_eq!(unescape_again(PAIR).chars().count(), 3);
+}
+
+const PAIR: &str = r"a\uD83D\uDE00b";
+const LONE_HIGH: &str = r"a\uD83Db";
+const LONE_LOW: &str = r"\uDE00";
+const ASCII: &str = r"\u0041\u0042";
+
+#[test]
+fn the_escapes_above_are_written_as_escapes() {
+    // A literal astral character in the source would make the test
+    // above vacuous in exactly the way it exists to prevent, and it
+    // looks identical in a diff. So the source is read back.
+    let source = include_str!("main.rs");
+    assert!(source.contains(r#"const PAIR: &str = r"a\uD83D\uDE00b";"#));
+    assert!(source.contains(r#"const ASCII: &str = r"\u0041\u0042";"#));
+    assert!(
+        PAIR.is_ascii(),
+        "the pair is written as escapes, not as the character"
+    );
+    assert_eq!(PAIR.len(), 14, "a, 12 escape characters, b");
 }
