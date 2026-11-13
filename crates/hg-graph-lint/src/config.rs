@@ -55,6 +55,31 @@ impl Tier {
     }
 }
 
+/// One `[[started]]` row: a track of Stage 1 design 8.1a, with the
+/// artefacts its five clauses turn on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Started {
+    /// The milestone (`ST-M0`, `TX-M0`, ...).
+    pub track: String,
+    /// The specification whose M0 row names these artefacts.
+    pub spec: String,
+    /// Whether the track claims to have started. An unclaimed track is
+    /// reported, never failed: the rule must not block the work that
+    /// will satisfy it.
+    pub claimed: bool,
+    /// Clause 1: every crate the M0 row names.
+    pub crates: Vec<String>,
+    /// Clause 2: the generator or contract crate, one of `crates`.
+    pub generator: String,
+    /// Clause 3: the CI job that runs the oracle, in
+    /// `.github/workflows/checks.yml`.
+    pub oracle_job: String,
+    /// Clause 4: the design review's document, root-relative.
+    pub review: String,
+    /// Clause 5: the interlock table, root-relative.
+    pub interlock: String,
+}
+
 /// One crate's row in `tools/tiers.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Declared {
@@ -361,6 +386,8 @@ pub struct Rules {
     pub direct_only: Vec<DirectOnly>,
     /// `[[disjoint]]` rules.
     pub disjoint: Vec<Disjoint>,
+    /// `[[started]]` rows (Stage 1 design 8.1a).
+    pub started: Vec<Started>,
 }
 
 fn table_list<'v>(what: &str, v: Option<&'v Value>) -> Result<Vec<&'v Value>, ConfigError> {
@@ -463,6 +490,41 @@ impl Rules {
         r.layout_exempt = l.strings("exempt")?;
         l.opt_string("why")?;
         l.finish()?;
+
+        for t in table_list("started", top.opt("started"))? {
+            let mut t = Strict::new("[[started]]", t)?;
+            let row = Started {
+                track: t.string("track")?,
+                spec: t.string("spec")?,
+                claimed: t.bool("claimed")?,
+                crates: t.strings("crates")?,
+                generator: t.string("generator")?,
+                oracle_job: t.string("oracle-job")?,
+                review: t.string("review")?,
+                interlock: t.string("interlock")?,
+            };
+            t.string("why")?;
+            t.finish()?;
+            if row.crates.is_empty() {
+                return Err(ConfigError(format!(
+                    "[[started]] {}: crates must name at least one crate",
+                    row.track
+                )));
+            }
+            if !row.crates.contains(&row.generator) {
+                return Err(ConfigError(format!(
+                    "[[started]] {}: generator {} is not in its own crates list",
+                    row.track, row.generator
+                )));
+            }
+            if r.started.iter().any(|o| o.track == row.track) {
+                return Err(ConfigError(format!(
+                    "[[started]] {}: listed twice",
+                    row.track
+                )));
+            }
+            r.started.push(row);
+        }
 
         for f in table_list("forbid", top.opt("forbid"))? {
             let mut f = Strict::new("[[forbid]]", f)?;
