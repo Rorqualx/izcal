@@ -810,7 +810,7 @@ why = "A fixture track."
 fn g39_over_hg_types(f: &mut Fixture, boundary: &str) {
     f.edit(
         "tools/graph-rules.toml",
-        "crates = [\"hg-layout-num\"]\nboundary = \"hg-layout-num\"",
+        "crates = [\"hg-fragment\", \"hg-layout\", \"hg-layout-num\"]\nboundary = \"hg-layout-num\"",
         &format!("crates = [\"hg-types\"]\nboundary = \"{boundary}\""),
     );
 }

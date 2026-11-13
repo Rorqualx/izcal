@@ -325,6 +325,34 @@ jobs:
           cargo test --release --locked -p hg-encoding-build --test it -- --nocapture
           cargo test --release --locked -p hg-encoding --test it -- --nocapture
 
+  # LY-M0's foundations: the geometry, the numeric boundary, the
+  # fragment store and the layout contract.
+  #
+  # There is no layout engine yet, so what this job checks is the
+  # contract itself — the types every formatting context will be
+  # written against, and the two rules that keep them honest: G39
+  # (no floating point after the boundary) and G45 (a fragment handle
+  # beyond a pass carries an epoch).
+  layout-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: The layout unit and Writing Modes 4's mappings
+        run: cargo test --release --locked -p hg-types --test it -- --nocapture
+
+      - name: The numeric boundary (G39)
+        run: cargo test --release --locked -p hg-layout-num --test it -- --nocapture
+
+      - name: The fragment store (LY-D18, G45)
+        run: cargo test --release --locked -p hg-fragment --test it -- --nocapture
+
+      - name: The layout contract and its central diff (LY-D1)
+        run: cargo test --release --locked -p hg-layout --test it -- --nocapture
+
   # ST-D12 and G20: the reference style engine. It shares no code with
   # the production engine -- its own CSS Syntax 3 tokenizer, its own
   # Selectors 3 matcher, its own cascade -- which is what makes ST-4

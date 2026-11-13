@@ -83,6 +83,13 @@ name = "hg-fontgen"
 version = "0.0.0"
 
 [[package]]
+name = "hg-fragment"
+version = "0.0.0"
+dependencies = [
+ "hg-types",
+]
+
+[[package]]
 name = "hg-graph-lint"
 version = "0.0.0"
 
@@ -207,6 +214,15 @@ dependencies = [
 [[package]]
 name = "hg-launch-wire"
 version = "0.0.0"
+
+[[package]]
+name = "hg-layout"
+version = "0.0.0"
+dependencies = [
+ "hg-fragment",
+ "hg-layout-num",
+ "hg-types",
+]
 
 [[package]]
 name = "hg-layout-num"

@@ -238,6 +238,16 @@ tier = "R"
 layer = "L2p"
 why = "Style spec 6.15 crate table: L2p, tier R. The tokenizer and (at ST-M1) the tree builder and TreeSink trait; nothing here touches the DOM (G23: only this crate tokenizes HTML). Its generated/ is written by hg-htmlgen from states/*.hgtok and a hand edit fails CI (G29)."
 
+[crates.hg-fragment]
+tier = "R"
+layer = "L4"
+why = "Layout spec 6.15 crate table: L4, tier R. The fragment store, read API, side tables and reclamation. G38 makes this read API the only thing paint, hg-hit, hg-layout-query and the semantic plane may depend on; LY-D18 and G45 make fragment ids history-dependent and therefore never compared, hashed or held in primary state -- a handle beyond a pass is an (id, epoch) pair."
+
+[crates.hg-layout]
+tier = "R"
+layer = "L4"
+why = "Layout spec 6.15 crate table: L4, tier R. LY-D1's contract: the constraint space as the complete input and cache key, break tokens as data, layout results, and the one central relayout diff. The formatting contexts themselves are LY-M1; the contract is what the reference and production engines share, so it is fixed first."
+
 [crates.hg-layout-num]
 tier = "R"
 layer = "L4"

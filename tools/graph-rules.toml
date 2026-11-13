@@ -100,7 +100,7 @@ why = "H-3: a hand-written layout can only make the tracer read the wrong slots,
 # allowed binary64 operations -- instead of this rule, and meet layout only
 # through hg-layout-num's rounding function.
 [g39]
-crates = ["hg-layout-num"]
+crates = ["hg-fragment", "hg-layout", "hg-layout-num"]
 boundary = "hg-layout-num"
 why = "DET-1 and FP-24: cross-ISA identity; the text stack's G28; the arithmetic CVE class"
 
