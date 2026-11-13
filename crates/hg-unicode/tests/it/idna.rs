@@ -127,6 +127,28 @@ fn i08_verify_dns_length_is_only_applied_when_asked() {
 }
 
 #[test]
+fn i08a_the_empty_root_label_is_disallowed_by_verify_dns_length() {
+    // A trailing dot leaves an empty root label, and UTS #46 4.2 step
+    // 4 is explicit about it: "When VerifyDnsLength is false, the
+    // empty root label is passed through. When VerifyDnsLength is
+    // true, the empty root label is disallowed."
+    //
+    // It reads like an oversight — `example.com.` is a perfectly
+    // ordinary fully qualified name — so it is written down here. The
+    // conformance file agrees: its lines for `a.b.c.d.` expect the
+    // `A4_2` status, which is this very check.
+    assert_eq!(
+        to_ascii("example.com.", Flags::url(false), false).as_deref(),
+        Some("example.com.")
+    );
+    assert_eq!(to_ascii("example.com.", Flags::url(true), true), None);
+    assert_eq!(
+        to_ascii("example.com", Flags::url(true), true).as_deref(),
+        Some("example.com")
+    );
+}
+
+#[test]
 fn i09_the_bidi_conditions_apply_to_the_whole_name() {
     // RFC 5893: a Bidi domain name is one where *some* label holds an
     // R, AL or AN character, and then *every* label must satisfy the
