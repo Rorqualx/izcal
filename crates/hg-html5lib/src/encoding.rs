@@ -161,7 +161,14 @@ pub fn parse(file: &str, bytes: &[u8]) -> Result<Vec<Case>, String> {
         }
     };
     for line in split_lines(bytes) {
-        let next = match line {
+        // A section header may end CRLF; a `#data` section's own bytes
+        // may not be rewritten, so the carriage return is dropped only
+        // when deciding whether this line *is* a header.
+        let header = match line.split_last() {
+            Some((b'\r', rest)) => rest,
+            _ => line,
+        };
+        let next = match header {
             b"#data" => Some(Section::Data),
             b"#encoding" => Some(Section::Encoding),
             _ => None,
@@ -204,7 +211,9 @@ fn case(file: &str, index: usize, data: Vec<u8>, label: &[u8]) -> Result<Case, S
     })
 }
 
-/// Splits on LF, keeping neither the LF nor a trailing CR.
+/// Splits on LF, keeping every other byte — a carriage return
+/// included, because a `#data` section is the document's bytes and
+/// rewriting them would change what is being tested.
 fn split_lines(bytes: &[u8]) -> Vec<&[u8]> {
     let mut out = Vec::new();
     let mut start = 0_usize;
@@ -212,11 +221,7 @@ fn split_lines(bytes: &[u8]) -> Vec<&[u8]> {
         if *b != b'\n' {
             continue;
         }
-        let mut end = i;
-        if bytes.get(end.wrapping_sub(1)) == Some(&b'\r') {
-            end = end.saturating_sub(1);
-        }
-        out.push(bytes.get(start..end).unwrap_or(&[]));
+        out.push(bytes.get(start..i).unwrap_or(&[]));
         start = i.saturating_add(1);
     }
     if start < bytes.len() {
