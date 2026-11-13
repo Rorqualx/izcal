@@ -188,19 +188,53 @@ fn p12_affects_is_a_set_that_says_what_it_knows() {
 }
 
 #[test]
-fn p13_a_property_with_no_initial_value_says_so() {
-    // Nine properties at the pin: their specifications state it in a
-    // form @webref/css did not extract. The table says None rather
-    // than inventing one.
-    let missing: Vec<&str> = Property::all()
-        .filter(|p| p.initial().is_none())
+fn p13_everything_the_cascade_stores_has_an_initial_value() {
+    // A property with no initial value cannot be cascaded. webref
+    // extracted none for nine at the pin; six of those are mappings,
+    // which are never stored, and the overlay supplies the other three
+    // from the specifications that state them.
+    for p in Property::all() {
+        if p.maps_to().is_some() {
+            assert_eq!(
+                p.initial(),
+                None,
+                "{} is a mapping and stores nothing",
+                p.name()
+            );
+        } else {
+            assert!(
+                p.initial().is_some(),
+                "{} is stored and has no initial value",
+                p.name()
+            );
+        }
+    }
+    assert_eq!(Property::COLOR.initial(), Some("CanvasText"));
+    assert_eq!(Property::STOP_COLOR.initial(), Some("black"));
+    assert_eq!(Property::COLUMN_WIDTH.initial(), Some("auto"));
+}
+
+#[test]
+fn p13a_a_mapping_is_not_a_name_alias() {
+    // A legacy alias differs only in its name, so from_name resolves
+    // it. A mapping maps the value too, so it keeps a row and the
+    // parser has to consult maps_to.
+    let mapped = Property::from_name("-webkit-box-orient").unwrap();
+    assert_eq!(
+        mapped.name(),
+        "-webkit-box-orient",
+        "a mapping keeps its own row"
+    );
+    assert_eq!(mapped.maps_to(), Some(Property::FLEX_DIRECTION));
+    assert_eq!(
+        Property::from_name("-webkit-align-content").unwrap().name(),
+        "align-content"
+    );
+    let mappings: Vec<&str> = Property::all()
+        .filter(|p| p.maps_to().is_some())
         .map(|p| p.name())
         .collect();
-    assert!(
-        missing.contains(&"stop-color"),
-        "stop-color should have no initial value at this pin, found {missing:?}"
-    );
-    assert_eq!(Property::COLOR.initial(), Some("CanvasText"));
+    assert_eq!(mappings.len(), 6, "the mappings at the pin: {mappings:?}");
 }
 
 #[test]

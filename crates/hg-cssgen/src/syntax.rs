@@ -203,6 +203,28 @@ pub struct PropertyDecl {
     /// The hand-written function that computes the value, for a
     /// property whose kind is the prose one.
     pub hook: Option<String>,
+    /// The initial value, where `@webref/css` extracted none and so
+    /// the restatement above is absent. Izcal's own, with the
+    /// specification that states it named in a comment beside it.
+    ///
+    /// Three at the 8.7.9 pin. A property with no initial value cannot
+    /// be cascaded, so this is required wherever webref has none and
+    /// the property is not a mapping.
+    pub initial_is: Option<String>,
+    /// The property this one maps to, for a name that is not a property
+    /// of its own.
+    ///
+    /// The Compatibility Standard's §3.4.4 "property mappings" are
+    /// six: `-webkit-box-align`, `-webkit-box-flex`,
+    /// `-webkit-box-ordinal-group`, `-webkit-box-orient` and
+    /// `-webkit-box-pack` map to `align-items`, `flex-grow`, `order`,
+    /// `flex-direction` and `justify-content`, and CSS UI 4 requires
+    /// `-webkit-user-select` to be supported as an alias of
+    /// `user-select`. They are not legacy *name* aliases — the value is
+    /// mapped too — so webref keeps them as properties, with no initial
+    /// value and no computed value, which is exactly right: nothing is
+    /// stored under these names.
+    pub maps_to: Option<String>,
     /// The computed-value kind, where the specification's own text is
     /// wrong **for this property** and classifying the text would
     /// classify it wrongly.
@@ -532,6 +554,8 @@ impl Parser<'_> {
                 "computed" => p.computed = Some(self.string("the computed-value text")?),
                 "hook" => p.hook = Some(self.word("the hook's function name")?),
                 "kind" => p.kind = Some(self.word("a kind name")?),
+                "initial-is" => p.initial_is = Some(self.string("the initial value")?),
+                "maps-to" => p.maps_to = Some(self.word("the property it maps to")?),
                 "inherited" => p.inherited = Some(self.string("what webref says")?),
                 "inherits" => {
                     let w = self.word("`yes` or `no`")?;

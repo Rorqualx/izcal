@@ -111,6 +111,27 @@ fn st_m0_the_overlay_covers_the_pin_and_says_what_is_still_open() {
         ["border-shape"],
         "the kind overrides, each of which needs a reason written beside it"
     );
+    // The six names that map to another property, and the three
+    // initial values webref did not extract. Both lists are here so
+    // that a fourth cannot be added without a reason written beside it.
+    let mapped: Vec<&str> = m.mappings().iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(
+        mapped,
+        [
+            "-webkit-box-align",
+            "-webkit-box-flex",
+            "-webkit-box-ordinal-group",
+            "-webkit-box-orient",
+            "-webkit-box-pack",
+            "-webkit-user-select",
+        ]
+    );
+    let supplied: Vec<&str> = m
+        .supplied_initials()
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect();
+    assert_eq!(supplied, ["column-width", "stop-color", "stop-opacity"]);
     // ST-M0's own measurement: a number that can only go down.
     let open = m.undecided();
     assert!(

@@ -13,6 +13,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-box-align",
         initial: None,
+        maps_to: Some(Property(13)),
         inherits: false,
         kind: None,
         hook: None,
@@ -23,6 +24,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-box-flex",
         initial: None,
+        maps_to: Some(Property(287)),
         inherits: false,
         kind: None,
         hook: None,
@@ -33,6 +35,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-box-ordinal-group",
         initial: None,
+        maps_to: Some(Property(461)),
         inherits: false,
         kind: None,
         hook: None,
@@ -43,6 +46,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-box-orient",
         initial: None,
+        maps_to: Some(Property(285)),
         inherits: false,
         kind: None,
         hook: None,
@@ -53,6 +57,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-box-pack",
         initial: None,
+        maps_to: Some(Property(377)),
         inherits: false,
         kind: None,
         hook: None,
@@ -63,6 +68,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-line-clamp",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -73,6 +79,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-text-fill-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -83,6 +90,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-text-stroke",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -93,6 +101,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-text-stroke-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -103,6 +112,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-text-stroke-width",
         initial: Some("0"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -113,6 +123,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "-webkit-user-select",
         initial: None,
+        maps_to: Some(Property(718)),
         inherits: false,
         kind: None,
         hook: None,
@@ -123,6 +134,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "accent-color",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -133,6 +145,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "align-content",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -143,6 +156,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "align-items",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -153,6 +167,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "align-self",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -163,6 +178,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "alignment-baseline",
         initial: Some("baseline"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -173,6 +189,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "all",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -183,6 +200,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "anchor-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -193,6 +211,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "anchor-scope",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -203,6 +222,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -223,6 +243,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-composition",
         initial: Some("replace"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -233,6 +254,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-delay",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -243,6 +265,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-delay-end",
         initial: Some("0s"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Time),
         hook: None,
@@ -253,6 +276,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-delay-start",
         initial: Some("0s"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Time),
         hook: None,
@@ -263,6 +287,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-direction",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -273,6 +298,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-duration",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Time),
         hook: None,
@@ -283,6 +309,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-fill-mode",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -293,6 +320,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-iteration-count",
         initial: Some("1"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -303,6 +331,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -313,6 +342,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-play-state",
         initial: Some("running"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -323,6 +353,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-range",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -333,6 +364,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-range-center",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -343,6 +375,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-range-end",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -353,6 +386,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-range-start",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -363,6 +397,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-timeline",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -373,6 +408,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-timing-function",
         initial: Some("ease"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -383,6 +419,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "animation-trigger",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -393,6 +430,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "appearance",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -403,6 +441,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "aspect-ratio",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -413,6 +452,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "backdrop-filter",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -423,6 +463,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "backface-visibility",
         initial: Some("visible"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -433,6 +474,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -452,6 +494,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-attachment",
         initial: Some("scroll"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -462,6 +505,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-blend-mode",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -472,6 +516,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-clip",
         initial: Some("border-box"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -482,6 +527,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-color",
         initial: Some("transparent"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -492,6 +538,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-image",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Image),
         hook: None,
@@ -502,6 +549,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-origin",
         initial: Some("padding-box"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -512,6 +560,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-position",
         initial: Some("0% 0%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -522,6 +571,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-position-block",
         initial: Some("0%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -532,6 +582,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-position-inline",
         initial: Some("0%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -542,6 +593,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-position-x",
         initial: Some("0%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -552,6 +604,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-position-y",
         initial: Some("0%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -562,6 +615,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-repeat",
         initial: Some("repeat"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -572,6 +626,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-repeat-block",
         initial: Some("repeat"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -582,6 +637,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-repeat-inline",
         initial: Some("repeat"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -592,6 +648,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-repeat-x",
         initial: Some("repeat"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -602,6 +659,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-repeat-y",
         initial: Some("repeat"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -612,6 +670,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -622,6 +681,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "background-tbd",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -632,6 +692,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "baseline-shift",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -642,6 +703,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "baseline-source",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -652,6 +714,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "block-ellipsis",
         initial: Some("no-ellipsis"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -662,6 +725,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "block-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -672,6 +736,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "block-step",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -682,6 +747,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "block-step-align",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -692,6 +758,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "block-step-insert",
         initial: Some("margin-box"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -702,6 +769,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "block-step-round",
         initial: Some("up"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -712,6 +780,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "block-step-size",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -722,6 +791,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "bookmark-label",
         initial: Some("content(text)"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -732,6 +802,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "bookmark-level",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -742,6 +813,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "bookmark-state",
         initial: Some("open"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -752,6 +824,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -762,6 +835,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -772,6 +846,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-clip",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -782,6 +857,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-color",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -792,6 +868,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-end",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -802,6 +879,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-end-clip",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -812,6 +890,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-end-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -822,6 +901,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-end-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -832,6 +912,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-end-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -842,6 +923,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-end-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -852,6 +934,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-start",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -862,6 +945,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-start-clip",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -872,6 +956,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-start-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -882,6 +967,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-start-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -892,6 +978,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-start-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -902,6 +989,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-start-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -912,6 +1000,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-style",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -922,6 +1011,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-block-width",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -932,6 +1022,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-bottom",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -942,6 +1033,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-bottom-clip",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -952,6 +1044,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-bottom-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -962,6 +1055,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-bottom-left-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -972,6 +1066,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-bottom-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -982,6 +1077,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-bottom-right-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -992,6 +1088,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-bottom-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1002,6 +1099,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-bottom-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1012,6 +1110,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-boundary",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1022,6 +1121,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-clip",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1032,6 +1132,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-collapse",
         initial: Some("separate"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1042,6 +1143,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-color",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1052,6 +1154,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-end-end-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1062,6 +1165,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-end-start-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1072,6 +1176,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-image",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1088,6 +1193,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-image-outset",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1098,6 +1204,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-image-repeat",
         initial: Some("stretch"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1108,6 +1215,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-image-slice",
         initial: Some("100%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1118,6 +1226,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-image-source",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Image),
         hook: None,
@@ -1128,6 +1237,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-image-width",
         initial: Some("1"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1138,6 +1248,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1148,6 +1259,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-clip",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1158,6 +1270,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-color",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1168,6 +1281,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-end",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1178,6 +1292,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-end-clip",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1188,6 +1303,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-end-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -1198,6 +1314,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-end-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1208,6 +1325,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-end-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1218,6 +1336,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-end-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1228,6 +1347,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-start",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1238,6 +1358,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-start-clip",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1248,6 +1369,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-start-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -1258,6 +1380,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-start-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1268,6 +1391,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-start-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1278,6 +1402,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-start-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1288,6 +1413,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-style",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1298,6 +1424,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-inline-width",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1308,6 +1435,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-left",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1318,6 +1446,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-left-clip",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1328,6 +1457,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-left-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -1338,6 +1468,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-left-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1348,6 +1479,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-left-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1358,6 +1490,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-left-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1368,6 +1501,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-limit",
         initial: Some("all"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1378,6 +1512,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-radius",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1388,6 +1523,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-right",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1398,6 +1534,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-right-clip",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1408,6 +1545,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-right-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -1418,6 +1556,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-right-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1428,6 +1567,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-right-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1438,6 +1578,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-right-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1448,6 +1589,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-shape",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1458,6 +1600,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-spacing",
         initial: Some("0px 0px"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1468,6 +1611,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-start-end-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1478,6 +1622,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-start-start-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1488,6 +1633,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-style",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1498,6 +1644,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-top",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1508,6 +1655,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-top-clip",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1518,6 +1666,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-top-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -1528,6 +1677,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-top-left-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1538,6 +1688,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-top-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1548,6 +1699,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-top-right-radius",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1558,6 +1710,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-top-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1568,6 +1721,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-top-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1578,6 +1732,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "border-width",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1588,6 +1743,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "bottom",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1598,6 +1754,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-decoration-break",
         initial: Some("slice"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1608,6 +1765,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-shadow",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1624,6 +1782,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-shadow-blur",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1634,6 +1793,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-shadow-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -1644,6 +1804,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-shadow-offset",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1656,6 +1817,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-shadow-position",
         initial: Some("outset"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1666,6 +1828,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-shadow-spread",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1676,6 +1839,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-sizing",
         initial: Some("content-box"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1686,6 +1850,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "box-snap",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1696,6 +1861,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "break-after",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1706,6 +1872,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "break-before",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1716,6 +1883,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "break-inside",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1726,6 +1894,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "caption-side",
         initial: Some("top"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1736,6 +1905,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "caret",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1746,6 +1916,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "caret-animation",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1756,6 +1927,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "caret-color",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -1766,6 +1938,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "caret-shape",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1776,6 +1949,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "clear",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1786,6 +1960,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "clip",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1796,6 +1971,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "clip-path",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Url),
         hook: None,
@@ -1806,6 +1982,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "clip-rule",
         initial: Some("nonzero"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1816,6 +1993,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "color",
         initial: Some("CanvasText"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -1826,6 +2004,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "color-adjust",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1836,6 +2015,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "color-interpolation",
         initial: Some("sRGB"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1846,6 +2026,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "color-interpolation-filters",
         initial: Some("linearRGB"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1856,6 +2037,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "color-scheme",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1866,6 +2048,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-count",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1876,6 +2059,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-fill",
         initial: Some("balance"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1886,6 +2070,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-gap",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1896,6 +2081,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-height",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -1906,6 +2092,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1916,6 +2103,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-break",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1926,6 +2114,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1936,6 +2125,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1946,6 +2136,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset-cap",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1956,6 +2147,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset-cap-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1966,6 +2158,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset-cap-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -1976,6 +2169,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset-end",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1986,6 +2180,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset-junction",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -1996,6 +2191,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset-junction-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2006,6 +2202,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset-junction-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2016,6 +2213,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-inset-start",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2026,6 +2224,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2036,6 +2235,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-visibility-items",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2046,6 +2246,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-rule-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2056,6 +2257,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-span",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2065,7 +2267,8 @@ pub(crate) static ROWS: [Row; 758] = [
     },
     Row {
         name: "column-width",
-        initial: None,
+        initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2076,6 +2279,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "column-wrap",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2086,6 +2290,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "columns",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2096,6 +2301,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "contain",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2106,6 +2312,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "contain-intrinsic-block-size",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2116,6 +2323,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "contain-intrinsic-height",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2126,6 +2334,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "contain-intrinsic-inline-size",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2136,6 +2345,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "contain-intrinsic-size",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2146,6 +2356,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "contain-intrinsic-width",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2156,6 +2367,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "container",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2166,6 +2378,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "container-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2176,6 +2389,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "container-type",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2186,6 +2400,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "content",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("content"),
@@ -2196,6 +2411,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "content-visibility",
         initial: Some("visible"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2206,6 +2422,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "continue",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2216,6 +2433,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "copy-into",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2226,6 +2444,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2236,6 +2455,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-block-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2246,6 +2466,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-block-end-shape",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2256,6 +2477,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-block-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2266,6 +2488,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-block-start-shape",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2276,6 +2499,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-bottom",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2286,6 +2510,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-bottom-left",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2296,6 +2521,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-bottom-left-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("corner_bottom_left_shape"),
@@ -2306,6 +2532,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-bottom-right",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2316,6 +2543,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-bottom-right-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("corner_bottom_right_shape"),
@@ -2326,6 +2554,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-bottom-shape",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2336,6 +2565,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-end-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2346,6 +2576,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-end-end-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("corner_end_end_shape"),
@@ -2356,6 +2587,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-end-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2366,6 +2598,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-end-start-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("corner_end_start_shape"),
@@ -2376,6 +2609,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-inline-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2386,6 +2620,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-inline-end-shape",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2396,6 +2631,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-inline-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2406,6 +2642,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-inline-start-shape",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2416,6 +2653,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-left",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2426,6 +2664,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-left-shape",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2436,6 +2675,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-right",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2446,6 +2686,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-right-shape",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2456,6 +2697,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2466,6 +2708,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-start-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2476,6 +2719,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-start-end-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("corner_start_end_shape"),
@@ -2486,6 +2730,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-start-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2496,6 +2741,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-start-start-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("corner_start_start_shape"),
@@ -2506,6 +2752,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-top",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2516,6 +2763,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-top-left",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2526,6 +2774,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-top-left-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("corner_top_left_shape"),
@@ -2536,6 +2785,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-top-right",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2546,6 +2796,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-top-right-shape",
         initial: Some("round"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("corner_top_right_shape"),
@@ -2556,6 +2807,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "corner-top-shape",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2566,6 +2818,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "counter-increment",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2576,6 +2829,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "counter-reset",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2586,6 +2840,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "counter-set",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2596,6 +2851,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "cue",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2606,6 +2862,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "cue-after",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2616,6 +2873,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "cue-before",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2626,6 +2884,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "cursor",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Url),
         hook: None,
@@ -2636,6 +2895,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "cx",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2646,6 +2906,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "cy",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2656,6 +2917,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "d",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2666,6 +2928,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "direction",
         initial: Some("ltr"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2676,6 +2939,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "display",
         initial: Some("inline"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("display"),
@@ -2686,6 +2950,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "dominant-baseline",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2696,6 +2961,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "dynamic-range-limit",
         initial: Some("no-limit"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("dynamic_range_limit"),
@@ -2706,6 +2972,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "empty-cells",
         initial: Some("show"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2716,6 +2983,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "event-trigger",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2726,6 +2994,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "event-trigger-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2736,6 +3005,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "event-trigger-source",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2746,6 +3016,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "field-sizing",
         initial: Some("fixed"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2756,6 +3027,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill",
         initial: Some("black"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -2766,6 +3038,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-break",
         initial: Some("bounding-box"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2776,6 +3049,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -2786,6 +3060,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-image",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Image),
         hook: None,
@@ -2796,6 +3071,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-opacity",
         initial: Some("1"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Number),
         hook: None,
@@ -2806,6 +3082,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-origin",
         initial: Some("match-parent"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2816,6 +3093,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-position",
         initial: Some("0% 0%"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2826,6 +3104,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-repeat",
         initial: Some("repeat"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2836,6 +3115,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-rule",
         initial: Some("nonzero"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2846,6 +3126,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fill-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2856,6 +3137,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "filter",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2866,6 +3148,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "fit-tolerance",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2876,6 +3159,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flex",
         initial: Some("0 1 auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2886,6 +3170,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flex-basis",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2896,6 +3181,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flex-direction",
         initial: Some("row"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2906,6 +3192,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flex-flow",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -2916,6 +3203,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flex-grow",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2926,6 +3214,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flex-line-count",
         initial: Some("1"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2936,6 +3225,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flex-shrink",
         initial: Some("1"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2946,6 +3236,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flex-wrap",
         initial: Some("nowrap"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2956,6 +3247,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "float",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2966,6 +3258,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "float-defer",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2976,6 +3269,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "float-offset",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -2986,6 +3280,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "float-reference",
         initial: Some("inline"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -2996,6 +3291,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flood-color",
         initial: Some("black"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3006,6 +3302,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flood-opacity",
         initial: Some("1"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Number),
         hook: None,
@@ -3016,6 +3313,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flow-from",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3026,6 +3324,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "flow-into",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3036,6 +3335,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3054,6 +3354,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-family",
         initial: Some("depends on user agent"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3064,6 +3365,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-feature-settings",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3074,6 +3376,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-kerning",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3084,6 +3387,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-language-override",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3094,6 +3398,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-optical-sizing",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3104,6 +3409,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-palette",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("font_palette"),
@@ -3114,6 +3420,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-size",
         initial: Some("medium"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3124,6 +3431,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-size-adjust",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3134,6 +3442,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-style",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Angle),
         hook: None,
@@ -3144,6 +3453,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-synthesis",
         initial: Some("weight style small-caps position"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3154,6 +3464,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-synthesis-position",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3164,6 +3475,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-synthesis-small-caps",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3174,6 +3486,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-synthesis-style",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3184,6 +3497,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-synthesis-weight",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3194,6 +3508,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variant",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3212,6 +3527,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variant-alternates",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3222,6 +3538,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variant-caps",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3232,6 +3549,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variant-east-asian",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3242,6 +3560,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variant-emoji",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3252,6 +3571,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variant-ligatures",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3262,6 +3582,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variant-numeric",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3272,6 +3593,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variant-position",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3282,6 +3604,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-variation-settings",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3292,6 +3615,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-weight",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("font_weight"),
@@ -3302,6 +3626,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "font-width",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("font_width"),
@@ -3312,6 +3637,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "footnote-display",
         initial: Some("block"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3322,6 +3648,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "footnote-policy",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3332,6 +3659,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "forced-color-adjust",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3342,6 +3670,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "frame-sizing",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3352,6 +3681,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "gap",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3362,6 +3692,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "glyph-orientation-vertical",
         initial: Some("n/a"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("glyph_orientation_vertical"),
@@ -3372,6 +3703,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3389,6 +3721,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-area",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3399,6 +3732,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-auto-columns",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("grid_auto_columns"),
@@ -3411,6 +3745,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-auto-flow",
         initial: Some("row"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3421,6 +3756,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-auto-rows",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("grid_auto_rows"),
@@ -3433,6 +3769,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-column",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3443,6 +3780,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-column-end",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3453,6 +3791,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-column-start",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3463,6 +3802,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-row",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3473,6 +3813,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-row-end",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3483,6 +3824,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-row-start",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3493,6 +3835,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-template",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3503,6 +3846,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-template-areas",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3513,6 +3857,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-template-columns",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("grid_template_columns"),
@@ -3525,6 +3870,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "grid-template-rows",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("grid_template_rows"),
@@ -3537,6 +3883,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "hanging-punctuation",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3547,6 +3894,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "height",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3557,6 +3905,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "hyphenate-character",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3567,6 +3916,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "hyphenate-limit-chars",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3577,6 +3927,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "hyphenate-limit-last",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3587,6 +3938,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "hyphenate-limit-lines",
         initial: Some("no-limit"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3597,6 +3949,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "hyphenate-limit-zone",
         initial: Some("0"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3607,6 +3960,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "hyphens",
         initial: Some("manual"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3617,6 +3971,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "image-animation",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3627,6 +3982,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "image-orientation",
         initial: Some("from-image"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Angle),
         hook: None,
@@ -3637,6 +3993,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "image-rendering",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3647,6 +4004,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "image-resolution",
         initial: Some("1dppx"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("image_resolution"),
@@ -3657,6 +4015,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "initial-letter",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3667,6 +4026,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "initial-letter-align",
         initial: Some("alphabetic"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3677,6 +4037,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "initial-letter-wrap",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3687,6 +4048,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inline-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3697,6 +4059,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inline-sizing",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3707,6 +4070,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "input-security",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3717,6 +4081,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inset",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3727,6 +4092,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inset-block",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3737,6 +4103,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inset-block-end",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3747,6 +4114,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inset-block-start",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3757,6 +4125,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inset-inline",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3767,6 +4136,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inset-inline-end",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3777,6 +4147,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "inset-inline-start",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3787,6 +4158,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "interactivity",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3797,6 +4169,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "interest-delay",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3807,6 +4180,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "interest-delay-end",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Time),
         hook: None,
@@ -3817,6 +4191,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "interest-delay-start",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Time),
         hook: None,
@@ -3827,6 +4202,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "interpolate-size",
         initial: Some("numeric-only"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3837,6 +4213,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "isolation",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3847,6 +4224,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "justify-content",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3857,6 +4235,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "justify-items",
         initial: Some("legacy"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("justify_items"),
@@ -3867,6 +4246,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "justify-self",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3877,6 +4257,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "left",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3887,6 +4268,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "letter-spacing",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3897,6 +4279,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "lighting-color",
         initial: Some("white"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3907,6 +4290,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "line-break",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3917,6 +4301,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "line-clamp",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -3927,6 +4312,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "line-fit-edge",
         initial: Some("leading"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3937,6 +4323,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "line-grid",
         initial: Some("match-parent"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3947,6 +4334,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "line-height",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3957,6 +4345,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "line-height-step",
         initial: Some("0"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3967,6 +4356,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "line-padding",
         initial: Some("0"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -3977,6 +4367,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "line-snap",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3987,6 +4378,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "link-parameters",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -3997,6 +4389,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "list-style",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4007,6 +4400,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "list-style-image",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Image),
         hook: None,
@@ -4017,6 +4411,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "list-style-position",
         initial: Some("outside"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("list_style_position"),
@@ -4027,6 +4422,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "list-style-type",
         initial: Some("disc"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4037,6 +4433,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4047,6 +4444,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-block",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4057,6 +4455,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-block-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4067,6 +4466,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-block-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4077,6 +4477,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-bottom",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4087,6 +4488,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-break",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4097,6 +4499,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-inline",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4107,6 +4510,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-inline-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4117,6 +4521,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-inline-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4127,6 +4532,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-left",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4137,6 +4543,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-right",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4147,6 +4554,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-top",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4157,6 +4565,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "margin-trim",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4167,6 +4576,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "marker",
         initial: Some("not defined for shorthand properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4177,6 +4587,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "marker-end",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Url),
         hook: None,
@@ -4187,6 +4598,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "marker-mid",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Url),
         hook: None,
@@ -4197,6 +4609,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "marker-side",
         initial: Some("match-self"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4207,6 +4620,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "marker-start",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Url),
         hook: None,
@@ -4217,6 +4631,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4236,6 +4651,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-border",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4253,6 +4669,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-border-mode",
         initial: Some("alpha"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4263,6 +4680,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-border-outset",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4273,6 +4691,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-border-repeat",
         initial: Some("stretch"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4283,6 +4702,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-border-slice",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4293,6 +4713,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-border-source",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Image),
         hook: None,
@@ -4303,6 +4724,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-border-width",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4313,6 +4735,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-clip",
         initial: Some("border-box"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4323,6 +4746,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-composite",
         initial: Some("add"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4333,6 +4757,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-image",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -4343,6 +4768,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-mode",
         initial: Some("match-source"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4353,6 +4779,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-origin",
         initial: Some("border-box"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4363,6 +4790,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-position",
         initial: Some("0% 0%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4373,6 +4801,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-repeat",
         initial: Some("repeat"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4383,6 +4812,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4393,6 +4823,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mask-type",
         initial: Some("luminance"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4403,6 +4834,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "math-depth",
         initial: Some("0"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("math_depth"),
@@ -4413,6 +4845,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "math-shift",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4423,6 +4856,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "math-style",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4433,6 +4867,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "max-block-size",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4443,6 +4878,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "max-height",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4453,6 +4889,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "max-inline-size",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4463,6 +4900,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "max-lines",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4473,6 +4911,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "max-size",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4483,6 +4922,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "max-width",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4493,6 +4933,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "min-block-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4503,6 +4944,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "min-height",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4513,6 +4955,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "min-inline-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4523,6 +4966,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "min-intrinsic-sizing",
         initial: Some("legacy"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4533,6 +4977,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "min-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4543,6 +4988,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "min-width",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4553,6 +4999,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "mix-blend-mode",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4563,6 +5010,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "nav-down",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4573,6 +5021,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "nav-left",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4583,6 +5032,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "nav-right",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4593,6 +5043,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "nav-up",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4603,6 +5054,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "object-fit",
         initial: Some("fill"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4613,6 +5065,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "object-position",
         initial: Some("50% 50%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4623,6 +5076,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "object-view-box",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4633,6 +5087,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "offset",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4649,6 +5104,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "offset-anchor",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4659,6 +5115,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "offset-distance",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4669,6 +5126,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "offset-path",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4679,6 +5137,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "offset-position",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4689,6 +5148,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "offset-rotate",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Angle),
         hook: None,
@@ -4699,6 +5159,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "opacity",
         initial: Some("1"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Number),
         hook: None,
@@ -4709,6 +5170,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "order",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4719,6 +5181,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "orphans",
         initial: Some("2"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4729,6 +5192,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "outline",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4739,6 +5203,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "outline-color",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("outline_color"),
@@ -4749,6 +5214,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "outline-offset",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4759,6 +5225,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "outline-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4769,6 +5236,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "outline-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4779,6 +5247,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow",
         initial: Some("visible"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4789,6 +5258,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-anchor",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4799,6 +5269,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-block",
         initial: Some("visible"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("overflow_block"),
@@ -4809,6 +5280,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4819,6 +5291,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-block",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4829,6 +5302,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-block-end",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4839,6 +5313,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-block-start",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4849,6 +5324,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-bottom",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4859,6 +5335,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-inline",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4869,6 +5346,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-inline-end",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4879,6 +5357,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-inline-start",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4889,6 +5368,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-left",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4899,6 +5379,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-right",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4909,6 +5390,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-clip-margin-top",
         initial: Some("0px"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -4919,6 +5401,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-inline",
         initial: Some("visible"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("overflow_inline"),
@@ -4929,6 +5412,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-wrap",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4939,6 +5423,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-x",
         initial: Some("visible"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("overflow_x"),
@@ -4949,6 +5434,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overflow-y",
         initial: Some("visible"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("overflow_y"),
@@ -4959,6 +5445,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overlay",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4969,6 +5456,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overscroll-behavior",
         initial: Some("auto auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -4979,6 +5467,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overscroll-behavior-block",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4989,6 +5478,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overscroll-behavior-inline",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -4999,6 +5489,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overscroll-behavior-x",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5009,6 +5500,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "overscroll-behavior-y",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5019,6 +5511,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5029,6 +5522,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-block",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5039,6 +5533,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-block-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5049,6 +5544,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-block-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5059,6 +5555,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-bottom",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5069,6 +5566,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-inline",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5079,6 +5577,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-inline-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5089,6 +5588,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-inline-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5099,6 +5599,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-left",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5109,6 +5610,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-right",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5119,6 +5621,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "padding-top",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5129,6 +5632,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "page",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5139,6 +5643,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "page-break-after",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5149,6 +5654,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "page-break-before",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5159,6 +5665,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "page-break-inside",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5169,6 +5676,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "paint-order",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5179,6 +5687,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "path-length",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5189,6 +5698,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "pause",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5199,6 +5709,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "pause-after",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5209,6 +5720,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "pause-before",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5219,6 +5731,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "perspective",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5229,6 +5742,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "perspective-origin",
         initial: Some("50% 50%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5239,6 +5753,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "place-content",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5249,6 +5764,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "place-items",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5259,6 +5775,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "place-self",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5269,6 +5786,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "pointer-events",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5279,6 +5797,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "pointer-timeline",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5289,6 +5808,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "pointer-timeline-axis",
         initial: Some("block"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5299,6 +5819,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "pointer-timeline-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5309,6 +5830,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "position",
         initial: Some("static"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5319,6 +5841,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "position-anchor",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5329,6 +5852,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "position-area",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5339,6 +5863,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "position-try",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5349,6 +5874,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "position-try-fallbacks",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5359,6 +5885,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "position-try-order",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5369,6 +5896,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "position-visibility",
         initial: Some("anchor-visible"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5379,6 +5907,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "print-color-adjust",
         initial: Some("economy"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5389,6 +5918,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "quotes",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5399,6 +5929,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "r",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5409,6 +5940,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "reading-flow",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5419,6 +5951,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "reading-order",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5429,6 +5962,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "region-fragment",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5439,6 +5973,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "resize",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5449,6 +5984,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rest",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5459,6 +5995,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rest-after",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5469,6 +6006,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rest-before",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5479,6 +6017,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "right",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5489,6 +6028,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rotate",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Angle),
         hook: None,
@@ -5499,6 +6039,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-gap",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5509,6 +6050,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5519,6 +6061,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-break",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5529,6 +6072,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5539,6 +6083,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5549,6 +6094,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset-cap",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5559,6 +6105,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset-cap-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5569,6 +6116,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset-cap-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5579,6 +6127,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset-end",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5589,6 +6138,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset-junction",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5599,6 +6149,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset-junction-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5609,6 +6160,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset-junction-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5619,6 +6171,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-inset-start",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5629,6 +6182,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5639,6 +6193,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-visibility-items",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5649,6 +6204,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "row-rule-width",
         initial: Some("medium"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5659,6 +6215,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "ruby-align",
         initial: Some("space-around"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5669,6 +6226,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "ruby-merge",
         initial: Some("separate"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5679,6 +6237,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "ruby-overhang",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5689,6 +6248,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "ruby-position",
         initial: Some("alternate"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5699,6 +6259,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5709,6 +6270,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-break",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5719,6 +6281,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-color",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5729,6 +6292,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-inset",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5739,6 +6303,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-inset-cap",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5749,6 +6314,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-inset-end",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5759,6 +6325,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-inset-junction",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5769,6 +6336,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-inset-start",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5779,6 +6347,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-overlap",
         initial: Some("row-over-column"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5789,6 +6358,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-style",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5799,6 +6369,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-visibility-items",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5809,6 +6380,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rule-width",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5819,6 +6391,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "rx",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5829,6 +6402,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "ry",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5839,6 +6413,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scale",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5849,6 +6424,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-axis-lock",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5859,6 +6435,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-behavior",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5869,6 +6446,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-initial-target",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5879,6 +6457,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5889,6 +6468,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-block",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5899,6 +6479,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-block-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5909,6 +6490,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-block-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5919,6 +6501,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-bottom",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5929,6 +6512,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-inline",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -5939,6 +6523,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-inline-end",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5949,6 +6534,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-inline-start",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5959,6 +6545,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-left",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5969,6 +6556,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-right",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5979,6 +6567,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-margin-top",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -5989,6 +6578,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-marker-group",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -5999,6 +6589,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6009,6 +6600,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-block",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6019,6 +6611,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-block-end",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6029,6 +6622,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-block-start",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6039,6 +6633,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-bottom",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6049,6 +6644,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-inline",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6059,6 +6655,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-inline-end",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6069,6 +6666,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-inline-start",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6079,6 +6677,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-left",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6089,6 +6688,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-right",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6099,6 +6699,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-padding-top",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6109,6 +6710,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-snap-align",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6119,6 +6721,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-snap-stop",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6129,6 +6732,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-snap-type",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6139,6 +6743,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-target-group",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6149,6 +6754,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-timeline",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6159,6 +6765,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-timeline-axis",
         initial: Some("block"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6169,6 +6776,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scroll-timeline-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6179,6 +6787,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scrollbar-color",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -6189,6 +6798,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scrollbar-gutter",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6199,6 +6809,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "scrollbar-width",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6209,6 +6820,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "shape-image-threshold",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Number),
         hook: None,
@@ -6219,6 +6831,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "shape-inside",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -6229,6 +6842,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "shape-margin",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6239,6 +6853,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "shape-outside",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -6249,6 +6864,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "shape-padding",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6259,6 +6875,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "shape-rendering",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6269,6 +6886,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6279,6 +6897,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "slider-orientation",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6289,6 +6908,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "spatial-navigation-action",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6299,6 +6919,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "spatial-navigation-contain",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6309,6 +6930,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "spatial-navigation-function",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6319,6 +6941,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "speak",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6329,6 +6952,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "speak-as",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6338,9 +6962,10 @@ pub(crate) static ROWS: [Row; 758] = [
     },
     Row {
         name: "stop-color",
-        initial: None,
+        initial: Some("black"),
+        maps_to: None,
         inherits: false,
-        kind: None,
+        kind: Some(ComputedKind::Color),
         hook: None,
         affects: Affects::UNDECIDED,
         longhands: &[],
@@ -6348,9 +6973,10 @@ pub(crate) static ROWS: [Row; 758] = [
     },
     Row {
         name: "stop-opacity",
-        initial: None,
+        initial: Some("1"),
+        maps_to: None,
         inherits: false,
-        kind: None,
+        kind: Some(ComputedKind::Number),
         hook: None,
         affects: Affects::UNDECIDED,
         longhands: &[],
@@ -6359,6 +6985,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "string-set",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6369,6 +6996,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -6379,6 +7007,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-align",
         initial: Some("center"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6389,6 +7018,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-alignment",
         initial: Some("center"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6399,6 +7029,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-break",
         initial: Some("bounding-box"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6409,6 +7040,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-color",
         initial: Some("transparent"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -6419,6 +7051,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-dash-corner",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6429,6 +7062,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-dash-justify",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6439,6 +7073,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-dashadjust",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6449,6 +7084,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-dasharray",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6459,6 +7095,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-dashcorner",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6469,6 +7106,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-dashoffset",
         initial: Some("0"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6479,6 +7117,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-image",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Image),
         hook: None,
@@ -6489,6 +7128,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-linecap",
         initial: Some("butt"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6499,6 +7139,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-linejoin",
         initial: Some("miter"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6509,6 +7150,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-miterlimit",
         initial: Some("4"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6519,6 +7161,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-opacity",
         initial: Some("1"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Number),
         hook: None,
@@ -6529,6 +7172,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-origin",
         initial: Some("match-parent"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6539,6 +7183,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-position",
         initial: Some("0% 0%"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6549,6 +7194,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-repeat",
         initial: Some("repeat"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6559,6 +7205,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-size",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6569,6 +7216,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "stroke-width",
         initial: Some("1px"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6579,6 +7227,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "tab-size",
         initial: Some("8"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6589,6 +7238,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "table-layout",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6599,6 +7249,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-align",
         initial: Some("start"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6609,6 +7260,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-align-all",
         initial: Some("start"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("text_align_all"),
@@ -6619,6 +7271,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-align-last",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("text_align_last"),
@@ -6629,6 +7282,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-anchor",
         initial: Some("start"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6639,6 +7293,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-autospace",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6649,6 +7304,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-box",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6659,6 +7315,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-box-edge",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6669,6 +7326,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-box-trim",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6679,6 +7337,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-combine-upright",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6689,6 +7348,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6699,6 +7359,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -6709,6 +7370,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-inset",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6719,6 +7381,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-line",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6729,6 +7392,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-skip",
         initial: Some("See individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6739,6 +7403,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-skip-box",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6749,6 +7414,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-skip-ink",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6759,6 +7425,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-skip-self",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("text_decoration_skip_self"),
@@ -6769,6 +7436,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-skip-spaces",
         initial: Some("start end"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6779,6 +7447,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-style",
         initial: Some("solid"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6789,6 +7458,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-decoration-thickness",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6799,6 +7469,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-emphasis",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6809,6 +7480,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-emphasis-color",
         initial: Some("currentcolor"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Color),
         hook: None,
@@ -6819,6 +7491,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-emphasis-position",
         initial: Some("over right"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6829,6 +7502,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-emphasis-skip",
         initial: Some("spaces punctuation"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6839,6 +7513,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-emphasis-style",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6849,6 +7524,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-fit",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6859,6 +7535,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-group-align",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6869,6 +7546,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-indent",
         initial: Some("0"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6879,6 +7557,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-justify",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Prose),
         hook: Some("text_justify"),
@@ -6889,6 +7568,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-orientation",
         initial: Some("mixed"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6899,6 +7579,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-overflow",
         initial: Some("clip"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6909,6 +7590,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-rendering",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6919,6 +7601,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-shadow",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Mixed),
         hook: None,
@@ -6929,6 +7612,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-size-adjust",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6939,6 +7623,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-spacing",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6949,6 +7634,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-spacing-trim",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6959,6 +7645,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-transform",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6969,6 +7656,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-underline-offset",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -6979,6 +7667,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-underline-position",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -6989,6 +7678,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-wrap",
         initial: Some("wrap"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -6999,6 +7689,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-wrap-mode",
         initial: Some("wrap"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7009,6 +7700,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "text-wrap-style",
         initial: Some("auto"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7019,6 +7711,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-scope",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7029,6 +7722,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -7039,6 +7733,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-activation-range",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -7049,6 +7744,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-activation-range-end",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7059,6 +7755,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-activation-range-start",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7069,6 +7766,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-active-range",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -7079,6 +7777,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-active-range-end",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7089,6 +7788,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-active-range-start",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7099,6 +7799,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7109,6 +7810,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-range",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -7119,6 +7821,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "timeline-trigger-source",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7129,6 +7832,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "top",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7139,6 +7843,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "touch-action",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7149,6 +7854,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transform",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7159,6 +7865,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transform-box",
         initial: Some("view-box"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7169,6 +7876,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transform-origin",
         initial: Some("50% 50%"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7179,6 +7887,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transform-style",
         initial: Some("flat"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7189,6 +7898,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transition",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -7205,6 +7915,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transition-behavior",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7215,6 +7926,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transition-delay",
         initial: Some("0s"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Time),
         hook: None,
@@ -7225,6 +7937,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transition-duration",
         initial: Some("0s"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Time),
         hook: None,
@@ -7235,6 +7948,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transition-property",
         initial: Some("all"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7245,6 +7959,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "transition-timing-function",
         initial: Some("ease"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7255,6 +7970,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "translate",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7265,6 +7981,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "trigger-scope",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7275,6 +7992,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "unicode-bidi",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7285,6 +8003,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "user-select",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7295,6 +8014,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "vector-effect",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7305,6 +8025,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "vertical-align",
         initial: Some("baseline"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -7315,6 +8036,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "view-timeline",
         initial: Some("see individual properties"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Shorthand),
         hook: None,
@@ -7325,6 +8047,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "view-timeline-axis",
         initial: Some("block"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7335,6 +8058,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "view-timeline-inset",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7345,6 +8069,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "view-timeline-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7355,6 +8080,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "view-transition-class",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7365,6 +8091,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "view-transition-group",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7375,6 +8102,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "view-transition-name",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7385,6 +8113,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "view-transition-scope",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7395,6 +8124,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "visibility",
         initial: Some("visible"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7405,6 +8135,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "voice-balance",
         initial: Some("center"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Number),
         hook: None,
@@ -7415,6 +8146,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "voice-duration",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7425,6 +8157,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "voice-family",
         initial: Some("implementation-dependent"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7435,6 +8168,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "voice-pitch",
         initial: Some("medium"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Frequency),
         hook: None,
@@ -7445,6 +8179,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "voice-range",
         initial: Some("medium"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Frequency),
         hook: None,
@@ -7455,6 +8190,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "voice-rate",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7465,6 +8201,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "voice-stress",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7475,6 +8212,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "voice-volume",
         initial: Some("medium"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7485,6 +8223,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "white-space",
         initial: Some("normal"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7495,6 +8234,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "white-space-collapse",
         initial: Some("collapse"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7505,6 +8245,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "white-space-trim",
         initial: Some("none"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7515,6 +8256,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "widows",
         initial: Some("2"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7525,6 +8267,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "width",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7535,6 +8278,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "will-change",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7545,6 +8289,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "window-drag",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7555,6 +8300,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "word-break",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7565,6 +8311,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "word-space-transform",
         initial: Some("none"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7575,6 +8322,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "word-spacing",
         initial: Some("normal"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7585,6 +8333,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "wrap-after",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7595,6 +8344,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "wrap-before",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7605,6 +8355,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "wrap-flow",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Prose),
         hook: Some("wrap_flow"),
@@ -7615,6 +8366,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "wrap-inside",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7625,6 +8377,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "wrap-through",
         initial: Some("wrap"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7635,6 +8388,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "writing-mode",
         initial: Some("horizontal-tb"),
+        maps_to: None,
         inherits: true,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7645,6 +8399,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "x",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7655,6 +8410,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "y",
         initial: Some("0"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Length),
         hook: None,
@@ -7665,6 +8421,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "z-index",
         initial: Some("auto"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Identity),
         hook: None,
@@ -7675,6 +8432,7 @@ pub(crate) static ROWS: [Row; 758] = [
     Row {
         name: "zoom",
         initial: Some("1"),
+        maps_to: None,
         inherits: false,
         kind: Some(ComputedKind::Number),
         hook: None,

@@ -76,6 +76,7 @@ impl Affects {
 pub(crate) struct Row {
     pub(crate) name: &'static str,
     pub(crate) initial: Option<&'static str>,
+    pub(crate) maps_to: Option<Property>,
     pub(crate) inherits: bool,
     pub(crate) kind: Option<ComputedKind>,
     pub(crate) hook: Option<&'static str>,
@@ -93,6 +94,7 @@ pub(crate) struct Row {
 static ABSENT: Row = Row {
     name: "",
     initial: None,
+    maps_to: None,
     inherits: false,
     kind: None,
     hook: None,
@@ -140,11 +142,26 @@ impl Property {
 
     /// Its initial value, as the specification writes it.
     ///
-    /// `None` for the handful whose specifications state it in a form
-    /// `@webref/css` did not extract.
+    /// `None` only for a mapping, which is never stored and so has
+    /// none. Where `@webref/css` extracted no value the overlay
+    /// supplies one from the specification that states it, so a
+    /// property that *is* stored always has an initial value here.
     #[must_use]
     pub fn initial(self) -> Option<&'static str> {
         self.row().initial
+    }
+
+    /// The property this name maps to, for one that is not stored
+    /// under its own name.
+    ///
+    /// Six at the pinned version: the Compatibility Standard's §3.4.4
+    /// property mappings, and `-webkit-user-select`. Unlike a legacy
+    /// alias, which [`Property::from_name`] resolves because only the
+    /// *name* differs, a mapping also maps the value, so it keeps a
+    /// row of its own and the parser consults this.
+    #[must_use]
+    pub fn maps_to(self) -> Option<Self> {
+        self.row().maps_to
     }
 
     /// Whether it inherits.

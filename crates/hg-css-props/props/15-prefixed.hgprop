@@ -17,30 +17,40 @@
 property -webkit-box-align @ "https://compat.spec.whatwg.org/#propdef--webkit-box-align" {
   # legacy flexbox, defined by the Compatibility Standard; not inherited
   inherits  no
+  # the Compatibility Standard 3.4.4 maps this to align-items; nothing is stored under this name
+  maps-to   align-items
   affects   unknown
 }
 
 property -webkit-box-flex @ "https://compat.spec.whatwg.org/#propdef--webkit-box-flex" {
   # legacy flexbox; not inherited
   inherits  no
+  # the Compatibility Standard 3.4.4 maps this to flex-grow
+  maps-to   flex-grow
   affects   unknown
 }
 
 property -webkit-box-ordinal-group @ "https://compat.spec.whatwg.org/#propdef--webkit-box-ordinal-group" {
   # legacy flexbox; not inherited
   inherits  no
+  # the Compatibility Standard 3.4.4 maps this to order
+  maps-to   order
   affects   unknown
 }
 
 property -webkit-box-orient @ "https://compat.spec.whatwg.org/#propdef--webkit-box-orient" {
   # legacy flexbox; not inherited
   inherits  no
+  # the Compatibility Standard 3.4.4 maps this to flex-direction
+  maps-to   flex-direction
   affects   unknown
 }
 
 property -webkit-box-pack @ "https://compat.spec.whatwg.org/#propdef--webkit-box-pack" {
   # legacy flexbox; not inherited
   inherits  no
+  # the Compatibility Standard 3.4.4 maps this to justify-content
+  maps-to   justify-content
   affects   unknown
 }
 
@@ -102,5 +112,7 @@ property -webkit-user-select @ "https://drafts.csswg.org/css-ui-4/#propdef--webk
   # follows user-select, which webref gives as `no`
   inherits  no
   syntax    "auto | text | none | contain | all"
+  # CSS UI 4 6.1: a UA that supports user-select "must also support -webkit-user-select as an alias", with the mechanism left to the UA
+  maps-to   user-select
   affects   unknown
 }

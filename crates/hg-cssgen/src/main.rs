@@ -69,10 +69,34 @@ fn report(root: &Path) -> ExitCode {
     );
     for p in m.overrides() {
         println!(
-            "hg-cssgen: {} overrides its kind: the specification's computed-value text is \
-             {:?}, which is not this property's",
+            "hg-cssgen: {} overrides its kind: the specification's computed-value text is {:?}, \
+             which is not this property's",
             p.name,
             p.computed.as_deref().unwrap_or("")
+        );
+    }
+    let mappings = m.mappings();
+    if !mappings.is_empty() {
+        println!(
+            "hg-cssgen: {} name(s) map to another property and are never stored: {}",
+            mappings.len(),
+            mappings
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    let supplied = m.supplied_initials();
+    if !supplied.is_empty() {
+        println!(
+            "hg-cssgen: {} initial value(s) webref did not extract, supplied by the overlay: {}",
+            supplied.len(),
+            supplied
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     if found.is_empty() {

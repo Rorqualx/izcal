@@ -2033,6 +2033,8 @@ property column-width @ "https://drafts.csswg.org/css-sizing-3/#column-sizing" {
   computed  "as specified, with <length-percentage> values computed"
   animation "by computed value type"
   syntax    "auto | <box-size> | auto | <box-size>"
+  # webref points at css-sizing-3, which has no property definition table; css-multicol-1 gives Initial: auto
+  initial-is "auto"
   affects   layout
 }
 

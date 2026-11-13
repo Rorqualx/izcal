@@ -67,9 +67,31 @@ impl Model {
     /// specification's own computed-value text is wrong for them.
     #[must_use]
     pub fn overrides(&self) -> Vec<&PropertyDecl> {
+        // A `kind` where there is no text to classify is not an
+        // override of anything; only one given *beside* a restated text
+        // overrides it.
         self.properties
             .iter()
-            .filter(|p| p.kind.is_some())
+            .filter(|p| p.kind.is_some() && p.computed.is_some())
+            .collect()
+    }
+
+    /// The properties that map to another rather than being stored.
+    #[must_use]
+    pub fn mappings(&self) -> Vec<&PropertyDecl> {
+        self.properties
+            .iter()
+            .filter(|p| p.maps_to.is_some())
+            .collect()
+    }
+
+    /// The properties whose initial value Izcal supplies because
+    /// `@webref/css` extracted none.
+    #[must_use]
+    pub fn supplied_initials(&self) -> Vec<&PropertyDecl> {
+        self.properties
+            .iter()
+            .filter(|p| p.initial_is.is_some())
             .collect()
     }
 
@@ -256,19 +278,52 @@ pub fn check(files: &[(String, File)]) -> Result<Model, Error> {
         .collect();
     for p in &m.properties {
         let (file, line) = where_prop.get(&p.name).cloned().unwrap_or_default();
-        if let Some(k) = &p.kind {
-            if !where_kind.contains_key(k) {
-                return Err(err(&file, line, format!("`{k}` is not a declared kind")));
+        if let Some(k) = &p.kind
+            && !where_kind.contains_key(k)
+        {
+            return Err(err(&file, line, format!("`{k}` is not a declared kind")));
+        }
+        if let Some(t) = &p.maps_to {
+            if !where_prop.contains_key(t) {
+                return Err(err(
+                    &file,
+                    line,
+                    format!("{} maps to {t}, which has no block", p.name),
+                ));
             }
-            // The override says what Izcal computes; it does not excuse
-            // the restatement, which is what the cross-check compares.
-            if p.computed.is_none() {
+            if !p.longhands.is_empty() {
                 return Err(err(
                     &file,
                     line,
                     format!(
-                        "{} overrides its kind but restates no `computed` text; the override says \
-                         what Izcal computes, not what the specification says",
+                        "{} maps to another property and cannot also be a shorthand",
+                        p.name
+                    ),
+                ));
+            }
+        } else {
+            // Nothing is stored under a mapping's name, so a mapping
+            // needs neither. Everything else does: a property with no
+            // initial value cannot be cascaded, and one with no kind
+            // has no conversion.
+            if p.initial.is_none() && p.initial_is.is_none() {
+                return Err(err(
+                    &file,
+                    line,
+                    format!(
+                        "{} has no initial value: webref extracted none, so the overlay gives it \
+                         with `initial-is`, or says what it maps to",
+                        p.name
+                    ),
+                ));
+            }
+            if p.computed.is_none() && p.kind.is_none() {
+                return Err(err(
+                    &file,
+                    line,
+                    format!(
+                        "{} has no computed-value text to classify, so the overlay gives its \
+                         `kind`, or says what it maps to",
                         p.name
                     ),
                 ));

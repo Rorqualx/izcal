@@ -176,6 +176,7 @@ pub fn properties(m: &Model) -> String {
             "    Row {{\n        \
              name: {},\n        \
              initial: {},\n        \
+             maps_to: {},\n        \
              inherits: {},\n        \
              kind: {},\n        \
              hook: {},\n        \
@@ -184,7 +185,14 @@ pub fn properties(m: &Model) -> String {
              animation: {},\n    \
              }},",
             string(&p.name),
-            opt_string(p.initial.as_ref()),
+            opt_string(p.initial.as_ref().or(p.initial_is.as_ref())),
+            p.maps_to.as_ref().map_or_else(
+                || "None".to_owned(),
+                |t| format!(
+                    "Some(Property({}))",
+                    index.get(t.as_str()).copied().unwrap_or(0)
+                )
+            ),
             p.inherits.unwrap_or(false),
             kind,
             opt_string(p.hook.as_ref()),
@@ -311,16 +319,23 @@ pub fn table(m: &Model) -> String {
          # The review table of style spec 6.6: what the overlay says about\n\
          # each property, beside what @webref/css carries. A re-pin is\n\
          # triaged against this (ST-7).\n\
-         name\tinherits\tinitial\tkind\taffects\tanimation\tlonghands\thref\tsyntax\n",
+         name\tinherits\tinitial\tfrom\tkind\taffects\tanimation\tmaps-to\tlonghands\thref\tsyntax\n",
     );
     for p in &m.properties {
         let cell = |s: Option<&String>| s.map_or("-", String::as_str).replace(['\t', '\n'], " ");
         let _ = writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             p.name,
             p.inherits.map_or("-", |b| if b { "yes" } else { "no" }),
-            cell(p.initial.as_ref()),
+            cell(p.initial.as_ref().or(p.initial_is.as_ref())),
+            if p.initial.is_some() {
+                "webref"
+            } else if p.initial_is.is_some() {
+                "izcal"
+            } else {
+                "-"
+            },
             m.kind_of(p).unwrap_or("-"),
             p.affects
                 .iter()
@@ -328,6 +343,7 @@ pub fn table(m: &Model) -> String {
                 .collect::<Vec<_>>()
                 .join("+"),
             cell(p.animation.as_ref()),
+            p.maps_to.as_deref().unwrap_or("-"),
             if p.longhands.is_empty() {
                 "-".to_owned()
             } else {

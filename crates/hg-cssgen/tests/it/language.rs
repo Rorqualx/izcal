@@ -226,8 +226,11 @@ fn c19_a_kind_override_still_restates_the_specifications_text() {
             .kind,
         Some("length".to_owned())
     );
-    let text = text.replace("  computed  \"as specified\"\n  syntax", "  syntax");
-    assert!(refused(&text).contains("restates no `computed` text"));
+    // Dropping the restatement does not make the override illegal --
+    // it makes the kind the only source, which is how a property webref
+    // gives no computed value for is written.
+    let text = text.replacen("  computed  \"as specified\"\n  syntax", "  syntax", 1);
+    assert_eq!(model_of(&text).unwrap().overrides().len(), 0);
 }
 
 #[test]
@@ -237,4 +240,40 @@ fn c20_a_kind_override_must_name_a_declared_kind() {
         "  kind      nonesuch\n  affects   paint\n}",
     );
     assert!(refused(&text).contains("not a declared kind"));
+}
+
+#[test]
+fn c21_everything_stored_needs_an_initial_value_and_a_kind() {
+    let text = GOOD.replacen("  initial   \"black\"\n", "", 1);
+    assert!(refused(&text).contains("has no initial value"));
+    let text = GOOD.replacen("  computed  \"as specified\"\n  syntax", "  syntax", 1);
+    assert!(refused(&text).contains("has no computed-value text to classify"));
+}
+
+#[test]
+fn c22_a_mapping_needs_neither_and_must_name_a_property() {
+    // Nothing is stored under a mapping's name, so it has no initial
+    // value and no conversion of its own.
+    // Only the `color` block, which is the first of the three.
+    let text = GOOD
+        .replacen("  initial   \"black\"\n", "", 1)
+        .replacen("  computed  \"as specified\"\n", "", 1)
+        .replacen(
+            "  affects   paint\n}",
+            "  maps-to   margin-top\n  affects   paint\n}",
+            1,
+        );
+    let m = model_of(&text).unwrap();
+    assert_eq!(m.mappings().len(), 1);
+    let text = text.replace("maps-to   margin-top", "maps-to   margin-nowhere");
+    assert!(refused(&text).contains("which has no block"));
+}
+
+#[test]
+fn c23_a_mapping_cannot_also_be_a_shorthand() {
+    let text = GOOD.replace(
+        "  longhands margin-top\n",
+        "  longhands margin-top\n  maps-to   margin-top\n",
+    );
+    assert!(refused(&text).contains("cannot also be a shorthand"));
 }

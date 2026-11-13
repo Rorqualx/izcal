@@ -1407,6 +1407,10 @@ property stop-color @ "https://w3c.github.io/svgwg/svg2-draft/pservers.html#Stop
   # an SVG paint-server property; not inherited
   inherits  no
   syntax    "<'color'>"
+  # SVG 2 14.2.4: Value <‘color’>, Initial black
+  initial-is "black"
+  # SVG 2 states no computed value for it; a <color> resolves like any other
+  kind      color
   affects   unknown
 }
 
@@ -1414,6 +1418,10 @@ property stop-opacity @ "https://w3c.github.io/svgwg/svg2-draft/pservers.html#St
   # an SVG paint-server property; not inherited
   inherits  no
   syntax    "<'opacity'>"
+  # SVG 2 14.2.4: Value <‘opacity’>, Initial 1
+  initial-is "1"
+  # SVG 2 14.2.4 computed value: "the specified value converted to a number, clamped to the range [0,1]"
+  kind      number
   affects   unknown
 }
 
