@@ -243,10 +243,20 @@ tier = "R"
 layer = "L4"
 why = "Layout spec 6.15 crate table: L4, tier R. The fragment store, read API, side tables and reclamation. G38 makes this read API the only thing paint, hg-hit, hg-layout-query and the semantic plane may depend on; LY-D18 and G45 make fragment ids history-dependent and therefore never compared, hashed or held in primary state -- a handle beyond a pass is an (id, epoch) pair."
 
+[crates.hg-box-tree]
+tier = "R"
+layer = "L4"
+why = "Layout spec 6.15 crate table: L4, tier R (LY-D2). Box generation from the node columns through hg-tree-traits (G1), box columns, the node-to-box map, anonymous boxes and the HTML rendering rules. Class (a) derived data: dropping the columns and rebuilding gives bit-identical box trees (LY-32)."
+
 [crates.hg-layout]
 tier = "R"
 layer = "L4"
 why = "Layout spec 6.15 crate table: L4, tier R. LY-D1's contract: the constraint space as the complete input and cache key, break tokens as data, layout results, and the one central relayout diff. The formatting contexts themselves are LY-M1; the contract is what the reference and production engines share, so it is fixed first."
+
+[crates.hg-layout-reference]
+tier = "T"
+layer = "tools"
+why = "Layout spec 6.15 crate table: tools, tier T, output held to R (LY-D5). The independent reference layout engine LY-3, LY-4, LY-32, LY-40 and G42 are all phrased against. G41: it shares no project-local code with hg-layout, hg-box-tree, hg-layout-math or hg-fragment -- only hg-tree-traits, hg-types geometry, hg-style's read API and hg-text -- so its box tree, its computed values and its fragments are its own."
 
 [crates.hg-layout-num]
 tier = "R"

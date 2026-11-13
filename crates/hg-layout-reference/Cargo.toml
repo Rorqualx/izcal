@@ -1,0 +1,47 @@
+[package]
+name = "hg-layout-reference"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's independent reference layout engine (tools, tier T, LY-D5, G41): CSS 2.2 block layout written from the prose, sharing no code with hg-layout, hg-box-tree or hg-fragment"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+required-features = ["testing"]
+
+[dependencies]
+# G41: the ONLY project-local dependencies this crate may have are
+# hg-tree-traits, hg-types' geometry, hg-style's read API and hg-text.
+# Not hg-layout, not hg-box-tree, not hg-fragment -- it builds its own
+# box tree and its own fragments, which is what makes it an oracle
+# rather than a second caller of the same code.
+hg-tree-traits = { path = "../hg-tree-traits" }
+hg-types = { path = "../hg-types" }
+
+[features]
+testing = ["hg-tree-traits/testing"]
+
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+# Tier T, with the output held to R: a reference that panicked on
+# input the production engine survives is not an oracle.
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+panic = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"

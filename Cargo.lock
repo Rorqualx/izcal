@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "hg-box-tree"
+version = "0.0.0"
+dependencies = [
+ "hg-fragment",
+ "hg-tree-traits",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-browser"
 version = "0.0.0"
 dependencies = [
@@ -228,6 +237,14 @@ dependencies = [
 name = "hg-layout-num"
 version = "0.0.0"
 dependencies = [
+ "hg-types",
+]
+
+[[package]]
+name = "hg-layout-reference"
+version = "0.0.0"
+dependencies = [
+ "hg-tree-traits",
  "hg-types",
 ]
 

@@ -353,6 +353,12 @@ jobs:
       - name: The layout contract and its central diff (LY-D1)
         run: cargo test --release --locked -p hg-layout --test it -- --nocapture
 
+      - name: The box tree (LY-D2)
+        run: cargo test --release --locked -p hg-box-tree --features testing --test it -- --nocapture
+
+      - name: The reference layout engine (LY-D5, G41)
+        run: cargo test --release --locked -p hg-layout-reference --features testing --test it -- --nocapture
+
   # ST-D12 and G20: the reference style engine. It shares no code with
   # the production engine -- its own CSS Syntax 3 tokenizer, its own
   # Selectors 3 matcher, its own cascade -- which is what makes ST-4
