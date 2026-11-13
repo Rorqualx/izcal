@@ -43,7 +43,12 @@ fn render(token: &Token) -> String {
         Token::Function(s) => format!("{s}("),
         Token::AtKeyword(s) => format!("@{s}"),
         Token::Hash(s, _) => format!("#{s}"),
-        Token::Str(s) => format!("\"{s}\""),
+        Token::Str(s) => format!(
+            "\"{}\"",
+            s.replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\a ")
+        ),
         Token::BadString => "\"".to_owned(),
         Token::Url(s) => format!("url({s})"),
         Token::BadUrl => "url(".to_owned(),
@@ -78,9 +83,19 @@ fn render_all(tokens: &[Token]) -> String {
 /// compatibility work.
 #[must_use]
 pub fn declarations(input: &str) -> Vec<Declaration> {
-    let tokens = Tokenizer::new(input).all();
+    declarations_of(&Tokenizer::new(input).all())
+}
+
+/// Reads a declaration block that is already tokenized.
+///
+/// The sheet reader uses this rather than rendering a block back to
+/// text and tokenizing it again: a round trip through text is a second
+/// chance to be wrong, and it was — a value holding a quote came back
+/// as different tokens.
+#[must_use]
+pub fn declarations_of(tokens: &[Token]) -> Vec<Declaration> {
     let mut out = Vec::new();
-    for chunk in split_top_level(&tokens, &Token::Semicolon) {
+    for chunk in split_top_level(tokens, &Token::Semicolon) {
         let mut it = chunk.iter().skip_while(|t| t.is_whitespace());
         let Some(Token::Ident(property)) = it.next() else {
             continue;
@@ -97,12 +112,27 @@ pub fn declarations(input: &str) -> Vec<Declaration> {
             continue;
         }
         out.push(Declaration {
-            property: property.to_ascii_lowercase(),
+            property: normalize_property(property),
             value,
             important,
         });
     }
     out
+}
+
+/// A property name as the cascade holds it.
+///
+/// CSS property names are ASCII case-insensitive, so `COLOR` is
+/// `color`. A **custom property** is not: Custom Properties 1 says
+/// "custom property names are case-sensitive", so `--Foo` and `--foo`
+/// are two properties and must not collapse into one winner.
+#[must_use]
+pub fn normalize_property(name: &str) -> String {
+    if name.starts_with("--") {
+        name.to_owned()
+    } else {
+        name.to_ascii_lowercase()
+    }
 }
 
 /// Finds a trailing `!important`, case-insensitively, and removes it.
@@ -183,7 +213,7 @@ pub fn parse(source: &str, origin: Origin) -> Sheet {
                         // it to the end.
                         let layer = read_layer(&mut sheet, &prelude);
                         if let Some(block) = block {
-                            read_rules(&mut sheet, &block, origin, layer);
+                            read_rules(&mut sheet, &block, origin, layer.as_deref());
                         }
                     }
                     other => sheet
@@ -207,7 +237,7 @@ pub fn parse(source: &str, origin: Origin) -> Sheet {
     sheet
 }
 
-fn read_rules(sheet: &mut Sheet, tokens: &[Token], origin: Origin, layer: Option<usize>) {
+fn read_rules(sheet: &mut Sheet, tokens: &[Token], origin: Origin, layer: Option<&str>) {
     let mut at = 0_usize;
     while at < tokens.len() {
         match tokens.get(at) {
@@ -223,7 +253,13 @@ fn read_rules(sheet: &mut Sheet, tokens: &[Token], origin: Origin, layer: Option
                 let (prelude, block, next) = qualified_rule(tokens, at);
                 at = next;
                 if let Some(block) = block {
-                    add_rule(sheet, &prelude, &block, origin, layer);
+                    add_rule(
+                        sheet,
+                        &prelude,
+                        &block,
+                        origin,
+                        layer.map(ToOwned::to_owned),
+                    );
                 }
             }
             None => break,
@@ -236,7 +272,7 @@ fn add_rule(
     prelude: &[Token],
     block: &[Token],
     origin: Origin,
-    layer: Option<usize>,
+    layer: Option<String>,
 ) {
     let text = render_all(prelude);
     let selectors =
@@ -251,7 +287,7 @@ fn add_rule(
         };
     sheet.rules.push(Rule {
         selectors,
-        declarations: declarations(&render_all(block)),
+        declarations: declarations_of(block),
         origin,
         layer,
         order: sheet.rules.len(),
@@ -283,7 +319,7 @@ fn read_namespace(sheet: &mut Sheet, prelude: &[Token]) {
 /// inside a layer: §6.4.3's grouping of nested layers "within their
 /// parent layers" is not modelled, and a sheet that uses it is
 /// recorded as read only in part.
-fn read_layer(sheet: &mut Sheet, prelude: &[Token]) -> Option<usize> {
+fn read_layer(sheet: &mut Sheet, prelude: &[Token]) -> Option<String> {
     let text = render_all(prelude);
     let names: Vec<String> = text
         .split(',')
@@ -297,16 +333,19 @@ fn read_layer(sheet: &mut Sheet, prelude: &[Token]) -> Option<usize> {
     }
     let Some(first) = names.first().cloned() else {
         // An anonymous layer: `@layer { ... }`. It takes a slot of its
-        // own in the order, and nothing can add to it later.
-        sheet.layers.push(String::new());
-        return sheet.layers.len().checked_sub(1);
+        // own in the order and nothing can add to it later, so it is
+        // given a name no stylesheet can write: a NULL, which §3.3's
+        // preprocessing turns into U+FFFD before a name can hold one.
+        let name = format!("\0{}", sheet.layers.len());
+        sheet.layers.push(name.clone());
+        return Some(name);
     };
     for name in names {
         if !sheet.layers.contains(&name) {
             sheet.layers.push(name);
         }
     }
-    sheet.layers.iter().position(|n| *n == first)
+    Some(first)
 }
 
 /// Reads a qualified rule: its prelude, its block, and where to carry

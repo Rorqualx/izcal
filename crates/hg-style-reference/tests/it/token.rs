@@ -138,3 +138,12 @@ fn k09_cdo_and_cdc() {
     assert_eq!(t("-->"), vec![Token::Cdc]);
     assert_eq!(t("<"), vec![Token::Delim('<')]);
 }
+
+#[test]
+fn k10_a_long_run_of_comments_is_consumed_without_recursing() {
+    // A reference engine that overflowed its stack would abort the run
+    // rather than give a verdict, and a run of comments is ordinary
+    // input for a fuzzer.
+    let input = format!("{}x", "/**/".repeat(100_000));
+    assert_eq!(t(&input), vec![Token::Ident("x".to_owned())]);
+}

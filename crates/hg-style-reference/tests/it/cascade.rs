@@ -245,3 +245,93 @@ fn c14_property_names_are_lower_cased_and_values_are_not() {
     assert_eq!(value(&t, "p", &c, "color"), Some("Red".to_owned()));
     assert_eq!(value(&t, "p", &c, "COLOR"), Some("Red".to_owned()));
 }
+
+#[test]
+fn c15_order_of_appearance_runs_across_sheets_not_within_one() {
+    // §6.1: order of appearance is document order. A later sheet's
+    // first rule beats an earlier sheet's last at equal specificity —
+    // holding the order per sheet gets this backwards.
+    let t = tree("html\n  p id=p");
+    let mut c = Cascade::new();
+    c.add(
+        "p { color: a } p { color: b } p { color: c }",
+        Origin::Author,
+    );
+    c.add("p { color: later }", Origin::Author);
+    assert_eq!(value(&t, "p", &c, "color"), Some("later".to_owned()));
+}
+
+#[test]
+fn c16_a_layer_declared_in_two_sheets_of_one_origin_is_one_layer() {
+    // §6.4.3: layers belong to an origin. Two sheets that both say
+    // `@layer base` name the same layer, and its place is where the
+    // origin first declared it.
+    let t = tree("html\n  p id=p");
+    let mut c = Cascade::new();
+    c.add("@layer base, theme;", Origin::Author);
+    c.add("@layer theme { p { color: theme } }", Origin::Author);
+    c.add("@layer base { p { color: base } }", Origin::Author);
+    // `theme` is after `base` in the origin's order, although its rule
+    // was written first.
+    assert_eq!(value(&t, "p", &c, "color"), Some("theme".to_owned()));
+}
+
+#[test]
+fn c17_two_anonymous_layers_in_two_sheets_stay_two_layers() {
+    let t = tree("html\n  p id=p");
+    let mut c = Cascade::new();
+    c.add("@layer { p { color: first } }", Origin::Author);
+    c.add("@layer { p { color: second } }", Origin::Author);
+    // The second is later in the origin's layer order, so it wins.
+    assert_eq!(value(&t, "p", &c, "color"), Some("second".to_owned()));
+}
+
+#[test]
+fn c18_layers_of_different_origins_do_not_interfere() {
+    let t = tree("html\n  p id=p");
+    let mut c = Cascade::new();
+    c.add("@layer a { p { color: ua } }", Origin::UserAgent);
+    c.add("@layer a { p { color: author } }", Origin::Author);
+    // Origin is compared first, whatever the layers are called.
+    assert_eq!(value(&t, "p", &c, "color"), Some("author".to_owned()));
+}
+
+#[test]
+fn c19_custom_property_names_are_case_sensitive() {
+    // Custom Properties 1: "custom property names are case-sensitive".
+    // Ordinary property names are not.
+    let t = tree("html\n  p id=p");
+    let mut c = Cascade::new();
+    c.add(
+        "p { --Foo: upper; --foo: lower; COLOR: red }",
+        Origin::Author,
+    );
+    assert_eq!(value(&t, "p", &c, "--Foo"), Some("upper".to_owned()));
+    assert_eq!(value(&t, "p", &c, "--foo"), Some("lower".to_owned()));
+    assert_eq!(value(&t, "p", &c, "color"), Some("red".to_owned()));
+    let Some(node) = t.find("p") else {
+        panic!("there is a #p");
+    };
+    assert_eq!(c.winners(&t, node, None).len(), 3);
+}
+
+#[test]
+fn c20_a_value_holding_a_quote_survives_the_sheet_reader() {
+    // The block's tokens go straight to the declaration reader rather
+    // than through text and back, so a quote inside a string cannot
+    // re-tokenize into something else.
+    let t = tree("html\n  p id=p");
+    let mut c = Cascade::new();
+    c.add(r#"p { content: "a\"b"; color: red }"#, Origin::Author);
+    assert_eq!(value(&t, "p", &c, "color"), Some("red".to_owned()));
+    let got = value(&t, "p", &c, "content");
+    assert!(
+        got.as_deref()
+            .is_some_and(|v| v.contains("a") && v.contains("b")),
+        "the value kept both halves: {got:?}"
+    );
+    // A semicolon inside a string does not end the declaration.
+    let mut c = Cascade::new();
+    c.add(r#"p { content: "a;b"; color: blue }"#, Origin::Author);
+    assert_eq!(value(&t, "p", &c, "color"), Some("blue".to_owned()));
+}

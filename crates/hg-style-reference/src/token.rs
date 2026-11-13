@@ -393,20 +393,24 @@ impl Tokenizer {
     }
 
     /// The next token, or `None` at the end of the input.
+    ///
+    /// Comments are consumed in a loop rather than by recursing: a
+    /// long run of them is ordinary input for a fuzzer, and a
+    /// reference engine that overflowed its stack would abort the run
+    /// instead of giving a verdict.
     pub fn next_token(&mut self) -> Option<Token> {
+        while self.peek(0) == Some('/') && self.peek(1) == Some('*') {
+            self.at = self.at.saturating_add(2);
+            while self.peek(0).is_some() {
+                if self.peek(0) == Some('*') && self.peek(1) == Some('/') {
+                    self.at = self.at.saturating_add(2);
+                    break;
+                }
+                self.at = self.at.saturating_add(1);
+            }
+        }
         let c = self.peek(0)?;
         match c {
-            '/' if self.peek(1) == Some('*') => {
-                self.at = self.at.saturating_add(2);
-                while self.peek(0).is_some() {
-                    if self.peek(0) == Some('*') && self.peek(1) == Some('/') {
-                        self.at = self.at.saturating_add(2);
-                        break;
-                    }
-                    self.at = self.at.saturating_add(1);
-                }
-                self.next_token()
-            }
             c if is_whitespace(c) => {
                 while self.peek(0).is_some_and(is_whitespace) {
                     self.at = self.at.saturating_add(1);

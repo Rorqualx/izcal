@@ -62,9 +62,14 @@ pub struct Rule {
     pub declarations: Vec<Declaration>,
     /// Its origin.
     pub origin: Origin,
-    /// Its layer's index in the sheet's layer order, or `None` for an
-    /// unlayered rule.
-    pub layer: Option<usize>,
+    /// Its layer's name, or `None` for an unlayered rule.
+    ///
+    /// A **name**, not an index: an index is only meaningful once the
+    /// sheets of one origin are merged, because two sheets may declare
+    /// the same layer and a layer's place is where it was *first*
+    /// declared in that origin (Cascade 5 6.4.3). [`Cascade::add`]
+    /// does the merging.
+    pub layer: Option<String>,
     /// Its index among the sheet's rules.
     pub order: usize,
 }
@@ -158,23 +163,135 @@ pub struct Candidate {
     pub rank: Rank,
 }
 
+/// One rule, with its place in the whole document rather than in its
+/// own sheet.
+#[derive(Debug, Clone)]
+struct Placed {
+    selectors: SelectorList,
+    declarations: Vec<Declaration>,
+    origin: Origin,
+    /// The layer's index in its **origin's** merged layer order.
+    layer: Option<usize>,
+    /// Order of appearance across every sheet.
+    order: u32,
+}
+
 /// The sheets of one document, cascaded together.
+///
+/// Two things belong to the cascade and not to a sheet, because both
+/// run across sheets, and holding them per sheet was wrong:
+///
+/// - **Order of appearance.** Cascade 5 6.1 orders declarations by
+///   document order, not by a rule's place in whichever sheet holds
+///   it, so a later sheet's first rule beats an earlier sheet's last.
+/// - **Layers.** Cascade layers belong to an origin (6.4.3), so two
+///   sheets that both declare `@layer base` name one layer, whose
+///   place is where that origin first declared it.
 #[derive(Debug, Clone, Default)]
 pub struct Cascade {
     sheets: Vec<Sheet>,
+    rules: Vec<Placed>,
+    /// Layer names per origin, first-declared order, across sheets.
+    layers: LayerOrders,
+    next_order: u32,
 }
+
+/// One layer order per origin.
+///
+/// Three named fields rather than a map, so finding an origin's order
+/// is a `match` and never a lookup that could fail — this crate denies
+/// `unwrap` and has no business panicking inside an oracle.
+#[derive(Debug, Clone, Default)]
+struct LayerOrders {
+    user_agent: Vec<String>,
+    user: Vec<String>,
+    author: Vec<String>,
+}
+
+impl LayerOrders {
+    fn of(&self, origin: Origin) -> &[String] {
+        match origin {
+            Origin::UserAgent => &self.user_agent,
+            Origin::User => &self.user,
+            Origin::Author => &self.author,
+        }
+    }
+
+    fn of_mut(&mut self, origin: Origin) -> &mut Vec<String> {
+        match origin {
+            Origin::UserAgent => &mut self.user_agent,
+            Origin::User => &mut self.user,
+            Origin::Author => &mut self.author,
+        }
+    }
+}
+
+/// The name an anonymous layer is given. A stylesheet cannot write a
+/// NULL into a name — Syntax 3 3.3 turns one into U+FFFD — so these
+/// never collide with a declared layer.
+const ANONYMOUS: char = '\0';
 
 impl Cascade {
     /// An empty cascade.
     #[must_use]
     pub const fn new() -> Self {
-        Self { sheets: Vec::new() }
+        Self {
+            sheets: Vec::new(),
+            rules: Vec::new(),
+            layers: LayerOrders {
+                user_agent: Vec::new(),
+                user: Vec::new(),
+                author: Vec::new(),
+            },
+            next_order: 0,
+        }
     }
 
     /// Adds a sheet's source in an origin.
     pub fn add(&mut self, source: &str, origin: Origin) -> &mut Self {
-        self.sheets.push(sheet::parse(source, origin));
+        let index = self.sheets.len();
+        let mut parsed = sheet::parse(source, origin);
+        // An anonymous layer is named per sheet; across sheets it is
+        // still its own layer, so the sheet's index goes in front.
+        for name in &mut parsed.layers {
+            if name.starts_with(ANONYMOUS) {
+                *name = format!("{ANONYMOUS}{index}:{name}");
+            }
+        }
+        for rule in &mut parsed.rules {
+            if let Some(name) = &mut rule.layer
+                && name.starts_with(ANONYMOUS)
+            {
+                *name = format!("{ANONYMOUS}{index}:{name}");
+            }
+        }
+        let order = self.layers.of_mut(origin);
+        for name in &parsed.layers {
+            if !order.contains(name) {
+                order.push(name.clone());
+            }
+        }
+        let known = self.origin_layers(origin).to_vec();
+        for rule in &parsed.rules {
+            self.rules.push(Placed {
+                selectors: rule.selectors.clone(),
+                declarations: rule.declarations.clone(),
+                origin,
+                layer: rule
+                    .layer
+                    .as_ref()
+                    .and_then(|n| known.iter().position(|k| k == n)),
+                order: self.next_order,
+            });
+            self.next_order = self.next_order.saturating_add(1);
+        }
+        self.sheets.push(parsed);
         self
+    }
+
+    /// The layer order of `origin`.
+    fn origin_layers(&self, origin: Origin) -> &[String] {
+        self.layers.of(origin)
     }
 
     /// The sheets, for a report of what was skipped or refused.
@@ -196,25 +313,24 @@ impl Cascade {
         pseudo_element: Option<&str>,
     ) -> Vec<Candidate> {
         let mut out = Vec::new();
-        for s in &self.sheets {
-            for rule in &s.rules {
-                let Some(specificity) =
-                    most_specific_match(tree, node, &rule.selectors, pseudo_element)
-                else {
-                    continue;
-                };
-                for declaration in &rule.declarations {
-                    out.push(Candidate {
-                        rank: Rank {
-                            origin: origin_rank(rule.origin, declaration.important),
-                            attached: 0,
-                            layer: layer_rank(rule.layer, s.layers.len(), declaration.important),
-                            specificity,
-                            order: u32::try_from(rule.order).unwrap_or(u32::MAX),
-                        },
-                        declaration: declaration.clone(),
-                    });
-                }
+        for rule in &self.rules {
+            let Some(specificity) =
+                most_specific_match(tree, node, &rule.selectors, pseudo_element)
+            else {
+                continue;
+            };
+            let layer_count = self.origin_layers(rule.origin).len();
+            for declaration in &rule.declarations {
+                out.push(Candidate {
+                    rank: Rank {
+                        origin: origin_rank(rule.origin, declaration.important),
+                        attached: 0,
+                        layer: layer_rank(rule.layer, layer_count, declaration.important),
+                        specificity,
+                        order: rule.order,
+                    },
+                    declaration: declaration.clone(),
+                });
             }
         }
         // The `style` attribute, which is an author declaration that
@@ -268,7 +384,7 @@ impl Cascade {
         property: &str,
     ) -> Option<String> {
         self.winners(tree, node, None)
-            .get(&property.to_ascii_lowercase())
+            .get(&sheet::normalize_property(property))
             .map(|c| c.declaration.value.clone())
     }
 }
