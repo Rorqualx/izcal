@@ -329,7 +329,7 @@ where
 {
     let mut out = BoxTree::new();
     let document = tree.document();
-    let children = generate_children(tree, style, document, &mut out);
+    let children = generate_children(tree, style, document, 0, &mut out);
     // The document element's box is the root, if there is one.
     out.root = children.first().copied();
     if let Some(root) = out.root
@@ -345,9 +345,15 @@ where
     out
 }
 
-/// The boxes a node's children generate, with anonymous blocks
-/// inserted where the rule asks.
-fn generate_children<T: Tree + ?Sized, S: StyleSource + ?Sized>(
+/// The boxes a node's children generate, **before** the anonymous-box
+/// rule runs over them.
+///
+/// Flat, because a `display: contents` element's children are the
+/// parent's children for that rule's purposes: wrapping them inside
+/// the contents element and again inside the parent would make an
+/// inline sibling of the contents element see an anonymous *block*
+/// where the specification says it sees inline-level content.
+fn generate_flat<T: Tree + ?Sized, S: StyleSource + ?Sized>(
     tree: &T,
     style: &S,
     node: T::Node,
@@ -360,7 +366,26 @@ where
     for child in hg_tree_traits::children(tree, node) {
         flat.extend(generate(tree, style, child, out));
     }
-    wrap_runs(out, &flat, style)
+    flat
+}
+
+/// The boxes a node's children generate, with anonymous blocks
+/// inserted where the rule asks.
+///
+/// `parent_style` is the style id of the box these become children
+/// of, which is what an anonymous box inherits from (§9.2.1.1).
+fn generate_children<T: Tree + ?Sized, S: StyleSource + ?Sized>(
+    tree: &T,
+    style: &S,
+    node: T::Node,
+    parent_style: u32,
+    out: &mut BoxTree,
+) -> Vec<BoxId>
+where
+    T::Node: Copy,
+{
+    let flat = generate_flat(tree, style, node, out);
+    wrap_runs(out, &flat, style, parent_style)
 }
 
 /// The boxes one node generates: none, one, or — for
@@ -382,7 +407,11 @@ where
             // the inline layout's, and this is the part the box tree
             // owes.
             let text = tree.text(node).unwrap_or("");
-            if text.trim().is_empty() {
+            // CSS white space is space, tab, line feed, carriage
+            // return and form feed — *not* Unicode's White_Space, which
+            // holds U+00A0 and a dozen others. A text node of
+            // `&nbsp;` generates a box.
+            if text.chars().all(is_css_whitespace) {
                 return Vec::new();
             }
             let Some(id) = out.push(record(Source::Node(slot), 0, BoxKind::Text, Inner::Flow))
@@ -398,8 +427,10 @@ where
                 return Vec::new();
             }
             if matches!(display, Display::Contents) {
-                // No box of its own; its children take its place.
-                return generate_children(tree, style, node, out);
+                // No box of its own; its children take its place, and
+                // take it *flat*: the anonymous-box rule runs once, in
+                // the parent that actually holds them.
+                return generate_flat(tree, style, node, out);
             }
             let (Some(outer), Some(inner)) = (display.outer(), display.inner()) else {
                 return Vec::new();
@@ -417,7 +448,7 @@ where
                 return Vec::new();
             };
             map_node(out, slot, id);
-            let kids = generate_children(tree, style, node, out);
+            let kids = generate_children(tree, style, node, style.style_id(slot), out);
             out.set_children(id, &kids);
             vec![id]
         }
@@ -434,6 +465,12 @@ where
             Vec::new()
         }
     }
+}
+
+/// CSS 2.2 §16.6's white space: space, tab, line feed, carriage
+/// return and form feed.
+const fn is_css_whitespace(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{C}')
 }
 
 fn record(source: Source, style_id: u32, kind: BoxKind, inner: Inner) -> BoxRecord {
@@ -468,6 +505,7 @@ fn wrap_runs<S: StyleSource + ?Sized>(
     out: &mut BoxTree,
     children: &[BoxId],
     style: &S,
+    parent_style: u32,
 ) -> Vec<BoxId> {
     let is_inline = |out: &BoxTree, id: BoxId| {
         out.get(id)
@@ -485,10 +523,10 @@ fn wrap_runs<S: StyleSource + ?Sized>(
             run.push(*id);
             continue;
         }
-        flush_run(out, &mut run, &mut result, style);
+        flush_run(out, &mut run, &mut result, style, parent_style);
         result.push(*id);
     }
-    flush_run(out, &mut run, &mut result, style);
+    flush_run(out, &mut run, &mut result, style, parent_style);
     result
 }
 
@@ -497,14 +535,14 @@ fn flush_run<S: StyleSource + ?Sized>(
     run: &mut Vec<BoxId>,
     result: &mut Vec<BoxId>,
     style: &S,
+    parent_style: u32,
 ) {
     if run.is_empty() {
         return;
     }
-    let parent_style = run
-        .first()
-        .and_then(|id| out.get(*id))
-        .map_or(0, |b| b.style_id);
+    // §9.2.1.1: the anonymous box inherits from **the parent**, not
+    // from the children it wraps. Taking the first child's id would
+    // give a text child's zero.
     let Some(anon) = out.push(record(
         Source::Anonymous,
         style.anonymous_style_id(parent_style),

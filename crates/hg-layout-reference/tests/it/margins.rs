@@ -337,3 +337,21 @@ fn m14_a_height_is_clamped_by_min_and_max() {
     let f = layout(&root, u(100), Dir::Ltr);
     assert_eq!(child(&f, "b").rect.size.height, u(50));
 }
+
+#[test]
+fn m15_a_childs_left_margin_is_counted_once() {
+    // Its fragment already carries its used left margin as its x, so
+    // the parent adds only its own border and padding. Adding the
+    // margin again doubles every non-zero one — which no test with
+    // zero margins would catch.
+    let mut root = block("root");
+    root.style.border_left = u(5);
+    root.style.padding_left = Size::px(10);
+    let mut c = block("c");
+    c.style.margin_left = Size::px(7);
+    c.style.width = Size::px(20);
+    c.style.height = Size::px(10);
+    root.children = vec![c];
+    let f = layout(&root, u(100), Dir::Ltr);
+    assert_eq!(child(&f, "c").rect.left(), u(5).add(u(10)).add(u(7)));
+}

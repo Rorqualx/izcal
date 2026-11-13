@@ -381,3 +381,96 @@ fn b14_a_document_with_no_element_generates_no_root() {
     assert!(bt.is_empty());
     assert!(!is_element(&empty, empty.document()));
 }
+
+#[test]
+fn b15_an_anonymous_box_inherits_from_the_parent_and_not_from_its_run() {
+    // §9.2.1.1 says the parent. Taking the first child's style would
+    // give a *text* child's id, which is zero.
+    let t = tree("html\n  body\n    div#holder\n      \"text\"\n      p#block");
+    let bt = build(&t, &styles(&t, &[]));
+    let Some(holder) = t.find("holder") else {
+        panic!("there is a #holder");
+    };
+    let holder_slot = t.id(holder).slot;
+    let Some(holder_box) = bt.box_of(holder_slot) else {
+        panic!("it generates a box");
+    };
+    let Some(anon_id) = bt.children(holder_box).first().copied() else {
+        panic!("there is an anonymous box");
+    };
+    let Some(anon) = bt.get(anon_id) else {
+        panic!("the box is there");
+    };
+    // The fixture's anonymous style id is the parent's plus 1,000.
+    assert_eq!(anon.style_id, holder_slot.saturating_add(1_000));
+}
+
+#[test]
+fn b16_non_breaking_space_is_not_css_white_space() {
+    // CSS white space is space, tab, line feed, carriage return and
+    // form feed. Unicode's `White_Space` holds U+00A0 and a dozen
+    // more, and trimming by it would drop a box the page needs.
+    let t = tree("html\n  body\n    p\n      \"\u{A0}\"");
+    let bt = build(&t, &styles(&t, &[]));
+    let Some(p) = t
+        .elements()
+        .into_iter()
+        .find(|n| t.local_name(*n) == Some("p"))
+    else {
+        panic!("there is a p");
+    };
+    let Some(p_box) = bt.box_of(t.id(p).slot) else {
+        panic!("p generates a box");
+    };
+    assert_eq!(kinds(&bt, p_box), [BoxKind::Text], "nbsp generates a box");
+
+    // An ordinary space, tab or line feed still does not. The tree
+    // literal has no escapes, so the tab goes in as itself.
+    let src = format!("html\n  body\n    p\n      \" {} \"", '\t');
+    let t = tree(&src);
+    let bt = build(&t, &styles(&t, &[]));
+    let Some(p) = t
+        .elements()
+        .into_iter()
+        .find(|n| t.local_name(*n) == Some("p"))
+    else {
+        panic!("there is a p");
+    };
+    let Some(p_box) = bt.box_of(t.id(p).slot) else {
+        panic!("p generates a box");
+    };
+    assert_eq!(kinds(&bt, p_box), []);
+}
+
+#[test]
+fn b17_a_contents_elements_children_are_wrapped_once_by_the_real_parent() {
+    // `display: contents` means its children are the parent's for the
+    // anonymous-box rule too. Wrapping them inside it *and* again in
+    // the parent would make an inline sibling see an anonymous block
+    // where the specification says it sees inline-level content.
+    let t = tree(
+        "html\n  body\n    div#outer\n      span#a\n      span#c1\n        span#x\n        \
+         span#y\n      p#block",
+    );
+    let mut s = styles(&t, &["span"]);
+    let Some(c1) = t.find("c1") else {
+        panic!("there is a #c1");
+    };
+    s.set(t.id(c1).slot, Display::Contents);
+    let bt = build(&t, &s);
+    let Some(outer) = t.find("outer") else {
+        panic!("there is an #outer");
+    };
+    let Some(outer_box) = bt.box_of(t.id(outer).slot) else {
+        panic!("it generates a box");
+    };
+    // One anonymous block holding #a, #x and #y, then the p.
+    assert_eq!(
+        kinds(&bt, outer_box),
+        [BoxKind::AnonymousBlock, BoxKind::Block]
+    );
+    let Some(anon) = bt.children(outer_box).first().copied() else {
+        panic!("there is an anonymous box");
+    };
+    assert_eq!(bt.children(anon).len(), 3, "#a, #x and #y in one run");
+}

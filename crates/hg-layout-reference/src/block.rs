@@ -391,9 +391,12 @@ fn layout_box(b: &RefBox, containing: LayoutUnit, dir: Dir, is_root: bool) -> La
         let top = y.add(joined.value());
 
         let mut fragment = laid.fragment;
-        fragment.rect = fragment
-            .rect
-            .translate(inner_left.add(fragment.rect.origin.x), inner_top.add(top));
+        // The child's own rect already carries its used left margin as
+        // its x; translating adds the parent's border and padding to
+        // it. Adding the margin again here would double every
+        // non-zero left margin — which no test with zero margins
+        // would catch.
+        fragment.rect = fragment.rect.translate(inner_left, inner_top.add(top));
         children.push(fragment);
 
         if laid.collapsed_through {
