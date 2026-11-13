@@ -119,7 +119,11 @@ for name in "${names[@]}"; do
       if [ -n "$paths" ]; then
         # The members are named under the archive's own top directory,
         # which `strip` then removes; so the patterns are built from it.
-        top=$(tar -tzf "$archive" | head -1 | cut -d/ -f1)
+        # `head -1` closes the pipe, and under `pipefail` a tar that
+        # dies of SIGPIPE on a 1.5 GB listing would abort the script.
+        # bsdtar does not, GNU tar can, so pipefail is turned off for
+        # this one substitution rather than left to the platform.
+        top=$(set +o pipefail; tar -tzf "$archive" | head -1 | cut -d/ -f1)
         wildcards=""
         for p in $paths; do wildcards="$wildcards $top/$p"; done
         # shellcheck disable=SC2086

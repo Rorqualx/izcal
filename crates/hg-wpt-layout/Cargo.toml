@@ -14,8 +14,9 @@ path = "src/main.rs"
 name = "it"
 path = "tests/it/main.rs"
 
-[dependencies]
-hg-layout-reference = { path = "../hg-layout-reference" }
+# No dependencies: this crate reads files and classifies them, and a
+# dependency on the reference engine would make a file classifier
+# build it.
 
 [lints.rust]
 unsafe_code = "forbid"

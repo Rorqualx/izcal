@@ -97,7 +97,7 @@ pub struct Entry {
     pub expectations: usize,
 }
 
-/// What `hg-layout-reference` implements today, as the sections of
+/// What the reference engine implements today, as the sections of
 /// CSS 2.2 it was written from.
 ///
 /// A list rather than a guess: each entry is a section this crate's

@@ -393,9 +393,6 @@ version = "0.0.0"
 [[package]]
 name = "hg-wpt-layout"
 version = "0.0.0"
-dependencies = [
- "hg-layout-reference",
-]
 
 [[package]]
 name = "hg-wpt-url"
