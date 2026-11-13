@@ -216,6 +216,47 @@ jobs:
             --floor assert_exhaustion=15 \
             --floor "module instance=3"
 
+  # TX-1's normalization half (fonts and text spec 9.2, TX-M0).
+  #
+  # TX-1 is a ship blocker: 100% of the Unicode conformance files at the
+  # pinned version, from TX-M0, and "a Unicode upgrade does not land
+  # until 100%". This job runs the half that exists today --
+  # NormalizationTest.txt, and the invariance condition over every code
+  # point the file does not list -- and the freshness check on the
+  # tables hg-unicode-build generates. The other seven files arrive with
+  # bidi, line breaking and segmentation.
+  #
+  # IZCAL_REQUIRE_UNICODE_DATA=1 turns the tests' "not fetched, skipped"
+  # path into a failure, so the oracle cannot be silently skipped here;
+  # the same tests run under `cargo test --workspace` on three OSes,
+  # where the database is not fetched and they say so instead.
+  #
+  # The database is pinned by SHA-256 in tools/test-data.toml, never
+  # committed and never linked. The tables derived from it are standards
+  # data and do ship.
+  tx-1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch the Unicode Character Database
+        run: tools/fetch-test-data.sh unicode-ucd unicode-idna-mapping unicode-idna-test unicode-emoji-test
+
+      - name: The generated tables are fresh
+        env:
+          IZCAL_REQUIRE_UNICODE_DATA: "1"
+        run: cargo run --locked -p hg-unicode-build -- check
+
+      - name: TX-1, normalization
+        env:
+          IZCAL_REQUIRE_UNICODE_DATA: "1"
+        run: |
+          cargo test --release --locked -p hg-unicode-build --test it -- --nocapture
+          cargo test --release --locked -p hg-unicode --test it
+
   # ORC-1 (JS-M0 plan, Phase 1), the other half: the differential.
   #
   # `wast` above shows that every script parses. That is not the same as

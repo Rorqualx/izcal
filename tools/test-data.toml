@@ -58,3 +58,42 @@ licence = "Apache-2.0"
 url = "https://codeload.github.com/WebAssembly/spec/tar.gz/943c5df07e84f11d2b83078964df5812530afbd2"
 sha256 = "b929c744276668db60aa53492607af39c570d03cb5fc4eb342829dbc992a9ac8"
 strip = "1"
+
+# Unicode 18.0.0, the version the fonts and text spec's TX-M0 names. The
+# UCD and the IDNA and emoji directories are separate downloads: from
+# Unicode 17 the IDNA and emoji files moved under the release directory
+# (/Public/18.0.0/idna/, /Public/18.0.0/emoji/) and are no longer in
+# /Public/idna/<version>/ or in UCD.zip, so each is pinned on its own.
+# Standards data, not code (M-1): the derived tables hg-unicode-build
+# emits are checked in and ship; these inputs are not.
+[unicode-ucd]
+format = "zip"
+commit = "18.0.0"
+date = "2026-11-12"
+licence = "Unicode-3.0"
+url = "https://www.unicode.org/Public/18.0.0/ucd/UCD.zip"
+sha256 = "7b3e555514060b92290d154f53655c5eb0fa62b16eb04c03434ff72d1a66a0d8"
+
+[unicode-idna-mapping]
+format = "file"
+commit = "18.0.0"
+date = "2026-11-12"
+licence = "Unicode-3.0"
+url = "https://www.unicode.org/Public/18.0.0/idna/IdnaMappingTable.txt"
+sha256 = "a03b1eb38032268c696406a83f0972d6a815acd2c8d4151d42ec0fda70ffced1"
+
+[unicode-idna-test]
+format = "file"
+commit = "18.0.0"
+date = "2026-11-12"
+licence = "Unicode-3.0"
+url = "https://www.unicode.org/Public/18.0.0/idna/IdnaTestV2.txt"
+sha256 = "0236b75c5b20dfd857b3b5cf75509887959d6ab00d6c7bda9b7dc3df518c1fde"
+
+[unicode-emoji-test]
+format = "file"
+commit = "18.0.0"
+date = "2026-11-12"
+licence = "Unicode-3.0"
+url = "https://www.unicode.org/Public/18.0.0/emoji/emoji-test.txt"
+sha256 = "8f3735cda1f92a779d78af67cf86066bb1f07143dc22f2ac29394d9bc57ab21a"

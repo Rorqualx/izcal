@@ -1,0 +1,39 @@
+[package]
+name = "hg-unicode-build"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's Unicode table generator (tier T, fonts and text spec 9.3, TX-M0): reads the pinned Unicode Character Database and writes hg-ucd's tables, whose freshness is a test (G16)"
+
+[[bin]]
+name = "hg-unicode-build"
+path = "src/main.rs"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[dev-dependencies]
+hg-unicode = { path = "../hg-unicode" }
+
+# Tier T: the base table (coding standard A.1) with A.2's tier T changes.
+# unsafe_code is forbid, not deny: the crate is not in the inventory (G5).
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"

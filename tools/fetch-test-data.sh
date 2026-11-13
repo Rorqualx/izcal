@@ -3,6 +3,11 @@
 # cache outside the repository, checks each archive's SHA-256 and unpacks
 # it. Nothing fetched here is committed, linked or shipped.
 #
+# A set's `format` says what was downloaded: tar.gz (the default, with
+# `strip` components removed), zip (needs unzip), or file (one data file,
+# placed in the tree under its own name). The hash is always of the
+# downloaded bytes, so a pin is checked before anything is unpacked.
+#
 #   tools/fetch-test-data.sh [--check] [NAME ...]
 #
 # NAME is a table of tools/test-data.toml (default: all of them).
@@ -52,10 +57,17 @@ mkdir -p "$CACHE/archives"
 for name in "${names[@]}"; do
   commit=$(field "$name" commit); url=$(field "$name" url)
   want=$(field "$name" sha256); strip=$(field "$name" strip)
+  format=$(field "$name" format); format=${format:-tar.gz}
   if [ -z "$commit" ] || [ -z "$url" ] || [ -z "$want" ]; then
     echo "fetch-test-data.sh: [$name] needs commit, url and sha256 in $TOML" >&2; exit 2
   fi
-  archive="$CACHE/archives/$name-$commit.tar.gz"
+  case "$format" in
+    tar.gz) ext=tar.gz ;;
+    zip)    ext=zip ;;
+    file)   ext=${url##*.}; [ "$ext" = "$url" ] && ext=data ;;
+    *) echo "fetch-test-data.sh: [$name] unknown format $format" >&2; exit 2 ;;
+  esac
+  archive="$CACHE/archives/$name-$commit.$ext"
   tree="$CACHE/$name-$commit"
 
   if [ "$CHECK" = 1 ]; then
@@ -91,7 +103,17 @@ for name in "${names[@]}"; do
   # leaves a half tree that looks complete.
   tmp="$tree.unpack.$$"
   rm -rf "$tmp"; mkdir -p "$tmp"
-  tar -xzf "$archive" -C "$tmp" --strip-components "${strip:-1}"
+  case "$format" in
+    tar.gz) tar -xzf "$archive" -C "$tmp" --strip-components "${strip:-1}" ;;
+    zip)
+      if ! command -v unzip >/dev/null 2>&1; then
+        rm -rf "$tmp"
+        echo "fetch-test-data.sh: $name is a zip and unzip is not installed" >&2; exit 2
+      fi
+      unzip -q -o "$archive" -d "$tmp"
+      ;;
+    file) cp "$archive" "$tmp/${url##*/}" ;;
+  esac
   printf '%s\n' "$want" > "$tmp/.izcal-sha256"
   rm -rf "$tree"; mv "$tmp" "$tree"
   echo "OK      $name $commit $tree"
