@@ -11,8 +11,8 @@
 //!
 //! ```text
 //! file   := item*
-//! item   := "state" Name anchor "{" enter? rule* "}"
-//!         | "extern" "state" Name anchor
+//! item   := "entry"? "state" Name anchor "{" enter? rule* "}"
+//!         | "extern" "state" Name anchor ("{" "reaches" "{" actions "}" "}")?
 //! enter  := "enter" "{" actions "}"
 //! rule   := match "=>" actions anchor?
 //! match  := one ("|" one)*
@@ -40,7 +40,9 @@
 //!   they are not the same question.
 //!
 //! An `extern state` is one the prose does not write as a per-character
-//! table — "consume the maximum number of characters possible" in the
+//! table, and its `reaches` block declares what its hand-written
+//! implementation may switch to, so the reachability check still holds
+//! across the hand-off — "consume the maximum number of characters possible" in the
 //! named character reference state is the example — so it is implemented
 //! by an anchored function in the runtime and the generator only routes
 //! to it. Marking those explicitly is what keeps the rest honest: a
@@ -86,13 +88,39 @@ pub struct Lookahead {
 }
 
 impl Match {
-    /// Whether this match, or any alternative inside it, looks ahead.
+    /// Whether this match, or any alternative inside it, asks about
+    /// characters that have not been consumed.
+    ///
+    /// This is the one that changes a state's shape: a state with such a
+    /// rule consumes nothing at all, because the standard's own
+    /// "anything else" for it says "do not consume anything". A `from`
+    /// lookahead is not one — the state has consumed, and the lookahead
+    /// is tested in rule order like any other pattern.
     #[must_use]
-    pub fn is_lookahead(&self) -> bool {
+    pub fn looks_ahead_unconsumed(&self) -> bool {
         match self {
-            Self::Lookahead(_) => true,
-            Self::OneOf(ms) => ms.iter().any(Self::is_lookahead),
+            Self::Lookahead(l) => !l.from_current,
+            Self::OneOf(ms) => ms.iter().any(Self::looks_ahead_unconsumed),
             _ => false,
+        }
+    }
+
+    /// The characters this match could begin with, when that is a small
+    /// known set: a literal, or a `from` lookahead's first character in
+    /// both ASCII cases. `None` means "not a fixed set".
+    #[must_use]
+    pub fn leading_chars(&self) -> Option<Vec<char>> {
+        match self {
+            Self::Char(c) => Some(vec![*c]),
+            Self::Lookahead(l) if l.from_current => {
+                let c = l.text.chars().next()?;
+                Some(if l.ci {
+                    vec![c.to_ascii_lowercase(), c.to_ascii_uppercase()]
+                } else {
+                    vec![c]
+                })
+            }
+            _ => None,
         }
     }
 }
@@ -114,6 +142,8 @@ pub enum Class {
     AsciiDigit,
     /// `0`–`9`, `A`–`F` or `a`–`f`.
     AsciiHexDigit,
+    /// `A`–`Z`, `a`–`z` or `0`–`9`.
+    AsciiAlphanumeric,
 }
 
 impl Class {
@@ -126,6 +156,7 @@ impl Class {
             "ascii_lower" => Self::AsciiLower,
             "ascii_digit" => Self::AsciiDigit,
             "ascii_hex" => Self::AsciiHexDigit,
+            "ascii_alnum" => Self::AsciiAlphanumeric,
             _ => return None,
         })
     }
@@ -141,6 +172,7 @@ impl Class {
             Self::AsciiLower => "c.is_ascii_lowercase()",
             Self::AsciiDigit => "c.is_ascii_digit()",
             Self::AsciiHexDigit => "c.is_ascii_hexdigit()",
+            Self::AsciiAlphanumeric => "c.is_ascii_alphanumeric()",
         }
     }
 }
@@ -377,6 +409,22 @@ pub struct State {
     pub rules: Vec<Rule>,
     /// Whether the runtime implements it instead (see the module docs).
     pub external: bool,
+    /// Where an `extern state`'s hand-written implementation may go.
+    ///
+    /// An extern state has no rules, so nothing in the description says
+    /// what it reaches, and a state only it enters would look like an
+    /// orphan. Declaring the hand-off's targets is what keeps the
+    /// reachability check meaningful across it.
+    pub reaches: Vec<Action>,
+    /// Whether the tree builder may switch the tokenizer into it.
+    ///
+    /// Five states are reached only this way — "switch the tokenizer to
+    /// the RAWTEXT state" happens in the tree construction stage, not in
+    /// any transition — so without this they would look like states
+    /// nothing reaches. Marking them is also the interface: the
+    /// generated API lets the tree builder switch to these and to
+    /// nothing else.
+    pub entry: bool,
     /// The line it starts on.
     pub line: usize,
 }
@@ -615,17 +663,38 @@ pub fn parse(src: &str, file: &str) -> Result<File, Error> {
     while lx.peek().is_some() {
         let line = lx.line();
         let mut external = false;
+        let mut entry = false;
         let mut kw = lx.word()?;
+        if kw == "entry" {
+            entry = true;
+            kw = lx.word()?;
+        }
         if kw == "extern" {
             external = true;
             kw = lx.word()?;
         }
         if kw != "state" {
-            return Err(lx.err(format!("expected `state` or `extern state`, found `{kw}`")));
+            return Err(lx.err(format!(
+                "expected `state`, `entry state` or `extern state`, found `{kw}`"
+            )));
         }
         let name = lx.word()?;
         let anchor = lx.anchor()?;
+        let mut reaches = Vec::new();
         let (enter, rules) = if external {
+            if matches!(lx.peek(), Some(Tok::Punct('{'))) {
+                lx.punct('{')?;
+                let w = lx.word()?;
+                if w != "reaches" {
+                    return Err(lx.err(format!(
+                        "an `extern state` body holds only `reaches`, found `{w}`"
+                    )));
+                }
+                lx.punct('{')?;
+                reaches = actions(&mut lx)?;
+                lx.punct('}')?;
+                lx.punct('}')?;
+            }
             (Vec::new(), Vec::new())
         } else {
             body(&mut lx)?
@@ -634,8 +703,10 @@ pub fn parse(src: &str, file: &str) -> Result<File, Error> {
             name,
             anchor,
             enter,
+            reaches,
             rules,
             external,
+            entry,
             line,
         });
     }

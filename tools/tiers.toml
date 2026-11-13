@@ -193,6 +193,11 @@ tier = "T"
 layer = "tools"
 why = "Fonts and text 6.15 crate table: tools, tier T, output held to R. The .hgfont language and the reader, Kani harnesses, fuzz grammar and anchors it emits (TX-11, G29)."
 
+[crates.hg-html-syntax]
+tier = "R"
+layer = "L2p"
+why = "Style spec 6.15 crate table: L2p, tier R. The tokenizer and (at ST-M1) the tree builder and TreeSink trait; nothing here touches the DOM (G23: only this crate tokenizes HTML). Its generated/ is written by hg-htmlgen from states/*.hgtok and a hand edit fails CI (G29)."
+
 [crates.hg-htmlgen]
 tier = "T"
 layer = "tools"

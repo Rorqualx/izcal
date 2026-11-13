@@ -1,0 +1,198 @@
+//! Reading the descriptions and writing the generated files.
+//!
+//! The same shape `hg-opgen` and `hg-fontgen` have: the generator owns
+//! the list of outputs, reads its sources sorted by name so the order
+//! does not depend on the file system, and pipes every Rust file through
+//! `rustfmt` so what is checked in is byte-identical on every OS.
+//!
+//! The named character reference table is the one output with an input
+//! outside the repository, so it is listed apart: a tree without the
+//! pinned `entities.json` can still check the other four.
+
+use std::path::{Path, PathBuf};
+
+use crate::{Error, Model, emit, entities, model};
+
+/// Where the descriptions live, relative to the workspace root.
+pub const SOURCES: &str = "crates/hg-html-syntax/states";
+
+/// Where the named character reference table is written.
+pub const ENTITIES_OUTPUT: &str = "crates/hg-html-syntax/src/generated/entities.rs";
+
+/// What a run writes from the descriptions alone, relative to the
+/// workspace root.
+#[must_use]
+pub fn outputs(m: &Model) -> Vec<(PathBuf, String)> {
+    vec![
+        (
+            PathBuf::from("crates/hg-html-syntax/src/generated/states.rs"),
+            emit::states(m),
+        ),
+        (
+            PathBuf::from("crates/hg-html-syntax/src/generated/tokenizer.rs"),
+            emit::tokenizer(m),
+        ),
+        (
+            PathBuf::from("crates/hg-html-syntax/src/generated/transitions.tsv"),
+            emit::transitions(m),
+        ),
+        (
+            PathBuf::from("crates/hg-html-syntax/src/generated/anchors.tsv"),
+            emit::anchors(m),
+        ),
+    ]
+}
+
+/// Reads every `.hgtok` under `root/SOURCES`, sorted by name.
+///
+/// # Errors
+/// A message when the directory or a file cannot be read.
+pub fn sources(root: &Path) -> Result<Vec<(String, String)>, String> {
+    let dir = root.join(SOURCES);
+    // An entry that cannot be read is an error, never a skip: dropping
+    // one would leave the model short of a description and let `check`
+    // call a stale output fresh.
+    let mut names: Vec<PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+        let path = entry.map_err(|e| format!("{}: {e}", dir.display()))?.path();
+        if path.extension().is_some_and(|x| x == "hgtok") {
+            names.push(path);
+        }
+    }
+    names.sort();
+    if names.is_empty() {
+        return Err(format!("{}: no .hgtok files", dir.display()));
+    }
+    let mut out = Vec::new();
+    for p in names {
+        let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+        let label = p
+            .file_name()
+            .map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into());
+        // Normalized so a checkout with CRLF endings generates the same
+        // bytes as one without.
+        out.push((label, text.replace("\r\n", "\n")));
+    }
+    Ok(out)
+}
+
+/// Builds the model from the descriptions under `root`.
+///
+/// # Errors
+/// A message when a file cannot be read, parsed or checked.
+pub fn build(root: &Path) -> Result<Model, String> {
+    let src = sources(root)?;
+    model(&src).map_err(|e: Error| e.to_string())
+}
+
+/// The named character reference table, when the pinned `entities.json`
+/// is in the cache.
+///
+/// `Ok(None)` means the data set is not fetched, which is not an error:
+/// the four outputs from the descriptions are still checked. The
+/// `html5lib` CI job fetches it.
+///
+/// # Errors
+/// A message when the file is there but cannot be read or parsed.
+pub fn entities_output() -> Result<Option<(PathBuf, String)>, String> {
+    let path = entities::path_from_env()?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let names = entities::read(&path)?;
+    Ok(Some((
+        PathBuf::from(ENTITIES_OUTPUT),
+        emit::entities(&names),
+    )))
+}
+
+fn all(root: &Path) -> Result<Vec<(PathBuf, String)>, String> {
+    let mut out = outputs(&build(root)?);
+    if let Some(e) = entities_output()? {
+        out.push(e);
+    }
+    Ok(out)
+}
+
+/// Writes every output that can be written.
+///
+/// # Errors
+/// A message when a file cannot be read or written.
+pub fn generate(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut written = Vec::new();
+    for (rel, text) in all(root)? {
+        let path = root.join(&rel);
+        if let Some(d) = path.parent() {
+            std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+        }
+        let body = if rel.extension().is_some_and(|x| x == "rs") {
+            rustfmt(&text)?
+        } else {
+            text
+        };
+        std::fs::write(&path, body).map_err(|e| format!("{}: {e}", path.display()))?;
+        written.push(rel);
+    }
+    Ok(written)
+}
+
+/// Lists the outputs that differ from what is checked in (G29).
+///
+/// # Errors
+/// A message when a file cannot be read.
+pub fn stale(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for (rel, text) in all(root)? {
+        let want = if rel.extension().is_some_and(|x| x == "rs") {
+            rustfmt(&text)?
+        } else {
+            text
+        };
+        let have = std::fs::read_to_string(root.join(&rel)).unwrap_or_default();
+        if have != want {
+            out.push(rel);
+        }
+    }
+    Ok(out)
+}
+
+/// Runs `rustfmt` over generated Rust, so the checked-in file is
+/// byte-identical on every OS.
+fn rustfmt(text: &str) -> Result<String, String> {
+    use std::io::Write as _;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("rustfmt")
+        .args([
+            "--edition",
+            "2024",
+            "--emit",
+            "stdout",
+            "--config",
+            "newline_style=Unix",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("rustfmt: {e}"))?;
+    let mut stdin = child.stdin.take().ok_or("rustfmt: no stdin")?;
+    let owned = text.to_owned();
+    // From a thread: a large table fills the pipe and writing inline
+    // would deadlock against rustfmt's own output.
+    let writer = std::thread::spawn(move || stdin.write_all(owned.as_bytes()));
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("rustfmt: {e}"))?;
+    writer
+        .join()
+        .map_err(|_| "rustfmt: the writing thread panicked".to_owned())?
+        .map_err(|e| format!("rustfmt: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "rustfmt failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    String::from_utf8(out.stdout).map_err(|e| format!("rustfmt: {e}"))
+}

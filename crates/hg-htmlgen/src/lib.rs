@@ -8,10 +8,20 @@
 //! generator are Izcal formats only: no second source language, which is
 //! the lesson of Gecko's translator.
 //!
-//! Work in progress: the language and its checker are here; the emitter
-//! and the state descriptions follow.
+//! The outputs:
+//!
+//! - `generated/states.rs` — the `State` enum, the five states the tree
+//!   builder may switch to, and the reference stepper's table;
+//! - `generated/tokenizer.rs` — the tokenizer, as plain Rust;
+//! - `generated/entities.rs` — the 2,231 named character references,
+//!   from WHATWG's pinned `entities.json`;
+//! - `generated/transitions.tsv` and `generated/anchors.tsv` — the
+//!   coverage table ANC-1 and the fuzzers read, and the anchor index.
 
 pub mod check;
+pub mod cli;
+pub mod emit;
+pub mod entities;
 pub mod syntax;
 
 pub use check::Model;

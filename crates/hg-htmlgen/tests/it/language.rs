@@ -335,14 +335,48 @@ fn a_case_insensitive_lookahead_covers_its_own_spellings() {
 }
 
 #[test]
-fn a_lookahead_after_a_character_rule_is_refused() {
-    // The generated loop tests every lookahead before it consumes, so a
-    // description that implies the other order is refused rather than
-    // silently reordered.
-    let src = "state data @ \"a\" {\n  '<' => switch data\n  next \"--\" => switch data\n  _ => \
-               emit_current\n}";
+fn a_next_lookahead_may_not_share_a_state_with_a_rule_that_consumes() {
+    // The markup declaration open state's own "anything else" ends
+    // "(do not consume anything)", so a state that asks about the next
+    // few characters consumes nothing and may hold only those
+    // lookaheads and `_`. Both orders are refused.
+    let after = "state data @ \"a\" {\n  '<' => switch data\n  next \"--\" => switch data\n  _ \
+                 => emit_current\n}";
+    assert!(refuse(after).contains("comes after a rule that consumes"));
+    let before = "state data @ \"a\" {\n  next \"--\" => switch data\n  '<' => switch data\n  _ \
+                  => emit_current\n}";
+    assert!(refuse(before).contains("follows a `next` lookahead"));
+}
+
+#[test]
+fn a_from_lookahead_is_tested_in_rule_order_like_any_other_pattern() {
+    // The after DOCTYPE name state consumes, then asks about "the six
+    // characters starting from the current input character" — inside
+    // its "anything else", after the whitespace, `>` and EOF rows. That
+    // shape is accepted.
+    let src = "state data @ \"a\" {\n  whitespace => ignore\n  '>' => switch data\n  eof => \
+               emit_eof\n  from ci \"PUBLIC\" => switch data\n  from ci \"SYSTEM\" => switch \
+               data\n  _ => emit_current\n}";
+    assert!(
+        model(&[("t.hgtok".into(), src.into())]).is_ok(),
+        "a `from` lookahead after the rows that precede it in the prose"
+    );
+}
+
+#[test]
+fn a_from_lookahead_an_earlier_class_already_covers_is_dead() {
+    // `ascii_alpha` matches every character `PUBLIC` could start with.
+    let src = "state data @ \"a\" {\n  ascii_alpha => switch data\n  from ci \"PUBLIC\" => \
+               switch data\n  _ => emit_current\n}";
+    assert!(refuse(src).contains("can never fire"));
+}
+
+#[test]
+fn a_state_that_consumes_nothing_has_no_current_character_to_use() {
+    let src = "state data @ \"a\" {\n  next \"--\" => switch data\n  _ => emit_current\n}";
     let e = refuse(src);
-    assert!(e.contains("lookahead rule comes after"), "{e}");
+    assert!(e.contains("needs the current input character"), "{e}");
+    assert!(e.contains("emit_current"), "{e}");
 }
 
 #[test]
@@ -404,4 +438,41 @@ fn the_remaining_verbs_say_what_the_prose_says() {
 fn append_str_wants_a_string_and_says_so() {
     let e = refuse("state data @ \"a\" {\n  _ => create_comment, append_str comment '['\n}");
     assert!(e.contains("append_str wants a string"), "{e}");
+}
+
+#[test]
+fn a_state_the_tree_builder_switches_to_is_not_an_orphan() {
+    // Four states are reached only by "switch the tokenizer to the
+    // RAWTEXT state", which happens in the tree construction stage, so
+    // without `entry` they would look like states nothing enters.
+    let src = format!("{GOOD}\nstate aside @ \"html#aside\" {{\n  _ => emit_eof\n}}\n");
+    assert!(refuse(&src).contains("no path from `data` reaches"));
+    let src = format!("{GOOD}\nentry state aside @ \"html#aside\" {{\n  _ => emit_eof\n}}\n");
+    let m = model(&[("t.hgtok".into(), src)]).expect("an entry state is reached from outside");
+    assert!(m.states.iter().any(|s| s.name == "aside" && s.entry));
+}
+
+#[test]
+fn an_extern_state_declares_where_its_hand_written_part_can_go() {
+    // An extern state has no rules, so nothing in the description says
+    // what it reaches, and a state only it enters would look orphaned.
+    let src = GOOD.replace(
+        "extern state character_reference @ \"html#character-reference-state\"",
+        "extern state character_reference @ \"html#character-reference-state\" {\n  reaches { \
+         switch bogus_comment }\n}",
+    );
+    let m = model(&[("t.hgtok".into(), src)]).expect("checks");
+    assert!(
+        m.transitions
+            .contains(&("character_reference".into(), "bogus_comment".into()))
+    );
+
+    // And a misspelt target is refused, naming the state.
+    let bad = GOOD.replace(
+        "extern state character_reference @ \"html#character-reference-state\"",
+        "extern state character_reference @ \"html#character-reference-state\" {\n  reaches { \
+         switch bogus_commnet }\n}",
+    );
+    let e = refuse(&bad);
+    assert!(e.contains("declares it reaches"), "{e}");
 }

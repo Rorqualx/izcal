@@ -99,11 +99,13 @@ fn covers(earlier: &Match, later: &Match) -> bool {
             Class::AsciiLower => ch.is_ascii_lowercase(),
             Class::AsciiDigit => ch.is_ascii_digit(),
             Class::AsciiHexDigit => ch.is_ascii_hexdigit(),
+            Class::AsciiAlphanumeric => ch.is_ascii_alphanumeric(),
         },
         (Match::Class(Class::AsciiAlpha), Match::Class(c)) => {
             matches!(c, Class::AsciiUpper | Class::AsciiLower)
         }
         (Match::Class(Class::AsciiHexDigit), Match::Class(Class::AsciiDigit)) => true,
+        (Match::Class(Class::AsciiAlphanumeric), Match::Class(c)) => !matches!(c, Class::Null),
         (
             Match::Lookahead(Lookahead {
                 text: a,
@@ -116,8 +118,36 @@ fn covers(earlier: &Match, later: &Match) -> bool {
                 ..
             }),
         ) => fa == fb && a.eq_ignore_ascii_case(b),
+        // A `from` lookahead is tested against the character the state
+        // has already consumed, so an earlier rule that matches every
+        // character it could start with leaves it dead.
+        (Match::Class(_), Match::Lookahead(l)) if l.from_current => later
+            .leading_chars()
+            .is_some_and(|cs| cs.iter().all(|c| covers(earlier, &Match::Char(*c)))),
         _ => false,
     }
+}
+
+/// The first action in the list that needs a current input character,
+/// named as the description writes it.
+fn needs_current(actions: &[Action]) -> Option<&'static str> {
+    for a in actions {
+        let name = match a {
+            Action::EmitCurrent => "emit_current",
+            Action::Append(_) => "append",
+            Action::AppendLower(_) => "append_lower",
+            Action::Reconsume(_) => "reconsume",
+            Action::ReconsumeReturn => "reconsume_return",
+            Action::CharRefHexDigit => "char_ref_hex_digit",
+            Action::CharRefDecDigit => "char_ref_dec_digit",
+            Action::If {
+                then, otherwise, ..
+            } => return needs_current(then).or_else(|| needs_current(otherwise)),
+            _ => continue,
+        };
+        return Some(name);
+    }
+    None
 }
 
 /// The state every description must start from.
@@ -166,6 +196,25 @@ pub fn check(files: &[(String, File)]) -> Result<Model, Error> {
     for s in &m.states {
         let file = where_declared.get(&s.name).map_or("", String::as_str);
         if s.external {
+            // Its implementation is hand-written, so what it reaches is
+            // a declaration; the targets are still checked and still
+            // count for reachability.
+            errors_of(&s.reaches, &mut m.errors);
+            let mut to = Vec::new();
+            targets(&s.reaches, &mut to);
+            for t in to {
+                if !where_declared.contains_key(&t) {
+                    return Err(err(
+                        file,
+                        s.line,
+                        format!(
+                            "extern state {} declares it reaches {t}, which does not exist",
+                            s.name
+                        ),
+                    ));
+                }
+                m.transitions.insert((s.name.clone(), t));
+            }
             continue;
         }
         if s.rules.is_empty() {
@@ -200,26 +249,41 @@ pub fn check(files: &[(String, File)]) -> Result<Model, Error> {
         let mut seen: Vec<&Match> = Vec::new();
         let mut has_anything = false;
         let mut past_lookahead = false;
+        let mut unconsumed = false;
         for r in &s.rules {
-            // A lookahead is tested before a character is consumed, so
-            // the generated loop tries every lookahead first. Writing
-            // one after a character rule would read as an order the
-            // generator does not keep.
-            if r.matches.is_lookahead() {
+            // `next` asks about characters nothing has consumed, so a
+            // state that asks it consumes nothing at all — the
+            // standard's own "anything else" for the markup declaration
+            // open state ends "(do not consume anything)". Such a state
+            // may hold nothing but those lookaheads and `_`.
+            if r.matches.looks_ahead_unconsumed() {
                 if past_lookahead {
                     return Err(err(
                         file,
                         r.line,
                         format!(
-                            "in state {}, a lookahead rule comes after a rule that consumes a \
-                             character; the prose tests \"the next few characters\" first, and so \
-                             does the generated loop",
+                            "in state {}, a `next` lookahead comes after a rule that consumes a \
+                             character. A state that asks about the next few characters consumes \
+                             nothing, so it may hold only those lookaheads and `_`",
                             s.name
                         ),
                     ));
                 }
+                unconsumed = true;
             } else if !matches!(r.matches, Match::Anything) {
                 past_lookahead = true;
+                if unconsumed {
+                    return Err(err(
+                        file,
+                        r.line,
+                        format!(
+                            "in state {}, a rule that consumes a character follows a `next` \
+                             lookahead. A state that asks about the next few characters consumes \
+                             nothing, so it may hold only those lookaheads and `_`",
+                            s.name
+                        ),
+                    ));
+                }
             }
             if let Match::OneOf(ms) = &r.matches
                 && ms.iter().any(|x| matches!(x, Match::Anything))
@@ -267,6 +331,25 @@ pub fn check(files: &[(String, File)]) -> Result<Model, Error> {
                 m.transitions.insert((s.name.clone(), t));
             }
         }
+        if unconsumed {
+            // Nothing was consumed, so there is no current input
+            // character to emit, append or reconsume.
+            for r in &s.rules {
+                if matches!(r.matches, Match::Anything)
+                    && let Some(a) = needs_current(&r.actions)
+                {
+                    return Err(err(
+                        file,
+                        r.line,
+                        format!(
+                            "in state {}, `{a}` needs the current input character, and this state \
+                             consumes none: it asks about the next few characters instead",
+                            s.name
+                        ),
+                    ));
+                }
+            }
+        }
         if !has_anything {
             return Err(err(
                 file,
@@ -285,6 +368,13 @@ pub fn check(files: &[(String, File)]) -> Result<Model, Error> {
     // routes into them, which the transitions already record.
     let mut reached: BTreeSet<String> = BTreeSet::new();
     reached.insert(START.to_owned());
+    // An `entry state` is one the tree builder switches into, so it is
+    // reached from outside the tokenizer's own transitions.
+    for s in &m.states {
+        if s.entry {
+            reached.insert(s.name.clone());
+        }
+    }
     loop {
         let before = reached.len();
         for (from, to) in &m.transitions {

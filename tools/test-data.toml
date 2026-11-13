@@ -1,13 +1,20 @@
-# Izcal's pinned test-only data sets: oracles and conformance suites that
-# are fetched into a cache outside the repository, never committed, never
-# linked and never shipped (CONTRIBUTING.md, License: "test-only crates and
-# suites that never ship (dev-dependencies, WPT, test262, oracles), whatever
-# their licence"; HGBA-2 M-1 part 1).
+# Izcal's pinned external inputs, fetched into a cache outside the
+# repository and never committed. Two kinds, and the difference is the
+# licence question, so each table says which it is:
+#
+#   - Oracles and conformance suites, which are test-only and never ship,
+#     whatever their licence (CONTRIBUTING.md, License: "test-only crates
+#     and suites that never ship (dev-dependencies, WPT, test262,
+#     oracles), whatever their licence"; HGBA-2 M-1 part 1).
+#   - Standards data, from which a generator emits tables that are checked
+#     in and do ship (the UCD, WHATWG's entities.json). The input itself is
+#     still never committed and never linked.
 #
 # tools/fetch-test-data.sh downloads each `url`, checks `sha256` against the
 # archive's bytes, and unpacks it into $IZCAL_TEST_DATA/<name>-<short
 # commit>/ (default ~/.cache/izcal/test-data). `--check` verifies what is
-# already there without downloading.
+# already there without downloading. A set published without a revision of
+# its own gives `pin` in place of `commit`, naming what it is pinned by.
 #
 # Format (read by the script with awk; keep it this flat): one [table] per
 # data set, string values only, one `key = "value"` per line.
@@ -112,3 +119,21 @@ licence = "MIT"
 url = "https://codeload.github.com/html5lib/html5lib-tests/tar.gz/c5495c539ca8a79c3c5107f5f14010bcff9a35d5"
 sha256 = "b900a3c3c4b942498a8d272aebef3c113b81b2f5c4ba36eb0333a642e937f622"
 strip = "1"
+
+# WHATWG HTML's named character reference table, 2,231 entries — the
+# number the style spec records (Section 4, Section 7). Standards data
+# that ships: hg-htmlgen compiles it into hg-html-syntax's generated
+# lookup, and that generated table is checked in. The JSON itself is not
+# committed and not linked.
+#
+# It is published from the standard's `source` and is not a file in the
+# whatwg/html tree, so it has no commit of its own and is pinned by its
+# own content hash. Fetched 13 Nov 2026, when whatwg/html was at
+# 985d4435e195a4732ff4a060a51524060a57872e.
+[html-entities]
+pin = "d741d877ac77"
+date = "2026-11-13"
+licence = "CC-BY-4.0 (BSD-3-Clause where incorporated into source code)"
+url = "https://html.spec.whatwg.org/entities.json"
+sha256 = "d741d877ac77c4194c4ad526b5b4a19aef8dfe411ab840a466891cdbb9f362e6"
+format = "file"

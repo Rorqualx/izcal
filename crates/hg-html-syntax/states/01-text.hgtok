@@ -1,0 +1,43 @@
+# The states that consume ordinary text, and the four the tree builder
+# switches the tokenizer into. HTML Standard §13.2.5.1 to §13.2.5.5.
+#
+# `entry state` marks a state the tree construction stage may switch to
+# ("switch the tokenizer to the RAWTEXT state"); no tokenizer transition
+# leads to one, and the generated API lets the tree builder switch to
+# these and to nothing else.
+
+entry state data @ "html/parsing#data-state" {
+  '&'  => set_return data, switch character_reference
+  '<'  => switch tag_open
+  null => error unexpected-null-character, emit_current
+  eof  => emit_eof
+  _    => emit_current
+}
+
+entry state rcdata @ "html/parsing#rcdata-state" {
+  '&'  => set_return rcdata, switch character_reference
+  '<'  => switch rcdata_less_than_sign
+  null => error unexpected-null-character, emit_char '\u{FFFD}'
+  eof  => emit_eof
+  _    => emit_current
+}
+
+entry state rawtext @ "html/parsing#rawtext-state" {
+  '<'  => switch rawtext_less_than_sign
+  null => error unexpected-null-character, emit_char '\u{FFFD}'
+  eof  => emit_eof
+  _    => emit_current
+}
+
+entry state script_data @ "html/parsing#script-data-state" {
+  '<'  => switch script_data_less_than_sign
+  null => error unexpected-null-character, emit_char '\u{FFFD}'
+  eof  => emit_eof
+  _    => emit_current
+}
+
+entry state plaintext @ "html/parsing#plaintext-state" {
+  null => error unexpected-null-character, emit_char '\u{FFFD}'
+  eof  => emit_eof
+  _    => emit_current
+}

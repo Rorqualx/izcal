@@ -1,0 +1,139 @@
+# DOCTYPEs. HTML Standard §13.2.5.53 to §13.2.5.68.
+
+state doctype @ "html/parsing#doctype-state" {
+  whitespace => switch before_doctype_name
+  '>'        => reconsume before_doctype_name
+  eof        => error eof-in-doctype, create_doctype, set force_quirks, emit_token, emit_eof
+  _          => error missing-whitespace-before-doctype-name, reconsume before_doctype_name
+}
+
+state before_doctype_name @ "html/parsing#before-doctype-name-state" {
+  whitespace  => ignore
+  ascii_upper => create_doctype, append_lower doctype_name, switch doctype_name
+  null        => error unexpected-null-character, create_doctype, append_char doctype_name '\u{FFFD}', switch doctype_name
+  '>'         => error missing-doctype-name, create_doctype, set force_quirks, switch data, emit_token
+  eof         => error eof-in-doctype, create_doctype, set force_quirks, emit_token, emit_eof
+  _           => create_doctype, append doctype_name, switch doctype_name
+}
+
+state doctype_name @ "html/parsing#doctype-name-state" {
+  whitespace  => switch after_doctype_name
+  '>'         => switch data, emit_token
+  ascii_upper => append_lower doctype_name
+  null        => error unexpected-null-character, append_char doctype_name '\u{FFFD}'
+  eof         => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _           => append doctype_name
+}
+
+# The two `from` lookaheads sit where the prose puts them: inside the
+# "anything else" entry, after the whitespace, `>` and EOF rows, asking
+# about "the six characters starting from the current input character",
+# which this state has consumed.
+state after_doctype_name @ "html/parsing#after-doctype-name-state" {
+  whitespace       => ignore
+  '>'              => switch data, emit_token
+  eof              => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  from ci "PUBLIC" => switch after_doctype_public_keyword
+  from ci "SYSTEM" => switch after_doctype_system_keyword
+  _                => error invalid-character-sequence-after-doctype-name, set force_quirks, reconsume bogus_doctype
+}
+
+state after_doctype_public_keyword @ "html/parsing#after-doctype-public-keyword-state" {
+  whitespace => switch before_doctype_public_identifier
+  '"'        => error missing-whitespace-after-doctype-public-keyword, set public_id_empty, switch doctype_public_identifier_double_quoted
+  '\''       => error missing-whitespace-after-doctype-public-keyword, set public_id_empty, switch doctype_public_identifier_single_quoted
+  '>'        => error missing-doctype-public-identifier, set force_quirks, switch data, emit_token
+  eof        => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _          => error missing-quote-before-doctype-public-identifier, set force_quirks, reconsume bogus_doctype
+}
+
+state before_doctype_public_identifier @ "html/parsing#before-doctype-public-identifier-state" {
+  whitespace => ignore
+  '"'        => set public_id_empty, switch doctype_public_identifier_double_quoted
+  '\''       => set public_id_empty, switch doctype_public_identifier_single_quoted
+  '>'        => error missing-doctype-public-identifier, set force_quirks, switch data, emit_token
+  eof        => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _          => error missing-quote-before-doctype-public-identifier, set force_quirks, reconsume bogus_doctype
+}
+
+state doctype_public_identifier_double_quoted @ "html/parsing#doctype-public-identifier-(double-quoted)-state" {
+  '"'  => switch after_doctype_public_identifier
+  null => error unexpected-null-character, append_char public_id '\u{FFFD}'
+  '>'  => error abrupt-doctype-public-identifier, set force_quirks, switch data, emit_token
+  eof  => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _    => append public_id
+}
+
+state doctype_public_identifier_single_quoted @ "html/parsing#doctype-public-identifier-(single-quoted)-state" {
+  '\'' => switch after_doctype_public_identifier
+  null => error unexpected-null-character, append_char public_id '\u{FFFD}'
+  '>'  => error abrupt-doctype-public-identifier, set force_quirks, switch data, emit_token
+  eof  => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _    => append public_id
+}
+
+state after_doctype_public_identifier @ "html/parsing#after-doctype-public-identifier-state" {
+  whitespace => switch between_doctype_public_and_system_identifiers
+  '>'        => switch data, emit_token
+  '"'        => error missing-whitespace-between-doctype-public-and-system-identifiers, set system_id_empty, switch doctype_system_identifier_double_quoted
+  '\''       => error missing-whitespace-between-doctype-public-and-system-identifiers, set system_id_empty, switch doctype_system_identifier_single_quoted
+  eof        => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _          => error missing-quote-before-doctype-system-identifier, set force_quirks, reconsume bogus_doctype
+}
+
+state between_doctype_public_and_system_identifiers @ "html/parsing#between-doctype-public-and-system-identifiers-state" {
+  whitespace => ignore
+  '>'        => switch data, emit_token
+  '"'        => set system_id_empty, switch doctype_system_identifier_double_quoted
+  '\''       => set system_id_empty, switch doctype_system_identifier_single_quoted
+  eof        => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _          => error missing-quote-before-doctype-system-identifier, set force_quirks, reconsume bogus_doctype
+}
+
+state after_doctype_system_keyword @ "html/parsing#after-doctype-system-keyword-state" {
+  whitespace => switch before_doctype_system_identifier
+  '"'        => error missing-whitespace-after-doctype-system-keyword, set system_id_empty, switch doctype_system_identifier_double_quoted
+  '\''       => error missing-whitespace-after-doctype-system-keyword, set system_id_empty, switch doctype_system_identifier_single_quoted
+  '>'        => error missing-doctype-system-identifier, set force_quirks, switch data, emit_token
+  eof        => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _          => error missing-quote-before-doctype-system-identifier, set force_quirks, reconsume bogus_doctype
+}
+
+state before_doctype_system_identifier @ "html/parsing#before-doctype-system-identifier-state" {
+  whitespace => ignore
+  '"'        => set system_id_empty, switch doctype_system_identifier_double_quoted
+  '\''       => set system_id_empty, switch doctype_system_identifier_single_quoted
+  '>'        => error missing-doctype-system-identifier, set force_quirks, switch data, emit_token
+  eof        => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _          => error missing-quote-before-doctype-system-identifier, set force_quirks, reconsume bogus_doctype
+}
+
+state doctype_system_identifier_double_quoted @ "html/parsing#doctype-system-identifier-(double-quoted)-state" {
+  '"'  => switch after_doctype_system_identifier
+  null => error unexpected-null-character, append_char system_id '\u{FFFD}'
+  '>'  => error abrupt-doctype-system-identifier, set force_quirks, switch data, emit_token
+  eof  => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _    => append system_id
+}
+
+state doctype_system_identifier_single_quoted @ "html/parsing#doctype-system-identifier-(single-quoted)-state" {
+  '\'' => switch after_doctype_system_identifier
+  null => error unexpected-null-character, append_char system_id '\u{FFFD}'
+  '>'  => error abrupt-doctype-system-identifier, set force_quirks, switch data, emit_token
+  eof  => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _    => append system_id
+}
+
+state after_doctype_system_identifier @ "html/parsing#after-doctype-system-identifier-state" {
+  whitespace => ignore
+  '>'        => switch data, emit_token
+  eof        => error eof-in-doctype, set force_quirks, emit_token, emit_eof
+  _          => error unexpected-character-after-doctype-system-identifier, reconsume bogus_doctype
+}
+
+state bogus_doctype @ "html/parsing#bogus-doctype-state" {
+  '>'  => switch data, emit_token
+  null => error unexpected-null-character, ignore
+  eof  => emit_token, emit_eof
+  _    => ignore
+}

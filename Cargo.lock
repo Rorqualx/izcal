@@ -73,6 +73,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-html-syntax"
+version = "0.0.0"
+
+[[package]]
 name = "hg-htmlgen"
 version = "0.0.0"
 
