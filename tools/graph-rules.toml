@@ -148,7 +148,7 @@ exempt = ["xtask"]
 [[started]]
 track = "TX-M0"
 spec = "reports/Izcal fonts and text.md"
-claimed = false
+claimed = true
 crates = ["hg-ucd", "hg-unicode", "hg-unicode-build", "hg-fontgen", "hg-fontfmt", "hg-fontc"]
 generator = "hg-fontgen"
 oracle-job = "tx-1"
@@ -159,7 +159,7 @@ why = "TX-M0 leads: its own row puts normalization and the IDNA data first, by m
 [[started]]
 track = "ST-M0"
 spec = "reports/Izcal HTML and CSS parsing and style.md"
-claimed = false
+claimed = true
 crates = ["hg-htmlgen", "hg-html-syntax", "hg-html5lib", "hg-cssgen", "hg-css-props", "hg-style-reference", "hg-encoding", "hg-url"]
 generator = "hg-htmlgen"
 oracle-job = "html5lib"
@@ -170,7 +170,7 @@ why = "The .hgtok generator is the artefact the track generates from, on hg-opge
 [[started]]
 track = "LY-M0"
 spec = "reports/Izcal layout.md"
-claimed = false
+claimed = true
 crates = ["hg-layout-num", "hg-box-tree", "hg-layout-reference", "hg-reftest-raster", "hg-wpt-layout", "hg-paint-order"]
 generator = "hg-layout-num"
 oracle-job = "wpt-layout"

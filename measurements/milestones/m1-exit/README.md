@@ -12,17 +12,36 @@ six are claims about the tree, and each is checked here against
 JS-M0 exit table follows, from the JavaScript engine spec's
 [§9.2][JS] row.
 
+**Amended 13 November 2026, at `7626299`** (the M1-X1 plan). Two things
+changed and neither was a re-measurement of what is above: clause 4 of
+§2 became *measurable* — Stage 1 §8.1a now defines "start" in five
+clauses that CI evaluates — and the feature-inventory audit's three
+M1-exit additions, which §8.1 does not carry and this document
+therefore never checked, are checked in the new §6. Everything measured
+against `d11deee` is left as it was measured; where a verdict moved,
+the row says so.
+
 ## The verdict, up front
 
 **M1 does not exit yet.** Five of its seven clauses hold, one is this
 document, and one does not hold:
 
-- **Open: "ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start."** None of the
-  twenty crates those five milestones name exists in the tree. The
-  workspace has 30 crates; every one belongs to the substrate, IPC,
-  launch, process-skeleton or engine tracks. This is a staffing and
-  sequencing fact, not a defect, but it is a clause of the exit
-  criterion and it is not met.
+- **Open: "ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start."** At
+  `d11deee` none of the twenty crates those five milestones name
+  existed, and the clause could not have been settled either way,
+  because the row never said what "start" means. **At `7626299` it
+  does**: Stage 1 §8.1a defines it in five clauses, `hg-graph-lint
+  --started` evaluates them, and **three of the five tracks — TX-M0,
+  ST-M0 and LY-M0 — satisfy all five.** GR-M0 and NW-M0 do not, so the
+  clause still does not hold; what it now has is a number instead of an
+  argument. The evidence is `measurements/milestones/m0-starts/`.
+
+- **Open, and new to this document: the M0 waiver.** The
+  feature-inventory audit (FI-D1, accepted 24 October 2026) requires
+  M0's own start conditions — D-S8 funding, M1–M2 staffing — to be
+  "formally waived or met". No waiver has been recorded. M1 depends on
+  M0, so this blocks M1's exit independently of clause 4, and §6.4 puts
+  it to the owner.
 
 **JS-M0 does not exit yet either**, on five items: four riscv64 ones
 that need a K3 board which has not arrived, and the **ESMeta and
@@ -196,15 +215,21 @@ a defect; §4 carries it.
 | 1 | Process logic starts under both substrates: libraries whose entry function takes a `Substrate`; shipping `hg-*-main` link only `hg-substrate-os`; only the simulation binary and `hg-replay-main` link `hg-substrate-sim`; the graph lint enforces it | **PASS** | §1.1's table; `hg-graph-lint` clean on three triples; `hg-replay-main` not yet built (DevTools G12), which the list tolerates |
 | 2 | An IPC round trip runs in simulation with fault injection | **PASS** | `hg-dst run dst-smoke -- --ipc`, 39 seeds, 39 passed: a renderer launched with channels announces `ready`, then 200 `ping`/`pong` rounds at seeded delays through typed endpoints, under the fault plan's delay, reorder, drop, crash and commit-failure streams. The twin: `--bug` plants a refused-post assumption and DST finds it on **9 of 39 seeds**, groups them under one signature and prints a replay command |
 | 3 | JS-M0's decision-point probe passes on the reference interpreter and `hg-heap` | **PASS** | §3, item 10: 1,000 runs of a seed give one hash on macOS, Linux and Windows, re-measured at this commit |
-| 4 | ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start | **OPEN** | None of `hg-htmlgen`, `hg-cssgen`, `hg-style`, `hg-style-reference`, `hg-encoding`, `hg-url`, `hg-fontgen`, `hg-ucd`, `hg-unicode`, `hg-layout`, `hg-layout-num`, `hg-layout-reference`, `hg-box-tree`, `hg-raster`, `hg-gpu-hal`, `hg-display-list`, `hg-net-wire`, `hg-netsim`, `hg-crypto` or `hg-tls` exists. `tools/tiers.toml` has 30 rows, none from those tracks |
+| 4 | ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start | **OPEN — 3 of 5** (was OPEN, unmeasurable) | At `d11deee`: none of `hg-htmlgen`, `hg-cssgen`, `hg-style-reference`, `hg-encoding`, `hg-url`, `hg-fontgen`, `hg-ucd`, `hg-unicode`, `hg-layout`, `hg-layout-num`, `hg-layout-reference`, `hg-box-tree`, `hg-raster`, `hg-gpu-hal`, `hg-display-list`, `hg-net-wire`, `hg-netsim`, `hg-crypto` or `hg-tls` existed, and the clause had no definition to be measured against. At `7626299`: Stage 1 §8.1a defines "start" in five clauses; `cargo run -p hg-graph-lint -- --started` reports **TX-M0 5/5, ST-M0 5/5, LY-M0 5/5, GR-M0 1/5, NW-M0 1/5**. The three that hold are `claimed = true` in `tools/graph-rules.toml`, so a regression in any of their five clauses fails CI. Evidence: `measurements/milestones/m0-starts/README.md` |
 | 5 | Recordings carry the engine build ID, the data versions and the decision-point log | **PASS** | `hg_types::recording`: `build_id: u64`, `data_versions: Vec<DataVersion>`, `decision_log: Option<DecisionLogRef>`, the last holding the trace hash and entry count of the one ordered log that carries the scheduler's decisions **and** every decision point a process records (JS-D15). `World::recording_header` fills it from `st.trace.hash()` and `st.trace.entries()`, so it carries the real log rather than a placeholder. The probe's **`trace=`** hash covers that log, because each GC completion is a trace line, and it is identical on all three OSes in §3's table — so the field is populated and agreeing, not merely present. (The probe's `state=` hash is the separate one: the heap's address-independent digest, every deref result, every cleanup call and the cycle count.) |
 | 6 | Q-CS-1 is answered at M1's exit | **PASS (this document)** | §1 |
 | 7 | SH-M0 is a gate **before M2** | n/a to M1 | The clause names M2, not M1's exit |
 
-Clause 4 is the one that does not hold. Nothing in this session's work
-could have met it: those five milestones are months of work each, in
-their own specs, and the plan this session executed covers the engine
-track only.
+Clause 4 is still the one that does not hold, but it fails for a
+different reason than it did at `d11deee`. There, it could not be
+settled at all: five milestones were to "start" and nothing said what
+starting is. Here, it is a count — two tracks of five have not started
+— and `measurements/milestones/m0-starts/README.md` §2.4 and §2.5 say
+exactly what each of those two needs.
+
+The three that have started are not nearly finished, and §4 of that
+document is the distance. Four of the five M0 rows name a human role as
+a precondition, and all four are **D-S8**.
 
 ---
 
@@ -288,11 +313,24 @@ be settled by this session.
    Stage 1 M1, and items 13–17 are open on hardware. Under the first
    reading JS-M0's riscv64 items do not gate M1; under the second they
    do, and M1 waits for a board. **Owner.**
-2. **Clause 4 of the M1 row: the five other tracks' M0s.** Starting
-   them is staffing (D-S8 is a precondition the spec names and this
-   session cannot meet). The exit criterion says "start", so the owner
-   should either record what "start" means as a measurable thing, or
-   amend the row. **Owner.**
+2. **Clause 4 of the M1 row: the five other tracks' M0s.** *(Amended
+   13 November 2026.)* The half of this that was a question — "record
+   what 'start' means as a measurable thing, or amend the row" — is
+   **answered**: Stage 1 §8.1a defines it in five clauses and CI
+   evaluates them (§6.1). What remains is two kinds of open, and only
+   one of them is the owner's:
+   - **Work.** GR-M0 and NW-M0 have not started.
+     `measurements/milestones/m0-starts/` §2.4 and §2.5 list what each
+     needs; neither list contains a staffing item for *starting*.
+   - **Owner.** Four of the five M0 rows name a human role as a
+     precondition of their own *exit* — the type-design leads, a named
+     graphics owner, the root-program lead, the security owner — and
+     all four are **D-S8**. The five-clause definition was written to
+     turn on artefacts precisely so that starting would not depend on
+     them; exiting still does.
+   - **Owner, and separate from clause 4.** The **M0 waiver** FI-D1
+     requires — D-S8 funding and M1–M2 staffing "formally waived or
+     met" — has not been recorded, and M1 depends on M0. §6.5.
 3. **JS-D1 on AArch64.** (c) is 3.5–40% faster per dependent load than
    the chosen (a). The two encodings hold identical bytes, so this is
    the measured price of the 16 GB cage on that ISA. JS-D1's stated
@@ -382,8 +420,97 @@ standard account. Bookings: `b-133f1a` (hueyj, light) and `b-0a3d9c`
   is outside this document.
 - That the crypto-name rules are a guarantee. §1.3 says exactly what
   they are.
-- That the five other tracks' M0s are close to starting. No work on
-  them exists to assess.
+- That the five other tracks' M0s are close to starting. *(Amended 13
+  November 2026: three of them have started, against §8.1a's
+  definition; §6.1 and `measurements/milestones/m0-starts/` are the
+  evidence. None of the five is close to **exiting**.)*
+
+---
+
+## 6. The feature-inventory audit's three M1-exit additions, and the M0 waiver
+
+*Added 13 November 2026.*
+
+The feature-inventory audit (`reports/Izcal feature inventory audit.md`,
+FI-D1, accepted 24 October 2026) added **three items to M1's exit that
+Stage 1 §8.1 does not carry**. Because this document checked §8.1's row
+and nothing else, it never checked them. All three hold; the fourth
+thing FI-D1 requires does not.
+
+### 6.1 Clause 4 is now measurable, and partly met
+
+Stage 1 §8.1a defines "start" in five clauses, each turning on an
+artefact in the tree:
+
+1. every crate the M0 row names is a workspace member with a
+   `tools/tiers.toml` row;
+2. its generator or contract type compiles, checked in and fresh;
+3. one oracle runs in CI on data pinned by SHA-256, reporting a
+   recorded result rather than merely exiting 0;
+4. its design review is open with its agenda fixed;
+5. its cross-track obligations are recorded in one interlock table.
+
+`crates/hg-graph-lint`'s `started` rule evaluates all five from
+`tools/graph-rules.toml`, inside the existing `graph` check. A track is
+*checked* only when its row says `claimed = true`, so the rule cannot
+block the work that satisfies it; setting `claimed` is a gate-file
+change and it fails unless all five hold.
+
+**Measured at `7626299`:** TX-M0 5/5, ST-M0 5/5, LY-M0 5/5, GR-M0 1/5,
+NW-M0 1/5. The three that hold are claimed. **The twin:** removing
+`measurements/milestones/m0-starts/README.md` makes
+`hg-graph-lint --locked` exit 1 with one error per claimed track,
+naming clause 5; restoring it returns exit 0. A rule that passed
+whatever the tree held would have passed both.
+
+### 6.2 The recording and crash header carries all three fields
+
+| Required by FI-D1 | In the tree |
+|---|---|
+| `PolicyDigest` | `hg_types::recording::PolicyDigest([u8; 32])`, with `NO_POLICY` and a `PolicyFlags` form for crash reports |
+| `ProfileIdentity` | `hg_types::recording::ProfileIdentity([u8; 16])`, optional in the header |
+| `ProcessKind` | `hg_types::recording::ProcessKind` — `Browser`, `Spawner`, `Renderer`, `Network`, `Simulation`; closed, so a new kind is a schema version |
+
+All three sit under one `HeaderKind` (`Recording` or `CrashReport`),
+which is what FI-D1 asked for: one header, two uses, rather than two
+headers that drift.
+
+### 6.3 The versioned cross-build launch message exists
+
+`hg-launch-wire` is **IZLH v1**: magic `IZLH`, major `u8 = 1`, minor
+`u8`, a message type, a flags byte that is zero in v1 and ignored on
+receipt, and a total length that includes the header and is at most
+`MAX_TOTAL`. A build that speaks a later minor version is readable by
+this one, which is the property "cross-build" names.
+
+### 6.4 The OS-sourced-input pattern is decided, and that is all
+
+The pattern was decided — an OS-adapter process, with `policy.hgidl`
+reserved — and **the decision is all there is**. `policy.hgidl` exists
+only as `crates/hg-ipc-codegen/tests/golden/policy.hgidl`, a codegen
+golden, and there is no `OsAdapter` variant in `ProcessKind` anywhere
+in the workspace. FI-D1 asked for the pattern to be decided, so this
+item holds; it would not hold if it had asked for the process.
+
+### 6.5 What does not hold: the M0 waiver
+
+FI-D1 also requires M0's own start conditions — **D-S8 funding, and the
+team for M1–M2 staffed** — to be "formally waived or met". Neither has
+happened:
+
+- Stage 1 §13.1 records D-S8 as "Deferred by the owner (14 October
+  2026)", and says "**Stage 1 (M1 onward) cannot be staffed until D-S8
+  is decided**".
+- D-S8's own row records why it was deferred rather than answered: its
+  options "conflict with something: search deals pull against privacy
+  defaults, ads against content blocking, and a single corporate
+  sponsor against Servo's lesson".
+- No waiver record exists in the tree.
+
+**M1 depends on M0.** So this blocks M1's exit on its own, whatever
+clause 4 does, and no amount of engineering closes it. **Owner.** The
+M1-X1 plan drafts the waiver for the owner to accept or amend; until
+one is recorded, this is an open item of M1's exit and is listed in §4.
 
 [S1]: ../../../reports/HGBA%20Stage%201%20architecture%20design.md
 [JS]: ../../../reports/Izcal%20JavaScript%20engine.md

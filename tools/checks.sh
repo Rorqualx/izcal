@@ -518,14 +518,23 @@ fi
 # (crate-root forbid(unsafe_code), inventory reasons, the crypto check)
 # is skipped with a warning; CI installs it.
 if ! skipped graph; then
-  graph_files=$(files_matching '(^|/)Cargo\.(toml|lock)$|^tools/(tiers|graph-rules)\.toml$|^unsafe-inventory\.toml$|^\.cargo/config\.toml$|^crates/.*\.rs$' || true)
+  # The last three patterns are 8.1a's `started` clauses: the oracle job
+  # lives in the workflow, and the review and interlock documents live
+  # outside `crates`. Without them a change that deleted a claimed
+  # track's review would not run this check at all.
+  graph_files=$(files_matching '(^|/)Cargo\.(toml|lock)$|^tools/(tiers|graph-rules)\.toml$|^unsafe-inventory\.toml$|^\.cargo/config\.toml$|^crates/.*\.rs$|^\.github/workflows/checks\.yml$|^research_notes/[A-Z]+-M0 design review/|^measurements/milestones/m0-starts/' || true)
   if [ "$MODE" = staged ] && [ -z "$graph_files" ]; then ok "graph (no manifest, gate-file or Rust changes)"
   elif ! command -v cargo >/dev/null; then warn "graph: cargo not installed"
   else
     tree="$TMP/graph-tree"
     mkdir -p "$tree"
     graph_paths=""
-    for p in Cargo.toml Cargo.lock crates tools unsafe-inventory.toml .cargo; do
+    # `.github`, `research_notes` and `measurements` are here for 8.1a's
+    # `started` clauses 3, 4 and 5, whose artefacts are a workflow job
+    # and two documents. The lint is given a tree, so what it cannot see
+    # it reports as missing.
+    for p in Cargo.toml Cargo.lock crates tools unsafe-inventory.toml .cargo \
+             .github research_notes measurements; do
       if [ "$MODE" = staged ]; then [ -n "$(git ls-files -- "$p" | head -1)" ] && graph_paths="$graph_paths $p"
       else git cat-file -e "$HEAD:$p" 2>/dev/null && graph_paths="$graph_paths $p"; fi
     done
