@@ -17,7 +17,7 @@
 [crates.hg-types]
 tier = "P"
 layer = "L2"
-why = "Coding standard 6.2 names hg-types in tier P; Stage 1 2.1 puts it in L2 contracts (geometry, time, ids)"
+why = "Coding standard 6.2 names hg-types in tier P; Stage 1 2.1 puts it in L2 contracts (geometry, time, ids). The geometry module is owned by the layout spec (its 9.5): LayoutUnit at 1/64 CSS px with saturating arithmetic, physical and flow-relative points, sizes, rects and sides, and Writing Modes 4 6.4's abstract-to-physical mapping. Tier P because paint, the GPU service's display-list validation and DevTools all use the types."
 
 [crates.hg-substrate]
 tier = "P"
@@ -237,6 +237,11 @@ why = "Fonts and text 6.15 crate table: tools, tier T, output held to R. The .hg
 tier = "R"
 layer = "L2p"
 why = "Style spec 6.15 crate table: L2p, tier R. The tokenizer and (at ST-M1) the tree builder and TreeSink trait; nothing here touches the DOM (G23: only this crate tokenizes HTML). Its generated/ is written by hg-htmlgen from states/*.hgtok and a hand edit fails CI (G29)."
+
+[crates.hg-layout-num]
+tier = "R"
+layer = "L4"
+why = "Layout spec 6.15 crate table: L4, tier R. The boundary between style's IEEE values and layout's integers (LY-D3). G39 confines f32 and f64 in the layout crates to this crate's conversion functions, and every conversion to LayoutUnit goes through its one rounding function; ratios are computed in i128 with one rounding, so layout needs no floating point after the boundary."
 
 [crates.hg-json]
 tier = "T"

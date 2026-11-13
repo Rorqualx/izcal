@@ -15,11 +15,16 @@
 //! The crate has no OS effects and no `unsafe` (G5).
 
 mod build_id;
+pub mod geometry;
 mod hash;
 mod recording;
 mod time;
 
 pub use build_id::{BUILD_ID, BUILD_IS_PINNED, UNPINNED_BUILD_ID};
+pub use geometry::{
+    Direction, Flow, LayoutUnit, LogicalPoint, LogicalRect, LogicalSide, LogicalSides, LogicalSize,
+    PhysicalPoint, PhysicalRect, PhysicalSide, PhysicalSides, PhysicalSize, WritingMode,
+};
 pub use hash::{HashKeyAlreadySet, HashMap, HashSet, ProcessHasher, ProcessHasherBuilder};
 pub use hash::{process_hash_key_is_set, set_process_hash_key};
 pub use recording::{
