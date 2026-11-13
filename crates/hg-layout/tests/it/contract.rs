@@ -66,6 +66,27 @@ fn l03_an_intrinsic_constraint_always_relays_out() {
 }
 
 #[test]
+fn l03a_an_intrinsic_constraint_relays_out_on_the_block_axis_too() {
+    // The inline axis had this rule and the block axis did not, so a
+    // switch between Definite and MaxContent on the block axis served
+    // a stale result — exactly what LY-3 forbids.
+    let mut old = space();
+    old.available_block = AvailableSize::Definite(u(100));
+    let mut new = old.clone();
+    new.available_block = AvailableSize::MaxContent;
+    assert!(relayout_needed(&old, &new, BoxFlags::default()));
+    assert!(relayout_needed(&new, &old, BoxFlags::default()));
+
+    new.available_block = AvailableSize::MinContent;
+    assert!(relayout_needed(&old, &new, BoxFlags::default()));
+    // A definite change on an axis the box does not read is still
+    // reused: the exception is about *intrinsic*, not about the axis.
+    let mut taller = old.clone();
+    taller.available_block = AvailableSize::Definite(u(200));
+    assert!(!relayout_needed(&old, &taller, BoxFlags::default()));
+}
+
+#[test]
 fn l04_a_percentage_box_relays_out_only_when_its_basis_changed() {
     let mut old = space();
     old.percentage_basis = LogicalSize::new(u(100), u(50));

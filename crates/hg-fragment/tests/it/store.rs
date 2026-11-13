@@ -28,7 +28,7 @@ fn f01_a_tree_is_read_back_in_pre_order() {
     let Ok(root) = s.push(Fragment::box_fragment(BoxId(0), size(100, 100)), &[a, b]) else {
         panic!("the root pushes");
     };
-    assert_eq!(s.children(root), [a, b]);
+    assert_eq!(s.live_children(root), [a, b]);
     assert_eq!(s.pre_order(root), [root, a, b]);
     assert_eq!(s.live(), 3);
     let Ok(f) = s.get(root) else {
@@ -43,9 +43,11 @@ fn f02_a_tree_cannot_be_built_over_a_reclaimed_slot() {
     let mut s = Store::new();
     let a = leaf(&mut s, 1);
     assert_eq!(s.reclaim(a), Ok(()));
+    // `Reclaimed`, not `NoSuchFragment`: the slot exists and is free,
+    // which is a different thing from an index the store never had.
     assert_eq!(
         s.push(Fragment::box_fragment(BoxId(0), size(1, 1)), &[a]),
-        Err(Error::NoSuchFragment)
+        Err(Error::Reclaimed)
     );
 }
 
@@ -93,7 +95,7 @@ fn f04_reclaiming_one_fragment_does_not_cut_a_shared_subtree() {
     };
     assert_eq!(s.reclaim(one), Ok(()));
     assert!(s.get(shared).is_ok(), "the shared child is still live");
-    assert_eq!(s.children(two), [shared]);
+    assert_eq!(s.live_children(two), [shared]);
 }
 
 #[test]
@@ -244,6 +246,56 @@ fn f10_reading_a_missing_or_freed_fragment_is_an_error_and_not_a_panic() {
     assert_eq!(s.reclaim(a), Ok(()));
     assert_eq!(s.get(a), Err(Error::Reclaimed));
     assert_eq!(s.reclaim(a), Err(Error::Reclaimed));
-    assert_eq!(s.children(a), []);
+    assert_eq!(s.live_children(a), []);
     assert_eq!(s.pre_order(a), []);
+}
+
+#[test]
+fn f11_a_reused_slot_cannot_become_its_own_ancestors_child() {
+    // The cycle: a leaf is reclaimed while its parent still links to
+    // it, then the slot is reused by a fragment that has that parent
+    // as a child. Walked naively, the tree loops forever — reachable
+    // from content, so a denial of service.
+    let mut s = Store::new();
+    let leaf_id = leaf(&mut s, 1);
+    let Ok(parent) = s.push(Fragment::box_fragment(BoxId(2), size(10, 10)), &[leaf_id]) else {
+        panic!("it pushes");
+    };
+    assert_eq!(s.reclaim(leaf_id), Ok(()));
+    // The next push takes the freed slot — the one `parent` still
+    // links to.
+    let Ok(reused) = s.push(Fragment::box_fragment(BoxId(3), size(10, 10)), &[parent]) else {
+        panic!("it pushes");
+    };
+    assert_eq!(reused, leaf_id, "the free list handed back that slot");
+
+    // The walk terminates and never visits the stale link.
+    let order = s.pre_order(reused);
+    assert_eq!(order, [reused, parent], "the stale child is not followed");
+    assert_eq!(canonical(&s, reused).len(), 2);
+    // The parent's child link is stale, not silently retargeted.
+    let Some(stale) = s.children(parent).first().copied() else {
+        panic!("the parent kept its link");
+    };
+    assert_eq!(s.resolve(stale), Err(Error::StaleHandle));
+}
+
+#[test]
+fn f12_the_child_array_is_reclaimed_by_clear_and_not_by_reclaim() {
+    // Honest about what reclamation does: a fragment's slot comes
+    // back, its run of child links does not, because the run is named
+    // by an offset nothing else may move. The store is class (a)
+    // derived data, so what reclaims the array is dropping it.
+    let mut s = Store::new();
+    let a = leaf(&mut s, 1);
+    let Ok(root) = s.push(Fragment::box_fragment(BoxId(0), size(10, 10)), &[a]) else {
+        panic!("it pushes");
+    };
+    assert_eq!(s.child_links(), 1);
+    assert_eq!(s.reclaim_tree(root), Ok(2));
+    assert_eq!(s.live(), 0);
+    assert_eq!(s.child_links(), 1, "the run is still there");
+    s.clear();
+    assert_eq!(s.child_links(), 0);
+    assert_eq!(s.capacity(), 0);
 }

@@ -23,9 +23,15 @@
 //!    side-table contents and break tokens inlined and no ids or store
 //!    offsets anywhere. DET-1's fragment-tree hash, LY-3, LY-32 and
 //!    LY-40 all use it.
-//! 2. **A handle held beyond a pass carries an epoch** ([`Handle`]),
-//!    checked on use, so a reclaimed slot cannot be read through a
-//!    stale reference.
+//! 2. **Every reference to a fragment carries an epoch**
+//!    ([`Handle`]), checked on use, so a reclaimed slot cannot be read
+//!    through a stale reference. That includes the store's **own child
+//!    links**: a parent that outlives a reclaimed child holds a handle
+//!    that no longer resolves, rather than a bare index that the next
+//!    fragment to take the slot would answer to. Without it a reused
+//!    slot could be given its own ancestor as a child, and a walk of
+//!    that tree would never end — reachable from content, so a denial
+//!    of service.
 //! 3. **Primary state stores no fragment id at all.** `hg-layout-state`
 //!    and `hg-scroll` hold boxes, not fragments.
 //!
@@ -36,6 +42,8 @@
 //! on a free list and are reused with the epoch stepped. Footprint
 //! counts **live** records only, so canonical bytes do not depend on
 //! how much the page has churned (FP-24).
+
+use std::collections::BTreeSet;
 
 use hg_types::geometry::{LayoutUnit, LogicalRect, LogicalSize};
 
@@ -140,7 +148,7 @@ pub struct Fragment {
     children: Children,
 }
 
-/// A contiguous run of children in the store.
+/// A contiguous run of children in the store's child array.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct Children {
     start: u32,
@@ -154,6 +162,8 @@ pub enum Error {
     NoSuchFragment,
     /// The slot is free.
     Reclaimed,
+    /// The store has no room for another fragment or child link.
+    Full,
     /// The handle's epoch does not match the slot's: the fragment it
     /// named was reclaimed and the slot reused.
     StaleHandle,
@@ -172,7 +182,10 @@ struct Slot {
 #[derive(Debug, Clone, Default)]
 pub struct Store {
     slots: Vec<Slot>,
-    children: Vec<FragmentId>,
+    /// Child links, as epoch-checked handles. Append-only within a
+    /// pass; [`Store::clear`] is what reclaims it, because the store
+    /// is class (a) derived data that is dropped and rebuilt whole.
+    children: Vec<Handle>,
     free: Vec<FragmentId>,
 }
 
@@ -203,41 +216,64 @@ impl Store {
         self.slots.len()
     }
 
+    /// How many child links the store holds.
+    ///
+    /// The child array is append-only within a pass: reclaiming a
+    /// fragment frees its slot but not its run of links, because the
+    /// run is identified by an offset that nothing else may move. The
+    /// store is class (a) derived data (FP §6.4), so what reclaims the
+    /// array is [`Store::clear`] and a rebuild — which gives a
+    /// bit-identical tree (LY-32).
+    #[must_use]
+    pub fn child_links(&self) -> usize {
+        self.children.len()
+    }
+
+    /// Drops everything. The store is derived data; rebuilding gives a
+    /// bit-identical tree.
+    pub fn clear(&mut self) {
+        self.slots.clear();
+        self.children.clear();
+        self.free.clear();
+    }
+
     /// Adds a fragment with the given children, in order.
     ///
     /// # Errors
     /// [`Error::NoSuchFragment`] when a child id names no live
-    /// fragment, so a tree can never be built over a reclaimed slot.
+    /// fragment, so a tree can never be built over a reclaimed slot,
+    /// and [`Error::Full`] when an index would not fit — saturating
+    /// there would corrupt a run's offset rather than refuse.
     pub fn push(
         &mut self,
         mut fragment: Fragment,
         children: &[FragmentId],
     ) -> Result<FragmentId, Error> {
-        for child in children {
-            if self.get(*child).is_err() {
-                return Err(Error::NoSuchFragment);
-            }
-        }
-        let start = u32::try_from(self.children.len()).unwrap_or(u32::MAX);
-        self.children.extend_from_slice(children);
-        fragment.children = Children {
-            start,
-            len: u32::try_from(children.len()).unwrap_or(u32::MAX),
-        };
+        // Resolved now, so a child reclaimed later leaves a handle
+        // that no longer resolves instead of an index the next
+        // occupant of that slot would answer to.
+        let links: Vec<Handle> = children
+            .iter()
+            .map(|c| self.handle(*c))
+            .collect::<Result<_, _>>()?;
+        let start = u32::try_from(self.children.len()).ok().ok_or(Error::Full)?;
+        let len = u32::try_from(links.len()).ok().ok_or(Error::Full)?;
+        self.children.extend_from_slice(&links);
+        fragment.children = Children { start, len };
         if let Some(id) = self.free.pop() {
-            let at = usize::try_from(id.index()).unwrap_or(usize::MAX);
-            if let Some(slot) = self.slots.get_mut(at) {
-                slot.fragment = Some(fragment);
-                return Ok(id);
-            }
-            return Err(Error::NoSuchFragment);
+            let at = usize::try_from(id.index())
+                .ok()
+                .ok_or(Error::NoSuchFragment)?;
+            let slot = self.slots.get_mut(at).ok_or(Error::NoSuchFragment)?;
+            slot.fragment = Some(fragment);
+            return Ok(id);
         }
-        let id = FragmentId(u32::try_from(self.slots.len()).unwrap_or(u32::MAX));
+        let next = u32::try_from(self.slots.len()).ok().ok_or(Error::Full)?;
         self.slots.push(Slot {
             fragment: Some(fragment),
             epoch: 0,
         });
-        Ok(id)
+        Ok(FragmentId(next))
     }
 
     /// The fragment at `id`.
@@ -286,9 +322,13 @@ impl Store {
         slot.fragment.as_ref().ok_or(Error::Reclaimed)
     }
 
-    /// The children of `id`, in order.
+    /// The children of `id`, in order, as epoch-checked handles.
+    ///
+    /// A handle rather than an id, because a child may have been
+    /// reclaimed since: [`Store::resolve`] then says so rather than
+    /// handing back whatever now occupies the slot.
     #[must_use]
-    pub fn children(&self, id: FragmentId) -> &[FragmentId] {
+    pub fn children(&self, id: FragmentId) -> &[Handle] {
         let Ok(fragment) = self.get(id) else {
             return &[];
         };
@@ -296,6 +336,16 @@ impl Store {
         let len = usize::try_from(fragment.children.len).unwrap_or(0);
         let end = start.saturating_add(len);
         self.children.get(start..end).unwrap_or(&[])
+    }
+
+    /// The children of `id` that are still live, in order.
+    #[must_use]
+    pub fn live_children(&self, id: FragmentId) -> Vec<FragmentId> {
+        self.children(id)
+            .iter()
+            .filter(|h| self.resolve(**h).is_ok())
+            .map(|h| h.id())
+            .collect()
     }
 
     /// Reclaims a fragment's slot, stepping its epoch so every handle
@@ -326,17 +376,21 @@ impl Store {
     /// # Errors
     /// As [`Store::reclaim`], for the root.
     pub fn reclaim_tree(&mut self, root: FragmentId) -> Result<usize, Error> {
+        // A `BTreeSet` rather than a scan of what has been seen: a
+        // fragment tree is as large as the page, and an O(n²) visited
+        // check is a processor denial of service on content.
+        let mut seen: BTreeSet<FragmentId> = BTreeSet::new();
         let mut order = Vec::new();
         let mut stack = vec![root];
         while let Some(id) = stack.pop() {
-            if order.contains(&id) {
+            if !seen.insert(id) {
                 continue;
             }
             if self.get(id).is_err() {
                 continue;
             }
             order.push(id);
-            stack.extend_from_slice(self.children(id));
+            stack.extend(self.live_children(id));
         }
         let mut n = 0_usize;
         for id in order {
@@ -351,16 +405,22 @@ impl Store {
     }
 
     /// Every fragment of the tree at `root`, in pre-order.
+    ///
+    /// Each fragment once. Epoch-checked child links make a cycle
+    /// impossible, and the visited set makes a walk that met one
+    /// terminate anyway — a walk reachable from content must not be
+    /// able to run forever whatever the store holds.
     #[must_use]
     pub fn pre_order(&self, root: FragmentId) -> Vec<FragmentId> {
+        let mut seen: BTreeSet<FragmentId> = BTreeSet::new();
         let mut out = Vec::new();
         let mut stack = vec![root];
         while let Some(id) = stack.pop() {
-            if self.get(id).is_err() {
+            if !seen.insert(id) || self.get(id).is_err() {
                 continue;
             }
             out.push(id);
-            let mut kids = self.children(id).to_vec();
+            let mut kids = self.live_children(id);
             kids.reverse();
             stack.extend(kids);
         }

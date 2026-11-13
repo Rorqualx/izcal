@@ -520,6 +520,13 @@ pub struct BoxFlags {
 /// reads it.** A box whose inline size does not depend on the
 /// available inline size reuses its result across a change to it; a
 /// percentage-sized box relays out only when its basis changed.
+///
+/// With one exception, on **both** axes: an intrinsic constraint is a
+/// different question, not a different length, so moving to or from
+/// `MinContent` or `MaxContent` always relays out whatever the flags
+/// say. Having that on the inline axis alone let a block-axis switch
+/// between `Definite` and `MaxContent` serve a stale result, which is
+/// exactly what LY-3 forbids.
 #[must_use]
 pub fn relayout_needed(old: &ConstraintSpace, new: &ConstraintSpace, flags: BoxFlags) -> bool {
     // The flow decides what every other field *means*, so a change to
@@ -544,7 +551,10 @@ pub fn relayout_needed(old: &ConstraintSpace, new: &ConstraintSpace, flags: BoxF
         return true;
     }
     if old.available_block != new.available_block
-        && (flags.block_size_depends_on_available || flags.can_fragment)
+        && (flags.block_size_depends_on_available
+            || flags.can_fragment
+            || old.available_block.is_intrinsic()
+            || new.available_block.is_intrinsic())
     {
         return true;
     }
