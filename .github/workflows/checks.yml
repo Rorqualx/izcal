@@ -250,7 +250,11 @@ jobs:
           IZCAL_REQUIRE_UNICODE_DATA: "1"
         run: cargo run --locked -p hg-unicode-build -- check
 
-      - name: TX-1, normalization
+      # TX-1 names nine conformance files; two of them run here.
+      # NormalizationTest measures the normalization half and
+      # IdnaTestV2 the UTS #46 half, which hg-url's host parsing is
+      # built on (style spec 6.2, ST-M0).
+      - name: TX-1, normalization and IdnaTestV2
         env:
           IZCAL_REQUIRE_UNICODE_DATA: "1"
         run: |
