@@ -18,6 +18,11 @@
 //! actions:= action ("," action)*
 //! action := verb arg*
 //!         | "if" cond "{" actions "}" "else" "{" actions "}"
+//!
+//! `append <buf>` appends the current input character; `append_char
+//! <buf> '<c>'` appends a literal. They are separate verbs because the
+//! lexer has no line structure, so one verb with an optional trailing
+//! literal would swallow the next rule's match.
 //! anchor := "@" String
 //! ```
 //!
@@ -629,17 +634,25 @@ fn action(lx: &mut Lexer) -> Result<Action, Error> {
             let w = lx.word()?;
             Action::Set(Flag::from_word(&w).ok_or_else(|| lx.err(format!("`{w}` is not a flag")))?)
         }
-        "append" | "append_lower" => {
+        // Three verbs rather than one with an optional literal: the
+        // lexer has no line structure, so a trailing optional character
+        // would swallow the next rule's match where a rule ended in
+        // `append comment` and the next began `'/' => ...`.
+        "append" | "append_lower" | "append_char" => {
             let w = lx.word()?;
             let buf =
                 Buffer::from_word(&w).ok_or_else(|| lx.err(format!("`{w}` is not a buffer")))?;
-            if verb == "append_lower" {
-                Action::AppendLower(buf)
-            } else if let Some(Tok::Char(c)) = lx.peek().cloned() {
-                lx.bump();
-                Action::AppendChar(buf, c)
-            } else {
-                Action::Append(buf)
+            match verb.as_str() {
+                "append_lower" => Action::AppendLower(buf),
+                "append_char" => match lx.bump() {
+                    Some(Tok::Char(c)) => Action::AppendChar(buf, c),
+                    other => {
+                        return Err(lx.err(format!(
+                            "append_char wants a character after the buffer, found {other:?}"
+                        )));
+                    }
+                },
+                _ => Action::Append(buf),
             }
         }
         "if" => {

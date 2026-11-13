@@ -3,7 +3,7 @@
 //! the rule and not to the fixture.
 
 use hg_htmlgen::model;
-use hg_htmlgen::syntax::{Action, Match, parse};
+use hg_htmlgen::syntax::{Action, Buffer, Match, parse};
 
 /// A description in the shape the prose writes: the data state, a state
 /// it reaches, and an `extern` state for the part the prose does not
@@ -209,5 +209,31 @@ fn an_unknown_verb_or_class_names_itself() {
     assert!(
         refuse(&GOOD.replace("ascii_alpha =>", "ascii_nonsense =>"))
             .contains("not a code-point class")
+    );
+}
+
+/// The commit hook's review found this: `append <buffer>` used to take
+/// an optional literal, and the lexer has no line structure, so a rule
+/// ending in `append comment` would swallow the next rule's `'/'` as the
+/// thing to append. The literal form is now a verb of its own.
+#[test]
+fn an_append_does_not_swallow_the_next_rules_character() {
+    let src =
+        "state data @ \"a\" {\n  eof => append comment\n  '/' => emit_eof\n  _ => emit_current\n}";
+    let f = parse(src, "t").expect("parses");
+    let rules = &f.states[0].rules;
+    assert_eq!(rules.len(), 3, "the three rules stay three rules");
+    assert_eq!(rules[0].actions, vec![Action::Append(Buffer::Comment)]);
+    assert_eq!(rules[1].matches, Match::Char('/'));
+    assert_eq!(rules[1].actions, vec![Action::EmitEof]);
+}
+
+#[test]
+fn appending_a_literal_takes_its_own_verb() {
+    let src = "state data @ \"a\" {\n  eof => append_char comment '/'\n  _ => emit_current\n}";
+    let f = parse(src, "t").expect("parses");
+    assert_eq!(
+        f.states[0].rules[0].actions,
+        vec![Action::AppendChar(Buffer::Comment, '/')]
     );
 }
