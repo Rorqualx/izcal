@@ -97,3 +97,18 @@ date = "2026-11-12"
 licence = "Unicode-3.0"
 url = "https://www.unicode.org/Public/18.0.0/emoji/emoji-test.txt"
 sha256 = "8f3735cda1f92a779d78af67cf86066bb1f07143dc22f2ac29394d9bc57ab21a"
+
+# html5lib-tests, MIT: the tokenizer and tree-construction suites the
+# HTML parser is measured against (style spec ST-M0). Test data and a
+# conformance oracle only; nothing here is linked, vendored or shipped.
+# main at 5 Nov 2026, "Fix incorrect error order and remove obsolete
+# tests". The suite's size moves with it: the style spec records 6,827
+# tokenizer tests and this commit has 6,824, so the runner reports what
+# it finds rather than asserting a number.
+[html5lib]
+commit = "c5495c539ca8a79c3c5107f5f14010bcff9a35d5"
+date = "2026-11-12"
+licence = "MIT"
+url = "https://codeload.github.com/html5lib/html5lib-tests/tar.gz/c5495c539ca8a79c3c5107f5f14010bcff9a35d5"
+sha256 = "b900a3c3c4b942498a8d272aebef3c113b81b2f5c4ba36eb0333a642e937f622"
+strip = "1"
