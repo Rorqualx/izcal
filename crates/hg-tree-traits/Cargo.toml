@@ -1,0 +1,55 @@
+[package]
+name = "hg-tree-traits"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's one read-only view of the DOM (L2 contracts, tier P, G1): the traits style, layout, paint and the semantic plane read the tree through, so none of them can name hg-dom or hg-heap"
+
+[features]
+# A tree a test can write down. Test-only, and deliberately shared: a
+# differential between hg-style and hg-style-reference needs both to
+# read the *same* tree.
+testing = []
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+required-features = ["testing"]
+
+[lints.rust]
+# G5: a contracts crate holds no unsafe at all.
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+# Tier P (coding standard A.2): every reader of the tree links it, so
+# it may never panic (G24).
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+arithmetic_side_effects = "deny"
+unwrap_in_result = "deny"
+panic_in_result_fn = "deny"
+as_conversions = "deny"
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+cast_possible_wrap = "deny"
+cast_lossless = "deny"
+checked_conversions = "deny"
+wildcard_enum_match_arm = "deny"
+unwrap_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+map_err_ignore = "deny"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+allow_attributes = "deny"

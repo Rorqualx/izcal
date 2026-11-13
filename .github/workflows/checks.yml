@@ -325,6 +325,29 @@ jobs:
           cargo test --release --locked -p hg-encoding-build --test it -- --nocapture
           cargo test --release --locked -p hg-encoding --test it -- --nocapture
 
+  # ST-D12 and G20: the reference style engine. It shares no code with
+  # the production engine -- its own CSS Syntax 3 tokenizer, its own
+  # Selectors 3 matcher, its own cascade -- which is what makes ST-4
+  # and ST-6, both ship blockers, mean anything.
+  #
+  # There is no differential to run yet, because hg-style does not
+  # exist. What this job checks is the oracle itself: a reference
+  # engine that is quietly wrong makes every later differential green
+  # and hides the bug it was built to find.
+  style-reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: The DOM view every reader shares (G1)
+        run: cargo test --release --locked -p hg-tree-traits --features testing --test it -- --nocapture
+
+      - name: Selectors 3, the cascade and the Syntax 3 tokenizer
+        run: cargo test --release --locked -p hg-style-reference --features testing --test it -- --nocapture
+
   # G31, the browser's one URL parser. WPT's url/ suite is the oracle:
   # 904 cases of input, base and the eight serialized components a
   # conforming parser must produce -- or `failure: true`, which is

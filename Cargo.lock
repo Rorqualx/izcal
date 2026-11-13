@@ -261,6 +261,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-style-reference"
+version = "0.0.0"
+dependencies = [
+ "hg-tree-traits",
+]
+
+[[package]]
 name = "hg-substrate"
 version = "0.0.0"
 dependencies = [
@@ -289,6 +296,10 @@ dependencies = [
 
 [[package]]
 name = "hg-test262"
+version = "0.0.0"
+
+[[package]]
+name = "hg-tree-traits"
 version = "0.0.0"
 
 [[package]]
