@@ -90,3 +90,19 @@ fn every_case_in_the_suite_is_read() {
     assert_eq!(cases.len(), 6820, "cases at {}", hg_html5lib::PIN);
     assert!(cases.iter().all(|c| !c.initial_states.is_empty()));
 }
+
+#[test]
+fn a_double_escaped_astral_character_survives_as_one_character() {
+    // The review found this: taking each `\uXXXX` on its own turns an
+    // astral character into two U+FFFD, on the input and on the
+    // expected output alike, so the case passes while testing nothing.
+    // No case at the pinned commit holds such a pair, which is why only
+    // a test says so.
+    use hg_html5lib::cases::unescape_again;
+    assert_eq!(unescape_again(r"a😀b"), "a\u{1F600}b");
+    assert_eq!(unescape_again(r"a\uD83Db").chars().count(), 3);
+    assert_eq!(unescape_again(r"a\uD83Db"), "a\u{FFFD}b");
+    assert_eq!(unescape_again(r"\uDE00"), "\u{FFFD}");
+    assert_eq!(unescape_again(r"AB"), "AB");
+    assert_eq!(unescape_again(r"no escapes"), "no escapes");
+}

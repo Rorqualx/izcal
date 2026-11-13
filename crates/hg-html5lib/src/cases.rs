@@ -112,7 +112,14 @@ fn state_of(name: &str) -> Option<State> {
 
 /// The suite's `doubleEscaped`: the string has been through JSON
 /// escaping twice, so `\uXXXX` in the decoded text is still an escape.
-fn unescape_again(s: &str) -> String {
+///
+/// Surrogates are paired, exactly as the JSON reader pairs them. Taking
+/// each escape on its own would turn an astral character into two
+/// U+FFFD — on the input *and* on the expected output, so the case
+/// would pass while testing nothing. No case at the pinned commit holds
+/// such a pair; one that did would otherwise be silently vacuous.
+#[must_use]
+pub fn unescape_again(s: &str) -> String {
     let mut out = String::new();
     let mut cs = s.chars().peekable();
     while let Some(c) = cs.next() {
@@ -122,15 +129,31 @@ fn unescape_again(s: &str) -> String {
         }
         cs.next();
         let hex: String = cs.by_ref().take(4).collect();
-        match u32::from_str_radix(&hex, 16) {
-            // A lone surrogate becomes the replacement character: see
-            // the crate docs.
-            Ok(n) => out.push(char::from_u32(n).unwrap_or('\u{FFFD}')),
-            Err(_) => {
-                out.push_str("\\u");
-                out.push_str(&hex);
+        let Ok(n) = u32::from_str_radix(&hex, 16) else {
+            out.push_str("\\u");
+            out.push_str(&hex);
+            continue;
+        };
+        if (0xD800..0xDC00).contains(&n) {
+            // A high surrogate: take the low one with it when it is
+            // there, and otherwise leave the replacement character.
+            let mut look = cs.clone();
+            if look.next() == Some('\\')
+                && look.next() == Some('u')
+                && let low = look.by_ref().take(4).collect::<String>()
+                && let Ok(l) = u32::from_str_radix(&low, 16)
+                && (0xDC00..0xE000).contains(&l)
+            {
+                let hi = (n - 0xD800) * 0x400;
+                let full = hi + (l - 0xDC00) + 0x1_0000;
+                out.push(char::from_u32(full).unwrap_or('\u{FFFD}'));
+                cs = look;
+                continue;
             }
         }
+        // A lone surrogate becomes the replacement character: see the
+        // crate docs.
+        out.push(char::from_u32(n).unwrap_or('\u{FFFD}'));
     }
     out
 }

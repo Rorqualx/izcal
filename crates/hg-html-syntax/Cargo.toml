@@ -10,8 +10,15 @@ description = "Izcal's HTML tokenizer (L2p, tier R, style spec 6.2, ST-D3, ST-1)
 # What html5lib-tests needs and a shipping build does not: a tokenizer
 # started in any state, with a last start tag already set. The suite
 # runs cases from the CDATA section state and names a `lastStartTag`,
-# neither of which a tree builder can ask for. Only hg-html5lib and
-# this crate's own tests enable it.
+# neither of which a tree builder can ask for.
+#
+# It adds one constructor and changes nothing else, and only
+# hg-html5lib and this crate's own tests ask for it. Cargo unifies
+# features across a workspace-wide build, so a `cargo build
+# --workspace` -- which is a build of the tests -- does compile it in.
+# What keeps it out of a shipping binary is that the binary's own
+# package does not depend on hg-html5lib, so building that package does
+# not enable it.
 conformance = []
 
 [[test]]
