@@ -41,11 +41,16 @@ pub fn outputs(m: &Model) -> Vec<(PathBuf, String)> {
 /// A message when the directory or a file cannot be read.
 pub fn sources(root: &Path) -> Result<Vec<(String, String)>, String> {
     let dir = root.join(SOURCES);
-    let mut names: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .map_err(|e| format!("{}: {e}", dir.display()))?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "hgfont"))
-        .collect();
+    // An entry that cannot be read is an error, never a skip: dropping
+    // one would leave the model short of a description and let `check`
+    // call a stale output fresh.
+    let mut names: Vec<PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+        let path = entry.map_err(|e| format!("{}: {e}", dir.display()))?.path();
+        if path.extension().is_some_and(|x| x == "hgfont") {
+            names.push(path);
+        }
+    }
     names.sort();
     if names.is_empty() {
         return Err(format!("{}: no .hgfont files", dir.display()));
