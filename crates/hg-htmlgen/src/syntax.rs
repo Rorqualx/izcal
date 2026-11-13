@@ -11,20 +11,33 @@
 //!
 //! ```text
 //! file   := item*
-//! item   := "state" Name anchor "{" rule* "}"
+//! item   := "state" Name anchor "{" enter? rule* "}"
 //!         | "extern" "state" Name anchor
+//! enter  := "enter" "{" actions "}"
 //! rule   := match "=>" actions anchor?
-//! match  := Char | Class | "_"
+//! match  := one ("|" one)*
+//! one    := Char | Class | "eof" | "_"
+//!         | ("next" | "from") "ci"? String
 //! actions:= action ("," action)*
 //! action := verb arg*
 //!         | "if" cond "{" actions "}" "else" "{" actions "}"
-//!
-//! `append <buf>` appends the current input character; `append_char
-//! <buf> '<c>'` appends a literal. They are separate verbs because the
-//! lexer has no line structure, so one verb with an optional trailing
-//! literal would swallow the next rule's match.
 //! anchor := "@" String
 //! ```
+//!
+//! Three details the prose forces:
+//!
+//! - `append <buf>` appends the current input character; `append_char
+//!   <buf> '<c>'` appends a literal. They are separate verbs because the
+//!   lexer has no line structure, so one verb with an optional trailing
+//!   literal would swallow the next rule's match.
+//! - `enter` carries the actions a state performs before it consumes
+//!   anything: "Set the character reference code to zero. Consume the
+//!   next input character: …".
+//! - `next "--"` tests the characters after the current position and
+//!   consumes them when they match; `from ci "PUBLIC"` tests the six
+//!   characters *starting at* the current input character, which the
+//!   state has already consumed. The standard asks both questions and
+//!   they are not the same question.
 //!
 //! An `extern state` is one the prose does not write as a per-character
 //! table — "consume the maximum number of characters possible" in the
@@ -44,8 +57,44 @@ pub enum Match {
     Class(Class),
     /// End of file.
     Eof,
+    /// Any of several, as the prose groups them: "U+002F SOLIDUS (/),
+    /// U+003E GREATER-THAN SIGN (>), or EOF".
+    OneOf(Vec<Match>),
+    /// "If the next few characters are …" — a string tested before any
+    /// character is consumed, and consumed whole when it matches.
+    Lookahead(Lookahead),
     /// "Anything else", the prose's own last row.
     Anything,
+}
+
+/// A string the prose tests ahead of the input.
+///
+/// The standard writes two of these. The markup declaration open state
+/// asks about "the next few characters", nothing yet consumed; the after
+/// DOCTYPE name state asks about "the six characters starting from the
+/// current input character", which has been consumed. They are different
+/// questions, so they are different words in the description.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lookahead {
+    /// The characters to compare.
+    pub text: String,
+    /// Whether the comparison starts at the current input character
+    /// (`from`) rather than the one after it (`next`).
+    pub from_current: bool,
+    /// Whether the comparison is ASCII case-insensitive.
+    pub ci: bool,
+}
+
+impl Match {
+    /// Whether this match, or any alternative inside it, looks ahead.
+    #[must_use]
+    pub fn is_lookahead(&self) -> bool {
+        match self {
+            Self::Lookahead(_) => true,
+            Self::OneOf(ms) => ms.iter().any(Self::is_lookahead),
+            _ => false,
+        }
+    }
 }
 
 /// A named class of code points, as the standard's prose names them.
@@ -191,6 +240,12 @@ pub enum Cond {
     Appropriate,
     /// "If the temporary buffer is the string `script`".
     TempIsScript,
+    /// "If the character reference was consumed as part of an attribute".
+    InAttribute,
+    /// "If the adjusted current node is not an element in the HTML
+    /// namespace" — the one question the tokenizer asks the tree
+    /// builder, and the reason CDATA sections are not simply comments.
+    AdjustedNotHtml,
 }
 
 impl Cond {
@@ -198,6 +253,8 @@ impl Cond {
         Some(match w {
             "appropriate" => Self::Appropriate,
             "temp_is_script" => Self::TempIsScript,
+            "in_attribute" => Self::InAttribute,
+            "adjusted_not_html" => Self::AdjustedNotHtml,
             _ => return None,
         })
     }
@@ -208,6 +265,8 @@ impl Cond {
         match self {
             Self::Appropriate => "is_appropriate_end_tag",
             Self::TempIsScript => "temp_is_script",
+            Self::InAttribute => "char_ref_in_attribute",
+            Self::AdjustedNotHtml => "adjusted_node_not_html",
         }
     }
 }
@@ -251,12 +310,32 @@ pub enum Action {
     AppendLower(Buffer),
     /// "Append U+XXXX to X".
     AppendChar(Buffer, char),
+    /// "Create a comment token whose data is the `[CDATA[` string" —
+    /// the one place the prose names a whole string rather than a
+    /// character.
+    AppendStr(Buffer, String),
     /// "Set the temporary buffer to the empty string".
     ClearTemp,
     /// "Flush code points consumed as a character reference".
     FlushTemp,
     /// Set a flag.
     Set(Flag),
+    /// "Ignore the character" — written out, because a rule with no
+    /// actions and a rule the author forgot to finish look the same.
+    Ignore,
+    /// "Set the character reference code to zero".
+    CharRefReset,
+    /// "Multiply the character reference code by 16. Add a numeric
+    /// version of the current input character to it."
+    CharRefHexDigit,
+    /// The same, by 10, for a decimal digit.
+    CharRefDecDigit,
+    /// "When the user agent leaves the attribute name state … the
+    /// complete attribute's name must be compared to the other
+    /// attributes on the same token; if there is already one with the
+    /// same name, it is a `duplicate-attribute` parse error and the new
+    /// attribute must be removed."
+    FinishAttrName,
     /// "This is a *named* parse error".
     Error(String),
     /// A branch the prose writes as "if … otherwise".
@@ -290,6 +369,10 @@ pub struct State {
     pub name: String,
     /// The clause that defines it.
     pub anchor: String,
+    /// What the prose does on entering the state, before it consumes
+    /// anything — "Set the character reference code to zero. Consume
+    /// the next input character: …".
+    pub enter: Vec<Action>,
     /// Its rules, in the order written, which is the prose's order.
     pub rules: Vec<Rule>,
     /// Whether the runtime implements it instead (see the module docs).
@@ -443,7 +526,7 @@ impl Lexer {
                     toks.push((Tok::Word(v), line));
                     continue;
                 }
-                if "{}@,".contains(c) {
+                if "{}@,|".contains(c) {
                     toks.push((Tok::Punct(c), line));
                     continue;
                 }
@@ -542,14 +625,15 @@ pub fn parse(src: &str, file: &str) -> Result<File, Error> {
         }
         let name = lx.word()?;
         let anchor = lx.anchor()?;
-        let rules = if external {
-            Vec::new()
+        let (enter, rules) = if external {
+            (Vec::new(), Vec::new())
         } else {
-            rules(&mut lx)?
+            body(&mut lx)?
         };
         out.states.push(State {
             name,
             anchor,
+            enter,
             rules,
             external,
             line,
@@ -558,8 +642,16 @@ pub fn parse(src: &str, file: &str) -> Result<File, Error> {
     Ok(out)
 }
 
-fn rules(lx: &mut Lexer) -> Result<Vec<Rule>, Error> {
+/// A state's braces: the optional `enter` block, then its rules.
+fn body(lx: &mut Lexer) -> Result<(Vec<Action>, Vec<Rule>), Error> {
     lx.punct('{')?;
+    let mut enter = Vec::new();
+    if matches!(lx.peek(), Some(Tok::Word(w)) if w == "enter") {
+        lx.bump();
+        lx.punct('{')?;
+        enter = actions(lx)?;
+        lx.punct('}')?;
+    }
     let mut out = Vec::new();
     while !lx.eat_punct('}') {
         let line = lx.line();
@@ -581,15 +673,49 @@ fn rules(lx: &mut Lexer) -> Result<Vec<Rule>, Error> {
             line,
         });
     }
-    Ok(out)
+    Ok((enter, out))
 }
 
 fn match_of(lx: &mut Lexer) -> Result<Match, Error> {
+    let first = one_match(lx)?;
+    if !matches!(lx.peek(), Some(Tok::Punct('|'))) {
+        return Ok(first);
+    }
+    let mut all = vec![first];
+    while lx.eat_punct('|') {
+        all.push(one_match(lx)?);
+    }
+    Ok(Match::OneOf(all))
+}
+
+fn one_match(lx: &mut Lexer) -> Result<Match, Error> {
     match lx.bump() {
         Some(Tok::Char(c)) => Ok(Match::Char(c)),
         Some(Tok::Word(w)) => match w.as_str() {
             "_" => Ok(Match::Anything),
             "eof" => Ok(Match::Eof),
+            // `next` asks about the characters after the current
+            // position, nothing consumed; `from` asks about the ones
+            // starting at the current input character, which is.
+            "next" | "from" => {
+                let ci = if matches!(lx.peek(), Some(Tok::Word(c)) if c == "ci") {
+                    lx.bump();
+                    true
+                } else {
+                    false
+                };
+                match lx.bump() {
+                    Some(Tok::Str(text)) if !text.is_empty() => Ok(Match::Lookahead(Lookahead {
+                        text,
+                        from_current: w == "from",
+                        ci,
+                    })),
+                    Some(Tok::Str(_)) => Err(lx.err("a lookahead may not be empty")),
+                    other => Err(lx.err(format!(
+                        "`{w}` wants a string, optionally after `ci`, found {other:?}"
+                    ))),
+                }
+            }
             other => Class::from_word(other)
                 .map(Match::Class)
                 .ok_or_else(|| lx.err(format!("`{other}` is not a code-point class"))),
@@ -625,6 +751,25 @@ fn action(lx: &mut Lexer) -> Result<Action, Error> {
         "start_attribute" => Action::StartAttribute,
         "clear_temp" => Action::ClearTemp,
         "flush_temp" => Action::FlushTemp,
+        "ignore" => Action::Ignore,
+        "char_ref_reset" => Action::CharRefReset,
+        "char_ref_hex_digit" => Action::CharRefHexDigit,
+        "char_ref_dec_digit" => Action::CharRefDecDigit,
+        "finish_attr_name" => Action::FinishAttrName,
+        "append_str" => {
+            let w = lx.word()?;
+            let buf =
+                Buffer::from_word(&w).ok_or_else(|| lx.err(format!("`{w}` is not a buffer")))?;
+            match lx.bump() {
+                Some(Tok::Str(t)) if !t.is_empty() => Action::AppendStr(buf, t),
+                Some(Tok::Str(_)) => return Err(lx.err("append_str wants a non-empty string")),
+                other => {
+                    return Err(lx.err(format!(
+                        "append_str wants a string after the buffer, found {other:?}"
+                    )));
+                }
+            }
+        }
         "emit_char" => match lx.bump() {
             Some(Tok::Char(c)) => Action::EmitChar(c),
             other => return Err(lx.err(format!("emit_char wants a character, found {other:?}"))),

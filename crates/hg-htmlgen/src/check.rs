@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::syntax::{Action, Class, Error, File, Match, State};
+use crate::syntax::{Action, Class, Error, File, Lookahead, Match, State};
 
 /// A checked description.
 #[derive(Debug, Clone, Default)]
@@ -76,10 +76,21 @@ fn errors_of(actions: &[Action], out: &mut BTreeSet<String>) {
 
 /// Whether an earlier match already covers a later one, which would make
 /// the later rule dead.
+///
+/// Alternation is checked one alternative at a time, and *any* covered
+/// alternative is a mistake — not only a wholly covered group. A
+/// description that writes `'/' | ' '` under an earlier `whitespace`
+/// rule has a dead alternative whether or not the rest of the group can
+/// fire, and that is exactly the slip grouping invites. A lookahead
+/// covers only an identical lookahead, because what a string of
+/// characters shares with a code-point class is not decidable from the
+/// description alone.
 fn covers(earlier: &Match, later: &Match) -> bool {
     match (earlier, later) {
         (Match::Anything, _) => true,
         (a, b) if a == b => true,
+        (_, Match::OneOf(ls)) => ls.iter().any(|l| covers(earlier, l)),
+        (Match::OneOf(es), _) => es.iter().any(|e| covers(e, later)),
         (Match::Class(c), Match::Char(ch)) => match c {
             Class::Whitespace => matches!(ch, '\t' | '\n' | '\u{000C}' | ' '),
             Class::Null => *ch == '\0',
@@ -93,6 +104,18 @@ fn covers(earlier: &Match, later: &Match) -> bool {
             matches!(c, Class::AsciiUpper | Class::AsciiLower)
         }
         (Match::Class(Class::AsciiHexDigit), Match::Class(Class::AsciiDigit)) => true,
+        (
+            Match::Lookahead(Lookahead {
+                text: a,
+                ci: true,
+                from_current: fa,
+            }),
+            Match::Lookahead(Lookahead {
+                text: b,
+                from_current: fb,
+                ..
+            }),
+        ) => fa == fb && a.eq_ignore_ascii_case(b),
         _ => false,
     }
 }
@@ -155,16 +178,69 @@ pub fn check(files: &[(String, File)]) -> Result<Model, Error> {
                 ),
             ));
         }
+        // The enter actions run before anything is consumed, so their
+        // targets and errors belong to the state just as a rule's do.
+        errors_of(&s.enter, &mut m.errors);
+        let mut entered = Vec::new();
+        targets(&s.enter, &mut entered);
+        for t in entered {
+            if !where_declared.contains_key(&t) {
+                return Err(err(
+                    file,
+                    s.line,
+                    format!(
+                        "state {} enters by moving to {t}, which does not exist",
+                        s.name
+                    ),
+                ));
+            }
+            m.transitions.insert((s.name.clone(), t));
+        }
+
         let mut seen: Vec<&Match> = Vec::new();
         let mut has_anything = false;
+        let mut past_lookahead = false;
         for r in &s.rules {
+            // A lookahead is tested before a character is consumed, so
+            // the generated loop tries every lookahead first. Writing
+            // one after a character rule would read as an order the
+            // generator does not keep.
+            if r.matches.is_lookahead() {
+                if past_lookahead {
+                    return Err(err(
+                        file,
+                        r.line,
+                        format!(
+                            "in state {}, a lookahead rule comes after a rule that consumes a \
+                             character; the prose tests \"the next few characters\" first, and so \
+                             does the generated loop",
+                            s.name
+                        ),
+                    ));
+                }
+            } else if !matches!(r.matches, Match::Anything) {
+                past_lookahead = true;
+            }
+            if let Match::OneOf(ms) = &r.matches
+                && ms.iter().any(|x| matches!(x, Match::Anything))
+            {
+                return Err(err(
+                    file,
+                    r.line,
+                    format!(
+                        "in state {}, `_` is an alternative of a larger match; \"anything else\" \
+                         is a row of its own",
+                        s.name
+                    ),
+                ));
+            }
             if let Some(prev) = seen.iter().find(|p| covers(p, &r.matches)) {
                 return Err(err(
                     file,
                     r.line,
                     format!(
-                        "this rule can never fire in state {}: an earlier rule for {:?} already \
-                         matches it",
+                        "this rule, or one of its alternatives, can never fire in state {}: an \
+                         earlier rule for {:?} already matches it",
                         s.name, prev
                     ),
                 ));

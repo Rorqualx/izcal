@@ -3,7 +3,7 @@
 //! the rule and not to the fixture.
 
 use hg_htmlgen::model;
-use hg_htmlgen::syntax::{Action, Buffer, Match, parse};
+use hg_htmlgen::syntax::{Action, Buffer, Cond, Lookahead, Match, parse};
 
 /// A description in the shape the prose writes: the data state, a state
 /// it reaches, and an `extern` state for the part the prose does not
@@ -236,4 +236,172 @@ fn appending_a_literal_takes_its_own_verb() {
         f.states[0].rules[0].actions,
         vec![Action::AppendChar(Buffer::Comment, '/')]
     );
+}
+
+// ---------------------------------------------------------------------
+// The four things the real 80 states need that the first language could
+// not say. Each is tested by what it accepts and by what it refuses.
+// ---------------------------------------------------------------------
+
+#[test]
+fn alternatives_are_one_rule_because_the_prose_groups_them() {
+    // "U+002F SOLIDUS (/), U+003E GREATER-THAN SIGN (>), or EOF —
+    // Reconsume in the after attribute name state."
+    let src = "state data @ \"a\" {\n  '/' | '>' | eof => reconsume data\n  _ => emit_current\n}";
+    let f = parse(src, "t").expect("parses");
+    assert_eq!(
+        f.states[0].rules[0].matches,
+        Match::OneOf(vec![Match::Char('/'), Match::Char('>'), Match::Eof])
+    );
+}
+
+#[test]
+fn one_dead_alternative_condemns_the_group() {
+    // `whitespace` already covers `' '`. The group could still fire on
+    // `'/'`, but the `' '` alternative never will, and that is the slip
+    // grouping invites — so it is refused rather than silently kept.
+    let src = GOOD.replace(
+        "  whitespace  => switch before_attribute_name",
+        "  whitespace  => switch before_attribute_name\n  '/' | ' ' => emit_eof",
+    );
+    let e = refuse(&src);
+    assert!(e.contains("one of its alternatives"), "{e}");
+}
+
+#[test]
+fn a_group_with_no_covered_alternative_is_accepted() {
+    let src = GOOD.replace(
+        "  '>'         => switch data, emit_token",
+        "  '>' | '/'   => switch data, emit_token",
+    );
+    assert!(
+        model(&[("t.hgtok".into(), src)]).is_ok(),
+        "nothing above covers `>` or `/`"
+    );
+}
+
+#[test]
+fn anything_else_is_a_row_of_its_own_not_an_alternative() {
+    let src = "state data @ \"a\" {\n  '/' | _ => emit_eof\n  _ => emit_current\n}";
+    let e = refuse(src);
+    assert!(e.contains("row of its own"), "{e}");
+}
+
+#[test]
+fn the_two_lookahead_questions_are_two_words() {
+    // The markup declaration open state asks about characters it has
+    // not consumed; the after DOCTYPE name state asks about ones
+    // starting at the character it has.
+    let src = "state data @ \"a\" {\n  next \"--\" => switch data\n  next ci \"DOCTYPE\" => \
+               switch data\n  from ci \"PUBLIC\" => switch data\n  _ => emit_current\n}";
+    let f = parse(src, "t").expect("parses");
+    let got: Vec<Match> = f.states[0]
+        .rules
+        .iter()
+        .map(|r| r.matches.clone())
+        .collect();
+    assert_eq!(
+        got[0],
+        Match::Lookahead(Lookahead {
+            text: "--".into(),
+            from_current: false,
+            ci: false
+        })
+    );
+    assert_eq!(
+        got[1],
+        Match::Lookahead(Lookahead {
+            text: "DOCTYPE".into(),
+            from_current: false,
+            ci: true
+        })
+    );
+    assert_eq!(
+        got[2],
+        Match::Lookahead(Lookahead {
+            text: "PUBLIC".into(),
+            from_current: true,
+            ci: true
+        })
+    );
+}
+
+#[test]
+fn a_case_insensitive_lookahead_covers_its_own_spellings() {
+    let src = "state data @ \"a\" {\n  next ci \"DOCTYPE\" => switch data\n  next \"doctype\" => \
+               switch data\n  _ => emit_current\n}";
+    let e = refuse(src);
+    assert!(e.contains("can never fire"), "{e}");
+}
+
+#[test]
+fn a_lookahead_after_a_character_rule_is_refused() {
+    // The generated loop tests every lookahead before it consumes, so a
+    // description that implies the other order is refused rather than
+    // silently reordered.
+    let src = "state data @ \"a\" {\n  '<' => switch data\n  next \"--\" => switch data\n  _ => \
+               emit_current\n}";
+    let e = refuse(src);
+    assert!(e.contains("lookahead rule comes after"), "{e}");
+}
+
+#[test]
+fn a_state_can_act_before_it_consumes_anything() {
+    // "Numeric character reference state: Set the character reference
+    // code to zero. Consume the next input character: …"
+    let src = "state data @ \"a\" {\n  enter { char_ref_reset }\n  ascii_hex => \
+               char_ref_hex_digit\n  _ => emit_current\n}";
+    let f = parse(src, "t").expect("parses");
+    assert_eq!(f.states[0].enter, vec![Action::CharRefReset]);
+    assert_eq!(f.states[0].rules.len(), 2, "enter is not a rule");
+}
+
+#[test]
+fn an_enter_block_that_moves_somewhere_is_a_transition() {
+    let src = GOOD.replace(
+        "state tag_open @ \"html#tag-open-state\" {",
+        "state tag_open @ \"html#tag-open-state\" {\n  enter { set_return bogus_comment }",
+    );
+    let m = model(&[("t.hgtok".into(), src)]).expect("checks");
+    assert!(
+        m.transitions
+            .contains(&("tag_open".into(), "bogus_comment".into())),
+        "the enter block's target is recorded"
+    );
+    // And a misspelt one is refused the same way a rule's is.
+    let bad = GOOD.replace(
+        "state tag_open @ \"html#tag-open-state\" {",
+        "state tag_open @ \"html#tag-open-state\" {\n  enter { set_return bogus_commnet }",
+    );
+    assert!(refuse(&bad).contains("does not exist"));
+}
+
+#[test]
+fn the_remaining_verbs_say_what_the_prose_says() {
+    let src = "state data @ \"a\" {\n  '[' => create_comment, append_str comment \"[CDATA[\"\n  \
+               whitespace => ignore\n  '=' => finish_attr_name, switch data\n  ascii_digit => \
+               char_ref_dec_digit\n  _ => if in_attribute { append attr_value } else { \
+               emit_current }\n}";
+    let f = parse(src, "t").expect("parses");
+    let a = &f.states[0].rules;
+    assert_eq!(
+        a[0].actions[1],
+        Action::AppendStr(Buffer::Comment, "[CDATA[".into())
+    );
+    assert_eq!(a[1].actions, vec![Action::Ignore]);
+    assert_eq!(a[2].actions[0], Action::FinishAttrName);
+    assert_eq!(a[3].actions, vec![Action::CharRefDecDigit]);
+    assert!(matches!(
+        a[4].actions[0],
+        Action::If {
+            cond: Cond::InAttribute,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn append_str_wants_a_string_and_says_so() {
+    let e = refuse("state data @ \"a\" {\n  _ => create_comment, append_str comment '['\n}");
+    assert!(e.contains("append_str wants a string"), "{e}");
 }
