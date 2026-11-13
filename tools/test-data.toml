@@ -192,3 +192,41 @@ licence = "CC-BY-4.0 (BSD-3-Clause where incorporated into source code)"
 url = "https://encoding.spec.whatwg.org/indexes.json"
 sha256 = "b7c8961095f0b4cae8f4a16a5011e7c84047a60c1277e28ee8df9e56074ee509"
 format = "file"
+
+# web-platform-tests' URL data, BSD-3-Clause. Test-only, under OD-L2:
+# never linked, never shipped, never committed. These are the oracle
+# for ST-15, which asks for WPT `url/` at ≥ max(97%, the best shipping
+# engine's rate).
+#
+# WPT as a whole is about a gigabyte, and `url/resources/` is five
+# files, so each is pinned on its own at the same commit rather than
+# downloading the tree. master at 13 Nov 2026.
+#
+# At this commit urltestdata.json holds 904 cases — 635 with a full
+# component breakdown and 269 expected to fail — plus 117 comment
+# strings. toascii.json covers host parsing with UTS 46, and
+# setters_tests.json the URL object's setters, which arrive with the
+# bindings rather than with the parser.
+[wpt-urltestdata]
+pin = "33926aca0f43"
+date = "2026-11-13"
+licence = "BSD-3-Clause"
+url = "https://raw.githubusercontent.com/web-platform-tests/wpt/33926aca0f4313541f0ac5d67d4a4ab949d50b16/url/resources/urltestdata.json"
+sha256 = "f11f7dc444cc9dcb01fd5c1de13720cdc55e579d0f0412e760c081403e3c4684"
+format = "file"
+
+[wpt-toascii]
+pin = "33926aca0f43"
+date = "2026-11-13"
+licence = "BSD-3-Clause"
+url = "https://raw.githubusercontent.com/web-platform-tests/wpt/33926aca0f4313541f0ac5d67d4a4ab949d50b16/url/resources/toascii.json"
+sha256 = "644eba9d5b593df8095cfa307222f3014542ff9cc02d555f8e5660059d80470f"
+format = "file"
+
+[wpt-percent-encoding]
+pin = "33926aca0f43"
+date = "2026-11-13"
+licence = "BSD-3-Clause"
+url = "https://raw.githubusercontent.com/web-platform-tests/wpt/33926aca0f4313541f0ac5d67d4a4ab949d50b16/url/resources/percent-encoding.json"
+sha256 = "ac3d9ec89f51e3855f9967ef8414eb470653a25d385cb88cbc3dc1c4d878d71c"
+format = "file"

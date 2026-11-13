@@ -325,6 +325,34 @@ jobs:
           cargo test --release --locked -p hg-encoding-build --test it -- --nocapture
           cargo test --release --locked -p hg-encoding --test it -- --nocapture
 
+  # G31, the browser's one URL parser. WPT's url/ suite is the oracle:
+  # 904 cases of input, base and the eight serialized components a
+  # conforming parser must produce -- or `failure: true`, which is
+  # three-tenths of the suite and the part a parser that merely tries
+  # hard would get wrong.
+  #
+  # The suite is test-only (BSD-3-Clause, OD-L2), fetched at a pinned
+  # commit with a SHA-256 check and never committed. Two smaller files
+  # go with it: toascii.json, which is the domain parser alone, and
+  # percent-encoding.json, which is the one place a legacy encoding
+  # reaches a URL.
+  url:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch WPT's url resources
+        run: tools/fetch-test-data.sh wpt-urltestdata wpt-toascii wpt-percent-encoding
+
+      - name: ST-M0, the WPT url suite
+        run: cargo run --release --locked -p hg-wpt-url -- --suite all
+
+      - name: hg-url's own tests
+        run: cargo test --release --locked -p hg-url --test it -- --nocapture
+
   # ST-D6 (style spec 6.6): the property table is generated from
   # @webref/css plus Izcal's .hgprop overlay, and the overlay restates
   # the webref fields the engine was written against. This job is where

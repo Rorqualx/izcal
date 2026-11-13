@@ -183,6 +183,16 @@ tier = "T"
 layer = "tools"
 why = "Fonts and text 9.3, TX-M0: reads the pinned Unicode Character Database and writes hg-ucd's tables, whose freshness is a test (G16). Never linked; the database is test-only input and is never committed."
 
+[crates.hg-url]
+tier = "P"
+layer = "L2s"
+why = "Style spec 6.15 crate table: L2s, tier P, \"the browser's one URL parser\" (G31). The URL Standard's parser, serializer and host parsing, over hg-unicode's UTS 46 and hg-encoding's query encoding. Tier P because the network services and the broker link it and it may never panic (G24)."
+
+[crates.hg-wpt-url]
+tier = "T"
+layer = "tools"
+why = "Style spec ST-M0: runs the pinned WPT url/ suite (urltestdata.json, toascii.json, percent-encoding.json) against hg-url and reports the numbers it measures. Its own crate because reading a pinned data file is an ambient effect tier P rejects; WPT is test-only under OD-L2, never linked and never committed."
+
 [crates.hg-css-props]
 tier = "R"
 layer = "L2p"
