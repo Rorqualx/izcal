@@ -1,0 +1,22 @@
+# head, from OpenType 1.9.1, "head - Font Header Table".
+
+table Head @ "otspec/head" {
+  major_version        u16          @ "otspec/head#majorVersion"
+  minor_version        u16          @ "otspec/head#minorVersion"
+  font_revision        fixed        @ "otspec/head#fontRevision"
+  checksum_adjustment  u32          @ "otspec/head#checkSumAdjustment"
+  magic_number         u32          @ "otspec/head#magicNumber"
+  flags                u16          @ "otspec/head#flags"
+  units_per_em         u16          @ "otspec/head#unitsPerEm"
+  created              longdatetime @ "otspec/head#created"
+  modified             longdatetime @ "otspec/head#modified"
+  x_min                i16          @ "otspec/head#xMin"
+  y_min                i16          @ "otspec/head#yMin"
+  x_max                i16          @ "otspec/head#xMax"
+  y_max                i16          @ "otspec/head#yMax"
+  mac_style            u16          @ "otspec/head#macStyle"
+  lowest_rec_ppem      u16          @ "otspec/head#lowestRecPPEM"
+  font_direction_hint  i16          @ "otspec/head#fontDirectionHint"
+  index_to_loc_format  i16          @ "otspec/head#indexToLocFormat"
+  glyph_data_format    i16          @ "otspec/head#glyphDataFormat"
+}

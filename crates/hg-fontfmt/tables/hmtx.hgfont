@@ -1,0 +1,17 @@
+# hmtx, from OpenType 1.9.1, "hmtx - Horizontal Metrics Table".
+#
+# The table carries no count of its own: the number of full metrics
+# comes from hhea's numberOfHMetrics and the number of glyphs from
+# maxp's numGlyphs, so both are parameters. A font where numGlyphs is
+# below numberOfHMetrics gives a negative count, which the reader clamps
+# to zero rather than wrapping.
+
+record LongHorMetric @ "otspec/hmtx#hMetrics" {
+  advance_width u16 @ "otspec/hmtx#advanceWidth"
+  lsb           i16 @ "otspec/hmtx#lsb"
+}
+
+table Hmtx(number_of_h_metrics: u16, num_glyphs: u16) @ "otspec/hmtx" {
+  h_metrics [number_of_h_metrics] LongHorMetric @ "otspec/hmtx#hMetrics"
+  left_side_bearings [num_glyphs - number_of_h_metrics] i16 @ "otspec/hmtx#leftSideBearings"
+}

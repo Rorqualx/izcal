@@ -127,12 +127,12 @@ exempt = ["xtask"]
 track = "TX-M0"
 spec = "reports/Izcal fonts and text.md"
 claimed = false
-crates = ["hg-ucd", "hg-unicode", "hg-unicode-build", "hg-fontgen", "hg-fontc"]
+crates = ["hg-ucd", "hg-unicode", "hg-unicode-build", "hg-fontgen", "hg-fontfmt", "hg-fontc"]
 generator = "hg-fontgen"
 oracle-job = "tx-1"
 review = "research_notes/TX-M0 design review/README.md"
 interlock = "measurements/milestones/m0-starts/README.md"
-why = "TX-M0 leads: its own row puts normalization and the IDNA data first, by month 6, for hg-url at ST-M0, and TX-1 demands 100% of the Unicode conformance files from TX-M0, so the oracle is the exit criterion's own measure."
+why = "TX-M0 leads: its own row puts normalization and the IDNA data first, by month 6, for hg-url at ST-M0, and TX-1 demands 100% of the Unicode conformance files from TX-M0, so the oracle is the exit criterion's own measure. hg-fontfmt is the reader TX-M0 names the proofs for; the first list left it out, which the 6.15 crate table corrects."
 
 [[started]]
 track = "ST-M0"

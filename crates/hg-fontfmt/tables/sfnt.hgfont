@@ -1,0 +1,32 @@
+# The sfnt container, from OpenType 1.9.1, "Table Directory".
+#
+# The directory is the first thing read from a font file and the only
+# table whose offset is known in advance. Every other table is found
+# through a record here.
+
+record TableRecord @ "otspec/otff#table-directory" {
+  table_tag u32 @ "otspec/otff#tableTag"
+  checksum  u32 @ "otspec/otff#checksum"
+  offset    u32 @ "otspec/otff#offset"
+  length    u32 @ "otspec/otff#length"
+}
+
+table TableDirectory @ "otspec/otff#table-directory" {
+  sfnt_version   u32              @ "otspec/otff#sfntVersion"
+  num_tables     u16              @ "otspec/otff#numTables"
+  search_range   u16              @ "otspec/otff#searchRange"
+  entry_selector u16              @ "otspec/otff#entrySelector"
+  range_shift    u16              @ "otspec/otff#rangeShift"
+  table_records  [num_tables] TableRecord @ "otspec/otff#tableRecords"
+}
+
+# A TrueType Collection header, OpenType 1.9.1 "Font Collections". The
+# version 2 fields (dsig) are not described: a collection's digital
+# signature is not read.
+table TtcHeader @ "otspec/otff#ttc-header" {
+  ttc_tag       u32           @ "otspec/otff#ttcTag"
+  major_version u16           @ "otspec/otff#majorVersion"
+  minor_version u16           @ "otspec/otff#minorVersion"
+  num_fonts     u32           @ "otspec/otff#numFonts"
+  table_directory_offsets [num_fonts] offset32 @ "otspec/otff#tableDirectoryOffsets"
+}
