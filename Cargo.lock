@@ -102,6 +102,7 @@ version = "0.0.0"
 name = "hg-html5lib"
 version = "0.0.0"
 dependencies = [
+ "hg-encoding",
  "hg-html-syntax",
  "hg-json",
 ]

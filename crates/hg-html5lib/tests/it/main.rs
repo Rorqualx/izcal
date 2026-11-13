@@ -6,6 +6,8 @@
 //! a missing suite a failure instead, so the check cannot be skipped
 //! where it must run.
 
+mod encoding;
+
 use hg_html_syntax::Back;
 use hg_html5lib::{BASELINE, Ledger, Outcome, cases, run_case, suite_dir};
 

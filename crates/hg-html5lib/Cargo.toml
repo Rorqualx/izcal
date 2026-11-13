@@ -15,6 +15,7 @@ name = "it"
 path = "tests/it/main.rs"
 
 [dependencies]
+hg-encoding = { path = "../hg-encoding" }
 hg-json = { path = "../hg-json" }
 hg-html-syntax = { path = "../hg-html-syntax", features = ["conformance"] }
 

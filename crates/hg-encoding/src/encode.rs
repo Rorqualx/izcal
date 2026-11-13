@@ -108,13 +108,20 @@ impl Encoder {
         unmappable: &mut dyn FnMut(char, &mut Vec<u8>),
     ) {
         for c in input.chars() {
-            // `Again` asks for the same code point once more, after
-            // the escape sequence it just wrote. The standard's
-            // ISO-2022-JP encoder restores at most twice in a row (a
-            // state change, then the character), so two rounds is the
-            // bound, and a third would be a bug rather than input.
-            let mut c = c;
-            for _ in 0..3 {
+            // `Again` asks for the same code point once more, after the
+            // escape sequence just written. ISO-2022-JP is the only
+            // encoder that asks, and it asks at most twice in a row: a
+            // state change, then the character. Three rounds leaves a
+            // spare, and running out is treated as unmappable rather
+            // than dropping the code point, so a bug in the state
+            // machine would show as mangled output and not as silence.
+            let mut rounds = 0_u8;
+            loop {
+                rounds = rounds.saturating_add(1);
+                if rounds > 3 {
+                    unmappable(c, out);
+                    break;
+                }
                 match self.step(c) {
                     Out::Bytes(bytes, n) => {
                         out.extend(bytes.iter().take(n));
@@ -124,10 +131,7 @@ impl Encoder {
                         unmappable(bad, out);
                         break;
                     }
-                    Out::Again(bytes, n) => {
-                        out.extend(bytes.iter().take(n));
-                        c = c_again(c);
-                    }
+                    Out::Again(bytes, n) => out.extend(bytes.iter().take(n)),
                 }
             }
         }
@@ -166,11 +170,6 @@ impl Encoder {
             Family::Replacement | Family::Utf16be | Family::Utf16le => Out::Unmappable(c),
         }
     }
-}
-
-/// The code point to retry after an `Again`: the same one.
-const fn c_again(c: char) -> char {
-    c
 }
 
 /// `index pointer`, over a generated encode table.

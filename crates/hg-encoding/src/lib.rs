@@ -30,21 +30,22 @@
 //!   [`utf8_decode_without_bom_or_fail`] — the hooks Section 6 asks new
 //!   formats to use.
 //!
-//! # What is not here yet
-//!
-//! HTML's "prescan a byte stream to determine its encoding" — the
-//! `<meta charset>` sniffer — belongs to the HTML side and lands with
-//! `hg-html-driver`. This crate carries the pieces it needs:
-//! [`Encoding::for_label`] and [`bom_sniff`].
+//! - [`prescan`], [`extract_from_meta`] and [`xml_encoding`] — the
+//!   sniffing helpers HTML's "determine the character encoding" needs.
+//!   There is no statistical autodetection, which the Encoding
+//!   Standard calls "generally discouraged" and which an attacker who
+//!   controls part of a page can steer (ST-D16).
 
 mod decode;
 mod encode;
 mod generated;
 mod queue;
+mod sniff;
 
 pub use decode::{DecodeError, Decoder, ErrorMode};
 pub use encode::Encoder;
 pub use generated::encodings::{Encoding, Family};
+pub use sniff::{HTML_LIMIT, extract_from_meta, prescan, xml_encoding};
 
 use generated::encodings::LABELS;
 

@@ -42,6 +42,7 @@
 //! around.
 
 pub mod cases;
+pub mod encoding;
 pub mod report;
 pub mod run;
 
@@ -49,7 +50,7 @@ pub use cases::{Case, Expected, ExpectedError};
 pub use report::{Ledger, Outcome};
 pub use run::run_case;
 
-/// Where the suite lives, under the pinned tree.
+/// Where the tokenizer suite lives, under the pinned tree.
 pub const TOKENIZER_DIR: &str = "tokenizer";
 
 /// What the data set is called in `tools/test-data.toml`.
@@ -76,6 +77,14 @@ pub const RUNS: usize = 14_092;
 /// # Errors
 /// A message when neither `$IZCAL_TEST_DATA` nor `$HOME` is set.
 pub fn suite_dir() -> Result<std::path::PathBuf, String> {
+    Ok(tree_dir()?.join(TOKENIZER_DIR))
+}
+
+/// The pinned tree itself, which holds `tokenizer/` and `encoding/`.
+///
+/// # Errors
+/// A message when neither `$IZCAL_TEST_DATA` nor `$HOME` is set.
+pub fn tree_dir() -> Result<std::path::PathBuf, String> {
     let cache = match std::env::var_os("IZCAL_TEST_DATA") {
         Some(v) => std::path::PathBuf::from(v),
         None => {
@@ -86,7 +95,5 @@ pub fn suite_dir() -> Result<std::path::PathBuf, String> {
         }
     };
     let short = PIN.get(..40).unwrap_or(PIN);
-    Ok(cache
-        .join(format!("{DATA_SET}-{short}"))
-        .join(TOKENIZER_DIR))
+    Ok(cache.join(format!("{DATA_SET}-{short}")))
 }

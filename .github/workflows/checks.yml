@@ -284,6 +284,15 @@ jobs:
           cargo run --release --locked -p hg-html5lib
           cargo test --release --locked -p hg-html5lib --test it -- --nocapture
 
+      # ST-D16: the other half of the same suite, over HTML's
+      # "determine the character encoding" and hg-encoding's sniffing
+      # helpers. The 1,024-byte prescan window is a decision, and the
+      # runner prints what every other window would score beside it.
+      - name: ST-D16, the encoding suite
+        env:
+          IZCAL_REQUIRE_HTML_DATA: "1"
+        run: cargo run --release --locked -p hg-html5lib -- --suite encoding
+
   # ST-D16 (style spec 6.6): the Encoding Standard, from the
   # standard's own published data. The tables hg-encoding ships are
   # generated from encodings.json and indexes.json, so this job checks
