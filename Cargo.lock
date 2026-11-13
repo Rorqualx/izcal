@@ -84,6 +84,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-fontc"
+version = "0.0.0"
+dependencies = [
+ "hg-fontfmt",
+]
+
+[[package]]
 name = "hg-fontfmt"
 version = "0.0.0"
 

@@ -25,6 +25,10 @@ pub fn outputs(m: &Model) -> Vec<(PathBuf, String)> {
             emit::proofs(m),
         ),
         (
+            PathBuf::from("crates/hg-fontc/src/generated/writers.rs"),
+            emit::writers(m),
+        ),
+        (
             PathBuf::from("crates/hg-fontfmt/src/generated/grammar.tsv"),
             emit::grammar(m),
         ),

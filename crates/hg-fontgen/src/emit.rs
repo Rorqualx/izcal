@@ -486,3 +486,318 @@ pub const fn scalars() -> [Scalar; 14] {
         Scalar::Offset32,
     ]
 }
+
+/// The writers (fonts and text 6.15): one builder per table, emitted
+/// into `hg-fontc` from the same descriptions the reader comes from.
+///
+/// A writer is not the reader run backwards. The reader is handed bytes
+/// and must survive them; the writer is handed *values* and must refuse
+/// the ones that would make a table no conforming reader accepts. There
+/// are two such refusals and they are both the compiler's own mistake:
+/// a field that was never set, and an array whose length disagrees with
+/// the count the table itself declares. Padding or truncating the
+/// second would turn a compile-time error into a font that does not
+/// load, so the writer refuses it.
+///
+/// The declared count is computed exactly as the generated reader
+/// computes it — the same terms, the same `i64` accumulator, the same
+/// clamp at zero — because the two have to agree about what the table
+/// says, whatever the description says.
+#[must_use]
+pub fn writers(m: &Model) -> String {
+    let mut out = header("The writers. One builder per table; it refuses what it cannot write.");
+    out.push_str(
+        "//! Writers for the described tables.\n\
+         //!\n\
+         //! Each builder collects values and emits the table's bytes in\n\
+         //! field order, big-endian. It writes nothing until `finish`,\n\
+         //! and `finish` refuses a table whose declared counts disagree\n\
+         //! with what it was given (fonts and text 6.15, TX-D24).\n\n\
+         use hg_fontfmt::tables::*;\n\n\
+         use crate::write::{self, Error};\n\n",
+    );
+
+    for (name, (r, _)) in &m.records {
+        emit_record_writer(&mut out, name, r);
+    }
+    for t in &m.tables {
+        emit_table_writer(&mut out, t);
+    }
+    out
+}
+
+/// The statement that appends one value of `ty`, already named by
+/// `value`, inside a function whose error type is [`Error`].
+fn write_stmt(ty: &Ty, owner: &str, field: &str, value: &str) -> String {
+    match ty {
+        Ty::Scalar(s) if s.write_is_fallible() => {
+            format!(
+                "write::{}(out, \"{owner}\", \"{field}\", {value})?;",
+                s.writer()
+            )
+        }
+        Ty::Scalar(s) => format!("write::{}(out, {value});", s.writer()),
+        Ty::Record(n) => format!("write_{}(out, {value})?;", snake(n)),
+        Ty::Array { elem, .. } => write_stmt(elem, owner, field, value),
+    }
+}
+
+/// Whether writing one value of `ty` can fail, which decides whether
+/// the function that writes it needs a `Result`.
+fn write_can_fail(ty: &Ty) -> bool {
+    match ty {
+        Ty::Scalar(s) => s.write_is_fallible(),
+        Ty::Record(_) => true,
+        Ty::Array { elem, .. } => write_can_fail(elem),
+    }
+}
+
+fn emit_record_writer(out: &mut String, name: &str, r: &Record) {
+    let fname = snake(name);
+    doc(
+        out,
+        "",
+        &format!("Appends one `{name}`, in field order, big-endian."),
+        &r.anchor,
+    );
+    let any_fallible = r.fields.iter().any(|f| write_can_fail(&f.ty));
+    if any_fallible {
+        out.push_str(
+            "///\n/// # Errors\n/// [`Error`] when a value does not fit the field it is\n\
+             /// written to.\n",
+        );
+    }
+    let _ = writeln!(
+        out,
+        "pub fn write_{fname}(out: &mut Vec<u8>, v: &{name}) -> Result<(), Error> {{"
+    );
+    for f in &r.fields {
+        let by_ref = if matches!(f.ty, Ty::Record(_)) {
+            "&"
+        } else {
+            ""
+        };
+        let _ = writeln!(
+            out,
+            "    {}",
+            write_stmt(&f.ty, name, &f.name, &format!("{by_ref}v.{}", f.name))
+        );
+    }
+    out.push_str("    Ok(())\n}\n\n");
+}
+
+fn emit_table_writer(out: &mut String, t: &Table) {
+    let name = &t.name;
+    let w = format!("{name}Writer");
+    doc(
+        out,
+        "",
+        &format!(
+            "A writer for the `{name}` table: set every field, push \
+             every array, then `finish`."
+        ),
+        &t.anchor,
+    );
+    out.push_str("#[derive(Debug, Clone, PartialEq, Eq)]\n");
+    let _ = writeln!(out, "pub struct {w} {{");
+    for (p, s) in &t.params {
+        let _ = writeln!(out, "    {p}: {},", s.rust());
+    }
+    for f in &t.fields {
+        match &f.ty {
+            Ty::Array { elem, .. } => {
+                let _ = writeln!(out, "    {}: Vec<{}>,", f.name, field_rust(elem));
+            }
+            _ => {
+                let _ = writeln!(out, "    {}: Option<{}>,", f.name, field_rust(&f.ty));
+            }
+        }
+    }
+    out.push_str("}\n\n");
+
+    let _ = writeln!(out, "impl {w} {{");
+
+    // The constructor. Parameters are the values another table supplies
+    // and this one cannot know, exactly as the reader takes them.
+    let args: String = t
+        .params
+        .iter()
+        .map(|(p, s)| format!("{p}: {}, ", s.rust()))
+        .collect();
+    let args = args.trim_end_matches(", ").to_owned();
+    let mut inits = String::new();
+    for (p, _) in &t.params {
+        let _ = writeln!(inits, "            {p},");
+    }
+    for f in &t.fields {
+        match &f.ty {
+            Ty::Array { .. } => {
+                let _ = writeln!(inits, "            {}: Vec::new(),", f.name);
+            }
+            _ => {
+                let _ = writeln!(inits, "            {}: None,", f.name);
+            }
+        }
+    }
+    let _ = writeln!(
+        out,
+        "    /// An empty writer. Every field is unset and every array\n\
+         \x20   /// is empty, so `finish` refuses it until it is filled.\n\
+         \x20   #[must_use]\n\
+         \x20   pub fn new({args}) -> Self {{\n        Self {{\n{inits}        }}\n    }}\n"
+    );
+
+    for f in &t.fields {
+        match &f.ty {
+            Ty::Array { count, elem } => {
+                let rust = field_rust(elem);
+                doc(
+                    out,
+                    "    ",
+                    &format!("Appends one `{}`.", f.name),
+                    &f.anchor,
+                );
+                let _ = writeln!(
+                    out,
+                    "    pub fn push_{}(&mut self, v: {rust}) -> &mut Self {{\n\
+                     \x20       self.{}.push(v);\n        self\n    }}\n",
+                    f.name, f.name
+                );
+                let _ = writeln!(
+                    out,
+                    "    /// Appends every `{}` in `vs`.\n\
+                     \x20   pub fn extend_{}(&mut self, vs: &[{rust}]) -> &mut Self {{\n\
+                     \x20       self.{}.extend_from_slice(vs);\n        self\n    }}\n",
+                    f.name, f.name, f.name
+                );
+                let _ = writeln!(
+                    out,
+                    "    /// How many `{}` have been pushed.\n    #[must_use]\n\
+                     \x20   pub fn {}_pushed(&self) -> usize {{\n        self.{}.len()\n    }}\n",
+                    f.name, f.name, f.name
+                );
+                let _ = writeln!(
+                    out,
+                    "    /// How many `{}` the table's own fields declare,\n\
+                     \x20   /// computed as the generated reader computes it.\n    ///\n\
+                     \x20   /// # Errors\n\
+                     \x20   /// [`Error::Unset`] when a field the count names has no\n\
+                     \x20   /// value yet, and [`Error::Overflow`] when the sum does\n\
+                     \x20   /// not fit.\n    #[must_use = \"the declared count is the check\"]\n\
+                     \x20   pub fn {}_len(&self) -> Result<usize, Error> {{",
+                    f.name, f.name
+                );
+                out.push_str("        let mut acc: i64 = 0;\n");
+                emit_writer_expr(out, count, t, name, &f.name);
+                let _ = writeln!(
+                    out,
+                    "        usize::try_from(acc.max(0))\n            .ok()\n            \
+                     .ok_or(Error::Overflow {{ table: \"{name}\", field: \"{}\" }})\n    }}\n",
+                    f.name
+                );
+            }
+            _ => {
+                let rust = field_rust(&f.ty);
+                doc(out, "    ", &format!("Sets `{}`.", f.name), &f.anchor);
+                let _ = writeln!(
+                    out,
+                    "    pub fn set_{}(&mut self, v: {rust}) -> &mut Self {{\n\
+                     \x20       self.{} = Some(v);\n        self\n    }}\n",
+                    f.name, f.name
+                );
+            }
+        }
+    }
+
+    // `finish`: the whole table, in field order.
+    out.push_str(
+        "    /// The table's bytes.\n    ///\n    /// # Errors\n\
+         \x20   /// [`Error::Unset`] for a field that was never set,\n\
+         \x20   /// [`Error::Count`] for an array whose length disagrees with\n\
+         \x20   /// what the table declares, [`Error::Overflow`] for a count\n\
+         \x20   /// that does not fit and [`Error::Range`] for a value that\n\
+         \x20   /// does not fit its field.\n    pub fn finish(&self) -> Result<Vec<u8>, Error> {\n\
+         \x20       let out = &mut Vec::new();\n",
+    );
+    for f in &t.fields {
+        match &f.ty {
+            Ty::Array { elem, .. } => {
+                let _ = writeln!(
+                    out,
+                    "        let declared_{0} = self.{0}_len()?;\n\
+                     \x20       if self.{0}.len() != declared_{0} {{\n\
+                     \x20           return Err(Error::Count {{\n\
+                     \x20               table: \"{name}\",\n                field: \"{0}\",\n\
+                     \x20               declared: declared_{0},\n\
+                     \x20               given: self.{0}.len(),\n            }});\n        }}\n\
+                     \x20       for v in &self.{0} {{\n            {1}\n        }}",
+                    f.name,
+                    write_stmt(
+                        elem,
+                        name,
+                        &f.name,
+                        if matches!(**elem, Ty::Record(_)) {
+                            "v"
+                        } else {
+                            "*v"
+                        },
+                    ),
+                );
+            }
+            _ => {
+                let by_ref = if matches!(f.ty, Ty::Record(_)) {
+                    "&"
+                } else {
+                    ""
+                };
+                let got = format!(
+                    "{by_ref}self.{}.ok_or(Error::Unset {{ table: \"{name}\", field: \"{}\" }})?",
+                    f.name, f.name
+                );
+                let _ = writeln!(out, "        {}", write_stmt(&f.ty, name, &f.name, &got));
+            }
+        }
+    }
+    out.push_str("        Ok(std::mem::take(out))\n    }\n}\n\n");
+
+    if t.params.is_empty() {
+        let _ = writeln!(
+            out,
+            "impl Default for {w} {{\n    fn default() -> Self {{\n        Self::new()\n    }}\n}}\n"
+        );
+    }
+}
+
+/// A count expression as the writer evaluates it: the same terms the
+/// reader uses, but reading from the values set rather than from bytes,
+/// so an unset field is named rather than silently zero.
+fn emit_writer_expr(out: &mut String, e: &Expr, t: &Table, table: &str, field: &str) {
+    for (plus, term) in &e.terms {
+        let op = if *plus { "checked_add" } else { "checked_sub" };
+        let value = match term {
+            Term::Int(n) => format!("i64::from({n}_u32)"),
+            Term::Name(n) => {
+                if t.params.iter().any(|(p, _)| p == n) {
+                    format!("i64::from(self.{n})")
+                } else {
+                    format!(
+                        "i64::from(self.{n}.ok_or(Error::Unset {{ table: \"{table}\", \
+                         field: \"{n}\" }})?)"
+                    )
+                }
+            }
+        };
+        let _ = writeln!(
+            out,
+            "        acc = acc\n            .{op}({value})\n            \
+             .ok_or(Error::Overflow {{ table: \"{table}\", field: \"{field}\" }})?;"
+        );
+    }
+    if let Some(d) = e.divisor {
+        let _ = writeln!(
+            out,
+            "        acc = acc\n            .checked_div(i64::from({d}_u32))\n            \
+             .ok_or(Error::Overflow {{ table: \"{table}\", field: \"{field}\" }})?;"
+        );
+    }
+}

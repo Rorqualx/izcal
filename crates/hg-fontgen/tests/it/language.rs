@@ -144,7 +144,9 @@ fn g29_a_hand_edit_is_caught() {
     // The real root is fresh; a copy with one line appended is not.
     let tmp = Path::new(env!("CARGO_TARGET_TMPDIR")).join("g29");
     let gen_dir = tmp.join("crates/hg-fontfmt/src/generated");
+    let fontc_dir = tmp.join("crates/hg-fontc/src/generated");
     std::fs::create_dir_all(&gen_dir).unwrap();
+    std::fs::create_dir_all(&fontc_dir).unwrap();
     std::fs::create_dir_all(tmp.join("crates/hg-fontfmt/tables")).unwrap();
     for entry in std::fs::read_dir(root().join("crates/hg-fontfmt/tables")).unwrap() {
         let p = entry.unwrap().path();
@@ -159,6 +161,11 @@ fn g29_a_hand_edit_is_caught() {
         let from = root().join("crates/hg-fontfmt/src/generated").join(name);
         std::fs::copy(&from, gen_dir.join(name)).unwrap();
     }
+    std::fs::copy(
+        root().join("crates/hg-fontc/src/generated/writers.rs"),
+        fontc_dir.join("writers.rs"),
+    )
+    .unwrap();
     assert!(
         hg_fontgen::cli::stale(&tmp).unwrap().is_empty(),
         "the copy starts fresh"

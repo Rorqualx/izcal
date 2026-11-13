@@ -107,6 +107,32 @@ impl Scalar {
         }
     }
 
+    /// The appender in `hg_fontc::write` that writes it.
+    #[must_use]
+    pub const fn writer(self) -> &'static str {
+        match self {
+            Self::U8 => "u8",
+            Self::U16 | Self::Offset16 => "u16",
+            Self::U24 | Self::Offset24 => "u24",
+            Self::U32 | Self::Offset32 => "u32",
+            Self::I8 => "i8",
+            Self::I16 | Self::F2Dot14 => "i16",
+            Self::I32 | Self::Fixed => "i32",
+            Self::LongDateTime => "i64",
+            Self::Tag => "tag",
+        }
+    }
+
+    /// Whether its appender can refuse the value it is given.
+    ///
+    /// Only `uint24` can: its Rust type is `u32`, which holds numbers
+    /// the three bytes do not. Every other appender takes a type of
+    /// exactly the field's width, so there is nothing to refuse.
+    #[must_use]
+    pub const fn write_is_fallible(self) -> bool {
+        matches!(self, Self::U24 | Self::Offset24)
+    }
+
     fn from_word(w: &str) -> Option<Self> {
         Some(match w {
             "u8" => Self::U8,
