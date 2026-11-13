@@ -5,8 +5,8 @@
 //! the name is stored without its leading ampersand, which the
 //! tokenizer has consumed before the named character reference state.
 //!
-//! It is read with [`crate::json`], this crate's own reader, as every
-//! Izcal generator's inputs are: `hg-htmlgen` has no dependencies.
+//! It is read with `hg-json`, Izcal's own reader, as every generator's
+//! pinned inputs are: no generator takes a dependency outside the tree.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -54,7 +54,7 @@ pub fn read(path: &Path) -> Result<BTreeMap<String, String>, String> {
 /// # Errors
 /// A message when the text is not the shape above.
 pub fn parse(text: &str) -> Result<BTreeMap<String, String>, String> {
-    let v = crate::json::parse(text).map_err(|e| e.to_string())?;
+    let v = hg_json::parse(text).map_err(|e| e.to_string())?;
     let pairs = v
         .as_obj()
         .ok_or_else(|| "entities.json is not an object".to_owned())?;
@@ -62,7 +62,7 @@ pub fn parse(text: &str) -> Result<BTreeMap<String, String>, String> {
     for (name, entry) in pairs {
         let characters = entry
             .get("characters")
-            .and_then(crate::json::Json::as_str)
+            .and_then(hg_json::Json::as_str)
             .ok_or_else(|| format!("{name:?} has no `characters` string"))?;
         let key = name
             .strip_prefix('&')

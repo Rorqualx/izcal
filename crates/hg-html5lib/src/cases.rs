@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use hg_html_syntax::State;
-use hg_htmlgen::json::{self, Json};
+use hg_json::{self as json, Json};
 
 /// One expected token.
 #[derive(Debug, Clone, PartialEq, Eq)]

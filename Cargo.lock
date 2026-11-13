@@ -81,12 +81,15 @@ name = "hg-html5lib"
 version = "0.0.0"
 dependencies = [
  "hg-html-syntax",
- "hg-htmlgen",
+ "hg-json",
 ]
 
 [[package]]
 name = "hg-htmlgen"
 version = "0.0.0"
+dependencies = [
+ "hg-json",
+]
 
 [[package]]
 name = "hg-ipc"
@@ -158,6 +161,10 @@ dependencies = [
  "hg-js-ops",
  "hg-substrate",
 ]
+
+[[package]]
+name = "hg-json"
+version = "0.0.0"
 
 [[package]]
 name = "hg-launch-plan"

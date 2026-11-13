@@ -15,7 +15,7 @@ name = "it"
 path = "tests/it/main.rs"
 
 [dependencies]
-hg-htmlgen = { path = "../hg-htmlgen" }
+hg-json = { path = "../hg-json" }
 hg-html-syntax = { path = "../hg-html-syntax", features = ["conformance"] }
 
 # Tier T: the base table (coding standard A.1) with A.2's tier T changes.

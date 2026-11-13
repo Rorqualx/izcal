@@ -1,15 +1,22 @@
-//! A small JSON reader, this crate's own.
+//! `hg-json`: Izcal's own JSON reader. Tier T, layer `tools`.
 //!
-//! Izcal's generators have no dependencies, and two inputs on the HTML
-//! track are JSON: WHATWG's `entities.json`, which this crate compiles
-//! into the tokenizer, and html5lib-tests' `.test` files, which
-//! `hg-html5lib` reads. One reader serves both.
+//! Izcal's generators and oracle runners have no dependencies, and
+//! several of their pinned inputs are JSON: WHATWG's `entities.json`,
+//! which `hg-htmlgen` compiles into the tokenizer; html5lib-tests'
+//! `.test` files, which `hg-html5lib` reads; and `@webref/css`'s
+//! `css.json`, which `hg-cssgen` imports. One reader serves them all,
+//! rather than one per generator, because three copies of a parser
+//! disagree in three ways.
+//!
+//! It is deliberately small: it reads a whole document into a tree and
+//! keeps numbers as their text, so an integer stays exact. Nothing here
+//! ships — the tables the generators emit from these inputs do.
 //!
 //! One decision worth stating: an **unpaired surrogate** escape decodes
 //! to U+FFFD. Rust's `String` cannot hold a lone surrogate, and the HTML
 //! input stream is where the standard raises
 //! `surrogate-in-input-stream` for one anyway — `hg-html-driver`'s, not
-//! the tokenizer's. The runner says so where it matters.
+//! the tokenizer's. The caller says so where it matters.
 
 use std::fmt;
 
@@ -189,12 +196,41 @@ impl Scan<'_> {
         }
     }
 
+    /// A number, by JSON's own grammar rather than by scanning the
+    /// characters a number may contain.
+    ///
+    /// `-? ( "0" | [1-9][0-9]* ) ( "." [0-9]+ )? ( [eE] [+-]? [0-9]+ )?`
+    ///
+    /// The loose version — take every digit, sign, dot and `e` — reads
+    /// `1-2`, `..` and a bare `e` as numbers. This reader's whole job is
+    /// to notice when a pinned input stops being the shape it was, so a
+    /// scan that cannot say no is the wrong tool. A leading zero is
+    /// rejected for the same reason: JSON forbids it, and a file that
+    /// starts producing `01` has changed in a way worth a message.
     fn number(&mut self) -> Result<Json, Error> {
         let start = self.at;
-        while matches!(self.peek(), Some(c) if c.is_ascii_digit()
-            || matches!(c, b'-' | b'+' | b'.' | b'e' | b'E'))
-        {
+        if self.peek() == Some(b'-') {
             self.bump();
+        }
+        match self.peek() {
+            Some(b'0') => self.bump(),
+            Some(c) if c.is_ascii_digit() => self.digits()?,
+            _ => return Err(self.err("a number with no digits")),
+        }
+        if self.peek() == Some(b'.') {
+            self.bump();
+            self.digits()?;
+        }
+        if matches!(self.peek(), Some(b'e' | b'E')) {
+            self.bump();
+            if matches!(self.peek(), Some(b'+' | b'-')) {
+                self.bump();
+            }
+            self.digits()?;
+        }
+        // A digit here means a leading zero (`01`) or a second point.
+        if matches!(self.peek(), Some(c) if c.is_ascii_digit() || c == b'.') {
+            return Err(self.err("a number that does not end where it should"));
         }
         let bytes = self
             .s
@@ -202,6 +238,17 @@ impl Scan<'_> {
             .ok_or_else(|| self.err("a short number"))?;
         let text = std::str::from_utf8(bytes).map_err(|e| self.err(e.to_string()))?;
         Ok(Json::Num(text.to_owned()))
+    }
+
+    /// One or more digits, consumed.
+    fn digits(&mut self) -> Result<(), Error> {
+        if !matches!(self.peek(), Some(c) if c.is_ascii_digit()) {
+            return Err(self.err("a digit"));
+        }
+        while matches!(self.peek(), Some(c) if c.is_ascii_digit()) {
+            self.bump();
+        }
+        Ok(())
     }
 
     fn array(&mut self) -> Result<Json, Error> {
