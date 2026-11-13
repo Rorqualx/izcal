@@ -8,6 +8,13 @@
 # placed in the tree under its own name). The hash is always of the
 # downloaded bytes, so a pin is checked before anything is unpacked.
 #
+# A tar.gz set may add `paths`, a space-separated list of members to
+# unpack *after* `strip` is applied -- so `paths = "css/CSS2"` on a whole
+# repository tarball leaves only that directory on disk. The hash still
+# covers the whole archive, so the pin means the same thing either way;
+# what `paths` saves is the unpacking and the disk, which for a
+# repository the size of WPT is the difference between 51 MB and 1.5 GB.
+#
 #   tools/fetch-test-data.sh [--check] [NAME ...]
 #
 # NAME is a table of tools/test-data.toml (default: all of them).
@@ -60,6 +67,7 @@ for name in "${names[@]}"; do
   # A file published without a revision of its own gives `pin` instead.
   [ -z "$commit" ] && commit=$(field "$name" pin)
   want=$(field "$name" sha256); strip=$(field "$name" strip)
+  paths=$(field "$name" paths)
   format=$(field "$name" format); format=${format:-tar.gz}
   if [ -z "$commit" ] || [ -z "$url" ] || [ -z "$want" ]; then
     echo "fetch-test-data.sh: [$name] needs commit or pin, url and sha256 in $TOML" >&2; exit 2
@@ -107,7 +115,19 @@ for name in "${names[@]}"; do
   tmp="$tree.unpack.$$"
   rm -rf "$tmp"; mkdir -p "$tmp"
   case "$format" in
-    tar.gz) tar -xzf "$archive" -C "$tmp" --strip-components "${strip:-1}" ;;
+    tar.gz)
+      if [ -n "$paths" ]; then
+        # The members are named under the archive's own top directory,
+        # which `strip` then removes; so the patterns are built from it.
+        top=$(tar -tzf "$archive" | head -1 | cut -d/ -f1)
+        wildcards=""
+        for p in $paths; do wildcards="$wildcards $top/$p"; done
+        # shellcheck disable=SC2086
+        tar -xzf "$archive" -C "$tmp" --strip-components "${strip:-1}" $wildcards
+      else
+        tar -xzf "$archive" -C "$tmp" --strip-components "${strip:-1}"
+      fi
+      ;;
     zip)
       if ! command -v unzip >/dev/null 2>&1; then
         rm -rf "$tmp"

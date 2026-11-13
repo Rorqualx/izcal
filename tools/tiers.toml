@@ -14,6 +14,16 @@
 # Rows exist for today's crates only; the rows the standard's revision
 # notes list for crates that do not exist yet arrive with their crates.
 
+[crates.hg-reftest-raster]
+tier = "T"
+layer = "tools"
+why = "Layout spec 6.15 crate table: tools, tier T. A minimal CPU rasterizer of fragment rectangles into a coverage buffer, so layout's reftests can run before the graphics spec's raster exists. It never ships: coverage only, no colour and no blending, because a reftest that passed here on an approximation would hide a graphics bug."
+
+[crates.hg-wpt-layout]
+tier = "T"
+layer = "tools"
+why = "Layout spec 6.15 crate table: tools, tier T (LY-M0). Reads the pinned WPT css/CSS2 suite and reports what each test needs to run, with the count this engine can run as the baseline. A reachability report rather than a pass rate, because a pass rate of zero reported as a result would not be evidence of anything."
+
 [crates.hg-types]
 tier = "P"
 layer = "L2"
@@ -252,6 +262,11 @@ why = "Layout spec 6.15 crate table: L4, tier R (LY-D2). Box generation from the
 tier = "R"
 layer = "L4"
 why = "Layout spec 6.15 crate table: L4, tier R. LY-D1's contract: the constraint space as the complete input and cache key, break tokens as data, layout results, and the one central relayout diff. The formatting contexts themselves are LY-M1; the contract is what the reference and production engines share, so it is fixed first."
+
+[crates.hg-paint-order]
+tier = "R"
+layer = "L4"
+why = "Layout spec 6.15 crate table: L4, tier R. The read-only paint-order contract hg-hit and hg-layout-query read paint's output through (G38). Ownership is split: the graphics spec owns the production implementation (GR 6.24); this spec owns the requirements (LY 6.14) and the Appendix-E reference builder, which is a test oracle."
 
 [crates.hg-layout-reference]
 tier = "T"

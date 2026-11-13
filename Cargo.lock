@@ -283,6 +283,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-paint-order"
+version = "0.0.0"
+dependencies = [
+ "hg-types",
+]
+
+[[package]]
+name = "hg-reftest-raster"
+version = "0.0.0"
+dependencies = [
+ "hg-types",
+]
+
+[[package]]
 name = "hg-renderer"
 version = "0.0.0"
 dependencies = [
@@ -375,6 +389,13 @@ dependencies = [
 [[package]]
 name = "hg-wast"
 version = "0.0.0"
+
+[[package]]
+name = "hg-wpt-layout"
+version = "0.0.0"
+dependencies = [
+ "hg-layout-reference",
+]
 
 [[package]]
 name = "hg-wpt-url"

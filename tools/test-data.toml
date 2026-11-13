@@ -230,3 +230,14 @@ licence = "BSD-3-Clause"
 url = "https://raw.githubusercontent.com/web-platform-tests/wpt/33926aca0f4313541f0ac5d67d4a4ab949d50b16/url/resources/percent-encoding.json"
 sha256 = "ac3d9ec89f51e3855f9967ef8414eb470653a25d385cb88cbc3dc1c4d878d71c"
 format = "file"
+
+[wpt-css2]
+commit = "33926aca0f4313541f0ac5d67d4a4ab949d50b16"
+date = "2026-11-13"
+licence = "BSD-3-Clause"
+url = "https://codeload.github.com/web-platform-tests/wpt/tar.gz/33926aca0f4313541f0ac5d67d4a4ab949d50b16"
+sha256 = "4eda43c0c0ac7603130e42a9327fe9edf35145351b174c28bc3560f9314ed9b5"
+format = "tar.gz"
+# The whole repository is 1.5 GB unpacked and this track needs one
+# directory of it, so only that is unpacked (LY-M0, hg-wpt-layout).
+paths = "css/CSS2"

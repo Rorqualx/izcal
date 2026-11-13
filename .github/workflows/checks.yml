@@ -359,6 +359,19 @@ jobs:
       - name: The reference layout engine (LY-D5, G41)
         run: cargo test --release --locked -p hg-layout-reference --features testing --test it -- --nocapture
 
+      - name: The reftest rasterizer and Appendix E's paint order
+        run: |
+          cargo test --release --locked -p hg-reftest-raster --test it -- --nocapture
+          cargo test --release --locked -p hg-paint-order --test it -- --nocapture
+
+      - name: Fetch WPT's css/CSS2 suite
+        run: tools/fetch-test-data.sh wpt-css2
+
+      - name: LY-M0, what the suite needs and what we can run
+        run: |
+          cargo run --release --locked -p hg-wpt-layout -- --chapters
+          cargo test --release --locked -p hg-wpt-layout --test it -- --nocapture
+
   # ST-D12 and G20: the reference style engine. It shares no code with
   # the production engine -- its own CSS Syntax 3 tokenizer, its own
   # Selectors 3 matcher, its own cascade -- which is what makes ST-4
