@@ -39,9 +39,9 @@ document, and one does not hold:
 - **Open, and new to this document: the M0 waiver.** The
   feature-inventory audit (FI-D1, accepted 24 October 2026) requires
   M0's own start conditions — D-S8 funding, M1–M2 staffing — to be
-  "formally waived or met". No waiver has been recorded. M1 depends on
-  M0, so this blocks M1's exit independently of clause 4, and §6.4 puts
-  it to the owner.
+  "formally waived or met". The record is now drafted as **D-S13**
+  (Stage 1 §13.1b) and is **open**. M1 depends on M0, so until the
+  owner takes it this blocks M1's exit independently of clause 4. §6.5.
 
 **JS-M0 does not exit yet either**, on five items: four riscv64 ones
 that need a K3 board which has not arrived, and the **ESMeta and
@@ -330,7 +330,8 @@ be settled by this session.
      them; exiting still does.
    - **Owner, and separate from clause 4.** The **M0 waiver** FI-D1
      requires — D-S8 funding and M1–M2 staffing "formally waived or
-     met" — has not been recorded, and M1 depends on M0. §6.5.
+     met" — is drafted and open as **D-S13** (Stage 1 §13.1b), not
+     decided, and M1 depends on M0. §6.5.
 3. **JS-D1 on AArch64.** (c) is 3.5–40% faster per dependent load than
    the chosen (a). The two encodings hold identical bytes, so this is
    the measured price of the 16 GB cage on that ISA. JS-D1's stated
@@ -505,12 +506,17 @@ happened:
   options "conflict with something: search deals pull against privacy
   defaults, ads against content blocking, and a single corporate
   sponsor against Servo's lesson".
-- No waiver record exists in the tree.
+- The record FI-D1 asks for now exists as a **drafted and open
+  decision**: Stage 1 §13.1b, **D-S13**, with three options — (a)
+  waive both for M1 and M2 only, recording that the work was done by
+  this project's agentic engineering rather than by a funded team,
+  that D-S8 stays open, and that the waiver lapses at M3; (b) waive
+  them for the whole of Stage 1; (c) do not waive. The section
+  recommends (a) as the narrowest claim the evidence supports.
 
-**M1 depends on M0.** So this blocks M1's exit on its own, whatever
-clause 4 does, and no amount of engineering closes it. **Owner.** The
-M1-X1 plan drafts the waiver for the owner to accept or amend; until
-one is recorded, this is an open item of M1's exit and is listed in §4.
+**M1 depends on M0.** A drafted decision is not a decision: until the
+owner takes D-S13, M1 cannot exit on its own dependency however
+complete its seven clauses are. **Owner.** §4 lists it.
 
 [S1]: ../../../reports/HGBA%20Stage%201%20architecture%20design.md
 [JS]: ../../../reports/Izcal%20JavaScript%20engine.md

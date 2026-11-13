@@ -317,5 +317,7 @@ LY-M0's review.
   rather than what closes it.
 - **It does not replace the M0 waiver.** FI-D1 requires M0's own start
   conditions — D-S8 funding, M1–M2 staffing — to be "formally waived or
-  met", and no waiver has been recorded. M1 depends on M0, so that
-  blocks M1's exit independently of clause 4.
+  met". The record is drafted as **D-S13** (Stage 1 §13.1b) and is
+  open; its recommendation is to waive both **for M1 and M2 only**,
+  with the waiver lapsing at M3. M1 depends on M0, so until the owner
+  takes it that blocks M1's exit independently of clause 4.
