@@ -102,6 +102,7 @@ pub fn text(c: &Collect) -> String {
             | Token::StartTag { .. }
             | Token::EndTag { .. }
             | Token::Comment(_)
+            | Token::ProcessingInstruction { .. }
             | Token::Eof => None,
         })
         .collect()

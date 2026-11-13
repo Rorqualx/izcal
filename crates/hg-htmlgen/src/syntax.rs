@@ -196,6 +196,8 @@ pub enum Buffer {
     SystemId,
     /// The temporary buffer.
     Temp,
+    /// The current processing instruction token's data.
+    PiData,
 }
 
 impl Buffer {
@@ -209,23 +211,9 @@ impl Buffer {
             "public_id" => Self::PublicId,
             "system_id" => Self::SystemId,
             "temp" => Self::Temp,
+            "pi_data" => Self::PiData,
             _ => return None,
         })
-    }
-
-    /// The method on the tokenizer that appends to it.
-    #[must_use]
-    pub const fn method(self) -> &'static str {
-        match self {
-            Self::TagName => "push_tag_name",
-            Self::AttrName => "push_attr_name",
-            Self::AttrValue => "push_attr_value",
-            Self::Comment => "push_comment",
-            Self::DoctypeName => "push_doctype_name",
-            Self::PublicId => "push_public_id",
-            Self::SystemId => "push_system_id",
-            Self::Temp => "push_temp",
-        }
     }
 }
 
@@ -252,17 +240,6 @@ impl Flag {
             _ => return None,
         })
     }
-
-    /// The method that applies it.
-    #[must_use]
-    pub const fn method(self) -> &'static str {
-        match self {
-            Self::SelfClosing => "set_self_closing",
-            Self::ForceQuirks => "set_force_quirks",
-            Self::PublicIdEmpty => "set_public_id_empty",
-            Self::SystemIdEmpty => "set_system_id_empty",
-        }
-    }
 }
 
 /// A condition a rule may branch on.
@@ -272,6 +249,10 @@ pub enum Cond {
     Appropriate,
     /// "If the temporary buffer is the string `script`".
     TempIsScript,
+    /// "If target is an ASCII case-insensitive match for `xml` or
+    /// `xml-stylesheet`" — the two processing instruction targets the
+    /// standard disallows.
+    DisallowedPiTarget,
     /// "If the character reference was consumed as part of an attribute".
     InAttribute,
     /// "If the adjusted current node is not an element in the HTML
@@ -285,21 +266,11 @@ impl Cond {
         Some(match w {
             "appropriate" => Self::Appropriate,
             "temp_is_script" => Self::TempIsScript,
+            "disallowed_pi_target" => Self::DisallowedPiTarget,
             "in_attribute" => Self::InAttribute,
             "adjusted_not_html" => Self::AdjustedNotHtml,
             _ => return None,
         })
-    }
-
-    /// The method that tests it.
-    #[must_use]
-    pub const fn method(self) -> &'static str {
-        match self {
-            Self::Appropriate => "is_appropriate_end_tag",
-            Self::TempIsScript => "temp_is_script",
-            Self::InAttribute => "char_ref_in_attribute",
-            Self::AdjustedNotHtml => "adjusted_node_not_html",
-        }
     }
 }
 
@@ -334,6 +305,14 @@ pub enum Action {
     CreateComment,
     /// "Create a new DOCTYPE token".
     CreateDoctype,
+    /// "Create a processing instruction token whose target is target
+    /// and data is the empty string", target being the temporary
+    /// buffer.
+    CreatePi,
+    /// "Convert the temporary buffer to a comment": a comment token
+    /// whose data is `?` followed by the buffer. What a processing
+    /// instruction with a bad target becomes.
+    TempToComment,
     /// "Start a new attribute".
     StartAttribute,
     /// "Append the current input character to X".
@@ -819,6 +798,8 @@ fn action(lx: &mut Lexer) -> Result<Action, Error> {
         "create_end_tag" => Action::CreateEndTag,
         "create_comment" => Action::CreateComment,
         "create_doctype" => Action::CreateDoctype,
+        "create_pi" => Action::CreatePi,
+        "temp_to_comment" => Action::TempToComment,
         "start_attribute" => Action::StartAttribute,
         "clear_temp" => Action::ClearTemp,
         "flush_temp" => Action::FlushTemp,

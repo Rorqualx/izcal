@@ -31,18 +31,14 @@ state ambiguous_ampersand @ "html/parsing#ambiguous-ampersand-state" {
 
 state numeric_character_reference @ "html/parsing#numeric-character-reference-state" {
   enter { char_ref_reset }
-  'x' | 'X' => append temp, switch hexadecimal_character_reference_start
-  _         => reconsume decimal_character_reference_start
+  'x' | 'X'   => append temp, switch hexadecimal_character_reference_start
+  ascii_digit => reconsume decimal_character_reference
+  _           => error absence-of-digits-in-numeric-character-reference, flush_temp, reconsume_return
 }
 
 state hexadecimal_character_reference_start @ "html/parsing#hexadecimal-character-reference-start-state" {
   ascii_hex => reconsume hexadecimal_character_reference
   _         => error absence-of-digits-in-numeric-character-reference, flush_temp, reconsume_return
-}
-
-state decimal_character_reference_start @ "html/parsing#decimal-character-reference-start-state" {
-  ascii_digit => reconsume decimal_character_reference
-  _           => error absence-of-digits-in-numeric-character-reference, flush_temp, reconsume_return
 }
 
 # The prose writes three rows here — ASCII digit, upper hex digit, lower

@@ -77,6 +77,7 @@ const fn buf_variant(b: Buffer) -> &'static str {
         Buffer::PublicId => "PublicId",
         Buffer::SystemId => "SystemId",
         Buffer::Temp => "Temp",
+        Buffer::PiData => "PiData",
     }
 }
 
@@ -93,6 +94,7 @@ const fn cond_variant(c: Cond) -> &'static str {
     match c {
         Cond::Appropriate => "Appropriate",
         Cond::TempIsScript => "TempIsScript",
+        Cond::DisallowedPiTarget => "DisallowedPiTarget",
         Cond::InAttribute => "InAttribute",
         Cond::AdjustedNotHtml => "AdjustedNotHtml",
     }
@@ -143,6 +145,8 @@ fn op(a: &Action) -> String {
         Action::CreateEndTag => "Op::CreateEndTag".to_owned(),
         Action::CreateComment => "Op::CreateComment".to_owned(),
         Action::CreateDoctype => "Op::CreateDoctype".to_owned(),
+        Action::CreatePi => "Op::CreatePi".to_owned(),
+        Action::TempToComment => "Op::TempToComment".to_owned(),
         Action::StartAttribute => "Op::StartAttribute".to_owned(),
         Action::Append(b) => format!("Op::Append(Buf::{})", buf_variant(*b)),
         Action::AppendLower(b) => format!("Op::AppendLower(Buf::{})", buf_variant(*b)),
@@ -387,6 +391,12 @@ fn run(out: &mut String, actions: &[Action], indent: &str) {
             }
             Action::CreateDoctype => {
                 let _ = writeln!(out, "{indent}self.create_doctype();");
+            }
+            Action::CreatePi => {
+                let _ = writeln!(out, "{indent}self.create_pi();");
+            }
+            Action::TempToComment => {
+                let _ = writeln!(out, "{indent}self.temp_to_comment();");
             }
             Action::StartAttribute => {
                 let _ = writeln!(out, "{indent}self.start_attribute();");

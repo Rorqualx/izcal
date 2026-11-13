@@ -28,6 +28,7 @@ enum Current {
     Tag,
     Comment,
     Doctype,
+    Pi,
 }
 
 /// The HTML tokenizer.
@@ -52,6 +53,8 @@ pub struct Tokenizer<S: Sink> {
     attr_dropped: bool,
     self_closing: bool,
     comment: String,
+    pi_target: String,
+    pi_data: String,
     dt_name: Option<String>,
     dt_public: Option<String>,
     dt_system: Option<String>,
@@ -62,6 +65,11 @@ pub struct Tokenizer<S: Sink> {
     line: u32,
     column: u32,
     started: bool,
+    /// Whether this step has consumed anything, and whether the state
+    /// has asked for its errors to be reported one further on. See
+    /// [`Self::error`].
+    consumed_this_step: bool,
+    error_after_match: bool,
 }
 
 impl<S: Sink> Tokenizer<S> {
@@ -107,6 +115,8 @@ impl<S: Sink> Tokenizer<S> {
             attr_dropped: false,
             self_closing: false,
             comment: String::new(),
+            pi_target: String::new(),
+            pi_data: String::new(),
             dt_name: None,
             dt_public: None,
             dt_system: None,
@@ -116,7 +126,32 @@ impl<S: Sink> Tokenizer<S> {
             line: 1,
             column: 0,
             started: false,
+            consumed_this_step: false,
+            error_after_match: false,
         }
+    }
+
+    /// A tokenizer started in any state, with the last start tag
+    /// already set — what html5lib-tests' `initialStates` and
+    /// `lastStartTag` describe.
+    ///
+    /// Behind a feature because a shipping build has no use for it: the
+    /// tree builder switches to the five [`EntryState`]s and no others,
+    /// and nothing but a conformance harness can set the last start tag
+    /// without emitting one.
+    #[cfg(feature = "conformance")]
+    #[must_use]
+    pub fn for_conformance(
+        sink: S,
+        input: &str,
+        back: Back,
+        state: State,
+        last_start_tag: &str,
+    ) -> Self {
+        let mut t = Self::new(sink, input, back);
+        t.state = state;
+        t.last_start_tag = last_start_tag.to_owned();
+        t
     }
 
     /// Switches the tokenizer into one of the five states the tree
@@ -160,6 +195,8 @@ impl<S: Sink> Tokenizer<S> {
 
     /// One state, by whichever back end this tokenizer runs.
     pub fn step(&mut self) {
+        self.consumed_this_step = false;
+        self.error_after_match = false;
         match self.back {
             Back::Generated => self.generated_step(),
             Back::Table => self.step_table(),
@@ -171,6 +208,7 @@ impl<S: Sink> Tokenizer<S> {
     /// Consumes the next input character, or reports the end of the
     /// file. A pending "reconsume" returns the same character again.
     pub(crate) fn consume(&mut self) -> Option<char> {
+        self.consumed_this_step = true;
         if self.pending_reconsume {
             self.pending_reconsume = false;
             return self.last;
@@ -181,12 +219,18 @@ impl<S: Sink> Tokenizer<S> {
         }
         // The position is the one of the character just consumed, so a
         // parse error names where it happened.
+        // Columns count UTF-16 code units, not code points: that is
+        // what every reported parse-error position in the wild means,
+        // html5lib-tests' among them, and an astral character is two.
         if self.started {
             if self.last == Some('\n') {
                 self.line = self.line.saturating_add(1);
                 self.column = 1;
             } else {
-                self.column = self.column.saturating_add(1);
+                let width = self
+                    .last
+                    .map_or(1, |c| u32::try_from(c.len_utf16()).unwrap_or(1));
+                self.column = self.column.saturating_add(width);
             }
         } else {
             self.started = true;
@@ -194,6 +238,13 @@ impl<S: Sink> Tokenizer<S> {
         }
         self.last = c;
         c
+    }
+
+    /// Reports this state's parse errors at the character after the
+    /// run it consumed, which the named character reference state
+    /// wants: it consumed a whole identifier, not a character.
+    pub(crate) const fn report_after_match(&mut self) {
+        self.error_after_match = true;
     }
 
     /// The `n`-th character from the current position, counting the one
@@ -283,8 +334,27 @@ impl<S: Sink> Tokenizer<S> {
 
     // -- effects ------------------------------------------------------
 
+    /// Reports a parse error where it happened.
+    ///
+    /// A state that consumed a character reports *that* character's
+    /// position. A state with no current input character of its own
+    /// reports the position of the next one — the markup declaration
+    /// open state, which consumes nothing, and the two hand-written
+    /// states, which are not per-character states at all.
     pub(crate) fn error(&mut self, code: &'static str) {
-        self.sink.error(code, self.line, self.column);
+        // A state that consumed a character reports *that* character's
+        // position. A state that consumed nothing reports the next
+        // character's — the markup declaration open state, whose own
+        // "anything else" says "don't consume anything", and the
+        // numeric character reference end state, which checks a number.
+        // Two things leave the position where it is: the end of the
+        // file, which has no next character, and a pending reconsume,
+        // where the next character is the one already there.
+        let next = (self.error_after_match || !self.consumed_this_step)
+            && self.last.is_some()
+            && !self.pending_reconsume;
+        let column = self.column.saturating_add(u32::from(next));
+        self.sink.error(code, self.line, column);
     }
 
     fn emit(&mut self, t: Token) {
@@ -336,6 +406,10 @@ impl<S: Sink> Tokenizer<S> {
                 }
             }
             Current::Comment => Token::Comment(core::mem::take(&mut self.comment)),
+            Current::Pi => Token::ProcessingInstruction {
+                target: core::mem::take(&mut self.pi_target),
+                data: core::mem::take(&mut self.pi_data),
+            },
             Current::Doctype => Token::Doctype {
                 name: self.dt_name.take(),
                 public_id: self.dt_public.take(),
@@ -359,6 +433,28 @@ impl<S: Sink> Tokenizer<S> {
     pub(crate) fn create_comment(&mut self) {
         self.current = Current::Comment;
         self.comment.clear();
+    }
+
+    /// "Create a processing instruction token whose target is target
+    /// and data is the empty string", target being the temporary
+    /// buffer's code points in the order they were added.
+    pub(crate) fn create_pi(&mut self) {
+        self.current = Current::Pi;
+        self.pi_target.clone_from(&self.temp);
+        self.pi_data.clear();
+    }
+
+    /// "To convert the temporary buffer to a comment, create a comment
+    /// token whose data is the concatenation of `?` and the code points
+    /// in the temporary buffer" — what a processing instruction with a
+    /// target the standard disallows becomes.
+    pub(crate) fn temp_to_comment(&mut self) {
+        self.current = Current::Comment;
+        self.comment.clear();
+        self.comment.push('?');
+        let t = core::mem::take(&mut self.temp);
+        self.comment.push_str(&t);
+        self.temp = t;
     }
 
     pub(crate) fn create_doctype(&mut self) {
@@ -411,6 +507,7 @@ impl<S: Sink> Tokenizer<S> {
             Buf::PublicId => self.dt_public.get_or_insert_default().push(c),
             Buf::SystemId => self.dt_system.get_or_insert_default().push(c),
             Buf::Temp => self.temp.push(c),
+            Buf::PiData => self.pi_data.push(c),
         }
     }
 
@@ -493,6 +590,10 @@ impl<S: Sink> Tokenizer<S> {
             // emitted from this tokenizer."
             Cond::Appropriate => self.tag_is_end && self.tag_name == self.last_start_tag,
             Cond::TempIsScript => self.temp == "script",
+            Cond::DisallowedPiTarget => {
+                self.temp.eq_ignore_ascii_case("xml")
+                    || self.temp.eq_ignore_ascii_case("xml-stylesheet")
+            }
             Cond::InAttribute => self.char_ref_in_attribute(),
             Cond::AdjustedNotHtml => self.sink.adjusted_node_not_html(),
         }
@@ -539,6 +640,9 @@ impl<S: Sink> Tokenizer<S> {
             return;
         };
 
+        // It consumed an identifier, not a character, so its errors
+        // are reported at the character after it.
+        self.report_after_match();
         let mut semicolon = false;
         for _ in 0..len {
             if let Some(c) = self.consume() {
@@ -680,6 +784,8 @@ impl<S: Sink> Tokenizer<S> {
                 Op::CreateEndTag => self.create_tag(true),
                 Op::CreateComment => self.create_comment(),
                 Op::CreateDoctype => self.create_doctype(),
+                Op::CreatePi => self.create_pi(),
+                Op::TempToComment => self.temp_to_comment(),
                 Op::StartAttribute => self.start_attribute(),
                 Op::Append(b) => self.push_current(b),
                 Op::AppendLower(b) => self.push_current_lower(b),

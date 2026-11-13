@@ -22,6 +22,7 @@ pub mod check;
 pub mod cli;
 pub mod emit;
 pub mod entities;
+pub mod json;
 pub mod syntax;
 
 pub use check::Model;

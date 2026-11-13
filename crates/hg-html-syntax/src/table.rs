@@ -65,6 +65,8 @@ pub enum Buf {
     SystemId,
     /// The temporary buffer.
     Temp,
+    /// The current processing instruction token's data.
+    PiData,
 }
 
 /// A flag a rule may set.
@@ -87,6 +89,9 @@ pub enum Cond {
     Appropriate,
     /// "If the temporary buffer is the string `script`".
     TempIsScript,
+    /// "If target is an ASCII case-insensitive match for `xml` or
+    /// `xml-stylesheet`".
+    DisallowedPiTarget,
     /// "If the character reference was consumed as part of an attribute".
     InAttribute,
     /// "If the adjusted current node is not an element in the HTML
@@ -150,6 +155,11 @@ pub enum Op {
     CreateComment,
     /// "Create a new DOCTYPE token".
     CreateDoctype,
+    /// "Create a processing instruction token whose target is target
+    /// and data is the empty string".
+    CreatePi,
+    /// "Convert the temporary buffer to a comment".
+    TempToComment,
     /// "Start a new attribute".
     StartAttribute,
     /// "Append the current input character to X".

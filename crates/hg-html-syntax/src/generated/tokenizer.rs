@@ -111,10 +111,18 @@ impl<S: Sink> Tokenizer<S> {
             State::HexadecimalCharacterReferenceStart => {
                 self.st_hexadecimal_character_reference_start()
             }
-            State::DecimalCharacterReferenceStart => self.st_decimal_character_reference_start(),
             State::HexadecimalCharacterReference => self.st_hexadecimal_character_reference(),
             State::DecimalCharacterReference => self.st_decimal_character_reference(),
             State::NumericCharacterReferenceEnd => self.external_state(),
+            State::ProcessingInstructionOpen => self.st_processing_instruction_open(),
+            State::ProcessingInstructionTarget => self.st_processing_instruction_target(),
+            State::AfterProcessingInstructionTarget => {
+                self.st_after_processing_instruction_target()
+            }
+            State::ProcessingInstructionData => self.st_processing_instruction_data(),
+            State::ProcessingInstructionQuestionable => {
+                self.st_processing_instruction_questionable()
+            }
         }
     }
 
@@ -213,9 +221,8 @@ impl<S: Sink> Tokenizer<S> {
             self.create_tag(false);
             self.reconsume_in(State::TagName);
         } else if input == Some('?') {
-            self.error("unexpected-question-mark-instead-of-tag-name");
-            self.create_comment();
-            self.reconsume_in(State::BogusComment);
+            self.clear_temp();
+            self.switch(State::ProcessingInstructionOpen);
         } else if input.is_none() {
             self.error("eof-before-tag-name");
             self.emit_char('<');
@@ -1696,17 +1703,8 @@ impl<S: Sink> Tokenizer<S> {
         if (input == Some('x')) || (input == Some('X')) {
             self.push_current(Buf::Temp);
             self.switch(State::HexadecimalCharacterReferenceStart);
-        } else {
-            // "Anything else"
-            self.reconsume_in(State::DecimalCharacterReferenceStart);
-        }
-    }
-
-    /// The `hexadecimal_character_reference_start` state, at `html/parsing#hexadecimal-character-reference-start-state`.
-    fn st_hexadecimal_character_reference_start(&mut self) {
-        let input = self.consume();
-        if input.is_some_and(|c| c.is_ascii_hexdigit()) {
-            self.reconsume_in(State::HexadecimalCharacterReference);
+        } else if input.is_some_and(|c| c.is_ascii_digit()) {
+            self.reconsume_in(State::DecimalCharacterReference);
         } else {
             // "Anything else"
             self.error("absence-of-digits-in-numeric-character-reference");
@@ -1715,11 +1713,11 @@ impl<S: Sink> Tokenizer<S> {
         }
     }
 
-    /// The `decimal_character_reference_start` state, at `html/parsing#decimal-character-reference-start-state`.
-    fn st_decimal_character_reference_start(&mut self) {
+    /// The `hexadecimal_character_reference_start` state, at `html/parsing#hexadecimal-character-reference-start-state`.
+    fn st_hexadecimal_character_reference_start(&mut self) {
         let input = self.consume();
-        if input.is_some_and(|c| c.is_ascii_digit()) {
-            self.reconsume_in(State::DecimalCharacterReference);
+        if input.is_some_and(|c| c.is_ascii_hexdigit()) {
+            self.reconsume_in(State::HexadecimalCharacterReference);
         } else {
             // "Anything else"
             self.error("absence-of-digits-in-numeric-character-reference");
@@ -1753,6 +1751,97 @@ impl<S: Sink> Tokenizer<S> {
             // "Anything else"
             self.error("missing-semicolon-after-character-reference");
             self.reconsume_in(State::NumericCharacterReferenceEnd);
+        }
+    }
+
+    /// The `processing_instruction_open` state, at `html/parsing#processing-instruction-open-state`.
+    fn st_processing_instruction_open(&mut self) {
+        let input = self.consume();
+        if (input.is_some_and(|c| c.is_ascii_alphabetic())) || (input == Some('_')) {
+            self.reconsume_in(State::ProcessingInstructionTarget);
+        } else if input.is_none() {
+            self.error("eof-in-processing-instruction");
+            self.emit_eof();
+        } else {
+            // "Anything else"
+            self.error("invalid-first-character-of-processing-instruction-target");
+            self.temp_to_comment();
+            self.reconsume_in(State::BogusComment);
+        }
+    }
+
+    /// The `processing_instruction_target` state, at `html/parsing#processing-instruction-target-state`.
+    fn st_processing_instruction_target(&mut self) {
+        let input = self.consume();
+        if (input.is_some_and(|c| matches!(c, '\t' | '\n' | '\u{000C}' | ' ')))
+            || (input == Some('?'))
+            || (input == Some('>'))
+        {
+            if self.test(Cond::DisallowedPiTarget) {
+                self.error("disallowed-processing-instruction-target");
+                self.temp_to_comment();
+                self.reconsume_in(State::BogusComment);
+            } else {
+                self.create_pi();
+                self.reconsume_in(State::AfterProcessingInstructionTarget);
+            }
+        } else if (input.is_some_and(|c| c.is_ascii_alphanumeric()))
+            || (input == Some('-'))
+            || (input == Some('_'))
+        {
+            self.push_current(Buf::Temp);
+        } else if input.is_none() {
+            self.error("eof-in-processing-instruction");
+            self.emit_eof();
+        } else {
+            // "Anything else"
+            self.error("invalid-processing-instruction-target");
+            self.temp_to_comment();
+            self.reconsume_in(State::BogusComment);
+        }
+    }
+
+    /// The `after_processing_instruction_target` state, at `html/parsing#after-processing-instruction-target-state`.
+    fn st_after_processing_instruction_target(&mut self) {
+        let input = self.consume();
+        if input.is_some_and(|c| matches!(c, '\t' | '\n' | '\u{000C}' | ' ')) {
+            // "Ignore the character."
+        } else {
+            // "Anything else"
+            self.reconsume_in(State::ProcessingInstructionData);
+        }
+    }
+
+    /// The `processing_instruction_data` state, at `html/parsing#processing-instruction-data-state`.
+    fn st_processing_instruction_data(&mut self) {
+        let input = self.consume();
+        if input == Some('?') {
+            self.switch(State::ProcessingInstructionQuestionable);
+        } else if input == Some('>') {
+            self.switch(State::Data);
+            self.emit_token();
+        } else if input.is_none() {
+            self.error("eof-in-processing-instruction");
+            self.emit_eof();
+        } else {
+            // "Anything else"
+            self.push_current(Buf::PiData);
+        }
+    }
+
+    /// The `processing_instruction_questionable` state, at `html/parsing#processing-instruction-questionable-state`.
+    fn st_processing_instruction_questionable(&mut self) {
+        let input = self.consume();
+        if input == Some('>') {
+            self.switch(State::Data);
+            self.emit_token();
+        } else if input.is_none() {
+            self.error("eof-in-processing-instruction");
+            self.emit_eof();
+        } else {
+            // "Anything else"
+            self.push(Buf::PiData, '?');
+            self.reconsume_in(State::ProcessingInstructionData);
         }
     }
 }

@@ -257,6 +257,33 @@ jobs:
           cargo test --release --locked -p hg-unicode-build --test it -- --nocapture
           cargo test --release --locked -p hg-unicode --test it
 
+  # ST-1's tokenizer half (style spec 9.1): the html5lib tokenizer
+  # suite, run against both of hg-htmlgen's generated back ends, with
+  # the measured pass count held against hg-html5lib::BASELINE so it can
+  # only go up. The entity table the tokenizer ships is generated from
+  # WHATWG's pinned entities.json, and is checked fresh here too,
+  # because nothing else in CI has that file.
+  html5lib:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch html5lib-tests and the named character references
+        run: tools/fetch-test-data.sh html5lib html-entities
+
+      - name: The generated tokenizer is fresh
+        run: cargo run --locked -p hg-htmlgen -- check
+
+      - name: ST-1, the tokenizer suite
+        env:
+          IZCAL_REQUIRE_HTML_DATA: "1"
+        run: |
+          cargo run --release --locked -p hg-html5lib
+          cargo test --release --locked -p hg-html5lib --test it -- --nocapture
+
   # ORC-1 (JS-M0 plan, Phase 1), the other half: the differential.
   #
   # `wast` above shows that every script parses. That is not the same as

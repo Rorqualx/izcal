@@ -198,6 +198,11 @@ tier = "R"
 layer = "L2p"
 why = "Style spec 6.15 crate table: L2p, tier R. The tokenizer and (at ST-M1) the tree builder and TreeSink trait; nothing here touches the DOM (G23: only this crate tokenizes HTML). Its generated/ is written by hg-htmlgen from states/*.hgtok and a hand edit fails CI (G29)."
 
+[crates.hg-html5lib]
+tier = "T"
+layer = "tools"
+why = "Style spec 6.15 crate table: tools, tier T. The html5lib tokenizer runner, which measures ST-1's tokenizer half against the pinned suite and reports the number it finds."
+
 [crates.hg-htmlgen]
 tier = "T"
 layer = "tools"

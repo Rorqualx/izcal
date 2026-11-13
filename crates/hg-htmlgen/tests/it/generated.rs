@@ -74,9 +74,12 @@ fn the_output_is_the_same_whatever_the_file_system_order() {
 #[test]
 fn the_descriptions_cover_the_standards_tokenizer() {
     let m = hg_htmlgen::cli::build(&root()).expect("the real descriptions check");
-    // §13.2.5 has 80 states. The number is here so that losing one is a
-    // failing test rather than a quieter tokenizer.
-    assert_eq!(m.states.len(), 80, "the standard's tokenizer states");
+    // §13.2.5 has 84 states at the pinned revision — 79 of the older
+    // set, plus the five processing instruction states that replaced
+    // `<?`'s bogus comment, less the decimal character reference start
+    // state, which the standard dropped. The number is here so that
+    // losing one is a failing test rather than a quieter tokenizer.
+    assert_eq!(m.states.len(), 84, "the standard's tokenizer states");
     // Exactly two are hand-written, and they are the two that are not
     // per-code-point tables.
     let external: Vec<&str> = m
@@ -105,7 +108,7 @@ fn the_descriptions_cover_the_standards_tokenizer() {
     );
     // Every state and every rule carries its clause.
     assert!(m.anchors.iter().all(|a| a.starts_with("html/parsing#")));
-    assert_eq!(m.anchors.len(), 80, "one anchor per state");
+    assert_eq!(m.anchors.len(), 84, "one anchor per state");
     // The standard names 43 tokenizer parse errors (§13.2.2, leaving
     // out the three the input stream raises and the two the tree
     // builder raises). 37 are named by the descriptions; the other six
@@ -116,7 +119,7 @@ fn the_descriptions_cover_the_standards_tokenizer() {
     //   character-reference-outside-unicode-range,
     //   surrogate-character-reference, noncharacter-character-reference,
     //   control-character-reference.
-    assert_eq!(m.errors.len(), 37, "parse errors named by the descriptions");
+    assert_eq!(m.errors.len(), 40, "parse errors named by the descriptions");
     assert!(m.errors.contains("eof-in-tag"));
     assert!(m.errors.contains("nested-comment"));
 }

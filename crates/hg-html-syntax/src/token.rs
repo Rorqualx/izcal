@@ -46,6 +46,15 @@ pub enum Token {
     },
     /// A comment, with its data.
     Comment(String),
+    /// A processing instruction (§13.2.5.72 to §13.2.5.76), with the
+    /// `xml` and `xml-stylesheet` targets already refused — those
+    /// become comments in the tokenizer.
+    ProcessingInstruction {
+        /// Its target.
+        target: String,
+        /// Its data.
+        data: String,
+    },
     /// One character token.
     Character(char),
     /// The end-of-file token.

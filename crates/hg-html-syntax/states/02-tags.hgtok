@@ -5,7 +5,7 @@ state tag_open @ "html/parsing#tag-open-state" {
   '!'         => switch markup_declaration_open
   '/'         => switch end_tag_open
   ascii_alpha => create_start_tag, reconsume tag_name
-  '?'         => error unexpected-question-mark-instead-of-tag-name, create_comment, reconsume bogus_comment
+  '?'         => clear_temp, switch processing_instruction_open
   eof         => error eof-before-tag-name, emit_char '<', emit_eof
   _           => error invalid-first-character-of-tag-name, emit_char '<', reconsume data
 }

@@ -163,14 +163,22 @@ pub enum State {
     NumericCharacterReference,
     /// `hexadecimal_character_reference_start`, at `html/parsing#hexadecimal-character-reference-start-state`.
     HexadecimalCharacterReferenceStart,
-    /// `decimal_character_reference_start`, at `html/parsing#decimal-character-reference-start-state`.
-    DecimalCharacterReferenceStart,
     /// `hexadecimal_character_reference`, at `html/parsing#hexadecimal-character-reference-state`.
     HexadecimalCharacterReference,
     /// `decimal_character_reference`, at `html/parsing#decimal-character-reference-state`.
     DecimalCharacterReference,
     /// `numeric_character_reference_end`, at `html/parsing#numeric-character-reference-end-state`.
     NumericCharacterReferenceEnd,
+    /// `processing_instruction_open`, at `html/parsing#processing-instruction-open-state`.
+    ProcessingInstructionOpen,
+    /// `processing_instruction_target`, at `html/parsing#processing-instruction-target-state`.
+    ProcessingInstructionTarget,
+    /// `after_processing_instruction_target`, at `html/parsing#after-processing-instruction-target-state`.
+    AfterProcessingInstructionTarget,
+    /// `processing_instruction_data`, at `html/parsing#processing-instruction-data-state`.
+    ProcessingInstructionData,
+    /// `processing_instruction_questionable`, at `html/parsing#processing-instruction-questionable-state`.
+    ProcessingInstructionQuestionable,
 }
 
 impl State {
@@ -258,10 +266,14 @@ impl State {
             Self::AmbiguousAmpersand => &S_AMBIGUOUS_AMPERSAND,
             Self::NumericCharacterReference => &S_NUMERIC_CHARACTER_REFERENCE,
             Self::HexadecimalCharacterReferenceStart => &S_HEXADECIMAL_CHARACTER_REFERENCE_START,
-            Self::DecimalCharacterReferenceStart => &S_DECIMAL_CHARACTER_REFERENCE_START,
             Self::HexadecimalCharacterReference => &S_HEXADECIMAL_CHARACTER_REFERENCE,
             Self::DecimalCharacterReference => &S_DECIMAL_CHARACTER_REFERENCE,
             Self::NumericCharacterReferenceEnd => &S_NUMERIC_CHARACTER_REFERENCE_END,
+            Self::ProcessingInstructionOpen => &S_PROCESSING_INSTRUCTION_OPEN,
+            Self::ProcessingInstructionTarget => &S_PROCESSING_INSTRUCTION_TARGET,
+            Self::AfterProcessingInstructionTarget => &S_AFTER_PROCESSING_INSTRUCTION_TARGET,
+            Self::ProcessingInstructionData => &S_PROCESSING_INSTRUCTION_DATA,
+            Self::ProcessingInstructionQuestionable => &S_PROCESSING_INSTRUCTION_QUESTIONABLE,
         }
     }
 
@@ -388,16 +400,20 @@ impl State {
             Self::AmbiguousAmpersand => None,
             Self::NumericCharacterReference => None,
             Self::HexadecimalCharacterReferenceStart => None,
-            Self::DecimalCharacterReferenceStart => None,
             Self::HexadecimalCharacterReference => None,
             Self::DecimalCharacterReference => None,
             Self::NumericCharacterReferenceEnd => Some(Extern::NumericCharacterReferenceEnd),
+            Self::ProcessingInstructionOpen => None,
+            Self::ProcessingInstructionTarget => None,
+            Self::AfterProcessingInstructionTarget => None,
+            Self::ProcessingInstructionData => None,
+            Self::ProcessingInstructionQuestionable => None,
         }
     }
 }
 
 /// Every state, so a check over all of them joins by existing.
-pub const ALL: [State; 80] = [
+pub const ALL: [State; 84] = [
     State::Data,
     State::Rcdata,
     State::Rawtext,
@@ -474,10 +490,14 @@ pub const ALL: [State; 80] = [
     State::AmbiguousAmpersand,
     State::NumericCharacterReference,
     State::HexadecimalCharacterReferenceStart,
-    State::DecimalCharacterReferenceStart,
     State::HexadecimalCharacterReference,
     State::DecimalCharacterReference,
     State::NumericCharacterReferenceEnd,
+    State::ProcessingInstructionOpen,
+    State::ProcessingInstructionTarget,
+    State::AfterProcessingInstructionTarget,
+    State::ProcessingInstructionData,
+    State::ProcessingInstructionQuestionable,
 ];
 
 impl EntryState {
@@ -697,11 +717,7 @@ static S_TAG_OPEN: StateDesc = StateDesc {
         },
         Rule {
             pat: Pat::Char('?'),
-            ops: &[
-                Op::Error("unexpected-question-mark-instead-of-tag-name"),
-                Op::CreateComment,
-                Op::Reconsume(State::BogusComment),
-            ],
+            ops: &[Op::ClearTemp, Op::Switch(State::ProcessingInstructionOpen)],
             anchor: None,
         },
         Rule {
@@ -3557,8 +3573,17 @@ static S_NUMERIC_CHARACTER_REFERENCE: StateDesc = StateDesc {
             anchor: None,
         },
         Rule {
+            pat: Pat::Class(Class::AsciiDigit),
+            ops: &[Op::Reconsume(State::DecimalCharacterReference)],
+            anchor: None,
+        },
+        Rule {
             pat: Pat::Anything,
-            ops: &[Op::Reconsume(State::DecimalCharacterReferenceStart)],
+            ops: &[
+                Op::Error("absence-of-digits-in-numeric-character-reference"),
+                Op::FlushTemp,
+                Op::ReconsumeReturn,
+            ],
             anchor: None,
         },
     ],
@@ -3575,31 +3600,6 @@ static S_HEXADECIMAL_CHARACTER_REFERENCE_START: StateDesc = StateDesc {
         Rule {
             pat: Pat::Class(Class::AsciiHexDigit),
             ops: &[Op::Reconsume(State::HexadecimalCharacterReference)],
-            anchor: None,
-        },
-        Rule {
-            pat: Pat::Anything,
-            ops: &[
-                Op::Error("absence-of-digits-in-numeric-character-reference"),
-                Op::FlushTemp,
-                Op::ReconsumeReturn,
-            ],
-            anchor: None,
-        },
-    ],
-};
-
-static S_DECIMAL_CHARACTER_REFERENCE_START: StateDesc = StateDesc {
-    name: "decimal_character_reference_start",
-    anchor: "html/parsing#decimal-character-reference-start-state",
-    external: false,
-    entry: false,
-    consumes: true,
-    enter: &[],
-    rules: &[
-        Rule {
-            pat: Pat::Class(Class::AsciiDigit),
-            ops: &[Op::Reconsume(State::DecimalCharacterReference)],
             anchor: None,
         },
         Rule {
@@ -3680,4 +3680,169 @@ static S_NUMERIC_CHARACTER_REFERENCE_END: StateDesc = StateDesc {
     consumes: true,
     enter: &[],
     rules: &[],
+};
+
+static S_PROCESSING_INSTRUCTION_OPEN: StateDesc = StateDesc {
+    name: "processing_instruction_open",
+    anchor: "html/parsing#processing-instruction-open-state",
+    external: false,
+    entry: false,
+    consumes: true,
+    enter: &[],
+    rules: &[
+        Rule {
+            pat: Pat::OneOf(&[Pat::Class(Class::AsciiAlpha), Pat::Char('_')]),
+            ops: &[Op::Reconsume(State::ProcessingInstructionTarget)],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Eof,
+            ops: &[Op::Error("eof-in-processing-instruction"), Op::EmitEof],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Anything,
+            ops: &[
+                Op::Error("invalid-first-character-of-processing-instruction-target"),
+                Op::TempToComment,
+                Op::Reconsume(State::BogusComment),
+            ],
+            anchor: None,
+        },
+    ],
+};
+
+static S_PROCESSING_INSTRUCTION_TARGET: StateDesc = StateDesc {
+    name: "processing_instruction_target",
+    anchor: "html/parsing#processing-instruction-target-state",
+    external: false,
+    entry: false,
+    consumes: true,
+    enter: &[],
+    rules: &[
+        Rule {
+            pat: Pat::OneOf(&[
+                Pat::Class(Class::Whitespace),
+                Pat::Char('?'),
+                Pat::Char('>'),
+            ]),
+            ops: &[Op::If {
+                cond: Cond::DisallowedPiTarget,
+                then: &[
+                    Op::Error("disallowed-processing-instruction-target"),
+                    Op::TempToComment,
+                    Op::Reconsume(State::BogusComment),
+                ],
+                otherwise: &[
+                    Op::CreatePi,
+                    Op::Reconsume(State::AfterProcessingInstructionTarget),
+                ],
+            }],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::OneOf(&[
+                Pat::Class(Class::AsciiAlphanumeric),
+                Pat::Char('-'),
+                Pat::Char('_'),
+            ]),
+            ops: &[Op::Append(Buf::Temp)],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Eof,
+            ops: &[Op::Error("eof-in-processing-instruction"), Op::EmitEof],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Anything,
+            ops: &[
+                Op::Error("invalid-processing-instruction-target"),
+                Op::TempToComment,
+                Op::Reconsume(State::BogusComment),
+            ],
+            anchor: None,
+        },
+    ],
+};
+
+static S_AFTER_PROCESSING_INSTRUCTION_TARGET: StateDesc = StateDesc {
+    name: "after_processing_instruction_target",
+    anchor: "html/parsing#after-processing-instruction-target-state",
+    external: false,
+    entry: false,
+    consumes: true,
+    enter: &[],
+    rules: &[
+        Rule {
+            pat: Pat::Class(Class::Whitespace),
+            ops: &[Op::Ignore],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Anything,
+            ops: &[Op::Reconsume(State::ProcessingInstructionData)],
+            anchor: None,
+        },
+    ],
+};
+
+static S_PROCESSING_INSTRUCTION_DATA: StateDesc = StateDesc {
+    name: "processing_instruction_data",
+    anchor: "html/parsing#processing-instruction-data-state",
+    external: false,
+    entry: false,
+    consumes: true,
+    enter: &[],
+    rules: &[
+        Rule {
+            pat: Pat::Char('?'),
+            ops: &[Op::Switch(State::ProcessingInstructionQuestionable)],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Char('>'),
+            ops: &[Op::Switch(State::Data), Op::EmitToken],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Eof,
+            ops: &[Op::Error("eof-in-processing-instruction"), Op::EmitEof],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Anything,
+            ops: &[Op::Append(Buf::PiData)],
+            anchor: None,
+        },
+    ],
+};
+
+static S_PROCESSING_INSTRUCTION_QUESTIONABLE: StateDesc = StateDesc {
+    name: "processing_instruction_questionable",
+    anchor: "html/parsing#processing-instruction-questionable-state",
+    external: false,
+    entry: false,
+    consumes: true,
+    enter: &[],
+    rules: &[
+        Rule {
+            pat: Pat::Char('>'),
+            ops: &[Op::Switch(State::Data), Op::EmitToken],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Eof,
+            ops: &[Op::Error("eof-in-processing-instruction"), Op::EmitEof],
+            anchor: None,
+        },
+        Rule {
+            pat: Pat::Anything,
+            ops: &[
+                Op::AppendChar(Buf::PiData, '?'),
+                Op::Reconsume(State::ProcessingInstructionData),
+            ],
+            anchor: None,
+        },
+    ],
 };

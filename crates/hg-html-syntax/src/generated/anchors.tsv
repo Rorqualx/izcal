@@ -6,6 +6,7 @@ html/parsing#after-doctype-public-identifier-state
 html/parsing#after-doctype-public-keyword-state
 html/parsing#after-doctype-system-identifier-state
 html/parsing#after-doctype-system-keyword-state
+html/parsing#after-processing-instruction-target-state
 html/parsing#ambiguous-ampersand-state
 html/parsing#attribute-name-state
 html/parsing#attribute-value-(double-quoted)-state
@@ -34,7 +35,6 @@ html/parsing#comment-start-dash-state
 html/parsing#comment-start-state
 html/parsing#comment-state
 html/parsing#data-state
-html/parsing#decimal-character-reference-start-state
 html/parsing#decimal-character-reference-state
 html/parsing#doctype-name-state
 html/parsing#doctype-public-identifier-(double-quoted)-state
@@ -50,6 +50,10 @@ html/parsing#named-character-reference-state
 html/parsing#numeric-character-reference-end-state
 html/parsing#numeric-character-reference-state
 html/parsing#plaintext-state
+html/parsing#processing-instruction-data-state
+html/parsing#processing-instruction-open-state
+html/parsing#processing-instruction-questionable-state
+html/parsing#processing-instruction-target-state
 html/parsing#rawtext-end-tag-name-state
 html/parsing#rawtext-end-tag-open-state
 html/parsing#rawtext-less-than-sign-state
