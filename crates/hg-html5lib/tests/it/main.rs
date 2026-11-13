@@ -117,15 +117,19 @@ const ASCII: &str = r"\u0041\u0042";
 
 #[test]
 fn the_escapes_above_are_written_as_escapes() {
-    // A literal astral character in the source would make the test
-    // above vacuous in exactly the way it exists to prevent, and it
-    // looks identical in a diff. So the source is read back.
-    let source = include_str!("main.rs");
-    assert!(source.contains(r#"const PAIR: &str = r"a\uD83D\uDE00b";"#));
-    assert!(source.contains(r#"const ASCII: &str = r"\u0041\u0042";"#));
+    // A literal astral character in place of the escapes would make the
+    // test above vacuous in exactly the way it exists to prevent, and
+    // it looks identical in a diff. These two say it cannot be one:
+    // `a` + twelve escape characters + `b`, all ASCII.
+    //
+    // An earlier version also read this file back and asked whether it
+    // contained the constant's text. The review pointed out that the
+    // needle appears in the assertion itself, so it matched whatever
+    // the constant held. These two do the work.
     assert!(
         PAIR.is_ascii(),
         "the pair is written as escapes, not as the character"
     );
     assert_eq!(PAIR.len(), 14, "a, 12 escape characters, b");
+    assert!(ASCII.is_ascii() && ASCII.len() == 12, "two escapes");
 }
