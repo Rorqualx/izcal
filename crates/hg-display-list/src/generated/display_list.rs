@@ -32,6 +32,12 @@ pub enum DisplayListError {
     /// A `PopGroup` with no `PushGroup` before it, or a chunk that
     /// ends with a group still open.
     UnbalancedGroup,
+    /// Groups nested deeper than the compositor will hold open.
+    GroupTooDeep,
+    /// A source rectangle that is not inside the image it names.
+    SourceOutsideImage,
+    /// An arc radius below zero, which no ellipse has.
+    NegativeRadius,
 }
 
 impl Wire for DisplayListError {
@@ -52,6 +58,15 @@ impl Wire for DisplayListError {
             Self::UnbalancedGroup => {
                 4u32.encode(w);
             }
+            Self::GroupTooDeep => {
+                5u32.encode(w);
+            }
+            Self::SourceOutsideImage => {
+                6u32.encode(w);
+            }
+            Self::NegativeRadius => {
+                7u32.encode(w);
+            }
         }
     }
     fn decode(r: &mut Reader<'_>) -> Result<Self, BadMessage> {
@@ -61,6 +76,9 @@ impl Wire for DisplayListError {
             2 => Ok(Self::NotPremultiplied),
             3 => Ok(Self::NegativeExtent),
             4 => Ok(Self::UnbalancedGroup),
+            5 => Ok(Self::GroupTooDeep),
+            6 => Ok(Self::SourceOutsideImage),
+            7 => Ok(Self::NegativeRadius),
             _ => Err(BadMessage::UnknownTag),
         }
     }
@@ -71,6 +89,9 @@ impl Wire for DisplayListError {
             2 => Ok(()),
             3 => Ok(()),
             4 => Ok(()),
+            5 => Ok(()),
+            6 => Ok(()),
+            7 => Ok(()),
             _ => Err(BadMessage::UnknownTag),
         }
     }
@@ -81,12 +102,15 @@ impl Wire for DisplayListError {
 #[cfg(test)]
 impl crate::sample::Sample for DisplayListError {
     fn sample(g: &mut crate::sample::Gen) -> Self {
-        match g.below(5) {
+        match g.below(8) {
             0 => Self::TooManySegments,
             1 => Self::TooManyItems,
             2 => Self::NotPremultiplied,
             3 => Self::NegativeExtent,
-            _ => Self::UnbalancedGroup,
+            4 => Self::UnbalancedGroup,
+            5 => Self::GroupTooDeep,
+            6 => Self::SourceOutsideImage,
+            _ => Self::NegativeRadius,
         }
     }
 }
@@ -1090,8 +1114,9 @@ impl crate::sample::Sample for Item {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chunk {
     /// The layer origin, in whole device pixels, that every path's
-    /// coordinates are relative to. Held in two i32 because the IDL
-    /// has no i64 pair type and the two halves are read together.
+    /// coordinates are relative to. Two fields rather than a pair
+    /// because the IDL has no pair type; the two halves are read
+    /// together and mean nothing apart.
     pub origin_x: i64,
     /// The layer origin's y.
     pub origin_y: i64,

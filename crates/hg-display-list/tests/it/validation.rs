@@ -1,6 +1,8 @@
-//! The four things the wire format cannot say (`check`).
+//! The six things the wire format cannot say (`check`).
 
-use hg_display_list::check::{MAX_GROUP_DEPTH, has_extent, is_premultiplied, validate};
+use hg_display_list::check::{
+    MAX_GROUP_DEPTH, has_extent, is_inside, is_premultiplied, radii_are_positive, validate,
+};
 use hg_display_list::display_list::{
     BlendMode, Chunk, Colour, DisplayListError, FillRule, ImageRef, Item, Path, Point, Rect,
     Sampling, Segment,
@@ -239,9 +241,157 @@ fn dl06_group_nesting_is_bounded() {
     past.extend((0..over).map(|_| Item::PopGroup));
     assert_eq!(
         validate(&chunk(past)),
-        Err(DisplayListError::TooManyItems),
+        Err(DisplayListError::GroupTooDeep),
         "one deeper than {MAX_GROUP_DEPTH}"
     );
+}
+
+/// A source rectangle outside the image it names. The format states
+/// both extents and cannot relate them, so whatever a sampler would
+/// read past the edge is memory the renderer did not put there.
+#[test]
+fn dl06a_a_source_rectangle_outside_its_image_is_refused() {
+    let dest = Rect {
+        x: 0,
+        y: 0,
+        width: 16,
+        height: 16,
+    };
+    let whole = Rect {
+        x: 0,
+        y: 0,
+        width: 16,
+        height: 16,
+    };
+    assert_eq!(
+        validate(&chunk(vec![image(whole.clone(), dest.clone())])),
+        Ok(()),
+        "the whole image is inside it"
+    );
+    for bad in [
+        Rect {
+            x: 1,
+            ..whole.clone()
+        },
+        Rect {
+            y: 1,
+            ..whole.clone()
+        },
+        Rect {
+            x: -1,
+            ..whole.clone()
+        },
+        Rect {
+            width: 17,
+            ..whole.clone()
+        },
+        Rect {
+            height: 17,
+            ..whole.clone()
+        },
+        Rect {
+            x: 16,
+            width: 1,
+            ..whole.clone()
+        },
+        Rect {
+            width: i32::MAX,
+            ..whole.clone()
+        },
+    ] {
+        assert_eq!(
+            validate(&chunk(vec![image(bad.clone(), dest.clone())])),
+            Err(DisplayListError::SourceOutsideImage),
+            "{bad:?}"
+        );
+    }
+    // The destination is **not** bounded: it is a rectangle in device
+    // pixels, and clipping it is the rasterizer's job.
+    let far = Rect {
+        x: -1_000_000,
+        y: 1_000_000,
+        width: 1,
+        height: 1,
+    };
+    assert_eq!(validate(&chunk(vec![image(whole, far)])), Ok(()));
+}
+
+/// An arc radius below zero, which no ellipse has.
+#[test]
+fn dl06b_a_negative_arc_radius_is_refused() {
+    let arc = |x: i32, y: i32| Segment::Arc {
+        radii: Point { x, y },
+        rotation: 0,
+        large: false,
+        sweep: true,
+        to: Point { x: 64, y: 64 },
+    };
+    let path = |seg: Segment| Path {
+        start: Point { x: 0, y: 0 },
+        segments: BoundedVec::try_new(vec![seg]).unwrap(),
+        rule: FillRule::NonZero,
+    };
+    let fill_with = |seg: Segment| {
+        chunk(vec![Item::FillPath {
+            path: path(seg),
+            colour: opaque(0, 0, 0),
+        }])
+    };
+    assert!(radii_are_positive(&[arc(0, 0), arc(1, 2)]));
+    assert_eq!(validate(&fill_with(arc(16, 16))), Ok(()));
+    assert_eq!(validate(&fill_with(arc(0, 0))), Ok(()), "zero is a radius");
+    for (x, y) in [(-1, 16), (16, -1), (-1, -1)] {
+        assert!(!radii_are_positive(&[arc(x, y)]), "{x},{y}");
+        assert_eq!(
+            validate(&fill_with(arc(x, y))),
+            Err(DisplayListError::NegativeRadius),
+            "{x},{y}"
+        );
+    }
+    // The other segment kinds carry no radius, so they never refuse.
+    assert!(radii_are_positive(&[
+        Segment::Line {
+            to: Point { x: -9, y: -9 }
+        },
+        Segment::Quad {
+            control: Point { x: -1, y: -1 },
+            to: Point { x: -2, y: -2 }
+        },
+        Segment::Cubic {
+            control0: Point { x: -1, y: -1 },
+            control1: Point { x: -2, y: -2 },
+            to: Point { x: -3, y: -3 }
+        },
+    ]));
+}
+
+/// `is_inside` alone, at the corners.
+#[test]
+fn dl06c_is_inside_at_the_edges() {
+    let img = ImageRef {
+        id: 1,
+        width: 4,
+        height: 4,
+    };
+    let r = |x, y, width, height| Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+    assert!(is_inside(&r(0, 0, 4, 4), &img), "the whole image");
+    assert!(is_inside(&r(4, 4, 0, 0), &img), "empty, at the far corner");
+    assert!(is_inside(&r(3, 3, 1, 1), &img), "the last texel");
+    assert!(!is_inside(&r(3, 3, 2, 1), &img));
+    assert!(!is_inside(&r(0, 0, 4, 5), &img));
+    // A zero-sized image holds nothing but the empty rectangle.
+    let none = ImageRef {
+        id: 2,
+        width: 0,
+        height: 0,
+    };
+    assert!(is_inside(&r(0, 0, 0, 0), &none));
+    assert!(!is_inside(&r(0, 0, 1, 0), &none));
 }
 
 /// The two counts §6.3 fixes, at the limit and one past it. These are

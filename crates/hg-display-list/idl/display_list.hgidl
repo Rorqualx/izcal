@@ -28,6 +28,12 @@ error DisplayListError {
     /// A `PopGroup` with no `PushGroup` before it, or a chunk that
     /// ends with a group still open.
     UnbalancedGroup,
+    /// Groups nested deeper than the compositor will hold open.
+    GroupTooDeep,
+    /// A source rectangle that is not inside the image it names.
+    SourceOutsideImage,
+    /// An arc radius below zero, which no ellipse has.
+    NegativeRadius,
 }
 
 /// A point in **24.8 fixed point**, in local units relative to its
@@ -223,8 +229,9 @@ union Item {
 /// One chunk of a display list.
 struct Chunk {
     /// The layer origin, in whole device pixels, that every path's
-    /// coordinates are relative to. Held in two i32 because the IDL
-    /// has no i64 pair type and the two halves are read together.
+    /// coordinates are relative to. Two fields rather than a pair
+    /// because the IDL has no pair type; the two halves are read
+    /// together and mean nothing apart.
     origin_x: i64,
     /// The layer origin's y.
     origin_y: i64,

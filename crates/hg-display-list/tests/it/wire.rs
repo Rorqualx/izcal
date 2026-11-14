@@ -95,6 +95,9 @@ fn dl10_every_refusal_round_trips() {
         DisplayListError::NotPremultiplied,
         DisplayListError::NegativeExtent,
         DisplayListError::UnbalancedGroup,
+        DisplayListError::GroupTooDeep,
+        DisplayListError::SourceOutsideImage,
+        DisplayListError::NegativeRadius,
     ] {
         assert_eq!(decode_exact::<DisplayListError>(&encode_to_vec(&e)), Ok(e));
     }
@@ -102,6 +105,6 @@ fn dl10_every_refusal_round_trips() {
     // them: a renderer that invents a reason is a renderer the GPU
     // process has no answer for.
     let mut w = Writer::new();
-    5_u32.encode(&mut w);
+    8_u32.encode(&mut w);
     assert!(decode_exact::<DisplayListError>(&w.into_bytes()).is_err());
 }

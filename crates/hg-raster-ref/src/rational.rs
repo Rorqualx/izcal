@@ -124,15 +124,51 @@ impl PartialOrd for Rational {
 }
 
 impl Ord for Rational {
+    /// Exact, and total, without a multiplication.
+    ///
+    /// Cross-multiplication is the obvious way and it is wrong here:
+    /// `n₁·d₂` needs 256 bits to be exact in `i128`, and saturating it
+    /// would make the **oracle's own ordering** silently wrong on
+    /// extreme operands — in a file whose rule is "`None` rather than
+    /// wrap", and for a comparison [`crate::exact::inside`] depends
+    /// on. An ordering cannot return `None`, so instead it is computed
+    /// the way Euclid's algorithm compares two fractions: compare the
+    /// integer parts; if they agree, compare the reciprocals of the
+    /// remainders, which reverses the order. Only division and
+    /// remainder, so nothing can overflow, and it terminates for the
+    /// same reason the gcd does.
     fn cmp(&self, other: &Self) -> Ordering {
-        // Denominators are positive, so cross-multiplication keeps the
-        // order. Saturating rather than checked because an ordering
-        // has no way to say "I do not know", and the inputs here are
-        // far from the range where it could matter.
-        let a = self.n.saturating_mul(other.d);
-        let b = other.n.saturating_mul(self.d);
-        a.cmp(&b)
+        let (mut an, mut ad) = (self.n, self.d);
+        let (mut bn, mut bd) = (other.n, other.d);
+        let mut flipped = false;
+        loop {
+            // The denominators are positive by the invariant, so
+            // neither division can fail; the fallbacks are unreachable
+            // and are written rather than asserted.
+            let qa = an.checked_div_euclid(ad).unwrap_or(0);
+            let qb = bn.checked_div_euclid(bd).unwrap_or(0);
+            if qa != qb {
+                return flip(qa.cmp(&qb), flipped);
+            }
+            let ra = an.checked_rem_euclid(ad).unwrap_or(0);
+            let rb = bn.checked_rem_euclid(bd).unwrap_or(0);
+            match (ra == 0, rb == 0) {
+                (true, true) => return Ordering::Equal,
+                (true, false) => return flip(Ordering::Less, flipped),
+                (false, true) => return flip(Ordering::Greater, flipped),
+                (false, false) => {
+                    // ra/ad against rb/bd, by their reciprocals.
+                    (an, ad) = (ad, ra);
+                    (bn, bd) = (bd, rb);
+                    flipped = !flipped;
+                }
+            }
+        }
     }
+}
+
+const fn flip(o: Ordering, flipped: bool) -> Ordering {
+    if flipped { o.reverse() } else { o }
 }
 
 fn gcd(mut a: u128, mut b: u128) -> u128 {

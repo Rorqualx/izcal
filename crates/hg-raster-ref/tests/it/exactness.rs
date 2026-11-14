@@ -4,6 +4,8 @@
 //! mistake. These are the shapes whose coverage can be written down
 //! without rasterizing anything.
 
+use core::cmp::Ordering;
+
 use hg_display_list::display_list::Point;
 use hg_raster::flatten::SUB;
 use hg_raster_ref::{Rational, coverage};
@@ -91,4 +93,49 @@ fn rr05_the_one_rounding() {
         let r = Rational::new(n, d).expect("non-zero");
         assert_eq!(r.to_alpha(), Some(want), "{n}/{d}");
     }
+}
+
+/// The ordering is exact where cross-multiplication is not.
+///
+/// `n₁·d₂` for these operands is past `i128`, so the obvious
+/// comparison saturates and returns `Equal` for two numbers that are
+/// not equal. The oracle's `inside` depends on this ordering, so a
+/// wrong answer here is a wrong coverage value with no sign of it.
+#[test]
+fn rr06_the_ordering_is_exact_at_the_extremes() {
+    let big = i128::MAX / 2;
+    let a = Rational::new(big, 3).expect("nonzero");
+    let b = Rational::new(big, 5).expect("nonzero");
+    // Both numerators saturate under cross-multiplication, which
+    // would make them compare equal.
+    assert_eq!(big.saturating_mul(5), big.saturating_mul(3));
+    assert_eq!(a.cmp(&b), Ordering::Greater, "big/3 > big/5");
+    assert_eq!(b.cmp(&a), Ordering::Less);
+    assert_eq!(a.cmp(&a), Ordering::Equal);
+
+    // Negative, where the signs of the quotients decide it.
+    let na = Rational::new(-big, 3).expect("nonzero");
+    let nb = Rational::new(-big, 5).expect("nonzero");
+    assert_eq!(na.cmp(&nb), Ordering::Less, "-big/3 < -big/5");
+    assert_eq!(na.cmp(&a), Ordering::Less);
+
+    // Two fractions that differ by one unit in the last place of a
+    // huge denominator: the integer parts and many continued-fraction
+    // terms agree, so this is the case the loop exists for.
+    let p = Rational::new(big, big - 1).expect("nonzero");
+    let q = Rational::new(big, big - 2).expect("nonzero");
+    assert_eq!(p.cmp(&q), Ordering::Less);
+    assert_ne!(p, q);
+
+    // Ordinary values still order the ordinary way, and the relation
+    // is consistent with the arithmetic.
+    let third = Rational::new(1, 3).expect("nonzero");
+    let half = Rational::new(1, 2).expect("nonzero");
+    assert_eq!(third.cmp(&half), Ordering::Less);
+    assert_eq!(half.cmp(&Rational::whole(1)), Ordering::Less);
+    assert_eq!(Rational::ZERO.cmp(&third), Ordering::Less);
+    assert_eq!(
+        third.plus(third).and_then(|x| x.plus(third)),
+        Some(Rational::ONE)
+    );
 }

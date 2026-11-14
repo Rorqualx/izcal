@@ -31,7 +31,7 @@
 //!
 //! The types are not hand-written: `hg-ipc-codegen` emits them from
 //! `idl/display_list.hgidl`, and a hand edit fails CI (G29). [`check`]
-//! is the one hand-written module, for the four things a wire format
+//! is the one hand-written module, for the six things a wire format
 //! cannot say.
 
 pub mod check;

@@ -35,13 +35,13 @@ to find what is wrong with it, not to decide it from nothing.
 | Built | Section | What the review checks |
 |---|---|---|
 | `hg-display-list` — the format, generated from one `.hgidl` | §6.3, GR-D6 | that every count is a limit, and §3.1's transport finding |
-| `check.rs` — the four things a wire format cannot say | §6.3 | that the list is complete: premultiplication, extents, group balance, nesting depth |
+| `check.rs` — the six things a wire format cannot say | §6.3 | that the list is complete: premultiplication, extents, a source rectangle inside its image, arc radii, group balance, nesting depth |
 | `hg-raster` — coverage, blending, images, integer only | §6.4, GR-D3, G61 | that no `f32` or `f64` entered, and §3.2's accumulator finding |
 | `hg-raster-ref` — the independent reference | §6.26, GR-6 | §3.3: it is **exact**, not float64 as the crate table says |
 | `hg-gpu-hal` — the contract, before any back end | §6.6 | §2 — the central item |
 
-Each is held by tests that can fail: 19 in `hg-raster`, 8 in
-`hg-raster-ref`, 13 in `hg-display-list`, 11 in `hg-gpu-hal`, and the
+Each is held by tests that can fail: 19 in `hg-raster`, 9 in
+`hg-raster-ref`, 17 in `hg-display-list`, 11 in `hg-gpu-hal`, and the
 `raster-ref` CI job runs all of them on x86-64 and AArch64.
 
 ---
