@@ -105,6 +105,79 @@ prefix = "hg-"
 version = "0.0.0"
 exempt = ["xtask"]
 
+# --- Stage 1 8.1a: "started", the M1 row's five M0 clauses -------------------
+# M1's exit requires that ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 *start*.
+# 8.1a defines starting as five clauses that turn on artefacts, so the
+# clause is a CI result rather than a claim:
+#   1 crates     every crate the M0 row names is a member with a tiers.toml row
+#   2 generator  the crate the rest of the track generates from or builds on
+#   3 oracle     the named job exists in .github/workflows/checks.yml
+#   4 review     the design review is open with its agenda fixed
+#   5 interlock  the cross-track obligations are recorded
+# A row is checked only when `claimed = true`. An unclaimed track is
+# reported by `hg-graph-lint --started` and never failed: the rule must
+# not block the work that satisfies it. Setting `claimed` is a gate-file
+# change (CS-GA-1), and it fails unless all five hold.
+#
+# The crates are the ones each M0 row names, which is a smaller set than
+# the crates its milestone names in total: production crates such as
+# hg-style and hg-layout belong to ST-M1 and LY-M1, not to the M0s.
+
+[[started]]
+track = "TX-M0"
+spec = "reports/Izcal fonts and text.md"
+claimed = false
+crates = ["hg-ucd", "hg-unicode", "hg-unicode-build", "hg-fontgen", "hg-fontc"]
+generator = "hg-fontgen"
+oracle-job = "tx-1"
+review = "research_notes/TX-M0 design review/README.md"
+interlock = "measurements/milestones/m0-starts/README.md"
+why = "TX-M0 leads: its own row puts normalization and the IDNA data first, by month 6, for hg-url at ST-M0, and TX-1 demands 100% of the Unicode conformance files from TX-M0, so the oracle is the exit criterion's own measure."
+
+[[started]]
+track = "ST-M0"
+spec = "reports/Izcal HTML and CSS parsing and style.md"
+claimed = false
+crates = ["hg-htmlgen", "hg-cssgen", "hg-style-reference", "hg-encoding", "hg-url"]
+generator = "hg-htmlgen"
+oracle-job = "html5lib"
+review = "research_notes/ST-M0 design review/README.md"
+interlock = "measurements/milestones/m0-starts/README.md"
+why = "The .hgtok generator is the artefact the track generates from, on hg-opgen's pattern; the 6,827 html5lib tokenizer tests are the number the M0 row itself names."
+
+[[started]]
+track = "LY-M0"
+spec = "reports/Izcal layout.md"
+claimed = false
+crates = ["hg-layout-num", "hg-box-tree", "hg-layout-reference", "hg-reftest-raster", "hg-wpt-layout", "hg-paint-order"]
+generator = "hg-layout-num"
+oracle-job = "wpt-layout"
+review = "research_notes/LY-M0 design review/README.md"
+interlock = "measurements/milestones/m0-starts/README.md"
+why = "LY-M0's contract types rest on the computed-length numeric type, which ST-M0 must fix too (ST 6.9), so it is designed once. hg-types gains the geometry its tiers.toml row already reserves; it needs no row here, having one already."
+
+[[started]]
+track = "GR-M0"
+spec = "reports/Izcal graphics and rendering.md"
+claimed = false
+crates = ["hg-gpu-hal", "hg-raster", "hg-raster-ref", "hg-display-list"]
+generator = "hg-display-list"
+oracle-job = "raster-ref"
+review = "research_notes/GR-M0 design review/README.md"
+interlock = "measurements/milestones/m0-starts/README.md"
+why = "GR-M0 is the one M0 whose Needed by is another track's milestone (LY-M0), and hg-paint-order's contract is co-signed at LY-M0's review, which needs a named graphics owner. Its generator clause is met by the display-list, compositor-frame and canvas-command .hgidl formats through hg-ipc-codegen; the review document records what the rest waits for."
+
+[[started]]
+track = "NW-M0"
+spec = "reports/Izcal networking.md"
+claimed = false
+crates = ["hg-net-wire", "hg-netsim", "hg-crypto", "hg-crypto-check", "hg-tls"]
+generator = "hg-net-wire"
+oracle-job = "wycheproof"
+review = "research_notes/NW-M0 design review/README.md"
+interlock = "measurements/milestones/m0-starts/README.md"
+why = "NW-M0 is independent of the other four and has about twelve months of float, so it runs in parallel and never blocks them. hg-net-wire's Kani-proved kernels follow hg-ipc's pattern; hg-crypto joins [q-cs-1] crypto-implementers when it lands."
+
 # --- Stage 1 2.2: G1, G2, G4, G6, G7, G8 -------------------------------------
 # G3 is clippy.toml's plus [ambient] above; G5 is built in (it reads
 # unsafe-inventory.toml); G9 is hg-anchor's.

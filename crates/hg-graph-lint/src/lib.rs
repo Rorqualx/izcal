@@ -48,6 +48,7 @@
 //! | `G5` | Every target of a crate not in `unsafe-inventory.toml` forbids `unsafe_code` (manifest level or crate root); inventoried entries name files that exist and carry the matching `expect` reason; no `allow(unsafe_code)` | S1 G5; CS-TY-13 |
 //! | `CS-ST-1`, `CS-ST-14`, `CS-TE-2` | Flat `crates/<name>` layout, `hg-` prefix, version `0.0.0`, `publish = false`, at most one integration-test target, under `tests/` | A.6 |
 //! | `[[forbid]]`, `[[only-linked-by]]`, `[[direct-only]]`, `[[disjoint]]` | The data rules of `graph-rules.toml`: G1, G2, G4, G6, G7, G8, G230–G232, G241, G252, G255, G260 | the owning specs |
+//! | `started` | A track that claims to have started meets all five clauses of "start": its crates exist with `tiers.toml` rows, its generator is one of them, its oracle job is in the workflow, and its review and interlock documents exist | S1 8.1a |
 //!
 //! # Q-CS-1 and seeded randomness
 //!
@@ -97,6 +98,22 @@
 //! seeded stream cryptographic would need an implementation of the
 //! crypto trait, which check 2 catches at the three sites it can see.
 //!
+//! # "Started" (Stage 1 design 8.1a)
+//!
+//! M1's exit requires that ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 *start*,
+//! and 8.1a defines starting as five clauses that turn on artefacts
+//! rather than on claims. The `started` rule checks them from the
+//! `[[started]]` rows of `graph-rules.toml`, one per track.
+//!
+//! A track is checked only when its row says `claimed = true`. Were it
+//! otherwise the rule would fail every pull request from the day it
+//! landed until the last track was finished, blocking the work that
+//! satisfies it. What it buys instead is that a track cannot be *said*
+//! to have started while the artefacts are missing: flipping `claimed`
+//! is a gate-file change (CS-GA-1) and fails unless all five hold.
+//! `--started` prints the matrix for the milestone evidence to quote,
+//! claimed or not. See [`started`].
+//!
 //! # Not checked here
 //!
 //! G3's ambient-API rule on code is clippy's (`clippy.toml`); G9 is
@@ -113,6 +130,7 @@ pub mod config;
 pub mod graph_rules;
 pub mod json;
 pub mod metadata;
+pub mod started;
 pub mod toml;
 pub mod value;
 pub mod workspace_rules;
@@ -317,12 +335,11 @@ pub fn read_config(root: &Path) -> Result<(Tiers, Rules, Inventory), ConfigError
     Ok((tiers, rules, inventory))
 }
 
-/// Runs every check on the workspace at `opts.root`.
+/// Reads the gate files and resolves every graph the rules need.
 ///
 /// # Errors
-/// [`LintError`] when an input cannot be read; violations are in the
-/// [`Report`].
-pub fn run(opts: &Options) -> Result<Report, LintError> {
+/// [`LintError`] when an input cannot be read.
+pub fn read_inputs(opts: &Options) -> Result<Inputs, LintError> {
     let (tiers, rules, inventory) = read_config(&opts.root)?;
     let mut graphs = Vec::new();
     for triple in &opts.triples {
@@ -335,13 +352,22 @@ pub fn run(opts: &Options) -> Result<Report, LintError> {
     let root = graphs
         .first()
         .map_or_else(|| opts.root.clone(), |g| g.workspace_root.clone());
-    let inputs = Inputs {
+    Ok(Inputs {
         root,
         tiers,
         rules,
         inventory,
         graphs,
-    };
+    })
+}
+
+/// Runs every check on the workspace at `opts.root`.
+///
+/// # Errors
+/// [`LintError`] when an input cannot be read; violations are in the
+/// [`Report`].
+pub fn run(opts: &Options) -> Result<Report, LintError> {
+    let inputs = read_inputs(opts)?;
     let mut report = Report {
         triples: opts.triples.len(),
         ..Report::default()
@@ -364,5 +390,6 @@ pub fn run(opts: &Options) -> Result<Report, LintError> {
     if let Some(s) = &scan {
         code::check(&inputs, s, &mut report);
     }
+    started::check(&inputs, &mut report);
     Ok(report)
 }

@@ -698,3 +698,108 @@ fn an_aliased_re_export_cannot_hide_a_crypto_source() {
     );
     assert_finding(&f.lint(&[], true), "Q-CS-1", "hg-substrate-os", "renames");
 }
+
+/// Stage 1 design 8.1a: a claimed `[[started]]` row whose artefacts are
+/// not there is refused, clause by clause.
+#[test]
+fn a_track_cannot_claim_to_have_started_without_its_artefacts() {
+    let mut f = Fixture::baseline();
+    f.files
+        .get_mut("tools/graph-rules.toml")
+        .unwrap()
+        .push_str(STARTED_ROW);
+    let r = f.lint(&[LINUX], false);
+    for (n, name) in [
+        (1, "crates"),
+        (2, "generator"),
+        (3, "oracle"),
+        (4, "review"),
+        (5, "interlock"),
+    ] {
+        assert_finding(
+            &r,
+            "started",
+            "ZZ-M0",
+            &format!("clause {n} ({name}) of Stage 1 design 8.1a does not hold"),
+        );
+    }
+}
+
+/// The twin: the same claimed row passes once the five artefacts exist,
+/// so the refusal above is attributable to the artefacts and not to the
+/// claim itself.
+#[test]
+fn a_track_with_its_artefacts_may_claim_to_have_started() {
+    let mut f = Fixture::baseline();
+    f.files
+        .get_mut("tools/graph-rules.toml")
+        .unwrap()
+        .push_str(STARTED_ROW);
+    f.lib("hg-zzgen", "T", "tools", "", "//! The ZZ generator.\n");
+    f.files.insert(
+        ".github/workflows/checks.yml".into(),
+        "name: checks\non:\n  push:\njobs:\n  zz-oracle:\n    runs-on: ubuntu-24.04\n".into(),
+    );
+    f.files
+        .insert("research_notes/ZZ-M0/README.md".into(), "# ZZ-M0\n".into());
+    f.files.insert(
+        "measurements/m0-starts/README.md".into(),
+        "# starts\n".into(),
+    );
+    let r = f.lint(&[LINUX], false);
+    assert!(
+        !r.has("started"),
+        "expected no started finding; got:\n{}",
+        r.render()
+    );
+}
+
+/// An unclaimed track is never a finding, however little of it exists:
+/// the rule must not block the work that satisfies it.
+#[test]
+fn an_unclaimed_track_is_reported_but_never_failed() {
+    let mut f = Fixture::baseline();
+    f.files
+        .get_mut("tools/graph-rules.toml")
+        .unwrap()
+        .push_str(&STARTED_ROW.replace("claimed = true", "claimed = false"));
+    let r = f.lint(&[LINUX], false);
+    assert!(
+        !r.has("started"),
+        "expected no started finding; got:\n{}",
+        r.render()
+    );
+}
+
+/// A row naming a generator outside its own crate list is a malformed
+/// gate file, not a violation: the lint refuses to run.
+#[test]
+fn a_started_row_whose_generator_is_not_its_own_crate_is_rejected() {
+    let bad = STARTED_ROW.replace("generator = \"hg-zzgen\"", "generator = \"hg-types\"");
+    let v = hg_graph_lint::toml::parse(&format!(
+        "{}{bad}",
+        std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/graph-rules.toml")
+        )
+        .unwrap()
+    ))
+    .expect("parses as TOML");
+    let e = hg_graph_lint::config::Rules::from_value(&v).expect_err("rejected");
+    assert!(
+        format!("{e}").contains("is not in its own crates list"),
+        "got: {e}"
+    );
+}
+
+const STARTED_ROW: &str = r#"
+[[started]]
+track = "ZZ-M0"
+spec = "reports/zz.md"
+claimed = true
+crates = ["hg-zzgen"]
+generator = "hg-zzgen"
+oracle-job = "zz-oracle"
+review = "research_notes/ZZ-M0/README.md"
+interlock = "measurements/m0-starts/README.md"
+why = "A fixture track."
+"#;
