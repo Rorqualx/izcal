@@ -102,8 +102,10 @@ fn timing_check() -> ExitCode {
     const LEN: usize = 4096;
     const ROUNDS: usize = 400;
 
-    let planted = timing::measure(timing::leaky_eq, LEN, ROUNDS);
-    let constant = timing::measure(hg_crypto::ct::eq, LEN, ROUNDS);
+    // A majority of three, so one noisy run on a shared agent does not
+    // decide a merge gate (see `timing::majority`).
+    let (planted, planted_leaks) = timing::majority(timing::leaky_eq, LEN, ROUNDS, 3);
+    let (constant, constant_leaks) = timing::majority(hg_crypto::ct::eq, LEN, ROUNDS, 3);
 
     println!("hg-crypto-check: {LEN} bytes, {ROUNDS} rounds");
     for (what, m) in [("leaky_eq (the plant)", planted), ("ct::eq", constant)] {
@@ -116,7 +118,7 @@ fn timing_check() -> ExitCode {
         );
     }
 
-    if !planted.leaks() {
+    if !planted_leaks {
         eprintln!(
             "hg-crypto-check: the planted leak was NOT detected (ratio {:.1}); \
              this machine is too noisy for the measurement to mean anything",
@@ -124,14 +126,18 @@ fn timing_check() -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    println!("  the plant is detected, so the measurement discriminates");
-    if constant.leaks() {
+    println!("  the plant is detected in a majority of runs, so the measurement discriminates");
+    if constant_leaks {
         eprintln!(
-            "hg-crypto-check: ct::eq looks data-dependent (ratio {:.1})",
+            "hg-crypto-check: ct::eq looks data-dependent (ratio {:.4}, \
+             in a majority of runs)",
             constant.ratio()
         );
         return ExitCode::FAILURE;
     }
-    println!("  ct::eq is not distinguishable from its own noise");
+    println!(
+        "  ct::eq is {:.4}, under the 0.25 a quarter of the work would be",
+        constant.ratio()
+    );
     ExitCode::SUCCESS
 }

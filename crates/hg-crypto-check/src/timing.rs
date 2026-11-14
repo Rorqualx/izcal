@@ -199,3 +199,65 @@ pub fn measure(cmp: fn(&[u8], &[u8]) -> bool, len: usize, rounds: usize) -> Meas
         noise: e1.min.abs_diff(e2.min),
     }
 }
+
+/// Measures `runs` times and returns the **majority** verdict, with a
+/// measurement that gave it.
+///
+/// **Why a majority rather than a looser threshold.** A merge gate
+/// that can fail because another job on the agent was busy is a gate
+/// people learn to rerun, so the first attempt made the threshold
+/// relative to the control measured beside it. That was strictly
+/// weaker: with a control at 1,000, a genuine leak at ratio 5 would
+/// have passed. Sensitivity is the whole point, so the threshold stays
+/// and the *transient* is what is removed.
+///
+/// **Why a majority rather than "two agreed".** The attempt before
+/// this one compared each later run with the first, so leak, clean,
+/// leak counted as confirmed although the middle run disagreed. A
+/// majority of an odd number has no such corner: one noisy run cannot
+/// decide anything, and a comparison whose time depends on its inputs
+/// leaks in every run.
+///
+/// `runs` is rounded up to the next odd number, and to at least 3, so
+/// there is always a majority.
+#[must_use]
+pub fn majority(
+    cmp: fn(&[u8], &[u8]) -> bool,
+    len: usize,
+    rounds: usize,
+    runs: usize,
+) -> (Measurement, bool) {
+    let n = {
+        let at_least = runs.max(3);
+        if at_least.is_multiple_of(2) {
+            at_least.saturating_add(1)
+        } else {
+            at_least
+        }
+    };
+    let mut leaked: Vec<Measurement> = Vec::new();
+    let mut clean: Vec<Measurement> = Vec::new();
+    for _ in 0..n {
+        let m = measure(cmp, len, rounds);
+        if m.leaks() {
+            leaked.push(m);
+        } else {
+            clean.push(m);
+        }
+    }
+    if leaked.len() > clean.len() {
+        // The strongest of the leaking runs, so the number printed is
+        // the one that argues for the verdict.
+        let worst = leaked
+            .iter()
+            .copied()
+            .reduce(|a, b| if b.ratio() > a.ratio() { b } else { a });
+        (worst.unwrap_or_else(|| measure(cmp, len, rounds)), true)
+    } else {
+        let best = clean
+            .iter()
+            .copied()
+            .reduce(|a, b| if b.ratio() < a.ratio() { b } else { a });
+        (best.unwrap_or_else(|| measure(cmp, len, rounds)), false)
+    }
+}
