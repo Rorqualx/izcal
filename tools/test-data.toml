@@ -248,3 +248,18 @@ format = "tar.gz"
 # The whole repository is 1.5 GB unpacked and this track needs one
 # directory of it, so only that is unpacked (LY-M0, hg-wpt-layout).
 paths = "css/CSS2"
+
+[wycheproof]
+commit = "65ca494727a52944c204441c860b039e6786b99b"
+date = "2026-11-13"
+# Test-only (OD-L2): the vectors are an oracle, never linked and never
+# shipped, so Apache-2.0 is no obstacle. hg-crypto-check reads them;
+# nothing in a shipping binary does.
+licence = "Apache-2.0"
+url = "https://codeload.github.com/C2SP/wycheproof/tar.gz/65ca494727a52944c204441c860b039e6786b99b"
+sha256 = "bba183a427cdfcd8494de25862a179f8a5e946711496f5dd424c585cc01fada3"
+tree_sha256 = "f19013f1b7d024bdb15d3481af5c2200cd4126d49604468c9478b052c1941e50"
+format = "tar.gz"
+# Only the v1 vectors: the repository also holds its own tooling and
+# the older v0 sets, which nothing here reads.
+paths = "testvectors_v1"

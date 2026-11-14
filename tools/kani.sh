@@ -63,7 +63,7 @@ status=0
 # gives each run its own memory instead of racing for one job's. Running
 # the script with no KANI_PACKAGES does the whole set in order, which is
 # what a local or hueyj run wants.
-packages=${KANI_PACKAGES:-"hg-ipc hg-ipc-gen hg-os-types hg-launch-wire hg-launch-plan hg-substrate-os hg-heap hg-fontfmt"}
+packages=${KANI_PACKAGES:-"hg-ipc hg-ipc-gen hg-os-types hg-launch-wire hg-launch-plan hg-substrate-os hg-heap hg-fontfmt hg-net-wire"}
 for pkg in $packages; do
   echo "== cargo kani -p $pkg"
   # pipefail: the pipeline fails if cargo kani does.

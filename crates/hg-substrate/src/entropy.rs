@@ -14,6 +14,16 @@ pub enum EntropyPurpose {
     /// Scheduling choices the substrate itself makes (for example the
     /// order of equally ready tasks in simulation).
     Scheduling,
+    /// The network simulation's own choices: which packet is lost,
+    /// which is reordered, how long a link takes today (`hg-netsim`,
+    /// networking spec 6.21).
+    ///
+    /// Its own purpose rather than a share of [`Self::Scheduling`],
+    /// because that is what named streams are for: "adding a consumer
+    /// does not perturb the others' sequences", and a simulation that
+    /// drew from the scheduler's stream would change every existing
+    /// run's scheduling the day it was switched on.
+    Network,
 }
 
 /// A stream of random numbers for one purpose. Not cryptographic.
