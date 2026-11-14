@@ -1,0 +1,233 @@
+/// The display list: what a renderer sends a content GPU process to
+/// draw, and the bounded path format the text stack emits into
+/// (graphics 6.3 and 6.4; TX 9.5 R21).
+///
+/// Every count here is a limit, not a hint. A display list crosses a
+/// process boundary from a renderer the GPU process does not trust, so
+/// a path with no bound on its segments is a renderer that can make
+/// the GPU process allocate without limit (G18's checked arithmetic,
+/// and the budgets of the networking spec's 6.2 for the same reason).
+protocol display_list;
+
+/// Why a display list was refused. Closed: no free text crosses a
+/// process boundary (CS-ER-6).
+///
+/// Every variant is a limit the format itself names, so a renderer
+/// cannot learn anything from the refusal that it did not already
+/// know when it built the list.
+error DisplayListError {
+    /// A path declared more segments than §6.3 allows.
+    TooManySegments,
+    /// A chunk declared more items than §6.3 allows.
+    TooManyItems,
+    /// A colour component is above its alpha, which premultiplied
+    /// colour cannot represent.
+    NotPremultiplied,
+    /// A rectangle has a negative width or height.
+    NegativeExtent,
+    /// A `PopGroup` with no `PushGroup` before it, or a chunk that
+    /// ends with a group still open.
+    UnbalancedGroup,
+}
+
+/// A point in **24.8 fixed point**, in local units relative to its
+/// path's own origin (graphics 6.3).
+///
+/// 24.8 rather than floating point because GR-D3 requires every pixel
+/// of page content to be computed by integer arithmetic only, so that
+/// the result is bit-identical on the CPU and on every GPU back end of
+/// every device. The range is +/- 8,388,607.996 units, and the layer
+/// origin the coordinates are relative to is a separate i64, so a page
+/// beyond 8 M px still renders exactly.
+struct Point {
+    /// X, in 1/256 of a local unit.
+    x: i32,
+    /// Y, in 1/256 of a local unit.
+    y: i32,
+}
+
+/// One segment of a path, from the previous point.
+union Segment {
+    /// A straight line.
+    Line {
+        /// Where it ends.
+        to: Point,
+    },
+    /// A quadratic Bezier.
+    Quad {
+        /// Its single control point.
+        control: Point,
+        /// Where it ends.
+        to: Point,
+    },
+    /// A cubic Bezier.
+    Cubic {
+        /// The first control point.
+        control0: Point,
+        /// The second control point.
+        control1: Point,
+        /// Where it ends.
+        to: Point,
+    },
+    /// An elliptical arc, as SVG writes one.
+    Arc {
+        /// The radii, x in `x` and y in `y`.
+        radii: Point,
+        /// The x-axis rotation, in 1/256 of a degree.
+        rotation: i32,
+        /// Whether to take the arc over 180 degrees.
+        large: bool,
+        /// Whether to sweep in the positive-angle direction.
+        sweep: bool,
+        /// Where it ends.
+        to: Point,
+    },
+}
+
+/// How a path decides what is inside it.
+enum FillRule {
+    /// A point is inside when its winding number is not zero.
+    NonZero,
+    /// A point is inside when its winding number is odd.
+    EvenOdd,
+}
+
+/// One filled path. Subpaths are flat: a path is one closed contour,
+/// and a shape with holes is several paths in one item.
+struct Path {
+    /// Where the contour starts.
+    start: Point,
+    /// Its segments, at most 65,536 (graphics 6.3).
+    segments: vec<Segment, 65536>,
+    /// How it decides what is inside.
+    rule: FillRule,
+}
+
+/// A colour in the page working encoding, **premultiplied** (6.5).
+///
+/// Premultiplied rather than straight, because compositing is defined
+/// on premultiplied values and converting at every blend would round
+/// twice. A component above `a` is not representable and the reader
+/// refuses it.
+struct Colour {
+    /// Red, premultiplied by alpha.
+    red: u8,
+    /// Green, premultiplied by alpha.
+    green: u8,
+    /// Blue, premultiplied by alpha.
+    blue: u8,
+    /// Alpha.
+    alpha: u8,
+}
+
+/// The sixteen blend modes of Compositing and Blending 1.
+enum BlendMode {
+    /// `normal`.
+    Normal,
+    /// `multiply`.
+    Multiply,
+    /// `screen`.
+    Screen,
+    /// `overlay`.
+    Overlay,
+    /// `darken`.
+    Darken,
+    /// `lighten`.
+    Lighten,
+    /// `color-dodge`.
+    ColorDodge,
+    /// `color-burn`.
+    ColorBurn,
+    /// `hard-light`.
+    HardLight,
+    /// `soft-light`.
+    SoftLight,
+    /// `difference`.
+    Difference,
+    /// `exclusion`.
+    Exclusion,
+    /// `hue`.
+    Hue,
+    /// `saturation`.
+    Saturation,
+    /// `color`.
+    Color,
+    /// `luminosity`.
+    Luminosity,
+}
+
+/// A rectangle in whole device pixels.
+struct Rect {
+    /// Left.
+    x: i32,
+    /// Top.
+    y: i32,
+    /// Width; a negative width is refused.
+    width: i32,
+    /// Height; a negative height is refused.
+    height: i32,
+}
+
+/// An image the GPU process already holds, by the identity its own
+/// media process gave it. The display list never carries pixels.
+struct ImageRef {
+    /// Which image.
+    id: u64,
+    /// Its width in texels.
+    width: u32,
+    /// Its height in texels.
+    height: u32,
+}
+
+/// How an image is sampled when it is not drawn at its own size.
+enum Sampling {
+    /// `auto`: bilinear for magnification, exact area for minification.
+    Auto,
+    /// `pixelated`: nearest texel.
+    Pixelated,
+    /// `crisp-edges`: nearest texel.
+    CrispEdges,
+}
+
+/// One drawing operation.
+union Item {
+    /// Fill a path with one colour.
+    FillPath {
+        /// The path.
+        path: Path,
+        /// Its colour.
+        colour: Colour,
+    },
+    /// Draw part of an image into a rectangle.
+    DrawImage {
+        /// Which image.
+        image: ImageRef,
+        /// The source rectangle, in texels.
+        source: Rect,
+        /// The destination rectangle, in device pixels.
+        dest: Rect,
+        /// How to sample it.
+        sampling: Sampling,
+    },
+    /// Begin an isolated group, to be composited when it is popped.
+    PushGroup {
+        /// How the group composites into what is below it.
+        blend: BlendMode,
+        /// The group's opacity, 0 to 255.
+        opacity: u8,
+    },
+    /// End the innermost group and composite it.
+    PopGroup,
+}
+
+/// One chunk of a display list.
+struct Chunk {
+    /// The layer origin, in whole device pixels, that every path's
+    /// coordinates are relative to. Held in two i32 because the IDL
+    /// has no i64 pair type and the two halves are read together.
+    origin_x: i64,
+    /// The layer origin's y.
+    origin_y: i64,
+    /// Its items, at most 4,096 (graphics 6.3).
+    items: vec<Item, 4096>,
+}
