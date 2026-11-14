@@ -243,7 +243,7 @@ url = "https://codeload.github.com/web-platform-tests/wpt/tar.gz/33926aca0f43135
 # why the set carries a tree hash: the archive hash is a cheap first
 # check that GitHub may move, and the tree hash is the identity.
 sha256 = "3350857a62b91470e979a21b5c4d1569c5b45bb6b7237caee46e6c8710cd6554"
-tree_sha256 = "653b3c61bf7c1ffcde22b4f446548507e7b0c8b8220be53745ee28b9ccc6f740"
+tree_sha256 = "3932304690923fe7780dc27f9463db15f0937d45c731b2b0379b5848e6764392"
 format = "tar.gz"
 # The whole repository is 1.5 GB unpacked and this track needs one
 # directory of it, so only that is unpacked (LY-M0, hg-wpt-layout).

@@ -79,18 +79,35 @@ sha256_of() {
 tree_sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then hasher="sha256sum"
   else hasher="shasum -a 256"; fi
-  # The per-file lines are normalised to `<hash> <path>` with one space
-  # before they are hashed, because GNU coreutils and the BSD/Perl
-  # `shasum` separate the two differently; without that the same tree
-  # would hash differently on Linux and macOS and the pin would be
-  # useless. `.izcal-sha256` is excluded, since it holds the archive pin
-  # and would make the content hash depend on it.
+  # Three streams, concatenated in a fixed order, then hashed:
+  #
+  #   f <hash> <path>   every regular file, by its bytes
+  #   x <path>          every regular file whose owner-execute bit is set
+  #   l <path> -> <t>   every symbolic link, by its target
+  #
+  # The second and third are there because the first alone would not see
+  # a changed symlink target or a dropped executable bit, and this hash
+  # is the identity the pin rests on. Empty directories are not covered;
+  # no test-data set has one that carries meaning, and `find -type d`
+  # would make every unpack order-dependent on the file system.
+  #
+  # The per-file lines are normalised to `<hash> <path>` with one space,
+  # because GNU coreutils and the BSD/Perl `shasum` separate the two
+  # differently and the pin would otherwise be platform-dependent.
+  # `.izcal-sha256` is excluded: it holds the archive pin, and hashing
+  # it would make the content hash depend on the thing it replaces.
   # shellcheck disable=SC2086 # hasher is a command and its flags
-  ( cd "$1" && find . -type f ! -name .izcal-sha256 -print0 \
-      | LC_ALL=C sort -z \
-      | xargs -0 $hasher \
-      | awk '{ h = $1; $1 = ""; sub(/^ +/, ""); print h " " $0 }' \
-      | $hasher | awk '{print $1}' )
+  ( cd "$1" && {
+      find . -type f ! -name .izcal-sha256 -print0 \
+        | LC_ALL=C sort -z \
+        | xargs -0 $hasher \
+        | awk '{ h = $1; $1 = ""; sub(/^ +/, ""); print "f " h " " $0 }'
+      find . -type f -perm -u+x ! -name .izcal-sha256 \
+        | LC_ALL=C sort \
+        | sed 's/^/x /'
+      find . -type l -exec sh -c 'for p; do printf "l %s -> %s\n" "$p" "$(readlink "$p")"; done' _ {} + \
+        | LC_ALL=C sort
+    } | $hasher | awk '{print $1}' )
 }
 
 status=0
@@ -200,7 +217,13 @@ for name in "${names[@]}"; do
     got_tree=$(tree_sha256_of "$tmp")
     if [ "$got_tree" != "$want_tree" ]; then
       rm -rf "$tmp"
+      # The cached archive produced a tree that is not the pinned one,
+      # so it is removed: with `tree_sha256` set the archive hash no
+      # longer rejects it, and leaving it would make every later run
+      # fail the same way from the same bytes.
+      rm -f "$archive"
       echo "fetch-test-data.sh: $name: tree_sha256 $got_tree does not match the pin $want_tree" >&2
+      echo "fetch-test-data.sh: $name: removed $archive; run again to fetch it" >&2
       exit 1
     fi
   fi
