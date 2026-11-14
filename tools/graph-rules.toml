@@ -100,7 +100,7 @@ why = "H-3: a hand-written layout can only make the tracer read the wrong slots,
 # allowed binary64 operations -- instead of this rule, and meet layout only
 # through hg-layout-num's rounding function.
 [g39]
-crates = ["hg-fragment", "hg-layout", "hg-layout-num"]
+crates = ["hg-box-tree", "hg-fragment", "hg-layout", "hg-layout-num", "hg-paint-order"]
 boundary = "hg-layout-num"
 why = "DET-1 and FP-24: cross-ISA identity; the text stack's G28; the arithmetic CVE class"
 
@@ -148,7 +148,7 @@ exempt = ["xtask"]
 [[started]]
 track = "TX-M0"
 spec = "reports/Izcal fonts and text.md"
-claimed = false
+claimed = true
 crates = ["hg-ucd", "hg-unicode", "hg-unicode-build", "hg-fontgen", "hg-fontfmt", "hg-fontc"]
 generator = "hg-fontgen"
 oracle-job = "tx-1"
@@ -159,7 +159,7 @@ why = "TX-M0 leads: its own row puts normalization and the IDNA data first, by m
 [[started]]
 track = "ST-M0"
 spec = "reports/Izcal HTML and CSS parsing and style.md"
-claimed = false
+claimed = true
 crates = ["hg-htmlgen", "hg-html-syntax", "hg-html5lib", "hg-cssgen", "hg-css-props", "hg-style-reference", "hg-encoding", "hg-url"]
 generator = "hg-htmlgen"
 oracle-job = "html5lib"
@@ -170,7 +170,7 @@ why = "The .hgtok generator is the artefact the track generates from, on hg-opge
 [[started]]
 track = "LY-M0"
 spec = "reports/Izcal layout.md"
-claimed = false
+claimed = true
 crates = ["hg-layout-num", "hg-box-tree", "hg-layout-reference", "hg-reftest-raster", "hg-wpt-layout", "hg-paint-order"]
 generator = "hg-layout-num"
 oracle-job = "wpt-layout"

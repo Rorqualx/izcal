@@ -8,6 +8,13 @@
 # placed in the tree under its own name). The hash is always of the
 # downloaded bytes, so a pin is checked before anything is unpacked.
 #
+# A tar.gz set may add `paths`, a space-separated list of members to
+# unpack *after* `strip` is applied -- so `paths = "css/CSS2"` on a whole
+# repository tarball leaves only that directory on disk. The hash still
+# covers the whole archive, so the pin means the same thing either way;
+# what `paths` saves is the unpacking and the disk, which for a
+# repository the size of WPT is the difference between 51 MB and 1.5 GB.
+#
 #   tools/fetch-test-data.sh [--check] [NAME ...]
 #
 # NAME is a table of tools/test-data.toml (default: all of them).
@@ -53,6 +60,56 @@ sha256_of() {
   else shasum -a 256 "$1" | awk '{print $1}'; fi
 }
 
+# A content hash of an unpacked tree: every regular file's path and its
+# bytes, in C order, hashed into one value.
+#
+# This exists because a `codeload.github.com` tar.gz is **not** a stable
+# identity for a commit. Measured 13 November 2026, on WPT's archive for
+# 33926aca: 106,514,027 bytes at 16:16 (sha256 4eda43c0...) and
+# 106,513,262 bytes at 17:16 (sha256 3350857a...), both complete, both
+# `gzip -t` clean, one hour apart, the same commit -- and `diff -rq`
+# between the two unpacked css/CSS2 trees found nothing. GitHub had
+# re-generated the archive; the content had not changed.
+#
+# An archive hash alone therefore fails for a reason that has nothing to
+# do with the data, and repinning it proves nothing about what arrived.
+# So a set may declare `tree_sha256`: the identity is then the content,
+# the archive hash becomes a note rather than a gate, and a set without
+# a tree hash keeps the archive hash as its gate, unchanged.
+tree_sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then hasher="sha256sum"
+  else hasher="shasum -a 256"; fi
+  # Three streams, concatenated in a fixed order, then hashed:
+  #
+  #   f <hash> <path>   every regular file, by its bytes
+  #   x <path>          every regular file whose owner-execute bit is set
+  #   l <path> -> <t>   every symbolic link, by its target
+  #
+  # The second and third are there because the first alone would not see
+  # a changed symlink target or a dropped executable bit, and this hash
+  # is the identity the pin rests on. Empty directories are not covered;
+  # no test-data set has one that carries meaning, and `find -type d`
+  # would make every unpack order-dependent on the file system.
+  #
+  # The per-file lines are normalised to `<hash> <path>` with one space,
+  # because GNU coreutils and the BSD/Perl `shasum` separate the two
+  # differently and the pin would otherwise be platform-dependent.
+  # `.izcal-sha256` is excluded: it holds the archive pin, and hashing
+  # it would make the content hash depend on the thing it replaces.
+  # shellcheck disable=SC2086 # hasher is a command and its flags
+  ( cd "$1" && {
+      find . -type f ! -name .izcal-sha256 -print0 \
+        | LC_ALL=C sort -z \
+        | xargs -0 $hasher \
+        | awk '{ h = $1; $1 = ""; sub(/^ +/, ""); print "f " h " " $0 }'
+      find . -type f -perm -u+x ! -name .izcal-sha256 \
+        | LC_ALL=C sort \
+        | sed 's/^/x /'
+      find . -type l -exec sh -c 'for p; do printf "l %s -> %s\n" "$p" "$(readlink "$p")"; done' _ {} + \
+        | LC_ALL=C sort
+    } | $hasher | awk '{print $1}' )
+}
+
 status=0
 mkdir -p "$CACHE/archives"
 for name in "${names[@]}"; do
@@ -60,6 +117,8 @@ for name in "${names[@]}"; do
   # A file published without a revision of its own gives `pin` instead.
   [ -z "$commit" ] && commit=$(field "$name" pin)
   want=$(field "$name" sha256); strip=$(field "$name" strip)
+  want_tree=$(field "$name" tree_sha256)
+  paths=$(field "$name" paths)
   format=$(field "$name" format); format=${format:-tar.gz}
   if [ -z "$commit" ] || [ -z "$url" ] || [ -z "$want" ]; then
     echo "fetch-test-data.sh: [$name] needs commit or pin, url and sha256 in $TOML" >&2; exit 2
@@ -76,29 +135,50 @@ for name in "${names[@]}"; do
   if [ "$CHECK" = 1 ]; then
     if [ ! -f "$archive" ]; then echo "MISSING $name: $archive"; status=1; continue; fi
     got=$(sha256_of "$archive")
-    if [ "$got" != "$want" ]; then echo "BAD     $name: sha256 $got, pinned $want"; status=1; continue; fi
-    if [ ! -f "$tree/.izcal-sha256" ] || [ "$(cat "$tree/.izcal-sha256")" != "$want" ]; then
+    if [ "$got" != "$want" ] && [ -z "$want_tree" ]; then
+      echo "BAD     $name: sha256 $got, pinned $want"; status=1; continue
+    fi
+    if [ -n "$want_tree" ]; then
+      # The content is the identity, so the marker file's archive pin
+      # does not decide: a tree unpacked from a re-compressed archive of
+      # the same commit is the same tree.
+      if [ ! -d "$tree" ]; then
+        echo "MISSING $name: $tree"; status=1; continue
+      fi
+      got_tree=$(tree_sha256_of "$tree")
+      if [ "$got_tree" != "$want_tree" ]; then
+        echo "BAD     $name: tree_sha256 $got_tree, pinned $want_tree"; status=1; continue
+      fi
+    elif [ ! -f "$tree/.izcal-sha256" ] || [ "$(cat "$tree/.izcal-sha256")" != "$want" ]; then
       echo "STALE   $name: $tree is not unpacked from the pinned archive"; status=1; continue
     fi
     echo "OK      $name $commit $tree"
     continue
   fi
 
-  if [ -f "$archive" ] && [ "$(sha256_of "$archive")" = "$want" ]; then
+  if [ -f "$archive" ] && { [ "$(sha256_of "$archive")" = "$want" ] || [ -n "$want_tree" ]; }; then
     echo "cached  $name: $archive"
   else
     echo "fetch   $name: $url"
     curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$archive.part" "$url"
     got=$(sha256_of "$archive.part")
     if [ "$got" != "$want" ]; then
-      rm -f "$archive.part"
-      echo "fetch-test-data.sh: $name: sha256 $got does not match the pin $want" >&2
-      exit 1
+      if [ -n "$want_tree" ]; then
+        # The content is what this set is pinned by; the archive hash is
+        # a note, because GitHub re-compresses archives (above).
+        echo "note    $name: archive sha256 $got, pinned $want; checking tree_sha256"
+      else
+        rm -f "$archive.part"
+        echo "fetch-test-data.sh: $name: sha256 $got does not match the pin $want" >&2
+        exit 1
+      fi
     fi
     mv "$archive.part" "$archive"
   fi
 
-  if [ -f "$tree/.izcal-sha256" ] && [ "$(cat "$tree/.izcal-sha256")" = "$want" ]; then
+  if [ -f "$tree/.izcal-sha256" ] \
+     && { [ "$(cat "$tree/.izcal-sha256")" = "$want" ] \
+          || { [ -n "$want_tree" ] && [ "$(tree_sha256_of "$tree")" = "$want_tree" ]; }; }; then
     echo "OK      $name $commit $tree"
     continue
   fi
@@ -107,7 +187,23 @@ for name in "${names[@]}"; do
   tmp="$tree.unpack.$$"
   rm -rf "$tmp"; mkdir -p "$tmp"
   case "$format" in
-    tar.gz) tar -xzf "$archive" -C "$tmp" --strip-components "${strip:-1}" ;;
+    tar.gz)
+      if [ -n "$paths" ]; then
+        # The members are named under the archive's own top directory,
+        # which `strip` then removes; so the patterns are built from it.
+        # `head -1` closes the pipe, and under `pipefail` a tar that
+        # dies of SIGPIPE on a 1.5 GB listing would abort the script.
+        # bsdtar does not, GNU tar can, so pipefail is turned off for
+        # this one substitution rather than left to the platform.
+        top=$(set +o pipefail; tar -tzf "$archive" | head -1 | cut -d/ -f1)
+        wildcards=""
+        for p in $paths; do wildcards="$wildcards $top/$p"; done
+        # shellcheck disable=SC2086
+        tar -xzf "$archive" -C "$tmp" --strip-components "${strip:-1}" $wildcards
+      else
+        tar -xzf "$archive" -C "$tmp" --strip-components "${strip:-1}"
+      fi
+      ;;
     zip)
       if ! command -v unzip >/dev/null 2>&1; then
         rm -rf "$tmp"
@@ -117,6 +213,20 @@ for name in "${names[@]}"; do
       ;;
     file) cp "$archive" "$tmp/${url##*/}" ;;
   esac
+  if [ -n "$want_tree" ]; then
+    got_tree=$(tree_sha256_of "$tmp")
+    if [ "$got_tree" != "$want_tree" ]; then
+      rm -rf "$tmp"
+      # The cached archive produced a tree that is not the pinned one,
+      # so it is removed: with `tree_sha256` set the archive hash no
+      # longer rejects it, and leaving it would make every later run
+      # fail the same way from the same bytes.
+      rm -f "$archive"
+      echo "fetch-test-data.sh: $name: tree_sha256 $got_tree does not match the pin $want_tree" >&2
+      echo "fetch-test-data.sh: $name: removed $archive; run again to fetch it" >&2
+      exit 1
+    fi
+  fi
   printf '%s\n' "$want" > "$tmp/.izcal-sha256"
   rm -rf "$tree"; mv "$tmp" "$tree"
   echo "OK      $name $commit $tree"

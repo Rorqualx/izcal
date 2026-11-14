@@ -13,7 +13,15 @@ use hg_graph_lint::{Options, Report};
 /// the shipped rule data, not a copy of it.
 fn real_rules() -> String {
     let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/graph-rules.toml");
-    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+    // With one exception: a fixture's workspace is five synthetic
+    // crates, so a real `[[started]]` row that says `claimed = true`
+    // would fail every fixture on clause 1 for tracks the fixture was
+    // never about. The rows are kept (so a malformed one is still
+    // caught here) and only the claim is cleared. The `started` rule's
+    // own tests add a row with `claimed = true` explicitly, which is
+    // what covers the claimed path.
+    text.replace("claimed = true", "claimed = false")
 }
 
 /// `ast-grep` for the code checks, or `None` (and a note on stderr) when

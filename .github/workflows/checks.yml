@@ -261,6 +261,20 @@ jobs:
           cargo test --release --locked -p hg-unicode-build --test it -- --nocapture
           cargo test --release --locked -p hg-unicode --test it
 
+      # TX-M0 asks for "hg-fontc's writers generated for the first
+      # wave's tables". The generated reader and the generated writer
+      # come from one description, so a round-trip agrees with itself
+      # however wrong that description is: the byte tests hold the
+      # writer against field orders and widths transcribed from the
+      # OpenType prose, which is the part a round-trip cannot check.
+      - name: The generated readers and writers are fresh
+        run: cargo run --locked -p hg-fontgen -- check
+
+      - name: TX-D24, every table written is read back by hg-fontfmt
+        run: |
+          cargo test --release --locked -p hg-fontfmt --test it -- --nocapture
+          cargo test --release --locked -p hg-fontc --test it -- --nocapture
+
   # ST-1's tokenizer half (style spec 9.1): the html5lib tokenizer
   # suite, run against both of hg-htmlgen's generated back ends, with
   # the measured pass count held against hg-html5lib::BASELINE so it can
@@ -352,6 +366,40 @@ jobs:
 
       - name: The layout contract and its central diff (LY-D1)
         run: cargo test --release --locked -p hg-layout --test it -- --nocapture
+
+      - name: The box tree (LY-D2)
+        run: cargo test --release --locked -p hg-box-tree --features testing --test it -- --nocapture
+
+      - name: The reference layout engine (LY-D5, G41)
+        run: cargo test --release --locked -p hg-layout-reference --features testing --test it -- --nocapture
+
+      - name: The reftest rasterizer and Appendix E's paint order
+        run: |
+          cargo test --release --locked -p hg-reftest-raster --test it -- --nocapture
+          cargo test --release --locked -p hg-paint-order --test it -- --nocapture
+
+
+  # LY-M0's oracle, in a job of its own so it fails on its own. What it
+  # reports is a reachability table rather than a pass rate: 12,955
+  # files, of which 13 carry machine-readable layout expectations and
+  # the rest need a tree builder, a reference renderer or a human. A
+  # pass rate of zero reported as a result would not be evidence of
+  # anything; the classification can regress, so that is what is held.
+  wpt-layout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch WPT's css/CSS2 suite
+        run: tools/fetch-test-data.sh wpt-css2
+
+      - name: LY-M0, what the suite needs and what we can run
+        run: |
+          cargo run --release --locked -p hg-wpt-layout -- --chapters
+          cargo test --release --locked -p hg-wpt-layout --test it -- --nocapture
 
   # ST-D12 and G20: the reference style engine. It shares no code with
   # the production engine -- its own CSS Syntax 3 tokenizer, its own

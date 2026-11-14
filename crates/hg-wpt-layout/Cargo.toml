@@ -1,0 +1,38 @@
+[package]
+name = "hg-wpt-layout"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's WPT layout runner (tools, tier T, LY-M0): reads the pinned css/CSS2 suite, says what each test needs to run, and records the number this engine can run"
+
+[[bin]]
+name = "hg-wpt-layout"
+path = "src/main.rs"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+# No dependencies: this crate reads files and classifies them, and a
+# dependency on the reference engine would make a file classifier
+# build it.
+
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"
