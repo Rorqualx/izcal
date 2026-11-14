@@ -323,10 +323,12 @@ be settled by this session.
    **answered**: Stage 1 §8.1a defines it in five clauses and CI
    evaluates them (§6.1). What remains is two kinds of open, and only
    one of them is the owner's:
-   - **Work.** GR-M0 has not started.
-     `measurements/milestones/m0-starts/` §2.4 lists what it needs,
-     and that list contains no staffing item for *starting* — though
-     GR-M0's substance waits on LY-M0's review, which waits on D-S8.
+   - **Work: none left for the clause.** All five tracks satisfy all
+     five clauses and all five are claimed, so the clause holds and a
+     regression in any of the twenty-five fails CI.
+     `measurements/milestones/m0-starts/` §4 is the distance from
+     *starting* to each M0's own exit, which is a different thing and
+     a much longer one.
    - **Owner.** Four of the five M0 rows name a human role as a
      precondition of their own *exit* — the type-design leads, a named
      graphics owner, the root-program lead, the security owner — and
