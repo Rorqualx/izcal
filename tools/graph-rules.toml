@@ -192,7 +192,7 @@ why = "GR-M0 is the one M0 whose Needed by is another track's milestone (LY-M0),
 [[started]]
 track = "NW-M0"
 spec = "reports/Izcal networking.md"
-claimed = false
+claimed = true
 crates = ["hg-net-wire", "hg-netsim", "hg-crypto", "hg-crypto-check", "hg-tls"]
 generator = "hg-net-wire"
 oracle-job = "wycheproof"
@@ -248,17 +248,36 @@ crates = ["hg-heap", "hg-js-*"]
 except = ["hg-js-host"]
 why = "G6: the DOM, bindings and script reach the engine only through hg-js-host's handles"
 
-# G7 lists hg-net*, hg-media* and hg-pdf-* as well. Those globs also match
-# crates Stage 1 2.1 places on the renderer side or in pure layers
-# (hg-media, hg-media-host and hg-media-os in L4; hg-net-wire in L2s;
-# hg-net-replay in the replay binary; the L2d PDF parsers), so encoding
-# them would fail the moment those crates exist. They wait for G7 to name
-# the service internals exactly.
+# G7's statement lists `hg-net*`, `hg-media*` and `hg-pdf-*` as globs, and
+# a glob is the wrong shape for it: Stage 1 2.1 and the networking spec's
+# 6.21 put several `hg-net*` crates on the renderer's own side or in pure
+# layers -- `hg-net-wire` and `hg-crypto` in L2s, which renderers link by
+# design (6.2, 6.21), `hg-cookie-parse`, `hg-psl`, `hg-cb-format` and
+# `hg-compress` likewise, and `hg-net-replay` only in the replay binary.
+# Encoding the glob would have failed the moment any of them landed.
+#
+# So the networking half is named exactly, from 6.21's crate table: the
+# L5 service internals and the two broker-side crates. The media and PDF
+# halves are still globs in the prose and wait for their own specs' M0s
+# to name theirs.
 [[forbid]]
 rule = "G7"
 from = ["hg-renderer-main", "hg-renderer-jitless-main"]
-crates = ["hg-storage", "hg-gpu", "hg-audio-service", "hg-capture-service", "hg-device-service", "hg-font-service", "hg-ml-service"]
-why = "G7 (I-2): renderer-side crates reach services only through their generated IPC endpoints"
+crates = [
+  "hg-storage", "hg-gpu", "hg-audio-service", "hg-capture-service",
+  "hg-device-service", "hg-font-service", "hg-ml-service",
+  # Networking's service internals (6.21): the fetch engine and its
+  # connection, I/O and replay layers; the protocol codecs; the
+  # verifier; the cache and cookie stores; content blocking's engine;
+  # and the broker-side and OS-adapter crates.
+  "hg-net", "hg-net-connect", "hg-net-io", "hg-net-replay", "hg-dns",
+  "hg-http1", "hg-http2", "hg-http3", "hg-ws", "hg-quic",
+  "hg-ice", "hg-dtls", "hg-srtp", "hg-sctp", "hg-tls", "hg-pki",
+  "hg-http-cache", "hg-cookies", "hg-content-block", "hg-cb-syntax",
+  "hg-cb-compile", "hg-cb-resources", "hg-nav-protect", "hg-cb-observe",
+  "hg-socket-broker", "hg-os-adapter", "hg-pac-host", "hg-route-wg",
+]
+why = "G7 (I-2): renderer-side crates reach services only through their generated IPC endpoints. The networking internals are named from the networking spec's 6.21 table; hg-net-wire, hg-crypto, hg-cookie-parse, hg-psl, hg-cb-format and hg-compress are L2s and are deliberately absent, because renderers link them."
 
 [[direct-only]]
 rule = "G8"
@@ -320,3 +339,34 @@ rule = "G260"
 from = ["hg-*-main"]
 crates = ["hg-advisory", "hg-sbom", "hg-conformity", "hg-acr"]
 why = "G260: compliance tools never ship"
+
+# --- Networking (NW-M0) G30, G36 --------------------------------------------
+# G31 (one parser per format), G32 (no async, no executor, no std::net) and
+# G33 (every peer-sized allocation through Budget and try_reserve) are
+# ast-grep rules over source rather than graph rules, and arrive with the
+# code they constrain: G31 with hg-net-wire's parsers at NW-M1, G32 and
+# G33 with the first protocol crate. G34 and G35 are the spec's own.
+[[forbid]]
+rule = "G30"
+from = ["hg-tls"]
+crates = [
+  "hg-substrate-os", "hg-substrate-sim",
+  "hg-ipc", "hg-ipc-gen", "hg-ipc-codegen",
+  "hg-net",
+]
+why = "G30 (NW-D1, sans-IO): a protocol crate depends on no substrate implementation, no IPC crate and no hg-net; it takes time and entropy as parameters and returns actions, so the same code runs in the simulator, the fuzzers and replay. The list grows with each protocol crate (hg-http1, hg-quic, hg-dns and the rest at NW-M1)."
+
+# G36: only hg-crypto implements a cryptographic primitive or depends on a
+# cryptography crate. The dependency half has nothing to forbid yet --
+# hg-crypto's own pins.toml records that every pinned crate is still
+# `pinned` and none is in a manifest, and its test cr23 fails if one
+# appears -- so the rule is recorded here and takes a crate list when the
+# first pin lands at NW-M1, with NW-50 as its merge gate (9.1).
+#
+# Note on [q-cs-1] above, revisited before hg-crypto landed as the M1-X1
+# plan required: hg-crypto does **not** join `crypto-implementers`. That
+# list is about the cryptographic-*randomness* trait (CryptoRandom), and
+# hg-crypto consumes randomness rather than producing it -- it holds no
+# implementation of that trait and names it nowhere. Adding a third name
+# to a list whose residual escape is already documented would have
+# widened the hole measured at M1's exit for nothing.

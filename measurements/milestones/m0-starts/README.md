@@ -24,10 +24,10 @@ This document is the evidence for that rule's answer, and it is also
 | **ST-M0** | + | + | + | + | + | **yes** |
 | **LY-M0** | + | + | + | + | + | **yes** |
 | **GR-M0** | − | − | − | − | + | no |
-| **NW-M0** | − | − | − | − | + | no |
+| **NW-M0** | + | + | + | + | + | **yes** |
 
-**Three of the five have started. Clause 4 of M1's exit does not hold
-yet**, and §5 says what the remaining two need.
+**Four of the five have started. Clause 4 of M1's exit does not hold
+yet** — GR-M0 has not — and §5 says what it needs.
 
 Two things are worth stating before the evidence, because they are the
 easiest things to misread in it.
@@ -182,24 +182,49 @@ so.
 
 ### 2.5 NW-M0 — networking
 
-**Not started: 0 of 5.** What it owes:
-
-| # | Owes |
+| # | Evidence |
 |---|---|
-| 1 | `hg-net-wire`, `hg-netsim`, `hg-crypto`, `hg-crypto-check`, `hg-tls`, with `tiers.toml` rows |
-| 2 | `hg-net-wire` with budgets and Kani-proved kernels, on the pattern `hg-ipc`/`hg-ipc-gen` already prove — added to **both** `tools/kani.sh`'s `KANI_PACKAGES` and the `kani:` matrix in CI, which the `kanipkgs` gate compares |
-| 3 | a `wycheproof` job on pinned vectors, with ACVP where vectors exist |
-| 4 | `research_notes/NW-M0 design review/README.md`, of every state machine's interface and the partition key type |
+| 1 | `hg-net-wire`, `hg-netsim`, `hg-crypto`, `hg-crypto-check`, `hg-tls`, each with a `tiers.toml` row. `hg-net-wire` and `hg-crypto` are L2s, tier P, because renderers link them. |
+| 2 | **`hg-net-wire`**: the budget every state machine is charged against, the eleven named limits (NW-15), and four checked kernels — QUIC varints, packet numbers, ACK ranges and flow control — each proved total by Kani for every input (G33). Added to **both** `tools/kani.sh`'s `KANI_PACKAGES` and the `kani:` matrix, which the `kanipkgs` gate compares. |
+| 3 | job **`wycheproof`**, on the Wycheproof vectors pinned at `65ca4947`, with `net-contract` beside it |
+| 4 | `research_notes/NW-M0 design review/README.md` — thirteen state-machine interfaces, the partition key type as the central item, and §5's block |
 | 5 | §3 below |
 
-NW-M0 is independent of the other four and has about twelve months of
-float, so it blocks nothing. One thing has to happen **before**
-`hg-crypto` lands rather than after: `[q-cs-1] crypto-implementers` and
-the four crypto rules in `crates/hg-graph-lint/src/code.rs` were
-written for two legitimate implementers, and `hg-crypto` is a third.
-The residual escape (a macro defined in another crate) is already
-documented; adding a third name to that list without revisiting it
-would widen the hole that `m1-exit` §1.3 measured.
+**What the oracle reported:**
+
+```
+HMACSHA256:    174/174 pass, 0 acceptable
+HKDF-SHA-256:   86/86  pass, 0 acceptable
+```
+
+over 359 files, 113 algorithms and 145,424 cases, with the other 111
+algorithms **classified rather than counted as failures** — the same
+shape as `wpt-layout`, and for the same reason. `hg-crypto` implements
+three primitives (SHA-256, HMAC, HKDF), each written from its
+published standard, and `pins.toml` resolves the other ten with the
+licence each will ship under.
+
+Beside it, NW-50's timing test, which is a **gate before the code it
+gates** (§9.1: secret-dependent code merges only once this passes).
+What it asserts is the plant: measured here, a planted
+short-circuiting comparison comes out at ratio **1,539.6** and
+`ct::eq` at **0.0**, against a threshold of 0.25. A timing test that
+could not find a short-circuit would have passed over `hg-crypto` for
+the rest of the project.
+
+And `hg-tls`'s transition table: 9 states against 9 messages is 81
+pairs, of which **10 are transitions and 71 are alerts**, every one
+checked. A state machine written as `if` chains is one where the
+alerts are the lines somebody has to remember.
+
+**The Q-CS-1 question the plan raised, answered by measurement.** The
+plan required `[q-cs-1] crypto-implementers` and the four crypto rules
+in `hg-graph-lint` to be revisited *before* `hg-crypto` landed, on the
+reading that it would be a third legitimate implementer. It is not:
+that list is about the cryptographic-**randomness** trait, and
+`hg-crypto` consumes randomness rather than producing it — it holds no
+implementation of `CryptoRandom` and names it nowhere. The list is
+unchanged, and the hole `m1-exit` §1.3 measured is not widened.
 
 The network process skeleton exists today (`crates/hg-net-service`),
 and its own doc says what it is: "Sockets, DNS and the protocol stack
@@ -231,7 +256,9 @@ direction; no row is a two-way "coordinate with".
 | **LY** | **GR**, DevTools, the GPU service | the fragment store's read API; `hg-types`' geometry | G38 |
 | **GR** | **LY** | the paint budget's other half | GR-D23's 160 B†, provisional |
 | **GR** | **LY** | `hg-paint-order`'s contract, **co-signed** | GR-M0's row; blocked, §4 |
-| **NW** | — | nothing: NW-M0 has no cross-track agreement to negotiate | the M1-X1 plan's ordering |
+| **NW** | **ST**, **TX**, **GR** | the partition key type, and its `(T, C, X, n)` projection | NW §6.8; P18 — one type, projected in one place |
+| **ST** | **NW** | `hg-url`, the browser's one URL parser | NW §6.2, G31 — built, 904/904 |
+| **JS** | **NW** | a jitless engine with no DOM, for PAC | NW §6.13, IPC-R10; JS-M1 |
 
 ### 3.2 Out to tracks that are not M0s
 
@@ -295,25 +322,37 @@ or its review agenda, and none is satisfied by anything in §2.
 | `hg-paint-order`'s contract | **D-S8** — a named graphics owner, "who must exist before this review" |
 | Q-LY-1, Q-LY-2, Q-LY-3, Q-LY-4, Q-LY-6, Q-LY-15 | nothing — black-box measurements |
 
-### GR-M0 and NW-M0
+### NW-M0
 
-Everything in §2.4 and §2.5. GR-M0's substance additionally waits on
-LY-M0's review.
+| Owes | Blocked by |
+|---|---|
+| Twelve more state-machine interfaces fixed, against `hg-tls`'s table as the worked example | nothing — the review |
+| The partition key type, agreed with ST, TX and GR | three counterpart tracks |
+| The ACVP runner | the first primitive it covers; its vector sets cover none that exist |
+| NW-50's **binary taint check**, per ISA | nothing — work; the timing half is built |
+| Q-NW-1, Q-NW-2, Q-NW-9, Q-NW-12, Q-NW-13, and the Linux GRO measurement | three need a machine, not a person |
+| The root program's charter and its lead | **D-S8** — but NW-D24's trigger already covers the gap: a release before NW-53 passes ships on the OS trust stores and says so |
+
+### GR-M0
+
+Everything in §2.4. GR-M0's substance additionally waits on LY-M0's
+review, which waits on D-S8.
 
 ---
 
 ## 5. What this document does not show
 
 - **It does not show that M1 exits.** Clause 4 needs all five tracks,
-  and two have not started. §2.4 and §2.5 are what they need.
+  and GR-M0 has not started. §2.4 is what it needs.
 - **It does not show that any M0 exits.** §4 is the distance, and four
   of the five tracks have at least one item in it that no amount of
   work closes.
-- **It does not show that the oracles are strict enough.** Three of the
-  four numbers in §2 are below the ship-blocking threshold the specs
-  set: ST-1 wants 100% and has 99.8%; TX-1 wants nine files and has
-  two; `wpt-layout` has no pass rate at all. Each is recorded as a
-  number that can only go up, which is what makes the gap visible
+- **It does not show that the oracles are strict enough.** Three of
+  the numbers in §2 are below the ship-blocking threshold the specs
+  set: ST-1 wants 100% and has 99.8%; TX-1 wants nine conformance
+  files and runs two; `wpt-layout` has no pass rate at all. A fourth,
+  Wycheproof, is 100% — of two algorithms out of 113. Each is recorded
+  as a number that can only go up, which is what makes the gap visible
   rather than what closes it.
 - **It does not replace the M0 waiver.** FI-D1 requires M0's own start
   conditions — D-S8 funding, M1–M2 staffing — to be "formally waived or

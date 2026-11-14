@@ -18,6 +18,7 @@ const fn purpose_tag(p: EntropyPurpose) -> u64 {
         EntropyPurpose::Random => 1,
         EntropyPurpose::HashKey => 2,
         EntropyPurpose::Scheduling => 3,
+        EntropyPurpose::Network => 4,
     }
 }
 

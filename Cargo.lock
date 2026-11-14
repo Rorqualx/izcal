@@ -37,6 +37,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-crypto"
+version = "0.0.0"
+
+[[package]]
+name = "hg-crypto-check"
+version = "0.0.0"
+dependencies = [
+ "hg-crypto",
+ "hg-json",
+]
+
+[[package]]
 name = "hg-css-props"
 version = "0.0.0"
 
@@ -274,6 +286,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-net-wire"
+version = "0.0.0"
+
+[[package]]
+name = "hg-netsim"
+version = "0.0.0"
+dependencies = [
+ "hg-substrate",
+ "hg-types",
+]
+
+[[package]]
 name = "hg-opgen"
 version = "0.0.0"
 
@@ -357,6 +381,10 @@ dependencies = [
 
 [[package]]
 name = "hg-test262"
+version = "0.0.0"
+
+[[package]]
+name = "hg-tls"
 version = "0.0.0"
 
 [[package]]

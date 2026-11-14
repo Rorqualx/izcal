@@ -59,6 +59,31 @@ tier = "T"
 layer = "tools"
 why = "6.2 names hg-ipc-codegen in tier T; Stage 1 2.1: tools"
 
+[crates.hg-crypto]
+tier = "P"
+layer = "L2s"
+why = "Networking 6.21 crate table: L2s, tier P. The one place cryptography is implemented (G36, NW-D23), in the shared sub-layer so that update verification, trust-data verification, TLS and the WebCrypto spec's primitives link one copy. At NW-M0 it holds the interfaces, the secret types with expose_bytes, the constant-time helpers, the pins record, and SHA-256, HMAC and HKDF written from the published standards; the rest of pins.toml is NW-M1's and gated by NW-50."
+
+[crates.hg-crypto-check]
+tier = "T"
+layer = "tools"
+why = "Networking 6.21 crate table: tools, tier T. The checks a functional test cannot make -- the Wycheproof runner and the statistical timing test with its planted leak. 9.1 makes it a merge gate for secret-dependent code (G36, NW-50), so it exists before the code it gates."
+
+[crates.hg-net-wire]
+tier = "P"
+layer = "L2s"
+why = "Networking 6.21 crate table: L2s, tier P. The budget every state machine is charged against, the named limits (NW-15), and the checked kernels Kani proves total. Tier P and L2s because renderers link it too (6.2: MIME sniffing and the header parsers), so a panic here is a renderer's panic."
+
+[crates.hg-netsim]
+tier = "T"
+layer = "tools"
+why = "Networking 6.21 crate table: tools, tier T, linked by the simulation binary only (Q-CS-1). Links with delay, jitter, loss, reordering and an MTU, and a stub resolver's peer, every draw from one seeded stream so a run is a function of its seed."
+
+[crates.hg-tls]
+tier = "P"
+layer = "L5"
+why = "Networking 6.21 crate table: L5, tier P. At NW-M0 it holds the client handshake transition table only (its 9.2 row); the key schedule, extensions, framings, ECH, the resumption store and the ClientHello shape are NW-M1's. G30 applies: sans-IO, no substrate, no IPC crate, time and entropy as parameters."
+
 [crates.hg-dst]
 tier = "T"
 layer = "tools"

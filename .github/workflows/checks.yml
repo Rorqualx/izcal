@@ -401,6 +401,63 @@ jobs:
           cargo run --release --locked -p hg-wpt-layout -- --chapters
           cargo test --release --locked -p hg-wpt-layout --test it -- --nocapture
 
+  # NW-M0's oracle, and the gate 9.1 puts in front of every piece of
+  # secret-dependent code (G36, NW-50).
+  #
+  # The vector run is the oracle proper: every Wycheproof case for the
+  # primitives hg-crypto has, with the rest of the set classified rather
+  # than counted as failures. The timing test is the gate's first half,
+  # and what it asserts is the **plant**: a measurement that cannot find
+  # a short-circuiting comparison would pass over hg-crypto for the rest
+  # of the project and prove nothing. Its twin -- ct::eq measured the
+  # same way -- is checked not to look data-dependent.
+  wycheproof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch the pinned Wycheproof vectors
+        run: tools/fetch-test-data.sh wycheproof
+
+      - name: NW-M0, Wycheproof over what hg-crypto implements
+        env:
+          IZCAL_REQUIRE_CRYPTO_DATA: "1"
+        run: |
+          cargo run --release --locked -p hg-crypto-check -- wycheproof
+          cargo test --release --locked -p hg-crypto-check --test it -- --nocapture
+
+      - name: The published vectors hg-crypto carries itself
+        run: cargo test --release --locked -p hg-crypto --test it -- --nocapture
+
+      - name: hg-crypto's pins, resolved and licence-checked
+        run: cargo test --release --locked -p hg-crypto-check --test it -- pins --nocapture
+
+      - name: NW-50's timing test, and the leak it must find
+        run: cargo run --release --locked -p hg-crypto-check -- timing
+
+  # NW-M0's contract crates: the budget and the kernels every protocol
+  # state machine is built on, the simulated links and resolver they are
+  # tested against, and the TLS client's transition table.
+  net-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: NW-15, every limit at the limit and one past it
+        run: cargo test --release --locked -p hg-net-wire --test it -- --nocapture
+
+      - name: The simulation is a function of its seed
+        run: cargo test --release --locked -p hg-netsim --test it -- --nocapture
+
+      - name: Every pair the TLS table does not name is an alert
+        run: cargo test --release --locked -p hg-tls --test it -- --nocapture
+
   # ST-D12 and G20: the reference style engine. It shares no code with
   # the production engine -- its own CSS Syntax 3 tokenizer, its own
   # Selectors 3 matcher, its own cascade -- which is what makes ST-4
@@ -576,6 +633,7 @@ jobs:
           - hg-substrate-os
           - hg-heap
           - hg-fontfmt
+          - hg-net-wire
     name: kani (${{ matrix.pkg }})
     # The largest package measured about 65 min of the 141 above, and the
     # set grows by phase, so this leaves room without the old 360.

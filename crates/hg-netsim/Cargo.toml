@@ -1,0 +1,47 @@
+[package]
+name = "hg-netsim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's network simulation (tier T, networking spec 6.21, NW-M0): links with delay, loss, reordering and an MTU, and a stub-resolver peer, all deterministic from one seeded stream"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[dependencies]
+hg-substrate = { path = "../hg-substrate" }
+hg-types = { path = "../hg-types" }
+
+# Tier T: the base table (coding standard A.1) with A.2's tier T changes.
+# unsafe_code is forbid, not deny: the crate is not in the inventory (G5).
+#
+# The arithmetic denies are kept: a simulated clock that wraps produces
+# a run that is wrong in a way no assertion catches, because the
+# simulation is the thing the assertions are written against.
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+arithmetic_side_effects = "deny"
+indexing_slicing = "deny"
+as_conversions = "deny"
+cast_possible_truncation = "deny"
+wildcard_enum_match_arm = "deny"
+panic = "deny"
+unreachable = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"
