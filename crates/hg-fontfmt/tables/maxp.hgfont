@@ -1,0 +1,28 @@
+# maxp, from OpenType 1.9.1, "maxp - Maximum Profile".
+#
+# Two versions, described apart: 0.5 is the whole table for a CFF font,
+# and 1.0 adds the TrueType limits. A reader picks by the version field,
+# which both begin with.
+
+table MaxpHalf @ "otspec/maxp#version-05" {
+  version    fixed @ "otspec/maxp#version"
+  num_glyphs u16   @ "otspec/maxp#numGlyphs"
+}
+
+table MaxpOne @ "otspec/maxp#version-10" {
+  version                 fixed @ "otspec/maxp#version"
+  num_glyphs              u16   @ "otspec/maxp#numGlyphs"
+  max_points              u16   @ "otspec/maxp#maxPoints"
+  max_contours            u16   @ "otspec/maxp#maxContours"
+  max_composite_points    u16   @ "otspec/maxp#maxCompositePoints"
+  max_composite_contours  u16   @ "otspec/maxp#maxCompositeContours"
+  max_zones               u16   @ "otspec/maxp#maxZones"
+  max_twilight_points     u16   @ "otspec/maxp#maxTwilightPoints"
+  max_storage             u16   @ "otspec/maxp#maxStorage"
+  max_function_defs       u16   @ "otspec/maxp#maxFunctionDefs"
+  max_instruction_defs    u16   @ "otspec/maxp#maxInstructionDefs"
+  max_stack_elements      u16   @ "otspec/maxp#maxStackElements"
+  max_size_of_instructions u16  @ "otspec/maxp#maxSizeOfInstructions"
+  max_component_elements  u16   @ "otspec/maxp#maxComponentElements"
+  max_component_depth     u16   @ "otspec/maxp#maxComponentDepth"
+}

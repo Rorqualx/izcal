@@ -53,6 +53,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-fontfmt"
+version = "0.0.0"
+
+[[package]]
+name = "hg-fontgen"
+version = "0.0.0"
+
+[[package]]
 name = "hg-graph-lint"
 version = "0.0.0"
 

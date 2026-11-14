@@ -344,6 +344,7 @@ jobs:
           - hg-launch-plan
           - hg-substrate-os
           - hg-heap
+          - hg-fontfmt
     name: kani (${{ matrix.pkg }})
     # The largest package measured about 65 min of the 141 above, and the
     # set grows by phase, so this leaves room without the old 360.

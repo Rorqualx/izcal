@@ -1,0 +1,53 @@
+# cmap, from OpenType 1.9.1, "cmap - Character to Glyph Index Mapping
+# Table". The header and the two subtable formats a web engine needs:
+# format 4 for the Basic Multilingual Plane and format 12 for the full
+# range.
+
+record EncodingRecord @ "otspec/cmap#encoding-records-and-encodings" {
+  platform_id u16      @ "otspec/cmap#platformID"
+  encoding_id u16      @ "otspec/cmap#encodingID"
+  subtable_offset offset32 @ "otspec/cmap#subtableOffset"
+}
+
+table Cmap @ "otspec/cmap" {
+  version    u16 @ "otspec/cmap#version"
+  num_tables u16 @ "otspec/cmap#numTables"
+  encoding_records [num_tables] EncodingRecord @ "otspec/cmap#encodingRecords"
+}
+
+# Format 4. The four parallel arrays each hold segCountX2 / 2 entries,
+# and the glyph array fills whatever the declared length leaves: the
+# fixed part is 16 bytes and the four arrays are 8 bytes a segment, so
+# the remainder is (length - 16 - 4 * segCountX2) / 2 entries. There is
+# one extra u16 of padding between endCode and startCode, described
+# below as reserved_pad.
+table CmapFormat4 @ "otspec/cmap#format-4-segment-mapping-to-delta-values" {
+  format          u16 @ "otspec/cmap#format"
+  length          u16 @ "otspec/cmap#length"
+  language        u16 @ "otspec/cmap#language"
+  seg_count_x2    u16 @ "otspec/cmap#segCountX2"
+  search_range    u16 @ "otspec/cmap#searchRange"
+  entry_selector  u16 @ "otspec/cmap#entrySelector"
+  range_shift     u16 @ "otspec/cmap#rangeShift"
+  end_code        [seg_count_x2 / 2] u16 @ "otspec/cmap#endCode"
+  reserved_pad    u16 @ "otspec/cmap#reservedPad"
+  start_code      [seg_count_x2 / 2] u16 @ "otspec/cmap#startCode"
+  id_delta        [seg_count_x2 / 2] i16 @ "otspec/cmap#idDelta"
+  id_range_offsets [seg_count_x2 / 2] u16 @ "otspec/cmap#idRangeOffsets"
+  glyph_id_array  [length - 16 - seg_count_x2 - seg_count_x2 - seg_count_x2 - seg_count_x2 / 2] u16 @ "otspec/cmap#glyphIdArray"
+}
+
+record SequentialMapGroup @ "otspec/cmap#format-12-segmented-coverage" {
+  start_char_code u32 @ "otspec/cmap#startCharCode"
+  end_char_code   u32 @ "otspec/cmap#endCharCode"
+  start_glyph_id  u32 @ "otspec/cmap#startGlyphID"
+}
+
+table CmapFormat12 @ "otspec/cmap#format-12-segmented-coverage" {
+  format    u16 @ "otspec/cmap#format"
+  reserved  u16 @ "otspec/cmap#reserved"
+  length    u32 @ "otspec/cmap#length"
+  language  u32 @ "otspec/cmap#language"
+  num_groups u32 @ "otspec/cmap#numGroups"
+  groups    [num_groups] SequentialMapGroup @ "otspec/cmap#groups"
+}

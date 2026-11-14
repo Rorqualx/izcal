@@ -1,0 +1,12 @@
+# loca, from OpenType 1.9.1, "loca - Index to Location".
+#
+# Two forms, chosen by head's indexToLocFormat. Both hold numGlyphs + 1
+# entries, so the last glyph's end is known.
+
+table LocaShort(num_glyphs: u16) @ "otspec/loca#short-version" {
+  offsets [num_glyphs + 1] u16 @ "otspec/loca#offsets"
+}
+
+table LocaLong(num_glyphs: u16) @ "otspec/loca#long-version" {
+  offsets [num_glyphs + 1] u32 @ "otspec/loca#offsets"
+}
