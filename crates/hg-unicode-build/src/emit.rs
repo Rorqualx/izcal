@@ -208,6 +208,95 @@ pub fn tables(u: &Ucd) -> String {
     for n in STATUSES {
         let _ = writeln!(out, "    \"{n}\",");
     }
+    out.push_str("];\n\n");
+
+    // The three properties UTS #46's validity criteria are written in,
+    // beyond the mapping table itself: whether a code point is a mark,
+    // its Bidi_Class and its Joining_Type. Each is a sorted list of
+    // inclusive ranges, searched the way every other table here is.
+    let _ = writeln!(
+        out,
+        "/// The code points whose `General_Category` is `Mn`, `Mc` or\n\
+         /// `Me`, as inclusive ranges. UTS #46: \"the label must not\n\
+         /// begin with a combining mark\".\n\
+         pub static MARKS: &[(u32, u32)] = &["
+    );
+    for (a, b) in &u.marks {
+        let _ = writeln!(out, "    (0x{a:04X}, 0x{b:04X}),");
+    }
+    out.push_str("];\n\n");
+
+    out.push_str(
+        "/// A `Bidi_Class`, as far as RFC 5893 distinguishes them. Its\n\
+         /// six conditions name eleven classes and nothing else, so\n\
+         /// everything else is [`BidiClass::Other`]: a label holding one\n\
+         /// fails the conditions whatever it is.\n\
+         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\n\
+         pub enum BidiClass {\n",
+    );
+    for v in [
+        ("L", "Left-to-right."),
+        ("R", "Right-to-left."),
+        ("Al", "Right-to-left Arabic."),
+        ("An", "Arabic number."),
+        ("En", "European number."),
+        ("Es", "European separator."),
+        ("Cs", "Common separator."),
+        ("Et", "European terminator."),
+        ("On", "Other neutral."),
+        ("Bn", "Boundary neutral."),
+        ("Nsm", "Non-spacing mark."),
+        ("Other", "Anything RFC 5893 does not name."),
+    ] {
+        let _ = writeln!(out, "    /// {}\n    {},", v.1, v.0);
+    }
+    out.push_str("}\n\n");
+    let _ = writeln!(
+        out,
+        "/// Every code point whose `Bidi_Class` is not `L`, as inclusive\n\
+         /// ranges. `L` is the commonest and is the value a lookup that\n\
+         /// finds nothing returns, so leaving it out halves the table.\n\
+         pub static BIDI: &[(u32, u32, BidiClass)] = &["
+    );
+    for (a, b, c) in &u.bidi {
+        let _ = writeln!(
+            out,
+            "    (0x{a:04X}, 0x{b:04X}, BidiClass::{}),",
+            c.variant()
+        );
+    }
+    out.push_str("];\n\n");
+
+    out.push_str(
+        "/// A `Joining_Type`, which RFC 5892's ContextJ rule for ZWNJ is\n\
+         /// written in.\n\
+         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\n\
+         pub enum JoiningType {\n",
+    );
+    for v in [
+        ("C", "Join causing."),
+        ("D", "Dual joining."),
+        ("R", "Right joining."),
+        ("L", "Left joining."),
+        ("T", "Transparent."),
+        ("U", "Non joining, the default."),
+    ] {
+        let _ = writeln!(out, "    /// {}\n    {},", v.1, v.0);
+    }
+    out.push_str("}\n\n");
+    let _ = writeln!(
+        out,
+        "/// Every code point whose `Joining_Type` is not `U`, as\n\
+         /// inclusive ranges.\n\
+         pub static JOINING: &[(u32, u32, JoiningType)] = &["
+    );
+    for (a, b, t) in &u.joining {
+        let _ = writeln!(
+            out,
+            "    (0x{a:04X}, 0x{b:04X}, JoiningType::{}),",
+            t.variant()
+        );
+    }
     out.push_str("];\n");
 
     out

@@ -1,0 +1,163 @@
+# The end-tag machinery of RCDATA, RAWTEXT and script data, and the
+# script escape states. HTML Standard §13.2.5.9 to §13.2.5.31.
+#
+# The three end-tag-name states are the same shape with a different
+# fallback state, because the prose writes them three times; each keeps
+# its own anchors, so the generated code can be read beside its clause.
+
+state rcdata_less_than_sign @ "html/parsing#rcdata-less-than-sign-state" {
+  '/' => clear_temp, switch rcdata_end_tag_open
+  _   => emit_char '<', reconsume rcdata
+}
+
+state rcdata_end_tag_open @ "html/parsing#rcdata-end-tag-open-state" {
+  ascii_alpha => create_end_tag, reconsume rcdata_end_tag_name
+  _           => emit_char '<', emit_char '/', reconsume rcdata
+}
+
+state rcdata_end_tag_name @ "html/parsing#rcdata-end-tag-name-state" {
+  whitespace  => if appropriate { switch before_attribute_name } else { emit_char '<', emit_char '/', emit_temp, reconsume rcdata }
+  '/'         => if appropriate { switch self_closing_start_tag } else { emit_char '<', emit_char '/', emit_temp, reconsume rcdata }
+  '>'         => if appropriate { switch data, emit_token } else { emit_char '<', emit_char '/', emit_temp, reconsume rcdata }
+  ascii_upper => append_lower tag_name, append temp
+  ascii_lower => append tag_name, append temp
+  _           => emit_char '<', emit_char '/', emit_temp, reconsume rcdata
+}
+
+state rawtext_less_than_sign @ "html/parsing#rawtext-less-than-sign-state" {
+  '/' => clear_temp, switch rawtext_end_tag_open
+  _   => emit_char '<', reconsume rawtext
+}
+
+state rawtext_end_tag_open @ "html/parsing#rawtext-end-tag-open-state" {
+  ascii_alpha => create_end_tag, reconsume rawtext_end_tag_name
+  _           => emit_char '<', emit_char '/', reconsume rawtext
+}
+
+state rawtext_end_tag_name @ "html/parsing#rawtext-end-tag-name-state" {
+  whitespace  => if appropriate { switch before_attribute_name } else { emit_char '<', emit_char '/', emit_temp, reconsume rawtext }
+  '/'         => if appropriate { switch self_closing_start_tag } else { emit_char '<', emit_char '/', emit_temp, reconsume rawtext }
+  '>'         => if appropriate { switch data, emit_token } else { emit_char '<', emit_char '/', emit_temp, reconsume rawtext }
+  ascii_upper => append_lower tag_name, append temp
+  ascii_lower => append tag_name, append temp
+  _           => emit_char '<', emit_char '/', emit_temp, reconsume rawtext
+}
+
+state script_data_less_than_sign @ "html/parsing#script-data-less-than-sign-state" {
+  '/' => clear_temp, switch script_data_end_tag_open
+  '!' => emit_char '<', emit_char '!', switch script_data_escape_start
+  _   => emit_char '<', reconsume script_data
+}
+
+state script_data_end_tag_open @ "html/parsing#script-data-end-tag-open-state" {
+  ascii_alpha => create_end_tag, reconsume script_data_end_tag_name
+  _           => emit_char '<', emit_char '/', reconsume script_data
+}
+
+state script_data_end_tag_name @ "html/parsing#script-data-end-tag-name-state" {
+  whitespace  => if appropriate { switch before_attribute_name } else { emit_char '<', emit_char '/', emit_temp, reconsume script_data }
+  '/'         => if appropriate { switch self_closing_start_tag } else { emit_char '<', emit_char '/', emit_temp, reconsume script_data }
+  '>'         => if appropriate { switch data, emit_token } else { emit_char '<', emit_char '/', emit_temp, reconsume script_data }
+  ascii_upper => append_lower tag_name, append temp
+  ascii_lower => append tag_name, append temp
+  _           => emit_char '<', emit_char '/', emit_temp, reconsume script_data
+}
+
+state script_data_escape_start @ "html/parsing#script-data-escape-start-state" {
+  '-' => emit_char '-', switch script_data_escape_start_dash
+  _   => reconsume script_data
+}
+
+state script_data_escape_start_dash @ "html/parsing#script-data-escape-start-dash-state" {
+  '-' => emit_char '-', switch script_data_escaped_dash_dash
+  _   => reconsume script_data
+}
+
+state script_data_escaped @ "html/parsing#script-data-escaped-state" {
+  '-'  => emit_char '-', switch script_data_escaped_dash
+  '<'  => switch script_data_escaped_less_than_sign
+  null => error unexpected-null-character, emit_char '\u{FFFD}'
+  eof  => error eof-in-script-html-comment-like-text, emit_eof
+  _    => emit_current
+}
+
+state script_data_escaped_dash @ "html/parsing#script-data-escaped-dash-state" {
+  '-'  => emit_char '-', switch script_data_escaped_dash_dash
+  '<'  => switch script_data_escaped_less_than_sign
+  null => error unexpected-null-character, switch script_data_escaped, emit_char '\u{FFFD}'
+  eof  => error eof-in-script-html-comment-like-text, emit_eof
+  _    => switch script_data_escaped, emit_current
+}
+
+state script_data_escaped_dash_dash @ "html/parsing#script-data-escaped-dash-dash-state" {
+  '-'  => emit_char '-'
+  '<'  => switch script_data_escaped_less_than_sign
+  '>'  => switch script_data, emit_char '>'
+  null => error unexpected-null-character, switch script_data_escaped, emit_char '\u{FFFD}'
+  eof  => error eof-in-script-html-comment-like-text, emit_eof
+  _    => switch script_data_escaped, emit_current
+}
+
+state script_data_escaped_less_than_sign @ "html/parsing#script-data-escaped-less-than-sign-state" {
+  '/'         => clear_temp, switch script_data_escaped_end_tag_open
+  ascii_alpha => clear_temp, emit_char '<', reconsume script_data_double_escape_start
+  _           => emit_char '<', reconsume script_data_escaped
+}
+
+state script_data_escaped_end_tag_open @ "html/parsing#script-data-escaped-end-tag-open-state" {
+  ascii_alpha => create_end_tag, reconsume script_data_escaped_end_tag_name
+  _           => emit_char '<', emit_char '/', reconsume script_data_escaped
+}
+
+state script_data_escaped_end_tag_name @ "html/parsing#script-data-escaped-end-tag-name-state" {
+  whitespace  => if appropriate { switch before_attribute_name } else { emit_char '<', emit_char '/', emit_temp, reconsume script_data_escaped }
+  '/'         => if appropriate { switch self_closing_start_tag } else { emit_char '<', emit_char '/', emit_temp, reconsume script_data_escaped }
+  '>'         => if appropriate { switch data, emit_token } else { emit_char '<', emit_char '/', emit_temp, reconsume script_data_escaped }
+  ascii_upper => append_lower tag_name, append temp
+  ascii_lower => append tag_name, append temp
+  _           => emit_char '<', emit_char '/', emit_temp, reconsume script_data_escaped
+}
+
+state script_data_double_escape_start @ "html/parsing#script-data-double-escape-start-state" {
+  whitespace | '/' | '>' => if temp_is_script { switch script_data_double_escaped } else { switch script_data_escaped }, emit_current
+  ascii_upper            => append_lower temp, emit_current
+  ascii_lower            => append temp, emit_current
+  _                      => reconsume script_data_escaped
+}
+
+state script_data_double_escaped @ "html/parsing#script-data-double-escaped-state" {
+  '-'  => emit_char '-', switch script_data_double_escaped_dash
+  '<'  => emit_char '<', switch script_data_double_escaped_less_than_sign
+  null => error unexpected-null-character, emit_char '\u{FFFD}'
+  eof  => error eof-in-script-html-comment-like-text, emit_eof
+  _    => emit_current
+}
+
+state script_data_double_escaped_dash @ "html/parsing#script-data-double-escaped-dash-state" {
+  '-'  => emit_char '-', switch script_data_double_escaped_dash_dash
+  '<'  => emit_char '<', switch script_data_double_escaped_less_than_sign
+  null => error unexpected-null-character, switch script_data_double_escaped, emit_char '\u{FFFD}'
+  eof  => error eof-in-script-html-comment-like-text, emit_eof
+  _    => switch script_data_double_escaped, emit_current
+}
+
+state script_data_double_escaped_dash_dash @ "html/parsing#script-data-double-escaped-dash-dash-state" {
+  '-'  => emit_char '-'
+  '<'  => emit_char '<', switch script_data_double_escaped_less_than_sign
+  '>'  => emit_char '>', switch script_data
+  null => error unexpected-null-character, switch script_data_double_escaped, emit_char '\u{FFFD}'
+  eof  => error eof-in-script-html-comment-like-text, emit_eof
+  _    => switch script_data_double_escaped, emit_current
+}
+
+state script_data_double_escaped_less_than_sign @ "html/parsing#script-data-double-escaped-less-than-sign-state" {
+  '/' => clear_temp, emit_char '/', switch script_data_double_escape_end
+  _   => reconsume script_data_double_escaped
+}
+
+state script_data_double_escape_end @ "html/parsing#script-data-double-escape-end-state" {
+  whitespace | '/' | '>' => if temp_is_script { switch script_data_escaped } else { switch script_data_double_escaped }, emit_current
+  ascii_upper            => append_lower temp, emit_current
+  ascii_lower            => append temp, emit_current
+  _                      => reconsume script_data_double_escaped
+}

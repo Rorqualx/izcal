@@ -9,6 +9,7 @@
 
 #[cfg(test)]
 mod conformance;
+mod idna;
 
 use std::path::{Path, PathBuf};
 

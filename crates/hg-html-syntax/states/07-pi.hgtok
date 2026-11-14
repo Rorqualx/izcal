@@ -1,0 +1,37 @@
+# Processing instructions. HTML Standard §13.2.5.72 to §13.2.5.76.
+#
+# Newer than the rest: `<?` used to open a bogus comment, and now opens
+# a target. A bad target still becomes one — "convert the temporary
+# buffer to a comment" makes a comment whose data is `?` followed by
+# what was read — so nothing here can lose input.
+
+state processing_instruction_open @ "html/parsing#processing-instruction-open-state" {
+  ascii_alpha | '_' => reconsume processing_instruction_target
+  eof               => error eof-in-processing-instruction, emit_eof
+  _                 => error invalid-first-character-of-processing-instruction-target, temp_to_comment, reconsume bogus_comment
+}
+
+state processing_instruction_target @ "html/parsing#processing-instruction-target-state" {
+  whitespace | '?' | '>'  => if disallowed_pi_target { error disallowed-processing-instruction-target, temp_to_comment, reconsume bogus_comment } else { create_pi, reconsume after_processing_instruction_target }
+  ascii_alnum | '-' | '_' => append temp
+  eof                     => error eof-in-processing-instruction, emit_eof
+  _                       => error invalid-processing-instruction-target, temp_to_comment, reconsume bogus_comment
+}
+
+state after_processing_instruction_target @ "html/parsing#after-processing-instruction-target-state" {
+  whitespace => ignore
+  _          => reconsume processing_instruction_data
+}
+
+state processing_instruction_data @ "html/parsing#processing-instruction-data-state" {
+  '?' => switch processing_instruction_questionable
+  '>' => switch data, emit_token
+  eof => error eof-in-processing-instruction, emit_eof
+  _   => append pi_data
+}
+
+state processing_instruction_questionable @ "html/parsing#processing-instruction-questionable-state" {
+  '>' => switch data, emit_token
+  eof => error eof-in-processing-instruction, emit_eof
+  _   => append_char pi_data '?', reconsume processing_instruction_data
+}

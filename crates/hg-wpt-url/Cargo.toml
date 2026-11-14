@@ -1,0 +1,43 @@
+[package]
+name = "hg-wpt-url"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's WPT url runner (tier T, style spec ST-M0): runs the pinned urltestdata.json, toascii.json and percent-encoding.json against hg-url and reports the numbers it measures"
+
+[[bin]]
+name = "hg-wpt-url"
+path = "src/main.rs"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[dependencies]
+hg-json = { path = "../hg-json" }
+hg-url = { path = "../hg-url" }
+hg-unicode = { path = "../hg-unicode" }
+hg-encoding = { path = "../hg-encoding" }
+
+# Tier T: the base table (coding standard A.1) with A.2's tier T
+# changes. Reading a pinned data file is an ambient effect tier P and
+# tier R reject, which is why the runner is its own crate.
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"

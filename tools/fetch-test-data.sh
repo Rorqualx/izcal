@@ -16,7 +16,8 @@
 # Environment: IZCAL_TEST_DATA (default ~/.cache/izcal/test-data).
 # Layout: $IZCAL_TEST_DATA/archives/<name>-<commit>.<ext> and the tree in
 #         $IZCAL_TEST_DATA/<name>-<commit>/, with .izcal-sha256 inside it
-#         naming the archive it came from.
+#         naming the archive it came from. A set with no commit of its own
+#         gives `pin` instead, and that is used in both names.
 # Bash 3.2 compatible (macOS /bin/bash).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -56,10 +57,12 @@ status=0
 mkdir -p "$CACHE/archives"
 for name in "${names[@]}"; do
   commit=$(field "$name" commit); url=$(field "$name" url)
+  # A file published without a revision of its own gives `pin` instead.
+  [ -z "$commit" ] && commit=$(field "$name" pin)
   want=$(field "$name" sha256); strip=$(field "$name" strip)
   format=$(field "$name" format); format=${format:-tar.gz}
   if [ -z "$commit" ] || [ -z "$url" ] || [ -z "$want" ]; then
-    echo "fetch-test-data.sh: [$name] needs commit, url and sha256 in $TOML" >&2; exit 2
+    echo "fetch-test-data.sh: [$name] needs commit or pin, url and sha256 in $TOML" >&2; exit 2
   fi
   case "$format" in
     tar.gz) ext=tar.gz ;;

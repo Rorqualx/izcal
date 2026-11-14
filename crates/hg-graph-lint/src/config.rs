@@ -356,6 +356,11 @@ pub struct Rules {
     pub object_authors: Vec<String>,
     /// The names of the layout witness, which only `object!` may write.
     pub witness_names: Vec<String>,
+    /// The layout crates G39 keeps free of floating point.
+    pub g39_crates: Vec<String>,
+    /// The one crate inside that set where the boundary conversions
+    /// live, and so the only one that may name `f32` or `f64`.
+    pub g39_boundary: String,
     /// Ambient-effect crates reachable only through `ambient_via`.
     pub ambient_crates: Vec<String>,
     /// The crates that may link ambient-effect crates.
@@ -463,6 +468,12 @@ impl Rules {
         r.witness_names = h.strings("witness-names")?;
         h.opt_string("why")?;
         h.finish()?;
+
+        let mut g = Strict::new("[g39]", top.req("g39")?)?;
+        r.g39_crates = g.strings("crates")?;
+        r.g39_boundary = g.string("boundary")?;
+        g.opt_string("why")?;
+        g.finish()?;
 
         let mut a = Strict::new("[ambient]", top.req("ambient")?)?;
         r.ambient_crates = a.strings("crates")?;

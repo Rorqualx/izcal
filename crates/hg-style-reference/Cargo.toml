@@ -1,0 +1,53 @@
+[package]
+name = "hg-style-reference"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Izcal's independent reference style engine (tools, tier T, ST-D12, G20): its own CSS Syntax 3 tokenizer, Selectors 3 matcher and cascade, sharing no code with hg-style"
+
+[[bin]]
+name = "hg-style-reference"
+path = "src/main.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+required-features = ["testing"]
+
+[dependencies]
+# G20: the ONLY project-local dependencies this crate may have are
+# hg-tree-traits and hg-types. It shares no code with hg-style,
+# hg-selectors, hg-css-syntax or hg-css-props -- that is what makes it
+# an oracle rather than a second copy. hg-json is read by the runner,
+# not by the engine, and lives in its own crate for that reason.
+hg-tree-traits = { path = "../hg-tree-traits" }
+
+[features]
+# The tree literal, for tests and for the differential runner.
+testing = ["hg-tree-traits/testing"]
+
+[lints.rust]
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+
+# Tier T: the base table (coding standard A.1) with A.2's tier T
+# changes. The engine is held to R in review, because a reference that
+# panics on input the production engine survives is not an oracle.
+[lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+mod_module_files = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+unwrap_used = "allow"
+todo = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+dbg_macro = "allow"
+disallowed_methods = "allow"
+disallowed_types = "allow"
+disallowed_macros = "allow"

@@ -1,0 +1,99 @@
+# Comments, the markup declaration, and CDATA sections. HTML Standard
+# §13.2.5.41 to §13.2.5.52 and §13.2.5.69 to §13.2.5.71.
+
+state bogus_comment @ "html/parsing#bogus-comment-state" {
+  '>'  => switch data, emit_token
+  eof  => emit_token, emit_eof
+  null => error unexpected-null-character, append_char comment '\u{FFFD}'
+  _    => append comment
+}
+
+# The one state that consumes nothing: its own "anything else" ends
+# "(do not consume anything)", and every branch above it asks about
+# characters that have not been consumed yet.
+state markup_declaration_open @ "html/parsing#markup-declaration-open-state" {
+  next "--"         => create_comment, switch comment_start
+  next ci "DOCTYPE" => switch doctype
+  next "[CDATA["    => if adjusted_not_html { switch cdata_section } else { error cdata-in-html-content, create_comment, append_str comment "[CDATA[", switch bogus_comment }
+  _                 => error incorrectly-opened-comment, create_comment, switch bogus_comment
+}
+
+state comment_start @ "html/parsing#comment-start-state" {
+  '-' => switch comment_start_dash
+  '>' => error abrupt-closing-of-empty-comment, switch data, emit_token
+  _   => reconsume comment
+}
+
+state comment_start_dash @ "html/parsing#comment-start-dash-state" {
+  '-' => switch comment_end
+  '>' => error abrupt-closing-of-empty-comment, switch data, emit_token
+  eof => error eof-in-comment, emit_token, emit_eof
+  _   => append_char comment '-', reconsume comment
+}
+
+state comment @ "html/parsing#comment-state" {
+  '<'  => append comment, switch comment_less_than_sign
+  '-'  => switch comment_end_dash
+  null => error unexpected-null-character, append_char comment '\u{FFFD}'
+  eof  => error eof-in-comment, emit_token, emit_eof
+  _    => append comment
+}
+
+state comment_less_than_sign @ "html/parsing#comment-less-than-sign-state" {
+  '!' => append comment, switch comment_less_than_sign_bang
+  '<' => append comment
+  _   => reconsume comment
+}
+
+state comment_less_than_sign_bang @ "html/parsing#comment-less-than-sign-bang-state" {
+  '-' => switch comment_less_than_sign_bang_dash
+  _   => reconsume comment
+}
+
+state comment_less_than_sign_bang_dash @ "html/parsing#comment-less-than-sign-bang-dash-state" {
+  '-' => switch comment_less_than_sign_bang_dash_dash
+  _   => reconsume comment_end_dash
+}
+
+state comment_less_than_sign_bang_dash_dash @ "html/parsing#comment-less-than-sign-bang-dash-dash-state" {
+  '>' | eof => reconsume comment_end
+  _         => error nested-comment, reconsume comment_end
+}
+
+state comment_end_dash @ "html/parsing#comment-end-dash-state" {
+  '-' => switch comment_end
+  eof => error eof-in-comment, emit_token, emit_eof
+  _   => append_char comment '-', reconsume comment
+}
+
+state comment_end @ "html/parsing#comment-end-state" {
+  '>' => switch data, emit_token
+  '!' => switch comment_end_bang
+  '-' => append_char comment '-'
+  eof => error eof-in-comment, emit_token, emit_eof
+  _   => append_char comment '-', append_char comment '-', reconsume comment
+}
+
+state comment_end_bang @ "html/parsing#comment-end-bang-state" {
+  '-' => append_char comment '-', append_char comment '-', append_char comment '!', switch comment_end_dash
+  '>' => error incorrectly-closed-comment, switch data, emit_token
+  eof => error eof-in-comment, emit_token, emit_eof
+  _   => append_char comment '-', append_char comment '-', append_char comment '!', reconsume comment
+}
+
+state cdata_section @ "html/parsing#cdata-section-state" {
+  ']' => switch cdata_section_bracket
+  eof => error eof-in-cdata, emit_eof
+  _   => emit_current
+}
+
+state cdata_section_bracket @ "html/parsing#cdata-section-bracket-state" {
+  ']' => switch cdata_section_end
+  _   => emit_char ']', reconsume cdata_section
+}
+
+state cdata_section_end @ "html/parsing#cdata-section-end-state" {
+  ']' => emit_char ']'
+  '>' => switch data
+  _   => emit_char ']', emit_char ']', reconsume cdata_section
+}

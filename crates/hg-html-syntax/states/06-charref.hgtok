@@ -1,0 +1,63 @@
+# Character references. HTML Standard §13.2.5.72 to §13.2.5.80.
+#
+# Two states are `extern`, and they are the only hand-written part of
+# the tokenizer. Neither is a per-code-point table:
+#
+#   - the named character reference state consumes "the maximum number
+#     of characters possible" against the 2,231-entry table, which is a
+#     longest match, not a transition;
+#   - the numeric character reference end state consumes nothing and
+#     checks the accumulated code against a table of ranges.
+#
+# Declaring them is what keeps the rest honest: a state that *could* be
+# described is never quietly hand-written.
+
+state character_reference @ "html/parsing#character-reference-state" {
+  enter { clear_temp, append_char temp '&' }
+  ascii_alnum => reconsume named_character_reference
+  '#'         => append temp, switch numeric_character_reference
+  _           => flush_temp, reconsume_return
+}
+
+extern state named_character_reference @ "html/parsing#named-character-reference-state" {
+  reaches { switch ambiguous_ampersand, switch_return }
+}
+
+state ambiguous_ampersand @ "html/parsing#ambiguous-ampersand-state" {
+  ascii_alnum => if in_attribute { append attr_value } else { emit_current }
+  ';'         => error unknown-named-character-reference, reconsume_return
+  _           => reconsume_return
+}
+
+state numeric_character_reference @ "html/parsing#numeric-character-reference-state" {
+  enter { char_ref_reset }
+  'x' | 'X'   => append temp, switch hexadecimal_character_reference_start
+  ascii_digit => reconsume decimal_character_reference
+  _           => error absence-of-digits-in-numeric-character-reference, flush_temp, reconsume_return
+}
+
+state hexadecimal_character_reference_start @ "html/parsing#hexadecimal-character-reference-start-state" {
+  ascii_hex => reconsume hexadecimal_character_reference
+  _         => error absence-of-digits-in-numeric-character-reference, flush_temp, reconsume_return
+}
+
+# The prose writes three rows here — ASCII digit, upper hex digit, lower
+# hex digit — each "multiply by 16 and add a numeric version of the
+# current input character", differing only in the constant subtracted.
+# One rule over the hex class computes the same value from the character
+# itself, which is what "a numeric version of" means.
+state hexadecimal_character_reference @ "html/parsing#hexadecimal-character-reference-state" {
+  ascii_hex => char_ref_hex_digit
+  ';'       => switch numeric_character_reference_end
+  _         => error missing-semicolon-after-character-reference, reconsume numeric_character_reference_end
+}
+
+state decimal_character_reference @ "html/parsing#decimal-character-reference-state" {
+  ascii_digit => char_ref_dec_digit
+  ';'         => switch numeric_character_reference_end
+  _           => error missing-semicolon-after-character-reference, reconsume numeric_character_reference_end
+}
+
+extern state numeric_character_reference_end @ "html/parsing#numeric-character-reference-end-state" {
+  reaches { switch_return }
+}

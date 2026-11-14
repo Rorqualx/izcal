@@ -1,0 +1,1148 @@
+# @bootstrapped once from @webref/css 8.7.9 on 13 November 2026, then
+# hand-maintained. Properties t to z.
+#
+# The `initial`, `inherited`, `computed`, `animation`, `syntax` and
+# `longhands` lines restate what the pinned @webref/css carries, and
+# hg-cssgen fails the build when they and webref disagree. That is what
+# they are for: the engine is written against these values, and a
+# specification change that moved one would otherwise be silent. A
+# disagreement is triaged line by line; this file is never regenerated
+# from webref to make one go away (ST-7).
+#
+# `affects` and `hook` are Izcal's own and have no counterpart in
+# webref. `affects unknown` records a decision not yet made rather than
+# guessing it, and hg-cssgen reports how many remain.
+
+property tab-size @ "https://drafts.csswg.org/css-text-4/#propdef-tab-size" {
+  initial   "8"
+  inherited "yes"
+  inherits  yes
+  computed  "the specified number or absolute length"
+  animation "by computed value type"
+  syntax    "<number [0,∞]> | <length [0,∞]>"
+  affects   layout
+}
+
+property table-layout @ "https://drafts.csswg.org/css-tables-3/#propdef-table-layout" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | fixed"
+  affects   layout
+}
+
+property text-align @ "https://drafts.csswg.org/css-text-4/#propdef-text-align" {
+  initial   "start"
+  inherited "yes"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "start | end | left | right | center | <string> | justify | match-parent | justify-all"
+  longhands text-align-all, text-align-last
+  affects   unknown
+}
+
+property text-align-all @ "https://drafts.csswg.org/css-text-4/#propdef-text-align-all" {
+  initial   "start"
+  inherited "yes"
+  inherits  yes
+  computed  "keyword as specified, except for match-parent which computes as defined above"
+  animation "discrete"
+  syntax    "start | end | left | right | center | <string> | justify | match-parent"
+  affects   unknown
+  hook      text_align_all
+}
+
+property text-align-last @ "https://drafts.csswg.org/css-text-4/#propdef-text-align-last" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "keyword as specified, except for match-parent which computes as defined above"
+  animation "discrete"
+  syntax    "auto | start | end | left | right | center | justify | match-parent"
+  affects   unknown
+  hook      text_align_last
+}
+
+property text-anchor @ "https://w3c.github.io/svgwg/svg2-draft/text.html#TextAnchorProperty" {
+  initial   "start"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "start | middle | end"
+  affects   unknown
+}
+
+property text-autospace @ "https://drafts.csswg.org/css-text-4/#propdef-text-autospace" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "normal | <autospace> | auto"
+  affects   unknown
+}
+
+property text-box @ "https://drafts.csswg.org/css-inline-3/#propdef-text-box" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "the specified keyword"
+  animation "discrete"
+  syntax    "normal | <'text-box-trim'> || <'text-box-edge'>"
+  affects   unknown
+}
+
+property text-box-edge @ "https://drafts.csswg.org/css-inline-3/#propdef-text-box-edge" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "the specified keyword"
+  animation "discrete"
+  syntax    "auto | <text-edge>"
+  affects   unknown
+}
+
+property text-box-trim @ "https://drafts.csswg.org/css-inline-3/#propdef-text-box-trim" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the specified keyword"
+  animation "discrete"
+  syntax    "none | trim-start | trim-end | trim-both"
+  affects   unknown
+}
+
+property text-combine-upright @ "https://drafts.csswg.org/css-writing-modes-4/#propdef-text-combine-upright" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword, plus integer if digits"
+  animation "not animatable"
+  syntax    "none | all | [ digits <integer [2,4]>? ]"
+  affects   unknown
+}
+
+property text-decoration @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'text-decoration-line'> || <'text-decoration-thickness'> || <'text-decoration-style'> || <'text-decoration-color'>"
+  longhands text-decoration-line, text-decoration-thickness, text-decoration-style, text-decoration-color
+  affects   paint
+}
+
+property text-decoration-color @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-color" {
+  initial   "currentcolor"
+  inherited "no"
+  inherits  no
+  computed  "computed color"
+  animation "by computed value type"
+  syntax    "<color>"
+  affects   paint
+}
+
+property text-decoration-inset @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-inset" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword or absolute length"
+  animation "by computed value"
+  syntax    "<length-percentage>{1,2} | auto"
+  affects   unknown
+}
+
+property text-decoration-line @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-line" {
+  initial   "none"
+  inherited "no (but see prose, above)"
+  # webref writes `no (but see prose, above)`; the prose is about propagation to boxes
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | [ underline || overline || line-through || blink ] | spelling-error | grammar-error"
+  affects   paint
+}
+
+property text-decoration-skip @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-skip" {
+  initial   "See individual properties"
+  inherited "yes"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "See individual properties"
+  animation "discrete"
+  syntax    "none | auto"
+  longhands text-decoration-skip-self, text-decoration-skip-box, text-decoration-skip-spaces, text-decoration-skip-ink
+  affects   unknown
+}
+
+property text-decoration-skip-box @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-skip-box" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | all"
+  affects   unknown
+}
+
+property text-decoration-skip-ink @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-skip-ink" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | none | all"
+  affects   unknown
+}
+
+property text-decoration-skip-self @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-skip-self" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s) except for skip-all, see below"
+  animation "discrete"
+  syntax    "auto | skip-all | [ skip-underline || skip-overline || skip-line-through ] | no-skip"
+  affects   unknown
+  hook      text_decoration_skip_self
+}
+
+property text-decoration-skip-spaces @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-skip-spaces" {
+  initial   "start end"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | all | [ start || end ]"
+  affects   unknown
+}
+
+property text-decoration-style @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-style" {
+  initial   "solid"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "solid | double | dotted | dashed | wavy"
+  affects   paint
+}
+
+property text-decoration-thickness @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-thickness" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value"
+  syntax    "auto | from-font | <length-percentage> | <line-width>"
+  affects   paint
+}
+
+property text-emphasis @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-emphasis" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'text-emphasis-style'> || <'text-emphasis-color'>"
+  longhands text-emphasis-style, text-emphasis-color
+  affects   unknown
+}
+
+property text-emphasis-color @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-emphasis-color" {
+  initial   "currentcolor"
+  inherited "yes"
+  inherits  yes
+  computed  "computed color"
+  animation "by computed value type"
+  syntax    "<color>"
+  affects   paint
+}
+
+property text-emphasis-position @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-emphasis-position" {
+  initial   "over right"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "[ over | under ] && [ right | left ]?"
+  affects   unknown
+}
+
+property text-emphasis-skip @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-emphasis-skip" {
+  initial   "spaces punctuation"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "spaces || punctuation || symbols || narrow"
+  affects   unknown
+}
+
+property text-emphasis-style @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-emphasis-style" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword none, a pair of keywords representing the shape and fill, or a string"
+  animation "discrete"
+  syntax    "none | [ [ filled | open ] || [ dot | circle | double-circle | triangle | sesame ] ] | <string>"
+  affects   unknown
+}
+
+property text-fit @ "https://drafts.csswg.org/css-text-5/#propdef-text-fit" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keywords or computed <percentage> value"
+  animation "discrete"
+  syntax    "[ none | grow | shrink ] [consistent | per-line | per-line-all]? <percentage>?"
+  affects   unknown
+}
+
+property text-group-align @ "https://drafts.csswg.org/css-text-4/#propdef-text-group-align" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "none | start | end | left | right | center"
+  affects   unknown
+}
+
+property text-indent @ "https://drafts.csswg.org/css-text-4/#propdef-text-indent" {
+  initial   "0"
+  inherited "yes"
+  inherits  yes
+  computed  "computed <length-percentage> value, plus any specified keywords"
+  animation "by computed value type"
+  syntax    "[ <length-percentage> ] && hanging? && each-line?"
+  affects   layout
+}
+
+property text-justify @ "https://drafts.csswg.org/css-text-4/#propdef-text-justify" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword (except for the distribute legacy value)"
+  animation "discrete"
+  syntax    "[ auto | none | inter-word | inter-character | ruby ] || no-compress"
+  affects   unknown
+  hook      text_justify
+}
+
+property text-orientation @ "https://drafts.csswg.org/css-writing-modes-4/#propdef-text-orientation" {
+  initial   "mixed"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value"
+  animation "not animatable"
+  syntax    "mixed | upright | sideways"
+  affects   layout
+}
+
+property text-overflow @ "https://drafts.csswg.org/css-overflow-4/#propdef-text-overflow" {
+  initial   "clip"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with lengths made absolute"
+  animation "by computed value type"
+  syntax    "[ clip | ellipsis | <string> | fade | <fade()> ]{1,2}"
+  affects   unknown
+}
+
+property text-rendering @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#TextRenderingProperty" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | optimizeSpeed | optimizeLegibility | geometricPrecision"
+  affects   unknown
+}
+
+property text-shadow @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-shadow" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "either the keyword none or a list, each item consisting of four absolute lengths plus a computed color and optionally also an inset keyword"
+  animation "as shadow list"
+  syntax    "none | <shadow>#"
+  affects   paint
+}
+
+property text-size-adjust @ "https://drafts.csswg.org/css-size-adjust-1/#propdef-text-size-adjust" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword or percentage"
+  animation "by computed value"
+  syntax    "auto | none | <percentage [0,∞]>"
+  affects   unknown
+}
+
+property text-spacing @ "https://drafts.csswg.org/css-text-4/#propdef-text-spacing" {
+  initial   "see individual properties"
+  inherited "yes"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | auto | <spacing-trim> || <autospace>"
+  longhands text-spacing-trim, text-autospace
+  affects   unknown
+}
+
+property text-spacing-trim @ "https://drafts.csswg.org/css-text-4/#propdef-text-spacing-trim" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword auto, the keyword trim-all, or three keywords, one per controlled position (start, adjacent, end)"
+  animation "discrete"
+  syntax    "<spacing-trim> | auto"
+  affects   unknown
+}
+
+property text-transform @ "https://drafts.csswg.org/css-text-4/#propdef-text-transform" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "none | [capitalize | uppercase | lowercase ] || full-width || full-size-kana | math-auto"
+  affects   layout
+}
+
+property text-underline-offset @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-underline-offset" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value"
+  syntax    "auto | <length-percentage>"
+  affects   unknown
+}
+
+property text-underline-position @ "https://drafts.csswg.org/css-text-decor-4/#propdef-text-underline-position" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "auto | [ from-font | under ] || [ left | right ]"
+  affects   unknown
+}
+
+property text-wrap @ "https://drafts.csswg.org/css-text-4/#propdef-text-wrap" {
+  initial   "wrap"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'text-wrap-mode'> || <'text-wrap-style'>"
+  longhands text-wrap-mode, text-wrap-style
+  affects   layout
+}
+
+property text-wrap-mode @ "https://drafts.csswg.org/css-text-4/#propdef-text-wrap-mode" {
+  initial   "wrap"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "wrap | nowrap"
+  affects   layout
+}
+
+property text-wrap-style @ "https://drafts.csswg.org/css-text-4/#propdef-text-wrap-style" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | balance | stable | pretty | avoid-short-last-line"
+  affects   unknown
+}
+
+property timeline-scope @ "https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none, the keyword all, or a list of CSS identifiers"
+  animation "not animatable"
+  syntax    "none | all | <dashed-ident>#"
+  affects   unknown
+}
+
+property timeline-trigger @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "none | [ <'timeline-trigger-name'> <'timeline-trigger-source'> [ <'timeline-trigger-range'> ]? ]#"
+  longhands timeline-trigger-name, timeline-trigger-source, timeline-trigger-range
+  affects   unknown
+}
+
+property timeline-trigger-activation-range @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-activation-range" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "[ <'timeline-trigger-activation-range-start'> <'timeline-trigger-activation-range-end'>? ]#"
+  longhands timeline-trigger-activation-range-start, timeline-trigger-activation-range-end
+  affects   unknown
+}
+
+property timeline-trigger-activation-range-end @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-activation-range-end" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "list, each item either the keyword normal or a timeline range and progress percentage"
+  animation "not animatable"
+  syntax    "[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#"
+  affects   unknown
+}
+
+property timeline-trigger-activation-range-start @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-activation-range-start" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "list, each item either the keyword normal or a timeline range and progress percentage"
+  animation "not animatable"
+  syntax    "[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#"
+  affects   unknown
+}
+
+property timeline-trigger-active-range @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-active-range" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "[ <'timeline-trigger-active-range-start'> <'timeline-trigger-active-range-end'>? ]#"
+  longhands timeline-trigger-active-range-start, timeline-trigger-active-range-end
+  affects   unknown
+}
+
+property timeline-trigger-active-range-end @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-active-range-end" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "list, each item either the keyword normal or a timeline range and progress percentage"
+  animation "not animatable"
+  syntax    "[ auto | normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#"
+  affects   unknown
+}
+
+property timeline-trigger-active-range-start @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-active-range-start" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "list, each item either the keyword normal or a timeline range and progress percentage"
+  animation "not animatable"
+  syntax    "[ auto | normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#"
+  affects   unknown
+}
+
+property timeline-trigger-name @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-name" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "none | <dashed-ident>#"
+  affects   unknown
+}
+
+property timeline-trigger-range @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-range" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "[ <'timeline-trigger-activation-range'> [ / <'timeline-trigger-active-range'> ]? ]#"
+  longhands timeline-trigger-activation-range, timeline-trigger-active-range
+  affects   unknown
+}
+
+property timeline-trigger-source @ "https://drafts.csswg.org/animation-triggers-1/#propdef-timeline-trigger-source" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "[ none | auto | [ <dashed-ident> | <scroll()> | <view()> ]+ ]#"
+  affects   unknown
+}
+
+property top @ "https://drafts.csswg.org/css-position-3/#propdef-top" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage> | <anchor()> | <anchor-size()>"
+  affects   layout
+}
+
+property touch-action @ "https://compat.spec.whatwg.org/#propdef-touch-action" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "Same as specified value"
+  animation "not animatable"
+  syntax    "auto | none | [ [ pan-x | pan-left | pan-right ] || [ pan-y | pan-up | pan-down ] || pinch-zoom ] | manipulation"
+  affects   unknown
+}
+
+property transform @ "https://drafts.csswg.org/css-transforms-1/#propdef-transform" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified, but with lengths made absolute"
+  animation "transform list, see interpolation rules"
+  syntax    "none | <transform-list>"
+  affects   composite
+}
+
+property transform-box @ "https://drafts.csswg.org/css-transforms-1/#propdef-transform-box" {
+  initial   "view-box"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "content-box | border-box | fill-box | stroke-box | view-box"
+  affects   unknown
+}
+
+property transform-origin @ "https://drafts.csswg.org/css-transforms-1/#propdef-transform-origin" {
+  initial   "50% 50%"
+  inherited "no"
+  inherits  no
+  computed  "see background-position"
+  animation "by computed value"
+  syntax    "[ left | center | right | top | bottom | <length-percentage> ] | [ left | center | right | <length-percentage> ] [ top | center | bottom | <length-percentage> ] <length>? | [ [ center | left | right ] && [ center | top | bottom ] ] <length>?"
+  affects   composite
+}
+
+property transform-style @ "https://drafts.csswg.org/css-transforms-2/#propdef-transform-style" {
+  initial   "flat"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "flat | preserve-3d"
+  affects   composite
+}
+
+property transition @ "https://drafts.csswg.org/css-transitions-1/#propdef-transition" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "not animatable"
+  syntax    "<single-transition>#"
+  longhands transition-property, transition-duration, transition-timing-function, transition-delay, transition-behavior
+  affects   unknown
+}
+
+property transition-behavior @ "https://drafts.csswg.org/css-transitions-2/#propdef-transition-behavior" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "<transition-behavior-value>#"
+  affects   unknown
+}
+
+property transition-delay @ "https://drafts.csswg.org/css-transitions-1/#propdef-transition-delay" {
+  initial   "0s"
+  inherited "no"
+  inherits  no
+  computed  "list, each item a duration"
+  animation "not animatable"
+  syntax    "<time>#"
+  affects   unknown
+}
+
+property transition-duration @ "https://drafts.csswg.org/css-transitions-1/#propdef-transition-duration" {
+  initial   "0s"
+  inherited "no"
+  inherits  no
+  computed  "list, each item a duration"
+  animation "not animatable"
+  syntax    "<time [0s,∞]>#"
+  affects   unknown
+}
+
+property transition-property @ "https://drafts.csswg.org/css-transitions-1/#propdef-transition-property" {
+  initial   "all"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none else a list of identifiers"
+  animation "not animatable"
+  syntax    "none | <single-transition-property>#"
+  affects   unknown
+}
+
+property transition-timing-function @ "https://drafts.csswg.org/css-transitions-1/#propdef-transition-timing-function" {
+  initial   "ease"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "<easing-function>#"
+  affects   unknown
+}
+
+property translate @ "https://drafts.csswg.org/css-transforms-2/#propdef-translate" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none or a pair of computed <length-percentage> values and an absolute length"
+  animation "by computed value, but see below for none"
+  syntax    "none | <length-percentage> [ <length-percentage> <length>? ]?"
+  affects   composite
+}
+
+property trigger-scope @ "https://drafts.csswg.org/animation-triggers-1/#propdef-trigger-scope" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "none | all | <dashed-ident>#"
+  affects   unknown
+}
+
+property unicode-bidi @ "https://drafts.csswg.org/css-writing-modes-4/#propdef-unicode-bidi" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "not animatable"
+  syntax    "normal | embed | isolate | bidi-override | isolate-override | plaintext"
+  affects   layout
+}
+
+property user-select @ "https://drafts.csswg.org/css-ui-4/#propdef-user-select" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | text | none | contain | all"
+  affects   unknown
+}
+
+property vector-effect @ "https://w3c.github.io/svgwg/svg2-draft/coords.html#VectorEffectProperty" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | non-scaling-stroke | non-scaling-size | non-rotation | fixed-position"
+  affects   unknown
+}
+
+property vertical-align @ "https://drafts.csswg.org/css-inline-3/#propdef-vertical-align" {
+  initial   "baseline"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "[ first | last] || <'alignment-baseline'> || <'baseline-shift'>"
+  longhands alignment-baseline, baseline-shift, baseline-source
+  affects   layout
+}
+
+property view-timeline @ "https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "[ <'view-timeline-name'> [ <'view-timeline-axis'> || <'view-timeline-inset'> ]? ]#"
+  longhands view-timeline-name, view-timeline-axis
+  affects   unknown
+}
+
+property view-timeline-axis @ "https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline-axis" {
+  initial   "block"
+  inherited "no"
+  inherits  no
+  computed  "a list of the keywords specified"
+  animation "not animatable"
+  syntax    "[ block | inline | x | y ]#"
+  affects   unknown
+}
+
+property view-timeline-inset @ "https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline-inset" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "a list consisting of two-value pairs representing the start and end insets each as either the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "[ [ auto | <length-percentage> ]{1,2} ]#"
+  affects   unknown
+}
+
+property view-timeline-name @ "https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline-name" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "list, each item either a CSS identifier or the keyword none"
+  animation "not animatable"
+  syntax    "[ none | <dashed-ident> ]#"
+  affects   unknown
+}
+
+property view-transition-class @ "https://drafts.csswg.org/css-view-transitions-2/#propdef-view-transition-class" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | <custom-ident>+"
+  affects   unknown
+}
+
+property view-transition-group @ "https://drafts.csswg.org/css-view-transitions-2/#propdef-view-transition-group" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | contain | nearest | <custom-ident>"
+  affects   unknown
+}
+
+property view-transition-name @ "https://drafts.csswg.org/css-view-transitions-2/#propdef-view-transition-name" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | <custom-ident>"
+  affects   unknown
+}
+
+property view-transition-scope @ "https://drafts.csswg.org/css-view-transitions-2/#propdef-view-transition-scope" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | all"
+  affects   unknown
+}
+
+property visibility @ "https://drafts.csswg.org/css-display-4/#propdef-visibility" {
+  initial   "visible"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "visible | hidden | force-hidden | collapse"
+  affects   paint
+}
+
+property voice-balance @ "https://drafts.csswg.org/css-speech-1/#propdef-voice-balance" {
+  initial   "center"
+  inherited "yes"
+  inherits  yes
+  computed  "the specified value resolved to a <number> between -100 and 100 (inclusive)"
+  animation "by computed value type"
+  syntax    "<number> | left | center | right | leftwards | rightwards"
+  affects   unknown
+}
+
+property voice-duration @ "https://drafts.csswg.org/css-speech-1/#propdef-voice-duration" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "by computed value type"
+  syntax    "auto | <time [0s,∞]>"
+  affects   unknown
+}
+
+property voice-family @ "https://drafts.csswg.org/css-speech-1/#propdef-voice-family" {
+  initial   "implementation-dependent"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value"
+  animation "discrete"
+  syntax    "[ <voice-family-name> | <generic-voice> ]# | preserve"
+  affects   unknown
+}
+
+property voice-pitch @ "https://drafts.csswg.org/css-speech-1/#propdef-voice-pitch" {
+  initial   "medium"
+  inherited "yes"
+  inherits  yes
+  computed  "one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)"
+  animation "by computed value type"
+  syntax    "<frequency [0Hz,∞]> && absolute | [ [ x-low | low | medium | high | x-high ] || [ <frequency [0Hz,∞]> | <semitones> | <percentage> ] ]"
+  affects   unknown
+}
+
+property voice-range @ "https://drafts.csswg.org/css-speech-1/#propdef-voice-range" {
+  initial   "medium"
+  inherited "yes"
+  inherits  yes
+  computed  "one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)"
+  animation "by computed value type"
+  syntax    "<frequency [0Hz,∞]> && absolute | [ [ x-low | low | medium | high | x-high ] || [ <frequency [0Hz,∞]> | <semitones> | <percentage> ] ]"
+  affects   unknown
+}
+
+property voice-rate @ "https://drafts.csswg.org/css-speech-1/#propdef-voice-rate" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "a keyword value, and optionally also a percentage relative to the keyword (if not 100%)"
+  animation "by computed value type"
+  syntax    "[ normal | x-slow | slow | medium | fast | x-fast ] || <percentage [0,∞]>"
+  affects   unknown
+}
+
+property voice-stress @ "https://drafts.csswg.org/css-speech-1/#propdef-voice-stress" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value"
+  animation "discrete"
+  syntax    "normal | strong | moderate | none | reduced"
+  affects   unknown
+}
+
+property voice-volume @ "https://drafts.csswg.org/css-speech-1/#propdef-voice-volume" {
+  initial   "medium"
+  inherited "yes"
+  inherits  yes
+  computed  "silent, or a keyword value and optionally also a decibel offset (if not zero)"
+  animation "by computed value type"
+  syntax    "silent | [ [ x-soft | soft | medium | loud | x-loud ] || <decibel> ]"
+  affects   unknown
+}
+
+property white-space @ "https://drafts.csswg.org/css-text-4/#propdef-white-space" {
+  initial   "normal"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "normal | pre | pre-wrap | pre-line | <'white-space-collapse'> || <'text-wrap-mode'> || <'white-space-trim'>"
+  longhands white-space-collapse, text-wrap-mode
+  affects   layout
+}
+
+property white-space-collapse @ "https://drafts.csswg.org/css-text-4/#propdef-white-space-collapse" {
+  initial   "collapse"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "collapse | discard | preserve | preserve-breaks | preserve-spaces | break-spaces"
+  affects   layout
+}
+
+property white-space-trim @ "https://drafts.csswg.org/css-text-4/#propdef-white-space-trim" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | discard-before || discard-after || discard-inner"
+  affects   unknown
+}
+
+property widows @ "https://drafts.csswg.org/css-break-4/#propdef-widows" {
+  initial   "2"
+  inherited "yes"
+  inherits  yes
+  computed  "specified integer"
+  animation "by computed value type"
+  syntax    "<integer [1,∞]>"
+  affects   unknown
+}
+
+property width @ "https://drafts.csswg.org/css-sizing-3/#propdef-width" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value type, recursing into fit-content()"
+  syntax    "auto | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property will-change @ "https://drafts.csswg.org/css-will-change-1/#propdef-will-change" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "not animatable"
+  syntax    "auto | <animateable-feature>#"
+  affects   composite
+}
+
+property window-drag @ "https://drafts.csswg.org/css-ui-4/#propdef-window-drag" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | move"
+  affects   unknown
+}
+
+property word-break @ "https://drafts.csswg.org/css-text-4/#propdef-word-break" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "normal | break-all | keep-all | manual | auto-phrase | break-word"
+  affects   layout
+}
+
+property word-space-transform @ "https://drafts.csswg.org/css-text-4/#propdef-word-space-transform" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | [ space | ideographic-space ] && auto-phrase?"
+  affects   unknown
+}
+
+property word-spacing @ "https://drafts.csswg.org/css-text-4/#propdef-word-spacing" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "an absolute length and/or a percentage"
+  animation "by computed value type"
+  syntax    "normal | <length-percentage>"
+  affects   layout
+}
+
+property wrap-after @ "https://drafts.csswg.org/css-text-4/#propdef-wrap-after" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | avoid | avoid-line | avoid-flex | line | flex"
+  affects   unknown
+}
+
+property wrap-before @ "https://drafts.csswg.org/css-text-4/#propdef-wrap-before" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | avoid | avoid-line | avoid-flex | line | flex"
+  affects   unknown
+}
+
+property wrap-flow @ "https://drafts.csswg.org/css-exclusions-1/#propdef-wrap-flow" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified except for element’s whose float computed value is not none, in which case the computed value is auto."
+  animation "discrete"
+  syntax    "auto | both | start | end | minimum | maximum | clear"
+  affects   unknown
+  hook      wrap_flow
+}
+
+property wrap-inside @ "https://drafts.csswg.org/css-text-4/#propdef-wrap-inside" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | avoid"
+  affects   unknown
+}
+
+property wrap-through @ "https://drafts.csswg.org/css-exclusions-1/#propdef-wrap-through" {
+  initial   "wrap"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "wrap | none"
+  affects   unknown
+}
+
+property writing-mode @ "https://drafts.csswg.org/css-writing-modes-4/#propdef-writing-mode" {
+  initial   "horizontal-tb"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value"
+  animation "not animatable"
+  syntax    "horizontal-tb | vertical-rl | vertical-lr | sideways-rl | sideways-lr"
+  affects   layout
+}
+
+property x @ "https://w3c.github.io/svgwg/svg2-draft/geometry.html#XProperty" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "an absolute length or percentage"
+  animation "by computed value"
+  syntax    "<length-percentage>"
+  affects   unknown
+}
+
+property y @ "https://w3c.github.io/svgwg/svg2-draft/geometry.html#YProperty" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "an absolute length or percentage"
+  animation "by computed value"
+  syntax    "<length-percentage>"
+  affects   unknown
+}
+
+property z-index @ "https://drafts.csswg.org/css2/#propdef-z-index" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value type"
+  syntax    "auto | <integer> | inherit"
+  affects   paint
+}
+
+property zoom @ "https://drafts.csswg.org/css-viewport/#propdef-zoom" {
+  initial   "1"
+  inherited "no"
+  inherits  no
+  computed  "as specified, but with <percentage> converted to the equivalent <number>"
+  animation "by computed value type"
+  syntax    "<number [0,∞]> | <percentage [0,∞]>"
+  affects   layout
+}

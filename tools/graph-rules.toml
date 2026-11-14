@@ -82,6 +82,28 @@ why = "H-3: a hand-written layout can only make the tracer read the wrong slots,
 # --- CS-AS-1 / G3 (A.6): ambient-effect crates only via the substrate -----
 # Follows dev-dependencies too (G3 binds test targets); tier T crates are
 # outside G3 and are neither checked nor looked through.
+# --- G39 (layout spec 6.2): no floating point after the boundary -------------
+# Layout's geometry is 32-bit fixed point at 1/64 CSS px, and every ratio is
+# computed in i128 with one rounding, because DET-1 asks that the same page
+# lay out identically on every ISA and floating point that a compiler may
+# re-associate or contract does not promise that.
+#
+# The spec says the rule is a lint: "The boundary functions are the only
+# place f32 or f64 appears in layout crates, and a lint rejects them
+# anywhere else (G39)." This is that lint. It reads the *spelling* -- a
+# primitive type and a float literal -- in the crates listed, with the
+# boundary crate exempt.
+#
+# `crates` is the layout set as it exists; it grows with LY-M0 and LY-M1.
+# The SVG geometry crates are deliberately absent: since the SVG spec's R6
+# (20 October 2026) they follow the SVG spec's G122 -- its closed list of
+# allowed binary64 operations -- instead of this rule, and meet layout only
+# through hg-layout-num's rounding function.
+[g39]
+crates = ["hg-fragment", "hg-layout", "hg-layout-num"]
+boundary = "hg-layout-num"
+why = "DET-1 and FP-24: cross-ISA identity; the text stack's G28; the arithmetic CVE class"
+
 [ambient]
 crates = ["rand", "getrandom", "num_cpus", "tokio", "smol"]
 via = ["hg-substrate-os"]
@@ -138,12 +160,12 @@ why = "TX-M0 leads: its own row puts normalization and the IDNA data first, by m
 track = "ST-M0"
 spec = "reports/Izcal HTML and CSS parsing and style.md"
 claimed = false
-crates = ["hg-htmlgen", "hg-cssgen", "hg-style-reference", "hg-encoding", "hg-url"]
+crates = ["hg-htmlgen", "hg-html-syntax", "hg-html5lib", "hg-cssgen", "hg-css-props", "hg-style-reference", "hg-encoding", "hg-url"]
 generator = "hg-htmlgen"
 oracle-job = "html5lib"
 review = "research_notes/ST-M0 design review/README.md"
 interlock = "measurements/milestones/m0-starts/README.md"
-why = "The .hgtok generator is the artefact the track generates from, on hg-opgen's pattern; the 6,827 html5lib tokenizer tests are the number the M0 row itself names."
+why = "The .hgtok generator is the artefact the track generates from, on hg-opgen's pattern, and hg-html-syntax is where it generates to; the 6,827 html5lib tokenizer tests are the number the M0 row itself names."
 
 [[started]]
 track = "LY-M0"

@@ -1,0 +1,105 @@
+# Tags and attributes. HTML Standard §13.2.5.6 to §13.2.5.8 and
+# §13.2.5.32 to §13.2.5.40.
+
+state tag_open @ "html/parsing#tag-open-state" {
+  '!'         => switch markup_declaration_open
+  '/'         => switch end_tag_open
+  ascii_alpha => create_start_tag, reconsume tag_name
+  '?'         => clear_temp, switch processing_instruction_open
+  eof         => error eof-before-tag-name, emit_char '<', emit_eof
+  _           => error invalid-first-character-of-tag-name, emit_char '<', reconsume data
+}
+
+state end_tag_open @ "html/parsing#end-tag-open-state" {
+  ascii_alpha => create_end_tag, reconsume tag_name
+  '>'         => error missing-end-tag-name, switch data
+  eof         => error eof-before-tag-name, emit_char '<', emit_char '/', emit_eof
+  _           => error invalid-first-character-of-tag-name, create_comment, reconsume bogus_comment
+}
+
+state tag_name @ "html/parsing#tag-name-state" {
+  whitespace  => switch before_attribute_name
+  '/'         => switch self_closing_start_tag
+  '>'         => switch data, emit_token
+  ascii_upper => append_lower tag_name
+  null        => error unexpected-null-character, append_char tag_name '\u{FFFD}'
+  eof         => error eof-in-tag, emit_eof
+  _           => append tag_name
+}
+
+state before_attribute_name @ "html/parsing#before-attribute-name-state" {
+  whitespace      => ignore
+  '/' | '>' | eof => reconsume after_attribute_name
+  '='             => error unexpected-equals-sign-before-attribute-name, start_attribute, append attr_name, switch attribute_name
+  _               => start_attribute, reconsume attribute_name
+}
+
+# `finish_attr_name` is the comparison the prose hangs on *leaving* this
+# state, not on entering the next: "When the user agent leaves the
+# attribute name state (and before emitting a U+003D EQUALS SIGN
+# character token in the before attribute value state, if any) …".
+state attribute_name @ "html/parsing#attribute-name-state" {
+  whitespace | '/' | '>' | eof => finish_attr_name, reconsume after_attribute_name
+  '='              => finish_attr_name, switch before_attribute_value
+  ascii_upper      => append_lower attr_name
+  null             => error unexpected-null-character, append_char attr_name '\u{FFFD}'
+  '"' | '\'' | '<' => error unexpected-character-in-attribute-name, append attr_name
+  _                => append attr_name
+}
+
+state after_attribute_name @ "html/parsing#after-attribute-name-state" {
+  whitespace => ignore
+  '/'        => switch self_closing_start_tag
+  '='        => switch before_attribute_value
+  '>'        => switch data, emit_token
+  eof        => error eof-in-tag, emit_eof
+  _          => start_attribute, reconsume attribute_name
+}
+
+state before_attribute_value @ "html/parsing#before-attribute-value-state" {
+  whitespace => ignore
+  '"'        => switch attribute_value_double_quoted
+  '\''       => switch attribute_value_single_quoted
+  '>'        => error missing-attribute-value, switch data, emit_token
+  _          => reconsume attribute_value_unquoted
+}
+
+state attribute_value_double_quoted @ "html/parsing#attribute-value-(double-quoted)-state" {
+  '"'  => switch after_attribute_value_quoted
+  '&'  => set_return attribute_value_double_quoted, switch character_reference
+  null => error unexpected-null-character, append_char attr_value '\u{FFFD}'
+  eof  => error eof-in-tag, emit_eof
+  _    => append attr_value
+}
+
+state attribute_value_single_quoted @ "html/parsing#attribute-value-(single-quoted)-state" {
+  '\'' => switch after_attribute_value_quoted
+  '&'  => set_return attribute_value_single_quoted, switch character_reference
+  null => error unexpected-null-character, append_char attr_value '\u{FFFD}'
+  eof  => error eof-in-tag, emit_eof
+  _    => append attr_value
+}
+
+state attribute_value_unquoted @ "html/parsing#attribute-value-(unquoted)-state" {
+  whitespace                           => switch before_attribute_name
+  '&'                                  => set_return attribute_value_unquoted, switch character_reference
+  '>'                                  => switch data, emit_token
+  null                                 => error unexpected-null-character, append_char attr_value '\u{FFFD}'
+  '"' | '\'' | '<' | '=' | '`'         => error unexpected-character-in-unquoted-attribute-value, append attr_value
+  eof                                  => error eof-in-tag, emit_eof
+  _                                    => append attr_value
+}
+
+state after_attribute_value_quoted @ "html/parsing#after-attribute-value-(quoted)-state" {
+  whitespace => switch before_attribute_name
+  '/'        => switch self_closing_start_tag
+  '>'        => switch data, emit_token
+  eof        => error eof-in-tag, emit_eof
+  _          => error missing-whitespace-between-attributes, reconsume before_attribute_name
+}
+
+state self_closing_start_tag @ "html/parsing#self-closing-start-tag-state" {
+  '>' => set self_closing, switch data, emit_token
+  eof => error eof-in-tag, emit_eof
+  _   => error unexpected-solidus-in-tag, reconsume before_attribute_name
+}

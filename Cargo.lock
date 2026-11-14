@@ -28,6 +28,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-css-props"
+version = "0.0.0"
+
+[[package]]
+name = "hg-cssgen"
+version = "0.0.0"
+dependencies = [
+ "hg-json",
+]
+
+[[package]]
 name = "hg-dst"
 version = "0.0.0"
 
@@ -53,12 +64,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-encoding"
+version = "0.0.0"
+
+[[package]]
+name = "hg-encoding-build"
+version = "0.0.0"
+dependencies = [
+ "hg-json",
+]
+
+[[package]]
 name = "hg-fontfmt"
 version = "0.0.0"
 
 [[package]]
 name = "hg-fontgen"
 version = "0.0.0"
+
+[[package]]
+name = "hg-fragment"
+version = "0.0.0"
+dependencies = [
+ "hg-types",
+]
 
 [[package]]
 name = "hg-graph-lint"
@@ -70,6 +99,26 @@ version = "0.0.0"
 dependencies = [
  "hg-substrate",
  "hg-types",
+]
+
+[[package]]
+name = "hg-html-syntax"
+version = "0.0.0"
+
+[[package]]
+name = "hg-html5lib"
+version = "0.0.0"
+dependencies = [
+ "hg-encoding",
+ "hg-html-syntax",
+ "hg-json",
+]
+
+[[package]]
+name = "hg-htmlgen"
+version = "0.0.0"
+dependencies = [
+ "hg-json",
 ]
 
 [[package]]
@@ -144,6 +193,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-json"
+version = "0.0.0"
+
+[[package]]
 name = "hg-launch-plan"
 version = "0.0.0"
 
@@ -161,6 +214,22 @@ dependencies = [
 [[package]]
 name = "hg-launch-wire"
 version = "0.0.0"
+
+[[package]]
+name = "hg-layout"
+version = "0.0.0"
+dependencies = [
+ "hg-fragment",
+ "hg-layout-num",
+ "hg-types",
+]
+
+[[package]]
+name = "hg-layout-num"
+version = "0.0.0"
+dependencies = [
+ "hg-types",
+]
 
 [[package]]
 name = "hg-net-main"
@@ -215,6 +284,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-style-reference"
+version = "0.0.0"
+dependencies = [
+ "hg-tree-traits",
+]
+
+[[package]]
 name = "hg-substrate"
 version = "0.0.0"
 dependencies = [
@@ -246,6 +322,10 @@ name = "hg-test262"
 version = "0.0.0"
 
 [[package]]
+name = "hg-tree-traits"
+version = "0.0.0"
+
+[[package]]
 name = "hg-types"
 version = "0.0.0"
 
@@ -268,8 +348,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-url"
+version = "0.0.0"
+dependencies = [
+ "hg-encoding",
+ "hg-unicode",
+]
+
+[[package]]
 name = "hg-wast"
 version = "0.0.0"
+
+[[package]]
+name = "hg-wpt-url"
+version = "0.0.0"
+dependencies = [
+ "hg-encoding",
+ "hg-json",
+ "hg-unicode",
+ "hg-url",
+]
 
 [[package]]
 name = "libc"

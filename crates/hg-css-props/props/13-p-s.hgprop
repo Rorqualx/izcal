@@ -1,0 +1,1644 @@
+# @bootstrapped once from @webref/css 8.7.9 on 13 November 2026, then
+# hand-maintained. Properties p to s.
+#
+# The `initial`, `inherited`, `computed`, `animation`, `syntax` and
+# `longhands` lines restate what the pinned @webref/css carries, and
+# hg-cssgen fails the build when they and webref disagree. That is what
+# they are for: the engine is written against these values, and a
+# specification change that moved one would otherwise be silent. A
+# disagreement is triaged line by line; this file is never regenerated
+# from webref to make one go away (ST-7).
+#
+# `affects` and `hook` are Izcal's own and have no counterpart in
+# webref. `affects unknown` records a decision not yet made rather than
+# guessing it, and hg-cssgen reports how many remain.
+
+property padding @ "https://drafts.csswg.org/css-box-4/#propdef-padding" {
+  initial   "0"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "<'padding-top'>{1,4}"
+  longhands padding-top, padding-right, padding-bottom, padding-left
+  affects   layout
+}
+
+property padding-block @ "https://drafts.csswg.org/css-logical-1/#propdef-padding-block" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'padding-top'>{1,2}"
+  longhands padding-block-start, padding-block-end
+  affects   layout
+}
+
+property padding-block-end @ "https://drafts.csswg.org/css-logical-1/#propdef-padding-block-end" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "Same as corresponding padding-* properties"
+  animation "by computed value type"
+  syntax    "<'padding-top'>"
+  affects   layout
+}
+
+property padding-block-start @ "https://drafts.csswg.org/css-logical-1/#propdef-padding-block-start" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "Same as corresponding padding-* properties"
+  animation "by computed value type"
+  syntax    "<'padding-top'>"
+  affects   layout
+}
+
+property padding-bottom @ "https://drafts.csswg.org/css-box-4/#propdef-padding-bottom" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage [0,∞]>"
+  affects   layout
+}
+
+property padding-inline @ "https://drafts.csswg.org/css-logical-1/#propdef-padding-inline" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'padding-top'>{1,2}"
+  longhands padding-inline-start, padding-inline-end
+  affects   layout
+}
+
+property padding-inline-end @ "https://drafts.csswg.org/css-logical-1/#propdef-padding-inline-end" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "Same as corresponding padding-* properties"
+  animation "by computed value type"
+  syntax    "<'padding-top'>"
+  affects   layout
+}
+
+property padding-inline-start @ "https://drafts.csswg.org/css-logical-1/#propdef-padding-inline-start" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "Same as corresponding padding-* properties"
+  animation "by computed value type"
+  syntax    "<'padding-top'>"
+  affects   layout
+}
+
+property padding-left @ "https://drafts.csswg.org/css-box-4/#propdef-padding-left" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage [0,∞]>"
+  affects   layout
+}
+
+property padding-right @ "https://drafts.csswg.org/css-box-4/#propdef-padding-right" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage [0,∞]>"
+  affects   layout
+}
+
+property padding-top @ "https://drafts.csswg.org/css-box-4/#propdef-padding-top" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage [0,∞]>"
+  affects   layout
+}
+
+property page @ "https://drafts.csswg.org/css-page-3/#propdef-page" {
+  initial   "auto"
+  inherited "no (but see prose)"
+  # webref writes `no (but see prose)`; the prose is about propagation, not inheritance
+  inherits  no
+  computed  "specified value"
+  animation "discrete"
+  syntax    "auto | <custom-ident>"
+  affects   unknown
+}
+
+property page-break-after @ "https://drafts.csswg.org/css2/#propdef-page-break-after" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | always | avoid | left | right | inherit"
+  affects   unknown
+}
+
+property page-break-before @ "https://drafts.csswg.org/css2/#propdef-page-break-before" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | always | avoid | left | right | inherit"
+  affects   unknown
+}
+
+property page-break-inside @ "https://drafts.csswg.org/css2/#propdef-page-break-inside" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "avoid | auto | inherit"
+  affects   unknown
+}
+
+property paint-order @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#PaintOrderProperty" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | [ fill || stroke || markers ]"
+  affects   unknown
+}
+
+property path-length @ "https://w3c.github.io/svgwg/svg2-draft/paths.html#PathLengthCSSProperty" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none, or an absolute length"
+  animation "by computed value"
+  syntax    "none | <length [0,∞]>"
+  affects   unknown
+}
+
+property pause @ "https://drafts.csswg.org/css-speech-1/#propdef-pause" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'pause-before'> <'pause-after'>?"
+  longhands pause-before, pause-after
+  affects   unknown
+}
+
+property pause-after @ "https://drafts.csswg.org/css-speech-1/#propdef-pause-after" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "by computed value type"
+  syntax    "<time [0s,∞]> | none | x-weak | weak | medium | strong | x-strong"
+  affects   unknown
+}
+
+property pause-before @ "https://drafts.csswg.org/css-speech-1/#propdef-pause-before" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "by computed value type"
+  syntax    "<time [0s,∞]> | none | x-weak | weak | medium | strong | x-strong"
+  affects   unknown
+}
+
+property perspective @ "https://drafts.csswg.org/css-transforms-2/#propdef-perspective" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none or an absolute length"
+  animation "by computed value"
+  syntax    "none | <length [0,∞]>"
+  affects   composite
+}
+
+property perspective-origin @ "https://drafts.csswg.org/css-transforms-2/#propdef-perspective-origin" {
+  initial   "50% 50%"
+  inherited "no"
+  inherits  no
+  computed  "see background-position"
+  animation "by computed value"
+  syntax    "<position>"
+  affects   composite
+}
+
+property place-content @ "https://drafts.csswg.org/css-align-3/#propdef-place-content" {
+  initial   "normal"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "<'align-content'> <'justify-content'>?"
+  longhands align-content, justify-content
+  affects   layout
+}
+
+property place-items @ "https://drafts.csswg.org/css-align-3/#propdef-place-items" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "<'align-items'> <'justify-items'>?"
+  longhands align-items, justify-items
+  affects   layout
+}
+
+property place-self @ "https://drafts.csswg.org/css-align-3/#propdef-place-self" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "<'align-self'> <'justify-self'>?"
+  longhands align-self, justify-self
+  affects   layout
+}
+
+property pointer-events @ "https://w3c.github.io/svgwg/svg2-draft/interact.html#PointerEventsProperty" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | bounding-box | visiblePainted | visibleFill | visibleStroke | visible | painted | fill | stroke | all | none"
+  affects   unknown
+}
+
+property pointer-timeline @ "https://drafts.csswg.org/pointer-animations-1/#propdef-pointer-timeline" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "[ <'pointer-timeline-name'> <'pointer-timeline-axis'>? ]#"
+  longhands pointer-timeline-name, pointer-timeline-axis
+  affects   unknown
+}
+
+property pointer-timeline-axis @ "https://drafts.csswg.org/pointer-animations-1/#propdef-pointer-timeline-axis" {
+  initial   "block"
+  inherited "no"
+  inherits  no
+  computed  "a list of the keywords specified"
+  animation "not animatable"
+  syntax    "[ block | inline | x | y ]#"
+  affects   unknown
+}
+
+property pointer-timeline-name @ "https://drafts.csswg.org/pointer-animations-1/#propdef-pointer-timeline-name" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none or a list of CSS identifiers"
+  animation "not animatable"
+  syntax    "[ none | <dashed-ident> ]#"
+  affects   unknown
+}
+
+property position @ "https://drafts.csswg.org/css-position-3/#propdef-position" {
+  initial   "static"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "static | relative | absolute | sticky | fixed | <running()>"
+  affects   layout
+}
+
+property position-anchor @ "https://drafts.csswg.org/css-anchor-position-1/#propdef-position-anchor" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | none | auto | <anchor-name> | match-parent"
+  affects   unknown
+}
+
+property position-area @ "https://drafts.csswg.org/css-anchor-position-1/#propdef-position-area" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none or a pair of keywords, see § 3.1.3 Computed Value and Serialization of <position-area>"
+  animation "discrete"
+  syntax    "none | <position-area>"
+  affects   unknown
+}
+
+property position-try @ "https://drafts.csswg.org/css-anchor-position-1/#propdef-position-try" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'position-try-order'>? <'position-try-fallbacks'>"
+  longhands position-try-order, position-try-fallbacks
+  affects   unknown
+}
+
+property position-try-fallbacks @ "https://drafts.csswg.org/css-anchor-position-1/#propdef-position-try-fallbacks" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | [ [<dashed-ident> || <try-tactic>] | <position-area> ]#"
+  affects   unknown
+}
+
+property position-try-order @ "https://drafts.csswg.org/css-anchor-position-1/#propdef-position-try-order" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | <try-size>"
+  affects   unknown
+}
+
+property position-visibility @ "https://drafts.csswg.org/css-anchor-position-1/#propdef-position-visibility" {
+  initial   "anchor-visible"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "always | [ anchor-valid || anchor-visible || no-overflow ]"
+  affects   unknown
+}
+
+property print-color-adjust @ "https://drafts.csswg.org/css-color-adjust-1/#propdef-print-color-adjust" {
+  initial   "economy"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "economy | exact"
+  affects   paint
+}
+
+property quotes @ "https://drafts.csswg.org/css-content-3/#propdef-quotes" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword none, the keyword auto, a content language, or a list, each item a pair of string values"
+  animation "discrete"
+  syntax    "auto | none | bikeshed-this | [ <string> <string> ]+"
+  affects   unknown
+}
+
+property r @ "https://w3c.github.io/svgwg/svg2-draft/geometry.html#RProperty" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "an absolute length or percentage"
+  animation "by computed value"
+  syntax    "<length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property reading-flow @ "https://drafts.csswg.org/css-display-4/#propdef-reading-flow" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "normal | source-order | flex-visual | flex-flow | grid-rows | grid-columns | grid-order"
+  affects   unknown
+}
+
+property reading-order @ "https://drafts.csswg.org/css-display-4/#propdef-reading-order" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "specified integer"
+  animation "by computed value type"
+  syntax    "<integer>"
+  affects   unknown
+}
+
+property region-fragment @ "https://drafts.csswg.org/css-regions-1/#propdef-region-fragment" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | break"
+  affects   unknown
+}
+
+property resize @ "https://drafts.csswg.org/css-ui-4/#propdef-resize" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "none | both | horizontal | vertical | block | inline"
+  affects   unknown
+}
+
+property rest @ "https://drafts.csswg.org/css-speech-1/#propdef-rest" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'rest-before'> <'rest-after'>?"
+  longhands rest-before, rest-after
+  affects   unknown
+}
+
+property rest-after @ "https://drafts.csswg.org/css-speech-1/#propdef-rest-after" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "by computed value type"
+  syntax    "<time [0s,∞]> | none | x-weak | weak | medium | strong | x-strong"
+  affects   unknown
+}
+
+property rest-before @ "https://drafts.csswg.org/css-speech-1/#propdef-rest-before" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "by computed value type"
+  syntax    "<time [0s,∞]> | none | x-weak | weak | medium | strong | x-strong"
+  affects   unknown
+}
+
+property right @ "https://drafts.csswg.org/css-position-3/#propdef-right" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage> | <anchor()> | <anchor-size()>"
+  affects   layout
+}
+
+property rotate @ "https://drafts.csswg.org/css-transforms-2/#propdef-rotate" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none, or an <angle> with an axis consisting of a list of three <number>s"
+  animation "as SLERP, but see below for none"
+  syntax    "none | <angle> | [ x | y | z | <number>{3} ] && <angle>"
+  affects   composite
+}
+
+property row-gap @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-gap" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword, else a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "normal | <length-percentage [0,∞]> | <line-width>"
+  affects   layout
+}
+
+property row-rule @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<gap-rule-list> | <gap-auto-rule-list>"
+  longhands row-rule-width, row-rule-style, row-rule-color
+  affects   unknown
+}
+
+property row-rule-break @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-break" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "none | normal | intersection"
+  affects   unknown
+}
+
+property row-rule-color @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-color" {
+  initial   "currentcolor"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "repeatable list, see § 4.7 Interpolation of list values."
+  syntax    "<line-color-list> | <auto-line-color-list>"
+  affects   unknown
+}
+
+property row-rule-inset @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-inset-cap'> [ / <'column-rule-inset-junction'> ]?"
+  longhands row-rule-inset-cap-start, row-rule-inset-cap-end, row-rule-inset-junction-start, row-rule-inset-junction-end
+  affects   unknown
+}
+
+property row-rule-inset-cap @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset-cap" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<inset-value> <inset-value>?"
+  longhands row-rule-inset-cap-start, row-rule-inset-cap-end
+  affects   unknown
+}
+
+property row-rule-inset-cap-end @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset-cap-end" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value type"
+  syntax    "<inset-value>"
+  affects   unknown
+}
+
+property row-rule-inset-cap-start @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset-cap-start" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value type"
+  syntax    "<inset-value>"
+  affects   unknown
+}
+
+property row-rule-inset-end @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset-end" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<inset-value>"
+  longhands row-rule-inset-cap-end, row-rule-inset-junction-end
+  affects   unknown
+}
+
+property row-rule-inset-junction @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset-junction" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<inset-value> <inset-value>?"
+  longhands row-rule-inset-junction-start, row-rule-inset-junction-end
+  affects   unknown
+}
+
+property row-rule-inset-junction-end @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset-junction-end" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value type"
+  syntax    "<inset-value>"
+  affects   unknown
+}
+
+property row-rule-inset-junction-start @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset-junction-start" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value type"
+  syntax    "<inset-value>"
+  affects   unknown
+}
+
+property row-rule-inset-start @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-inset-start" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<inset-value>"
+  longhands row-rule-inset-cap-start, row-rule-inset-junction-start
+  affects   unknown
+}
+
+property row-rule-style @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-style" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "<line-style-list> | <auto-line-style-list>"
+  affects   unknown
+}
+
+property row-rule-visibility-items @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-visibility-items" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "all | around | between | normal"
+  affects   unknown
+}
+
+property row-rule-width @ "https://drafts.csswg.org/css-gaps-1/#propdef-row-rule-width" {
+  initial   "medium"
+  inherited "no"
+  inherits  no
+  computed  "list of absolute lengths, snapped as a border width"
+  animation "repeatable list, see § 4.7 Interpolation of list values."
+  syntax    "<line-width-list> | <auto-line-width-list>"
+  affects   unknown
+}
+
+property ruby-align @ "https://drafts.csswg.org/css-ruby-1/#propdef-ruby-align" {
+  initial   "space-around"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "by computed value type"
+  syntax    "start | center | space-between | space-around"
+  affects   unknown
+}
+
+property ruby-merge @ "https://drafts.csswg.org/css-ruby-1/#propdef-ruby-merge" {
+  initial   "separate"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "by computed value type"
+  syntax    "separate | merge | auto"
+  affects   unknown
+}
+
+property ruby-overhang @ "https://drafts.csswg.org/css-ruby-1/#propdef-ruby-overhang" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "by computed value type"
+  syntax    "auto | spaces"
+  affects   unknown
+}
+
+property ruby-position @ "https://drafts.csswg.org/css-ruby-1/#propdef-ruby-position" {
+  initial   "alternate"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "[ alternate || [ over | under ] ] | inter-character"
+  affects   unknown
+}
+
+property rule @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule'>"
+  longhands column-rule, row-rule
+  affects   unknown
+}
+
+property rule-break @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-break" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-break'>"
+  longhands column-rule-break, row-rule-break
+  affects   unknown
+}
+
+property rule-color @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-color" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-color'>"
+  longhands column-rule-color, row-rule-color
+  affects   unknown
+}
+
+property rule-inset @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-inset" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-inset'>"
+  longhands column-rule-inset, row-rule-inset
+  affects   unknown
+}
+
+property rule-inset-cap @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-inset-cap" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-inset-cap'>"
+  longhands column-rule-inset-cap, row-rule-inset-cap
+  affects   unknown
+}
+
+property rule-inset-end @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-inset-end" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-inset-end'>"
+  longhands column-rule-inset-end, row-rule-inset-end
+  affects   unknown
+}
+
+property rule-inset-junction @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-inset-junction" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-inset-junction'>"
+  longhands column-rule-inset-junction, row-rule-inset-junction
+  affects   unknown
+}
+
+property rule-inset-start @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-inset-start" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-inset-start'>"
+  longhands column-rule-inset-start, row-rule-inset-start
+  affects   unknown
+}
+
+property rule-overlap @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-overlap" {
+  initial   "row-over-column"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "row-over-column | column-over-row"
+  affects   unknown
+}
+
+property rule-style @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-style" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-style'>"
+  longhands column-rule-style, row-rule-style
+  affects   unknown
+}
+
+property rule-visibility-items @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-visibility-items" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-visibility-items'>"
+  longhands column-rule-visibility-items, row-rule-visibility-items
+  affects   unknown
+}
+
+property rule-width @ "https://drafts.csswg.org/css-gaps-1/#propdef-rule-width" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'column-rule-width'>"
+  longhands column-rule-width, row-rule-width
+  affects   unknown
+}
+
+property rx @ "https://w3c.github.io/svgwg/svg2-draft/geometry.html#RxProperty" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "an absolute length or percentage"
+  animation "by computed value"
+  syntax    "<length-percentage [0,∞]> | auto"
+  affects   unknown
+}
+
+property ry @ "https://w3c.github.io/svgwg/svg2-draft/geometry.html#RyProperty" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "an absolute length or percentage"
+  syntax    "<length-percentage [0,∞]> | auto"
+  affects   unknown
+}
+
+property scale @ "https://drafts.csswg.org/css-transforms-2/#propdef-scale" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none, or a list of 3 <number>s"
+  animation "by computed value, but see below for none"
+  syntax    "none | [ <number> | <percentage> ]{1,3}"
+  affects   composite
+}
+
+property scroll-axis-lock @ "https://drafts.csswg.org/css-overflow-5/#propdef-scroll-axis-lock" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "discrete"
+  syntax    "auto | none"
+  affects   unknown
+}
+
+property scroll-behavior @ "https://drafts.csswg.org/css-overflow-3/#propdef-scroll-behavior" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "not animatable"
+  syntax    "auto | smooth"
+  affects   unknown
+}
+
+property scroll-initial-target @ "https://drafts.csswg.org/css-scroll-snap-2/#propdef-scroll-initial-target" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "none"
+  syntax    "none | nearest"
+  affects   unknown
+}
+
+property scroll-margin @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin" {
+  initial   "0"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "per side, an absolute length"
+  animation "by computed value type"
+  syntax    "<length>{1,4}"
+  longhands scroll-margin-top, scroll-margin-right, scroll-margin-bottom, scroll-margin-left
+  affects   unknown
+}
+
+property scroll-margin-block @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-block" {
+  initial   "0"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "<length>{1,2}"
+  longhands scroll-margin-block-start, scroll-margin-block-end
+  affects   unknown
+}
+
+property scroll-margin-block-end @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-block-end" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property scroll-margin-block-start @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-block-start" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property scroll-margin-bottom @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-bottom" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property scroll-margin-inline @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-inline" {
+  initial   "0"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "<length>{1,2}"
+  longhands scroll-margin-inline-start, scroll-margin-inline-end
+  affects   unknown
+}
+
+property scroll-margin-inline-end @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-inline-end" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property scroll-margin-inline-start @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-inline-start" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property scroll-margin-left @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-left" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property scroll-margin-right @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-right" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property scroll-margin-top @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin-top" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "absolute length"
+  animation "by computed value type"
+  syntax    "<length>"
+  affects   unknown
+}
+
+property scroll-marker-group @ "https://drafts.csswg.org/css-overflow-5/#propdef-scroll-marker-group" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | [ [ before | after ] || [ links | tabs ] ]"
+  affects   unknown
+}
+
+property scroll-padding @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "per side, either the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "[ auto | <length-percentage [0,∞]> ]{1,4}"
+  longhands scroll-padding-top, scroll-padding-right, scroll-padding-bottom, scroll-padding-left
+  affects   unknown
+}
+
+property scroll-padding-block @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-block" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value"
+  syntax    "[ auto | <length-percentage [0,∞]> ]{1,2}"
+  longhands scroll-padding-block-start, scroll-padding-block-end
+  affects   unknown
+}
+
+property scroll-padding-block-end @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-block-end" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property scroll-padding-block-start @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-block-start" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property scroll-padding-bottom @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-bottom" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property scroll-padding-inline @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-inline" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value"
+  syntax    "[ auto | <length-percentage [0,∞]> ]{1,2}"
+  longhands scroll-padding-inline-start, scroll-padding-inline-end
+  affects   unknown
+}
+
+property scroll-padding-inline-end @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-inline-end" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property scroll-padding-inline-start @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-inline-start" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property scroll-padding-left @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-left" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property scroll-padding-right @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-right" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property scroll-padding-top @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-padding-top" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "the keyword auto or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "auto | <length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property scroll-snap-align @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-snap-align" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "two keywords"
+  animation "discrete"
+  syntax    "[ none | start | end | center ]{1,2}"
+  affects   unknown
+}
+
+property scroll-snap-stop @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-snap-stop" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "normal | always"
+  affects   unknown
+}
+
+property scroll-snap-type @ "https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-snap-type" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | [ x | y | block | inline | both | pair ] [ mandatory | proximity ]?"
+  affects   unknown
+}
+
+property scroll-target-group @ "https://drafts.csswg.org/css-overflow-5/#propdef-scroll-target-group" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "discrete"
+  syntax    "none | auto"
+  affects   unknown
+}
+
+property scroll-timeline @ "https://drafts.csswg.org/scroll-animations-1/#propdef-scroll-timeline" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "not animatable"
+  syntax    "[ <'scroll-timeline-name'> <'scroll-timeline-axis'>? ]#"
+  longhands scroll-timeline-name, scroll-timeline-axis
+  affects   unknown
+}
+
+property scroll-timeline-axis @ "https://drafts.csswg.org/scroll-animations-1/#propdef-scroll-timeline-axis" {
+  initial   "block"
+  inherited "no"
+  inherits  no
+  computed  "a list of the keywords specified"
+  animation "not animatable"
+  syntax    "[ block | inline | x | y ]#"
+  affects   unknown
+}
+
+property scroll-timeline-name @ "https://drafts.csswg.org/scroll-animations-1/#propdef-scroll-timeline-name" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "list, each item either a CSS identifier or the keyword none"
+  animation "not animatable"
+  syntax    "[ none | <dashed-ident> ]#"
+  affects   unknown
+}
+
+property scrollbar-color @ "https://drafts.csswg.org/css-scrollbars-1/#propdef-scrollbar-color" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword or two computed colors"
+  animation "by computed value"
+  syntax    "auto | <color>{2}"
+  affects   unknown
+}
+
+property scrollbar-gutter @ "https://drafts.csswg.org/css-overflow-3/#propdef-scrollbar-gutter" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "auto | stable && both-edges?"
+  affects   unknown
+}
+
+property scrollbar-width @ "https://drafts.csswg.org/css-scrollbars-1/#propdef-scrollbar-width" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | thin | none"
+  affects   unknown
+}
+
+property shape-image-threshold @ "https://drafts.csswg.org/css-shapes-1/#propdef-shape-image-threshold" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "specified number, clamped to the range [0,1]"
+  animation "by computed value"
+  syntax    "<opacity-value>"
+  affects   unknown
+}
+
+property shape-inside @ "https://drafts.csswg.org/css-shapes-2/#propdef-shape-inside" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "computed lengths for <basic-shape>, the absolute URL for <url>, otherwise as specified"
+  animation "as defined for <basic-shape>, otherwise discrete"
+  syntax    "auto | outside-shape | [ <basic-shape> || shape-box ] | <image> | display"
+  affects   unknown
+}
+
+property shape-margin @ "https://drafts.csswg.org/css-shapes-1/#propdef-shape-margin" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "computed <length-percentage> value"
+  animation "by computed value"
+  syntax    "<length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property shape-outside @ "https://drafts.csswg.org/css-shapes-1/#propdef-shape-outside" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as defined for <basic-shape> (with <shape-box> following, if supplied); else the computed <image>; else the keyword as specified"
+  animation "as defined for <basic-shape>, otherwise discrete"
+  syntax    "none | [ <basic-shape> || <shape-box> ] | <image>"
+  affects   unknown
+}
+
+property shape-padding @ "https://drafts.csswg.org/css-shapes-2/#propdef-shape-padding" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "computed <length-percentage> value"
+  animation "by computed value"
+  syntax    "<length-percentage [0,∞]>"
+  affects   unknown
+}
+
+property shape-rendering @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#ShapeRenderingProperty" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | optimizeSpeed | crispEdges | geometricPrecision"
+  affects   unknown
+}
+
+property size @ "https://drafts.csswg.org/css-sizing-4/#propdef-size" {
+  initial   "auto"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'width'> <'height'>?"
+  longhands width, height
+  affects   unknown
+}
+
+property slider-orientation @ "https://drafts.csswg.org/css-forms-1/#propdef-slider-orientation" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | left-to-right | right-to-left | top-to-bottom | bottom-to-top"
+  affects   unknown
+}
+
+property spatial-navigation-action @ "https://drafts.csswg.org/css-spatial-nav-1/#propdef-spatial-navigation-action" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | focus | scroll"
+  affects   unknown
+}
+
+property spatial-navigation-contain @ "https://drafts.csswg.org/css-spatial-nav-1/#propdef-spatial-navigation-contain" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | contain"
+  affects   unknown
+}
+
+property spatial-navigation-function @ "https://drafts.csswg.org/css-spatial-nav-1/#propdef-spatial-navigation-function" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | grid"
+  affects   unknown
+}
+
+property speak @ "https://drafts.csswg.org/css-speech-1/#propdef-speak" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value"
+  animation "discrete"
+  syntax    "auto | never | always"
+  affects   unknown
+}
+
+property speak-as @ "https://drafts.csswg.org/css-speech-1/#propdef-speak-as" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value"
+  animation "discrete"
+  syntax    "normal | spell-out || digits || [ literal-punctuation | no-punctuation ]"
+  affects   unknown
+}
+
+property stop-color @ "https://w3c.github.io/svgwg/svg2-draft/pservers.html#StopColorProperty" {
+  # an SVG paint-server property; not inherited
+  inherits  no
+  syntax    "<'color'>"
+  # SVG 2 14.2.4: Value <‘color’>, Initial black
+  initial-is "black"
+  # SVG 2 states no computed value for it; a <color> resolves like any other
+  kind      color
+  affects   unknown
+}
+
+property stop-opacity @ "https://w3c.github.io/svgwg/svg2-draft/pservers.html#StopOpacityProperty" {
+  # an SVG paint-server property; not inherited
+  inherits  no
+  syntax    "<'opacity'>"
+  # SVG 2 14.2.4: Value <‘opacity’>, Initial 1
+  initial-is "1"
+  # SVG 2 14.2.4 computed value: "the specified value converted to a number, clamped to the range [0,1]"
+  kind      number
+  affects   unknown
+}
+
+property string-set @ "https://drafts.csswg.org/css-content-3/#propdef-string-set" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none or a list, each item an identifier paired with a list of string values"
+  animation "discrete"
+  syntax    "none | [ <custom-ident> <string>+ ]#"
+  affects   unknown
+}
+
+property stroke @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#StrokeProperty" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, but with <color> values computed and <url> values made absolute"
+  animation "by computed value"
+  syntax    "<paint>"
+  affects   unknown
+}
+
+property stroke-align @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-align" {
+  initial   "center"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "center | inset | outset"
+  affects   unknown
+}
+
+property stroke-alignment @ "https://svgwg.org/specs/strokes/#StrokeAlignmentProperty" {
+  initial   "center"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  syntax    "center | inner | outer"
+  affects   unknown
+}
+
+property stroke-break @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-break" {
+  initial   "bounding-box"
+  inherited "?"
+  # fill-stroke-3 writes `?`; decided with fill-break, which it mirrors
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "bounding-box | slice | clone"
+  affects   unknown
+}
+
+property stroke-color @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-color" {
+  initial   "transparent"
+  inherited "yes"
+  inherits  yes
+  computed  "the computed color"
+  animation "by computed value"
+  syntax    "<color>#"
+  affects   unknown
+}
+
+property stroke-dash-corner @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-dash-corner" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value, with lengths made absolute"
+  animation "by computed value if <length>, otherwise discrete"
+  syntax    "none | <length>"
+  affects   unknown
+}
+
+property stroke-dash-justify @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-dash-justify" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value, with lengths made absolute"
+  animation "discrete"
+  syntax    "none | [ stretch | compress ] || [ dashes || gaps ]"
+  affects   unknown
+}
+
+property stroke-dashadjust @ "https://svgwg.org/specs/strokes/#StrokeDashadjustProperty" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  syntax    "none | [stretch | compress] [dashes | gaps]?"
+  affects   unknown
+}
+
+property stroke-dasharray @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-dasharray" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "repeatable list"
+  syntax    "none | [<length-percentage> | <number>]+#"
+  affects   unknown
+}
+
+property stroke-dashcorner @ "https://svgwg.org/specs/strokes/#StrokeDashcornerProperty" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "absolute length or keyword specified"
+  syntax    "none | <length>"
+  affects   unknown
+}
+
+property stroke-dashoffset @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-dashoffset" {
+  initial   "0"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "repeatable list"
+  syntax    "<length-percentage> | <number>"
+  affects   unknown
+}
+
+property stroke-image @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-image" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, with any <image> computed"
+  animation "repeatable list"
+  syntax    "<paint>#"
+  affects   unknown
+}
+
+property stroke-linecap @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-linecap" {
+  initial   "butt"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "butt | round | square"
+  affects   unknown
+}
+
+property stroke-linejoin @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-linejoin" {
+  initial   "miter"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "[ crop | arcs | miter ] || [ bevel | round | fallback ]"
+  affects   unknown
+}
+
+property stroke-miterlimit @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-miterlimit" {
+  initial   "4"
+  inherited "yes"
+  inherits  yes
+  computed  "a number"
+  animation "discrete"
+  syntax    "<number>"
+  affects   unknown
+}
+
+property stroke-opacity @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-opacity" {
+  initial   "1"
+  inherited "yes"
+  inherits  yes
+  computed  "the specified value converted to a <number>, clamped to the range [0,1]"
+  animation "by computed value"
+  syntax    "<'opacity'>"
+  affects   unknown
+}
+
+property stroke-origin @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-origin" {
+  initial   "match-parent"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "match-parent | fill-box | stroke-box | content-box | padding-box | border-box"
+  affects   unknown
+}
+
+property stroke-position @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-position" {
+  initial   "0% 0%"
+  inherited "yes"
+  inherits  yes
+  computed  "A list, each item consisting of: a pair of offsets (horizontal and vertical) from the top left origin each given as a combination of an absolute length and a percentage"
+  animation "repeatable list"
+  syntax    "<position>#"
+  affects   unknown
+}
+
+property stroke-repeat @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-repeat" {
+  initial   "repeat"
+  inherited "yes"
+  inherits  yes
+  computed  "A list, each item consisting of: two keywords, one per dimension"
+  animation "discrete"
+  syntax    "<repeat-style>#"
+  affects   unknown
+}
+
+property stroke-size @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-size" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, but with lengths made absolute and omitted auto keywords filled in"
+  animation "repeatable list"
+  syntax    "<bg-size>#"
+  affects   unknown
+}
+
+property stroke-width @ "https://drafts.csswg.org/fill-stroke-3/#propdef-stroke-width" {
+  initial   "1px"
+  inherited "yes"
+  inherits  yes
+  computed  "the absolute length, or percentage"
+  animation "by computed value"
+  syntax    "[ <length-percentage> | <line-width> | <number> ]#"
+  affects   unknown
+}

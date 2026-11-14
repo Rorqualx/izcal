@@ -1,0 +1,978 @@
+# @bootstrapped once from @webref/css 8.7.9 on 13 November 2026, then
+# hand-maintained. Properties d to h.
+#
+# The `initial`, `inherited`, `computed`, `animation`, `syntax` and
+# `longhands` lines restate what the pinned @webref/css carries, and
+# hg-cssgen fails the build when they and webref disagree. That is what
+# they are for: the engine is written against these values, and a
+# specification change that moved one would otherwise be silent. A
+# disagreement is triaged line by line; this file is never regenerated
+# from webref to make one go away (ST-7).
+#
+# `affects` and `hook` are Izcal's own and have no counterpart in
+# webref. `affects unknown` records a decision not yet made rather than
+# guessing it, and hg-cssgen reports how many remain.
+
+property d @ "https://w3c.github.io/svgwg/svg2-draft/paths.html#DProperty" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "See prose"
+  syntax    "none | <string>"
+  affects   unknown
+}
+
+property direction @ "https://drafts.csswg.org/css-writing-modes-4/#propdef-direction" {
+  initial   "ltr"
+  inherited "yes"
+  inherits  yes
+  computed  "specified value"
+  animation "not animatable"
+  syntax    "ltr | rtl"
+  affects   layout
+}
+
+property display @ "https://drafts.csswg.org/css-display-4/#propdef-display" {
+  initial   "inline"
+  inherited "no"
+  inherits  no
+  computed  "a pair of keywords representing the inner and outer display types plus optional list-item flag, or a <display-internal> or <display-box> keyword; see prose in a variety of specs for computation rules"
+  animation "see § 2.9 Animating and Interpolating display"
+  syntax    "[ <display-outside> || <display-inside> ] | <display-listitem> | <display-internal> | <display-box> | <display-legacy> | grid-lanes | inline-grid-lanes | <display-outside> || [ <display-inside> | math ]"
+  affects   layout
+  hook      display
+}
+
+property dominant-baseline @ "https://drafts.csswg.org/css-inline-3/#propdef-dominant-baseline" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | <baseline-metric>"
+  affects   unknown
+}
+
+property dynamic-range-limit @ "https://drafts.csswg.org/css-color-hdr-1/#propdef-dynamic-range-limit" {
+  initial   "no-limit"
+  inherited "yes"
+  inherits  yes
+  computed  "see Computed Value for dynamic-range-limit"
+  animation "by dynamic-range-limit-mix()"
+  syntax    "standard | no-limit | constrained | <dynamic-range-limit-mix()>"
+  affects   unknown
+  hook      dynamic_range_limit
+}
+
+property empty-cells @ "https://drafts.csswg.org/css-tables-3/#propdef-empty-cells" {
+  initial   "show"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "show | hide"
+  affects   layout
+}
+
+property event-trigger @ "https://drafts.csswg.org/animation-triggers-1/#propdef-event-trigger" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "none | [ <'event-trigger-name'> <'event-trigger-source'> ]#"
+  affects   unknown
+}
+
+property event-trigger-name @ "https://drafts.csswg.org/animation-triggers-1/#propdef-event-trigger-name" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "none | <dashed-ident>#"
+  affects   unknown
+}
+
+property event-trigger-source @ "https://drafts.csswg.org/animation-triggers-1/#propdef-event-trigger-source" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "[ none | <event-function>+ [ / <event-function>+ ]? ]#"
+  affects   unknown
+}
+
+property field-sizing @ "https://drafts.csswg.org/css-forms-1/#propdef-field-sizing" {
+  initial   "fixed"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "fixed | content"
+  affects   unknown
+}
+
+property fill @ "https://w3c.github.io/svgwg/svg2-draft/painting.html#FillProperty" {
+  initial   "black"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, but with <color> values computed and <url> values made absolute"
+  animation "by computed value"
+  syntax    "<paint>"
+  affects   unknown
+}
+
+property fill-break @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-break" {
+  initial   "bounding-box"
+  inherited "yes?"
+  # fill-stroke-3 writes `yes?`: the draft leans yes and nothing depends on it yet
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "bounding-box | slice | clone"
+  affects   unknown
+}
+
+property fill-color @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-color" {
+  initial   "currentcolor"
+  inherited "yes"
+  inherits  yes
+  computed  "the computed color"
+  animation "by computed value"
+  syntax    "<color>"
+  affects   unknown
+}
+
+property fill-image @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-image" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, with any <image> computed"
+  animation "repeatable list"
+  syntax    "<paint>#"
+  affects   unknown
+}
+
+property fill-opacity @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-opacity" {
+  initial   "1"
+  inherited "yes"
+  inherits  yes
+  computed  "the specified value converted to a <number>, clamped to the range [0,1]"
+  animation "by computed value"
+  syntax    "<'opacity'>"
+  affects   unknown
+}
+
+property fill-origin @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-origin" {
+  initial   "match-parent"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "match-parent | fill-box | stroke-box | content-box | padding-box | border-box"
+  affects   unknown
+}
+
+property fill-position @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-position" {
+  initial   "0% 0%"
+  inherited "yes"
+  inherits  yes
+  computed  "A list, each item consisting of: a pair of offsets (horizontal and vertical) from the top left origin each given as a combination of an absolute length and a percentage"
+  animation "repeatable list"
+  syntax    "<position>#"
+  affects   unknown
+}
+
+property fill-repeat @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-repeat" {
+  initial   "repeat"
+  inherited "yes"
+  inherits  yes
+  computed  "A list, each item consisting of: two keywords, one per dimension"
+  animation "discrete"
+  syntax    "<repeat-style>#"
+  affects   unknown
+}
+
+property fill-rule @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-rule" {
+  initial   "nonzero"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "nonzero | evenodd"
+  affects   unknown
+}
+
+property fill-size @ "https://drafts.csswg.org/fill-stroke-3/#propdef-fill-size" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified, but with lengths made absolute and omitted auto keywords filled in"
+  animation "repeatable list"
+  syntax    "<bg-size>#"
+  affects   unknown
+}
+
+property filter @ "https://drafts.csswg.org/filter-effects-1/#propdef-filter" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "See prose in Animation of Filters."
+  syntax    "none | <filter-value-list>"
+  affects   paint
+}
+
+property fit-tolerance @ "https://drafts.csswg.org/css-grid-3/#propdef-fit-tolerance" {
+  initial   "normal"
+  inherited "no"
+  inherits  no
+  computed  "a computed <length-percentage> value"
+  animation "as length"
+  syntax    "normal | <length-percentage [0,∞]> | infinite"
+  affects   unknown
+}
+
+property flex @ "https://drafts.csswg.org/css-flexbox-2/#propdef-flex" {
+  initial   "0 1 auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "none | [ <'flex-grow'> <'flex-shrink'>? || <'flex-basis'> ]"
+  longhands flex-grow, flex-shrink, flex-basis
+  affects   layout
+}
+
+property flex-basis @ "https://drafts.csswg.org/css-flexbox-2/#propdef-flex-basis" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword or a computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "content | <'width'>"
+  affects   layout
+}
+
+property flex-direction @ "https://drafts.csswg.org/css-flexbox-2/#propdef-flex-direction" {
+  initial   "row"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "row | row-reverse | column | column-reverse"
+  affects   layout
+}
+
+property flex-flow @ "https://drafts.csswg.org/css-flexbox-2/#propdef-flex-flow" {
+  initial   "see individual properties"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'flex-direction'> || <'flex-wrap'>"
+  longhands flex-direction, flex-wrap
+  affects   layout
+}
+
+property flex-grow @ "https://drafts.csswg.org/css-flexbox-2/#propdef-flex-grow" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "specified number"
+  animation "by computed value type"
+  syntax    "<number [0,∞]>"
+  affects   layout
+}
+
+property flex-line-count @ "https://drafts.csswg.org/css-flexbox-2/#propdef-flex-line-count" {
+  initial   "1"
+  inherited "no"
+  inherits  no
+  computed  "the specified integer, computed"
+  animation "as integer"
+  syntax    "<integer [1,∞]>"
+  affects   unknown
+}
+
+property flex-shrink @ "https://drafts.csswg.org/css-flexbox-2/#propdef-flex-shrink" {
+  initial   "1"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "number"
+  syntax    "<number [0,∞]>"
+  affects   layout
+}
+
+property flex-wrap @ "https://drafts.csswg.org/css-flexbox-2/#propdef-flex-wrap" {
+  initial   "nowrap"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "nowrap | [ wrap | wrap-reverse ] || balance"
+  affects   layout
+}
+
+property float @ "https://drafts.csswg.org/css-page-floats-3/#propdef-float" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value type"
+  syntax    "block-start | block-end | inline-start | inline-end | snap-block | <snap-block()> | snap-inline | <snap-inline()> | left | right | top | bottom | none | footnote"
+  affects   layout
+}
+
+property float-defer @ "https://drafts.csswg.org/css-page-floats-3/#propdef-float-defer" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword or integer"
+  animation "discrete"
+  syntax    "<integer> | last | none"
+  affects   unknown
+}
+
+property float-offset @ "https://drafts.csswg.org/css-page-floats-3/#propdef-float-offset" {
+  initial   "0"
+  inherited "no"
+  inherits  no
+  computed  "computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage>"
+  affects   unknown
+}
+
+property float-reference @ "https://drafts.csswg.org/css-page-floats-3/#propdef-float-reference" {
+  initial   "inline"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "inline | column | region | page"
+  affects   unknown
+}
+
+property flood-color @ "https://drafts.csswg.org/filter-effects-1/#propdef-flood-color" {
+  initial   "black"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "by computed value"
+  syntax    "<color>"
+  affects   unknown
+}
+
+property flood-opacity @ "https://drafts.csswg.org/filter-effects-1/#propdef-flood-opacity" {
+  initial   "1"
+  inherited "no"
+  inherits  no
+  computed  "the specified value converted to a number, clamped to the range [0,1]"
+  animation "by computed value"
+  syntax    "<'opacity'>"
+  affects   unknown
+}
+
+property flow-from @ "https://drafts.csswg.org/css-regions-1/#propdef-flow-from" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "<custom-ident> | none"
+  affects   unknown
+}
+
+property flow-into @ "https://drafts.csswg.org/css-regions-1/#propdef-flow-into" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "none | <custom-ident> [element | content]?"
+  affects   unknown
+}
+
+property font @ "https://drafts.csswg.org/css-fonts-4/#propdef-font" {
+  initial   "see individual properties"
+  inherited "yes"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "[ [ <'font-style'> || <font-variant-css2> || <'font-weight'> || <font-width-css3> ]? <'font-size'> [ / <'line-height'> ]? <'font-family'># ] | <system-font-family-name>"
+  longhands font-style, font-variant, font-weight, font-stretch, font-size, line-height, font-family
+  affects   layout
+}
+
+property font-family @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-family" {
+  initial   "depends on user agent"
+  inherited "yes"
+  inherits  yes
+  computed  "list, each item a string and/or <generic-font-family> keywords"
+  animation "discrete"
+  syntax    "[ <font-family-name> | <generic-font-family> ]#"
+  affects   layout
+}
+
+property font-feature-settings @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-feature-settings" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | <feature-tag-value>#"
+  affects   unknown
+}
+
+property font-kerning @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-kerning" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | normal | none"
+  affects   unknown
+}
+
+property font-language-override @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-language-override" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified string or the keyword none"
+  animation "discrete"
+  syntax    "normal | <string>"
+  affects   unknown
+}
+
+property font-optical-sizing @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-optical-sizing" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | none"
+  affects   unknown
+}
+
+property font-palette @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-palette" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword, identifier or <palette-mix()> function. <palette-mix()> must be simplified to a single keyword or identifier if resulting palette is equivalent."
+  animation "by computed value"
+  syntax    "normal | light | dark | <palette-identifier> | <palette-mix()>"
+  affects   unknown
+  hook      font_palette
+}
+
+property font-size @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-size" {
+  initial   "medium"
+  inherited "yes"
+  inherits  yes
+  computed  "an absolute length"
+  animation "by computed value type"
+  syntax    "<absolute-size> | <relative-size> | <length-percentage [0,∞]> | math"
+  affects   layout
+}
+
+property font-size-adjust @ "https://drafts.csswg.org/css-fonts-5/#propdef-font-size-adjust" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword none, or a pair of a metric keyword and a <number>"
+  animation "discrete if the keywords differ, otherwise by computed value type"
+  syntax    "none | [ ex-height | cap-height | ch-width | ic-width | ic-height ]? [ from-font | <number [0,∞]> ]"
+  affects   unknown
+}
+
+property font-style @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-style" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword specified, plus angle in degrees if specified"
+  animation "by computed value type; normal animates as oblique 0deg"
+  syntax    "normal | italic | left | right | oblique <angle [-90deg,90deg]>?"
+  affects   layout
+}
+
+property font-synthesis @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis" {
+  initial   "weight style small-caps position"
+  inherited "yes"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | [ weight || style || small-caps || position]"
+  longhands font-synthesis-weight, font-synthesis-style, font-synthesis-small-caps
+  affects   unknown
+}
+
+property font-synthesis-position @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis-position" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | none"
+  affects   unknown
+}
+
+property font-synthesis-small-caps @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis-small-caps" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | none"
+  affects   unknown
+}
+
+property font-synthesis-style @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis-style" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | none | oblique-only"
+  affects   unknown
+}
+
+property font-synthesis-weight @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis-weight" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | none"
+  affects   unknown
+}
+
+property font-variant @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variant" {
+  initial   "normal"
+  inherited "yes"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | none | [ [ <common-lig-values> || <discretionary-lig-values> || <historical-lig-values> || <contextual-alt-values> ] || [ small-caps | all-small-caps | petite-caps | all-petite-caps | unicase | titling-caps ] || [ stylistic(<font-feature-value-name>) || historical-forms || styleset(<font-feature-value-name>#) || character-variant(<font-feature-value-name>#) || swash(<font-feature-value-name>) || ornaments(<font-feature-value-name>) || annotation(<font-feature-value-name>) ] || [ <numeric-figure-values> || <numeric-spacing-values> || <numeric-fraction-values> || ordinal || slashed-zero ] || [ <east-asian-variant-values> || <east-asian-width-values> || ruby ] || [ sub | super ] || [ text | emoji | unicode ] ]"
+  longhands font-variant-ligatures, font-variant-caps, font-variant-alternates, font-variant-numeric, font-variant-east-asian, font-variant-position, font-variant-emoji
+  affects   unknown
+}
+
+property font-variant-alternates @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-alternates" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | [ stylistic(<font-feature-value-name>) || historical-forms || styleset(<font-feature-value-name>#) || character-variant(<font-feature-value-name>#) || swash(<font-feature-value-name>) || ornaments(<font-feature-value-name>) || annotation(<font-feature-value-name>) ]"
+  affects   unknown
+}
+
+property font-variant-caps @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-caps" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | small-caps | all-small-caps | petite-caps | all-petite-caps | unicase | titling-caps"
+  affects   unknown
+}
+
+property font-variant-east-asian @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-east-asian" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | [ <east-asian-variant-values> || <east-asian-width-values> || ruby ]"
+  affects   unknown
+}
+
+property font-variant-emoji @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-emoji" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "normal | text | emoji | unicode"
+  affects   unknown
+}
+
+property font-variant-ligatures @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-ligatures" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | none | [ <common-lig-values> || <discretionary-lig-values> || <historical-lig-values> || <contextual-alt-values> ]"
+  affects   unknown
+}
+
+property font-variant-numeric @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-numeric" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | [ <numeric-figure-values> || <numeric-spacing-values> || <numeric-fraction-values> || ordinal || slashed-zero ]"
+  affects   unknown
+}
+
+property font-variant-position @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-position" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "discrete"
+  syntax    "normal | sub | super"
+  affects   unknown
+}
+
+property font-variation-settings @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-variation-settings" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "the keyword normal or a list, each item a string paired with a number"
+  animation "see prose"
+  syntax    "normal | [ <opentype-tag> <number> ]#"
+  affects   unknown
+}
+
+property font-weight @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-weight" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "a number, see below"
+  animation "by computed value type"
+  syntax    "<font-weight-absolute> | bolder | lighter"
+  affects   layout
+  hook      font_weight
+}
+
+property font-width @ "https://drafts.csswg.org/css-fonts-4/#propdef-font-width" {
+  initial   "normal"
+  inherited "yes"
+  inherits  yes
+  computed  "a percentage, see below"
+  animation "by computed value type"
+  syntax    "normal | <percentage [0,∞]> | ultra-condensed | extra-condensed | condensed | semi-condensed | semi-expanded | expanded | extra-expanded | ultra-expanded"
+  affects   layout
+  hook      font_width
+}
+
+property footnote-display @ "https://drafts.csswg.org/css-gcpm-3/#propdef-footnote-display" {
+  initial   "block"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "discrete"
+  syntax    "block | inline | compact"
+  affects   unknown
+}
+
+property footnote-policy @ "https://drafts.csswg.org/css-gcpm-3/#propdef-footnote-policy" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified value"
+  animation "discrete"
+  syntax    "auto | line | block"
+  affects   unknown
+}
+
+property forced-color-adjust @ "https://drafts.csswg.org/css-color-adjust-1/#propdef-forced-color-adjust" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "as specified"
+  animation "not animatable"
+  syntax    "auto | none | preserve-parent-color"
+  affects   paint
+}
+
+property frame-sizing @ "https://drafts.csswg.org/css-sizing-4/#propdef-frame-sizing" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified"
+  animation "discrete"
+  syntax    "auto | content-width | content-height | content-block-size | content-inline-size"
+  affects   unknown
+}
+
+property gap @ "https://drafts.csswg.org/css-gaps-1/#propdef-gap" {
+  initial   "see individual properties"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "by computed value type"
+  syntax    "<'row-gap'> <'column-gap'>?"
+  longhands row-gap, column-gap
+  affects   layout
+}
+
+property glyph-orientation-vertical @ "https://drafts.csswg.org/css-writing-modes-4/#propdef-glyph-orientation-vertical" {
+  initial   "n/a"
+  inherited "n/a"
+  # webref writes `n/a`; deprecated for text-orientation, which inherits
+  inherits  yes
+  computed  "n/a"
+  animation "n/a"
+  syntax    "auto | 0deg | 90deg | 0 | 90"
+  affects   unknown
+  hook      glyph_orientation_vertical
+}
+
+property grid @ "https://drafts.csswg.org/css-grid-2/#propdef-grid" {
+  initial   "none"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "<'grid-template'> | <'grid-template-rows'> / [ auto-flow && dense? ] <'grid-auto-columns'>? | [ auto-flow && dense? ] <'grid-auto-rows'>? / <'grid-template-columns'>"
+  longhands grid-template-rows, grid-template-columns, grid-template-areas, grid-auto-rows, grid-auto-columns, grid-auto-flow
+  affects   layout
+}
+
+property grid-area @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-area" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "<grid-line> [ / <grid-line> ]{0,3}"
+  longhands grid-row-start, grid-column-start, grid-row-end, grid-column-end
+  affects   layout
+}
+
+property grid-auto-columns @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-auto-columns" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "see Track Sizing"
+  animation "if the list lengths match, by computed value type per item; discrete otherwise"
+  syntax    "<track-size>+"
+  affects   layout
+  hook      grid_auto_columns
+}
+
+property grid-auto-flow @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-auto-flow" {
+  initial   "row"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "[ row | column ] || dense"
+  affects   layout
+}
+
+property grid-auto-rows @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-auto-rows" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "see Track Sizing"
+  animation "if the list lengths match, by computed value type per item; discrete otherwise"
+  syntax    "<track-size>+"
+  affects   layout
+  hook      grid_auto_rows
+}
+
+property grid-column @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-column" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "<grid-line> [ / <grid-line> ]?"
+  longhands grid-column-start, grid-column-end
+  affects   layout
+}
+
+property grid-column-end @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-column-end" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword, identifier, and/or integer"
+  animation "discrete"
+  syntax    "<grid-line>"
+  affects   layout
+}
+
+property grid-column-start @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-column-start" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword, identifier, and/or integer"
+  animation "discrete"
+  syntax    "<grid-line>"
+  affects   layout
+}
+
+property grid-row @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-row" {
+  initial   "auto"
+  inherited "no"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "discrete"
+  syntax    "<grid-line> [ / <grid-line> ]?"
+  longhands grid-row-start, grid-row-end
+  affects   layout
+}
+
+property grid-row-end @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-row-end" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword, identifier, and/or integer"
+  animation "discrete"
+  syntax    "<grid-line>"
+  affects   layout
+}
+
+property grid-row-start @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-row-start" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "specified keyword, identifier, and/or integer"
+  animation "discrete"
+  syntax    "<grid-line>"
+  affects   layout
+}
+
+property grid-template @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-template" {
+  initial   "none"
+  inherited "see individual properties"
+  # a shorthand: the cascade stores its longhands, which carry their own answer
+  inherits  no
+  computed  "see individual properties"
+  animation "see individual properties"
+  syntax    "none | [ <'grid-template-rows'> / <'grid-template-columns'> ] | [ <line-names>? <string> <track-size>? <line-names>? ]+ [ / <explicit-track-list> ]?"
+  longhands grid-template-rows, grid-template-columns, grid-template-areas
+  affects   layout
+}
+
+property grid-template-areas @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-template-areas" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none or a list of string values"
+  animation "discrete"
+  syntax    "none | <string>+"
+  affects   layout
+}
+
+property grid-template-columns @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-template-columns" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none or a computed track list"
+  animation "if the list lengths match, by computed value type per item in the computed track list (see § 7.2.5 Computed Value of a Track Listing and § 7.2.3.3 Interpolation/Combination of repeat()); discrete otherwise"
+  syntax    "none | <track-list> | <auto-track-list> | subgrid <line-name-list>?"
+  affects   layout
+  hook      grid_template_columns
+}
+
+property grid-template-rows @ "https://drafts.csswg.org/css-grid-2/#propdef-grid-template-rows" {
+  initial   "none"
+  inherited "no"
+  inherits  no
+  computed  "the keyword none or a computed track list"
+  animation "if the list lengths match, by computed value type per item in the computed track list (see § 7.2.5 Computed Value of a Track Listing and § 7.2.3.3 Interpolation/Combination of repeat()); discrete otherwise"
+  syntax    "none | <track-list> | <auto-track-list> | subgrid <line-name-list>?"
+  affects   layout
+  hook      grid_template_rows
+}
+
+property hanging-punctuation @ "https://drafts.csswg.org/css-text-4/#propdef-hanging-punctuation" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword(s)"
+  animation "discrete"
+  syntax    "none | [ first || [ force-end | allow-end ] || last ]"
+  affects   unknown
+}
+
+property height @ "https://drafts.csswg.org/css-sizing-3/#propdef-height" {
+  initial   "auto"
+  inherited "no"
+  inherits  no
+  computed  "as specified, with <length-percentage> values computed"
+  animation "by computed value type, recursing into fit-content()"
+  syntax    "auto | <box-size> | <anchor-size()>"
+  affects   layout
+}
+
+property hyphenate-character @ "https://drafts.csswg.org/css-text-4/#propdef-hyphenate-character" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "auto | <string>"
+  affects   unknown
+}
+
+property hyphenate-limit-chars @ "https://drafts.csswg.org/css-text-4/#propdef-hyphenate-limit-chars" {
+  initial   "auto"
+  inherited "yes"
+  inherits  yes
+  computed  "three values, each either the auto keyword or an integer"
+  animation "by computed value type"
+  syntax    "[ auto | <integer [0,∞]> ]{1,3}"
+  affects   unknown
+}
+
+property hyphenate-limit-last @ "https://drafts.csswg.org/css-text-4/#propdef-hyphenate-limit-last" {
+  initial   "none"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "none | always | column | page | spread"
+  affects   unknown
+}
+
+property hyphenate-limit-lines @ "https://drafts.csswg.org/css-text-4/#propdef-hyphenate-limit-lines" {
+  initial   "no-limit"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword or integer"
+  animation "by computed value type"
+  syntax    "no-limit | <integer [0,∞]>"
+  affects   unknown
+}
+
+property hyphenate-limit-zone @ "https://drafts.csswg.org/css-text-4/#propdef-hyphenate-limit-zone" {
+  initial   "0"
+  inherited "yes"
+  inherits  yes
+  computed  "computed <length-percentage> value"
+  animation "by computed value type"
+  syntax    "<length-percentage>"
+  affects   unknown
+}
+
+property hyphens @ "https://drafts.csswg.org/css-text-4/#propdef-hyphens" {
+  initial   "manual"
+  inherited "yes"
+  inherits  yes
+  computed  "specified keyword"
+  animation "discrete"
+  syntax    "none | manual | auto"
+  affects   layout
+}

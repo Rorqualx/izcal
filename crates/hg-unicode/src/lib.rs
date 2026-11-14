@@ -23,6 +23,9 @@ use hg_ucd::{canonical, combining_class, compatibility, compose, quick_check};
 /// The Unicode version the tables come from.
 pub const VERSION: &str = hg_ucd::VERSION;
 
+pub mod idna;
+pub mod punycode;
+
 /// Which normal form to produce (UAX #15, Table 1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Form {
@@ -72,9 +75,15 @@ const S_COUNT: u32 = L_COUNT * N_COUNT; // 11172
 /// Normalizes `s` to `form`.
 #[must_use]
 pub fn normalize(s: &str, form: Form) -> String {
-    if is_normalized(s, form) {
+    if quick_yes(s, form) {
         return s.to_owned();
     }
+    convert(s, form)
+}
+
+/// Normalizes without the quick check, which is what the quick check's
+/// own MAYBE case falls back to.
+fn convert(s: &str, form: Form) -> String {
     let mut buf: Vec<char> = Vec::with_capacity(s.len());
     for c in s.chars() {
         decompose_into(c, form.compat(), &mut buf);
@@ -116,19 +125,58 @@ pub fn nfkd(s: &str) -> String {
 /// an answer, so this returns `false` for it and the caller normalizes.
 #[must_use]
 pub fn is_normalized(s: &str, form: Form) -> bool {
+    match quick(s, form) {
+        Quick::Yes => true,
+        Quick::No => false,
+        // UAX #15, Section 9: the quick check answers MAYBE for a
+        // combining mark that *could* compose with a preceding
+        // starter, and the caller must then do the full check.
+        // Answering "not normalized" to a MAYBE would be wrong rather
+        // than conservative: `U+05D0 U+0308` composes with nothing and
+        // is already NFC, and the quick check alone says MAYBE for
+        // every such string.
+        Quick::Maybe => convert(s, form) == s,
+    }
+}
+
+/// What UAX #15's quick check answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Quick {
+    /// Certainly normalized.
+    Yes,
+    /// Certainly not.
+    No,
+    /// Only the full check can say.
+    Maybe,
+}
+
+/// Whether the quick check alone says yes.
+fn quick_yes(s: &str, form: Form) -> bool {
+    quick(s, form) == Quick::Yes
+}
+
+/// UAX #15's quick check.
+fn quick(s: &str, form: Form) -> Quick {
     let shift = form.quick_check_shift();
     let mut last = 0_u8;
+    let mut maybe = false;
     for c in s.chars() {
         let ccc = combining_class(c);
         if last > ccc && ccc != 0 {
-            return false;
+            // Out of canonical order, which no normal form allows.
+            return Quick::No;
         }
-        if (quick_check(c) >> shift) & 0b11 != 0 {
-            return false;
+        match (quick_check(c) >> shift) & 0b11 {
+            // Yes: this code point never changes under the form.
+            0 => {}
+            // Maybe: it changes or not depending on what precedes it.
+            1 => maybe = true,
+            // No: it always changes.
+            _ => return Quick::No,
         }
         last = ccc;
     }
-    true
+    if maybe { Quick::Maybe } else { Quick::Yes }
 }
 
 /// Appends `c`'s decomposition, or `c` itself when it has none.

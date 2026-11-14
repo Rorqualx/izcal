@@ -250,12 +250,195 @@ jobs:
           IZCAL_REQUIRE_UNICODE_DATA: "1"
         run: cargo run --locked -p hg-unicode-build -- check
 
-      - name: TX-1, normalization
+      # TX-1 names nine conformance files; two of them run here.
+      # NormalizationTest measures the normalization half and
+      # IdnaTestV2 the UTS #46 half, which hg-url's host parsing is
+      # built on (style spec 6.2, ST-M0).
+      - name: TX-1, normalization and IdnaTestV2
         env:
           IZCAL_REQUIRE_UNICODE_DATA: "1"
         run: |
           cargo test --release --locked -p hg-unicode-build --test it -- --nocapture
           cargo test --release --locked -p hg-unicode --test it
+
+  # ST-1's tokenizer half (style spec 9.1): the html5lib tokenizer
+  # suite, run against both of hg-htmlgen's generated back ends, with
+  # the measured pass count held against hg-html5lib::BASELINE so it can
+  # only go up. The entity table the tokenizer ships is generated from
+  # WHATWG's pinned entities.json, and is checked fresh here too,
+  # because nothing else in CI has that file.
+  html5lib:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch html5lib-tests and the named character references
+        run: tools/fetch-test-data.sh html5lib html-entities
+
+      - name: The generated tokenizer is fresh
+        run: cargo run --locked -p hg-htmlgen -- check
+
+      - name: ST-1, the tokenizer suite
+        env:
+          IZCAL_REQUIRE_HTML_DATA: "1"
+        run: |
+          cargo run --release --locked -p hg-html5lib
+          cargo test --release --locked -p hg-html5lib --test it -- --nocapture
+
+      # ST-D16: the other half of the same suite, over HTML's
+      # "determine the character encoding" and hg-encoding's sniffing
+      # helpers. The 1,024-byte prescan window is a decision, and the
+      # runner prints what every other window would score beside it.
+      - name: ST-D16, the encoding suite
+        env:
+          IZCAL_REQUIRE_HTML_DATA: "1"
+        run: cargo run --release --locked -p hg-html5lib -- --suite encoding
+
+  # ST-D16 (style spec 6.6): the Encoding Standard, from the
+  # standard's own published data. The tables hg-encoding ships are
+  # generated from encodings.json and indexes.json, so this job checks
+  # them fresh against the pin and then runs the decoders and encoders
+  # over every byte sequence the indexes define, in both directions.
+  encoding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch the Encoding Standard's data
+        run: tools/fetch-test-data.sh encoding-encodings encoding-indexes
+
+      - name: The generated tables are fresh
+        env:
+          IZCAL_REQUIRE_ENCODING_DATA: "1"
+        run: cargo run --locked -p hg-encoding-build -- check
+
+      - name: Every index entry, decoded and re-encoded
+        env:
+          IZCAL_REQUIRE_ENCODING_DATA: "1"
+        run: |
+          cargo test --release --locked -p hg-encoding-build --test it -- --nocapture
+          cargo test --release --locked -p hg-encoding --test it -- --nocapture
+
+  # LY-M0's foundations: the geometry, the numeric boundary, the
+  # fragment store and the layout contract.
+  #
+  # There is no layout engine yet, so what this job checks is the
+  # contract itself — the types every formatting context will be
+  # written against, and the two rules that keep them honest: G39
+  # (no floating point after the boundary) and G45 (a fragment handle
+  # beyond a pass carries an epoch).
+  layout-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: The layout unit and Writing Modes 4's mappings
+        run: cargo test --release --locked -p hg-types --test it -- --nocapture
+
+      - name: The numeric boundary (G39)
+        run: cargo test --release --locked -p hg-layout-num --test it -- --nocapture
+
+      - name: The fragment store (LY-D18, G45)
+        run: cargo test --release --locked -p hg-fragment --test it -- --nocapture
+
+      - name: The layout contract and its central diff (LY-D1)
+        run: cargo test --release --locked -p hg-layout --test it -- --nocapture
+
+  # ST-D12 and G20: the reference style engine. It shares no code with
+  # the production engine -- its own CSS Syntax 3 tokenizer, its own
+  # Selectors 3 matcher, its own cascade -- which is what makes ST-4
+  # and ST-6, both ship blockers, mean anything.
+  #
+  # There is no differential to run yet, because hg-style does not
+  # exist. What this job checks is the oracle itself: a reference
+  # engine that is quietly wrong makes every later differential green
+  # and hides the bug it was built to find.
+  style-reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: The DOM view every reader shares (G1)
+        run: cargo test --release --locked -p hg-tree-traits --features testing --test it -- --nocapture
+
+      - name: Selectors 3, the cascade and the Syntax 3 tokenizer
+        run: cargo test --release --locked -p hg-style-reference --features testing --test it -- --nocapture
+
+  # G31, the browser's one URL parser. WPT's url/ suite is the oracle:
+  # 904 cases of input, base and the eight serialized components a
+  # conforming parser must produce -- or `failure: true`, which is
+  # three-tenths of the suite and the part a parser that merely tries
+  # hard would get wrong.
+  #
+  # The suite is test-only (BSD-3-Clause, OD-L2), fetched at a pinned
+  # commit with a SHA-256 check and never committed. Two smaller files
+  # go with it: toascii.json, which is the domain parser alone, and
+  # percent-encoding.json, which is the one place a legacy encoding
+  # reaches a URL.
+  url:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch WPT's url resources
+        run: tools/fetch-test-data.sh wpt-urltestdata wpt-toascii wpt-percent-encoding
+
+      - name: ST-M0, the WPT url suite
+        run: cargo run --release --locked -p hg-wpt-url -- --suite all
+
+      - name: hg-url's own tests
+        run: cargo test --release --locked -p hg-url --test it -- --nocapture
+
+  # ST-D6 (style spec 6.6): the property table is generated from
+  # @webref/css plus Izcal's .hgprop overlay, and the overlay restates
+  # the webref fields the engine was written against. This job is where
+  # that restatement earns its keep -- it fails when the two disagree,
+  # so a specification change arrives as a named difference rather than
+  # as silent drift (ST-7).
+  #
+  # And then a disagreement is planted in each field in turn, and the
+  # check is required to *refuse* it, against the twin that has no
+  # plant and must pass. Without that, a cross-check that compared
+  # nothing would pass this job while testing nothing.
+  cssgen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: Fetch the pinned @webref/css
+        run: tools/fetch-test-data.sh webref-css
+
+      - name: ST-D6, the overlay against the pinned webref
+        env:
+          IZCAL_REQUIRE_CSS_DATA: "1"
+        run: |
+          cargo run --locked -p hg-cssgen -- report
+          cargo run --locked -p hg-cssgen -- check
+
+      - name: The planted disagreements, and their twins
+        env:
+          IZCAL_REQUIRE_CSS_DATA: "1"
+        run: |
+          cargo test --release --locked -p hg-cssgen --test it -- --nocapture
+          cargo test --release --locked -p hg-css-props --all-features
 
   # ORC-1 (JS-M0 plan, Phase 1), the other half: the differential.
   #

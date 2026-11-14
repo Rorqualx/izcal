@@ -803,3 +803,91 @@ review = "research_notes/ZZ-M0/README.md"
 interlock = "measurements/m0-starts/README.md"
 why = "A fixture track."
 "#;
+
+/// Puts `hg-types` in G39's crate list, so the fixture's own crate is
+/// the layout crate under test. The real list is the layout crates,
+/// which the fixture does not have.
+fn g39_over_hg_types(f: &mut Fixture, boundary: &str) {
+    f.edit(
+        "tools/graph-rules.toml",
+        "crates = [\"hg-fragment\", \"hg-layout\", \"hg-layout-num\"]\nboundary = \"hg-layout-num\"",
+        &format!("crates = [\"hg-types\"]\nboundary = \"{boundary}\""),
+    );
+}
+
+#[test]
+fn floating_point_outside_the_layout_boundary_fails() {
+    // G39 (layout spec 6.2): "The boundary functions are the only place
+    // f32 or f64 appears in layout crates, and a lint rejects them
+    // anywhere else." DET-1 is the reason: the same page must lay out
+    // identically on every ISA, which floating point a compiler may
+    // re-associate or contract does not promise.
+    //
+    // Two rules, because a float reaches a crate two ways. The type
+    // rule alone lets `let factor = 0.5;` through, which is the one a
+    // reviewer is least likely to notice.
+    let Some(_) = ast_grep() else { return };
+    for (src, want) in [
+        (
+            "pub fn r(a: f64) -> f64 { a }",
+            "names a floating-point type",
+        ),
+        ("pub const S: f32 = 2.0;", "names a floating-point type"),
+        (
+            "pub fn h(v: i32) -> i32 { let k = 0.5; v }",
+            "writes a floating-point literal",
+        ),
+        (
+            "pub fn e() -> i32 { let k = 1e3; 0 }",
+            "writes a floating-point literal",
+        ),
+    ] {
+        let mut f = Fixture::baseline();
+        g39_over_hg_types(&mut f, "hg-layout-num");
+        f.edit(
+            "crates/hg-types/src/lib.rs",
+            "//! Types.\n",
+            &format!("//! Types.\n{src}\n"),
+        );
+        assert_finding(&f.lint(&[], true), "G39", "hg-types", want);
+    }
+}
+
+#[test]
+fn the_same_tree_without_the_plant_passes() {
+    // The twin. Without it a rule that reported every tree would look
+    // exactly like a rule that works.
+    let Some(_) = ast_grep() else { return };
+    let mut f = Fixture::baseline();
+    g39_over_hg_types(&mut f, "hg-layout-num");
+    assert_clean(&f.lint(&[], true));
+}
+
+#[test]
+fn the_boundary_crate_itself_may_name_a_float() {
+    // The conversions have to live somewhere, and G39 says where. A
+    // rule that forbade them everywhere would forbid the boundary.
+    let Some(_) = ast_grep() else { return };
+    let mut f = Fixture::baseline();
+    g39_over_hg_types(&mut f, "hg-types");
+    f.edit(
+        "crates/hg-types/src/lib.rs",
+        "//! Types.\n",
+        "//! Types.\npub fn from_px(px: f64) -> i32 { let k = 64.0; 0 }\n",
+    );
+    assert_clean(&f.lint(&[], true));
+}
+
+#[test]
+fn a_crate_outside_the_layout_set_may_name_a_float() {
+    // G39 binds the layout crates, not the workspace: the JS engine's
+    // numbers are binary64 by specification.
+    let Some(_) = ast_grep() else { return };
+    let mut f = Fixture::baseline();
+    f.edit(
+        "crates/hg-types/src/lib.rs",
+        "//! Types.\n",
+        "//! Types.\npub fn r(a: f64) -> f64 { a * 2.0 }\n",
+    );
+    assert_clean(&f.lint(&[], true));
+}

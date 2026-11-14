@@ -176,6 +176,19 @@ rule:
   kind: identifier
   regex: '^({witness})$'
 ---
+id: layout-float-type
+language: rust
+severity: hint
+rule:
+  kind: primitive_type
+  regex: '^(f32|f64)$'
+---
+id: layout-float-literal
+language: rust
+severity: hint
+rule:
+  kind: float_literal
+---
 id: cfg-test-mod-decl
 language: rust
 severity: hint
@@ -496,6 +509,45 @@ pub fn check(inputs: &Inputs, scan: &Scan, report: &mut Report) {
                 "{}:{}: {what} the cryptographic-randomness trait ({first}); {who}",
                 rel(&m.file),
                 m.line,
+            ),
+            None,
+        );
+    }
+
+    // G39 (layout spec 6.2): no floating point after the boundary.
+    //
+    // Layout's geometry is fixed point and every ratio is computed in
+    // i128 with one rounding, because DET-1 asks that the same page lay
+    // out identically on every ISA — which floating point a compiler
+    // may re-associate or contract does not promise. The spec says the
+    // rule is a lint: "The boundary functions are the only place f32 or
+    // f64 appears in layout crates, and a lint rejects them anywhere
+    // else."
+    //
+    // It reads the spelling in two places, because a float reaches a
+    // crate either as a type or as a literal, and catching only the
+    // type would leave `let x = 1.0;` through.
+    for m in &scan.matches {
+        let what = match m.rule.as_str() {
+            "layout-float-type" => "names a floating-point type",
+            "layout-float-literal" => "writes a floating-point literal",
+            _ => continue,
+        };
+        let Some((krate, _)) = owner(&members, &m.file) else {
+            continue;
+        };
+        if !inputs.rules.g39_crates.contains(krate) || *krate == inputs.rules.g39_boundary {
+            continue;
+        }
+        report.add(
+            "G39",
+            krate,
+            format!(
+                "{}:{}: {what}; layout is fixed point after the boundary, and the \
+                 conversions live in {} alone",
+                rel(&m.file),
+                m.line,
+                inputs.rules.g39_boundary,
             ),
             None,
         );

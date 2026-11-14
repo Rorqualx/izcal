@@ -12,8 +12,8 @@
 pub mod generated;
 
 pub use generated::tables::{
-    CANONICAL, CCC, COMPATIBILITY, COMPOSE, IDNA, IDNA_POOL, POOL, QUICK_CHECK, STATUS_NAMES,
-    VERSION,
+    BIDI, BidiClass, CANONICAL, CCC, COMPATIBILITY, COMPOSE, IDNA, IDNA_POOL, JOINING, JoiningType,
+    MARKS, POOL, QUICK_CHECK, STATUS_NAMES, VERSION,
 };
 
 /// The canonical combining class of `c`, zero when it has none.
@@ -79,4 +79,87 @@ fn slice(
     let start = usize::try_from(*off).ok()?;
     let end = start.checked_add(usize::from(*len))?;
     pool.get(start..end)
+}
+
+/// Finds `cp` in a table of inclusive ranges, returning its row.
+fn in_ranges<T: Copy>(table: &'static [(u32, u32, T)], cp: u32) -> Option<T> {
+    let i = table
+        .binary_search_by(|(first, last, _)| {
+            if *last < cp {
+                core::cmp::Ordering::Less
+            } else if *first > cp {
+                core::cmp::Ordering::Greater
+            } else {
+                core::cmp::Ordering::Equal
+            }
+        })
+        .ok()?;
+    table.get(i).map(|(_, _, v)| *v)
+}
+
+/// Whether `c`'s `General_Category` is `Mn`, `Mc` or `Me`.
+#[must_use]
+pub fn is_mark(c: char) -> bool {
+    let cp = u32::from(c);
+    MARKS
+        .binary_search_by(|(first, last)| {
+            if *last < cp {
+                core::cmp::Ordering::Less
+            } else if *first > cp {
+                core::cmp::Ordering::Greater
+            } else {
+                core::cmp::Ordering::Equal
+            }
+        })
+        .is_ok()
+}
+
+/// `c`'s `Bidi_Class`, as far as RFC 5893 distinguishes them.
+#[must_use]
+pub fn bidi_class(c: char) -> BidiClass {
+    in_ranges(BIDI, u32::from(c)).unwrap_or(BidiClass::L)
+}
+
+/// `c`'s `Joining_Type`.
+#[must_use]
+pub fn joining_type(c: char) -> JoiningType {
+    in_ranges(JOINING, u32::from(c)).unwrap_or(JoiningType::U)
+}
+
+/// UTS #46's status for `c`, and its mapping when it has one.
+///
+/// The status is the word [`STATUS_NAMES`] gives for it; the mapping is
+/// empty for every status but `mapped` and `deviation`. A code point
+/// the table does not list is `disallowed`, which is what the standard
+/// says of anything unassigned.
+#[must_use]
+pub fn idna(c: char) -> (&'static str, &'static [char]) {
+    let cp = u32::from(c);
+    let found = IDNA.binary_search_by(|(first, last, _, _, _)| {
+        if *last < cp {
+            core::cmp::Ordering::Less
+        } else if *first > cp {
+            core::cmp::Ordering::Greater
+        } else {
+            core::cmp::Ordering::Equal
+        }
+    });
+    let Some((_, _, status, off, len)) = found.ok().and_then(|i| IDNA.get(i)).copied() else {
+        return ("disallowed", &[]);
+    };
+    // Bit 7 marks `disallowed_STD3_mapped`, which maps like `mapped`
+    // but is disallowed when STD3 rules are on.
+    let std3 = status & 0x80 != 0;
+    let name = STATUS_NAMES
+        .get(usize::from(status & 0x7F))
+        .copied()
+        .unwrap_or("disallowed");
+    let mapping = usize::try_from(off)
+        .ok()
+        .and_then(|o| IDNA_POOL.get(o..o.saturating_add(usize::from(len))))
+        .unwrap_or(&[]);
+    if std3 {
+        return ("disallowed_STD3_mapped", mapping);
+    }
+    (name, mapping)
 }

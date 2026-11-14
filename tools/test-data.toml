@@ -1,13 +1,20 @@
-# Izcal's pinned test-only data sets: oracles and conformance suites that
-# are fetched into a cache outside the repository, never committed, never
-# linked and never shipped (CONTRIBUTING.md, License: "test-only crates and
-# suites that never ship (dev-dependencies, WPT, test262, oracles), whatever
-# their licence"; HGBA-2 M-1 part 1).
+# Izcal's pinned external inputs, fetched into a cache outside the
+# repository and never committed. Two kinds, and the difference is the
+# licence question, so each table says which it is:
+#
+#   - Oracles and conformance suites, which are test-only and never ship,
+#     whatever their licence (CONTRIBUTING.md, License: "test-only crates
+#     and suites that never ship (dev-dependencies, WPT, test262,
+#     oracles), whatever their licence"; HGBA-2 M-1 part 1).
+#   - Standards data, from which a generator emits tables that are checked
+#     in and do ship (the UCD, WHATWG's entities.json). The input itself is
+#     still never committed and never linked.
 #
 # tools/fetch-test-data.sh downloads each `url`, checks `sha256` against the
 # archive's bytes, and unpacks it into $IZCAL_TEST_DATA/<name>-<short
 # commit>/ (default ~/.cache/izcal/test-data). `--check` verifies what is
-# already there without downloading.
+# already there without downloading. A set published without a revision of
+# its own gives `pin` in place of `commit`, naming what it is pinned by.
 #
 # Format (read by the script with awk; keep it this flat): one [table] per
 # data set, string values only, one `key = "value"` per line.
@@ -97,3 +104,129 @@ date = "2026-11-12"
 licence = "Unicode-3.0"
 url = "https://www.unicode.org/Public/18.0.0/emoji/emoji-test.txt"
 sha256 = "8f3735cda1f92a779d78af67cf86066bb1f07143dc22f2ac29394d9bc57ab21a"
+
+# html5lib-tests, MIT: the tokenizer and tree-construction suites the
+# HTML parser is measured against (style spec ST-M0). Test data and a
+# conformance oracle only; nothing here is linked, vendored or shipped.
+# main at 5 Nov 2026, "Fix incorrect error order and remove obsolete
+# tests". The suite's size moves with it: the style spec records 6,827
+# tokenizer tests and this commit has 6,824, so the runner reports what
+# it finds rather than asserting a number.
+[html5lib]
+commit = "c5495c539ca8a79c3c5107f5f14010bcff9a35d5"
+date = "2026-11-12"
+licence = "MIT"
+url = "https://codeload.github.com/html5lib/html5lib-tests/tar.gz/c5495c539ca8a79c3c5107f5f14010bcff9a35d5"
+sha256 = "b900a3c3c4b942498a8d272aebef3c113b81b2f5c4ba36eb0333a642e937f622"
+strip = "1"
+
+# WHATWG HTML's named character reference table, 2,231 entries — the
+# number the style spec records (Section 4, Section 7). Standards data
+# that ships: hg-htmlgen compiles it into hg-html-syntax's generated
+# lookup, and that generated table is checked in. The JSON itself is not
+# committed and not linked.
+#
+# It is published from the standard's `source` and is not a file in the
+# whatwg/html tree, so it has no commit of its own and is pinned by its
+# own content hash. Fetched 13 Nov 2026, when whatwg/html was at
+# 985d4435e195a4732ff4a060a51524060a57872e.
+[html-entities]
+pin = "d741d877ac77"
+date = "2026-11-13"
+licence = "CC-BY-4.0 (BSD-3-Clause where incorporated into source code)"
+url = "https://html.spec.whatwg.org/entities.json"
+sha256 = "d741d877ac77c4194c4ad526b5b4a19aef8dfe411ab840a466891cdbb9f362e6"
+format = "file"
+
+# @webref/css, MIT: the CSS features the W3C scrapes from the published
+# specifications — for each property its value grammar, initial value,
+# inheritance, animation type, longhands and defining URL (style spec
+# 6.6, ST-D6). Standards data that ships: hg-cssgen checks Izcal's
+# .hgprop overlay against it and emits hg-css-props' tables, which are
+# checked in. The package itself is never committed and never linked.
+#
+# The package declares a peer dependency on css-tree, which its
+# JavaScript API uses to parse the grammars. Izcal does not install it
+# and does not call that API: the README states that the data "appears
+# in a standalone css.json file within the package" and "may be parsed
+# as JSON in any programming language to yield the same object". That
+# file is what hg-cssgen reads, through hg-json. Using webref's data is
+# M-1-clean; using CSSTree or any CSS parser library is not.
+#
+# 8.7.9, published 13 Nov 2026. At this version: 822 property entries,
+# of which 64 are legacy aliases, leaving 758 properties with 169
+# distinct computed-value texts. The spec records ~760 and 168, so one
+# text has been added since it was written — which is the drift this
+# pin and the overlay exist to make visible.
+[webref-css]
+commit = "8.7.9"
+date = "2026-11-13"
+licence = "MIT"
+url = "https://registry.npmjs.org/@webref/css/-/css-8.7.9.tgz"
+sha256 = "0f90d9b103922a94bc23c6324c5c574b03caab5882f65c58f74d83cdf2d05a3f"
+strip = "1"
+
+# The Encoding Standard's own data: the encodings and their labels, and
+# the index tables the legacy decoders and encoders are defined over.
+# Standards data that ships (style spec 7, ST-D16; HGBA-2 2.3.2 M-1
+# part 1 allows WHATWG tables): hg-encoding-build compiles them into
+# hg-encoding's checked-in tables. The JSON itself is not committed and
+# not linked. `encoding_rs` is excluded as engine work (ST-D16).
+#
+# Both are published from the standard's `source` and are not files in
+# the whatwg/encoding tree, so neither has a commit of its own and each
+# is pinned by its own content hash. Fetched 13 Nov 2026. At this pin:
+# 40 encodings, 228 labels, 34 index tables.
+[encoding-encodings]
+pin = "078212b3697f"
+date = "2026-11-13"
+licence = "CC-BY-4.0 (BSD-3-Clause where incorporated into source code)"
+url = "https://encoding.spec.whatwg.org/encodings.json"
+sha256 = "078212b3697f60b81225b6671bd9da2604497abff0aa8e96e4d46605c02ac9e7"
+format = "file"
+
+[encoding-indexes]
+pin = "b7c8961095f0"
+date = "2026-11-13"
+licence = "CC-BY-4.0 (BSD-3-Clause where incorporated into source code)"
+url = "https://encoding.spec.whatwg.org/indexes.json"
+sha256 = "b7c8961095f0b4cae8f4a16a5011e7c84047a60c1277e28ee8df9e56074ee509"
+format = "file"
+
+# web-platform-tests' URL data, BSD-3-Clause. Test-only, under OD-L2:
+# never linked, never shipped, never committed. These are the oracle
+# for ST-15, which asks for WPT `url/` at ≥ max(97%, the best shipping
+# engine's rate).
+#
+# WPT as a whole is about a gigabyte, and `url/resources/` is five
+# files, so each is pinned on its own at the same commit rather than
+# downloading the tree. master at 13 Nov 2026.
+#
+# At this commit urltestdata.json holds 904 cases — 635 with a full
+# component breakdown and 269 expected to fail — plus 117 comment
+# strings. toascii.json covers host parsing with UTS 46, and
+# setters_tests.json the URL object's setters, which arrive with the
+# bindings rather than with the parser.
+[wpt-urltestdata]
+pin = "33926aca0f43"
+date = "2026-11-13"
+licence = "BSD-3-Clause"
+url = "https://raw.githubusercontent.com/web-platform-tests/wpt/33926aca0f4313541f0ac5d67d4a4ab949d50b16/url/resources/urltestdata.json"
+sha256 = "f11f7dc444cc9dcb01fd5c1de13720cdc55e579d0f0412e760c081403e3c4684"
+format = "file"
+
+[wpt-toascii]
+pin = "33926aca0f43"
+date = "2026-11-13"
+licence = "BSD-3-Clause"
+url = "https://raw.githubusercontent.com/web-platform-tests/wpt/33926aca0f4313541f0ac5d67d4a4ab949d50b16/url/resources/toascii.json"
+sha256 = "644eba9d5b593df8095cfa307222f3014542ff9cc02d555f8e5660059d80470f"
+format = "file"
+
+[wpt-percent-encoding]
+pin = "33926aca0f43"
+date = "2026-11-13"
+licence = "BSD-3-Clause"
+url = "https://raw.githubusercontent.com/web-platform-tests/wpt/33926aca0f4313541f0ac5d67d4a4ab949d50b16/url/resources/percent-encoding.json"
+sha256 = "ac3d9ec89f51e3855f9967ef8414eb470653a25d385cb88cbc3dc1c4d878d71c"
+format = "file"
