@@ -60,6 +60,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-display-list"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+ "hg-ipc-codegen",
+ "hg-substrate",
+]
+
+[[package]]
 name = "hg-dst"
 version = "0.0.0"
 
@@ -116,6 +125,10 @@ version = "0.0.0"
 dependencies = [
  "hg-types",
 ]
+
+[[package]]
+name = "hg-gpu-hal"
+version = "0.0.0"
 
 [[package]]
 name = "hg-graph-lint"
@@ -318,6 +331,21 @@ name = "hg-paint-order"
 version = "0.0.0"
 dependencies = [
  "hg-types",
+]
+
+[[package]]
+name = "hg-raster"
+version = "0.0.0"
+dependencies = [
+ "hg-display-list",
+]
+
+[[package]]
+name = "hg-raster-ref"
+version = "0.0.0"
+dependencies = [
+ "hg-display-list",
+ "hg-raster",
 ]
 
 [[package]]

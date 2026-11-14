@@ -181,7 +181,7 @@ why = "LY-M0's contract types rest on the computed-length numeric type, which ST
 [[started]]
 track = "GR-M0"
 spec = "reports/Izcal graphics and rendering.md"
-claimed = false
+claimed = true
 crates = ["hg-gpu-hal", "hg-raster", "hg-raster-ref", "hg-display-list"]
 generator = "hg-display-list"
 oracle-job = "raster-ref"

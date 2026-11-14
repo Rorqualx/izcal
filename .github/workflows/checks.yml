@@ -401,6 +401,41 @@ jobs:
           cargo run --release --locked -p hg-wpt-layout -- --chapters
           cargo test --release --locked -p hg-wpt-layout --test it -- --nocapture
 
+  # GR-M0's oracle: the canonical raster against an independent exact
+  # one, and the same bits on both architectures.
+  #
+  # GR-D3's claim is that every pixel of page content "is computed by
+  # integer arithmetic only, with one specified rounding at each step,
+  # so the result is bit-identical on the CPU and on every GPU back end
+  # of every device". The half of that claim a CI job can hold today is
+  # the CPU half across architectures, so the job runs on x86-64 and on
+  # AArch64 and both must print the same canonical hash -- which is the
+  # form GR-M0's row asks for ("exact hashes on x86-64 and AArch64").
+  #
+  # It needs no pinned data: the reference is the oracle, and it is
+  # exact, so the cases are generated and their answers computed rather
+  # than recorded. The numbers the run reports -- pixels differing and
+  # the worst difference -- are the measurement, and rr12's hash is the
+  # assertion.
+  raster-ref:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
+        with:
+          persist-credentials: false
+
+      - name: GR-M0, the canonical raster against the exact reference
+        run: |
+          cargo test --release --locked -p hg-raster --test it
+          cargo test --release --locked -p hg-raster-ref --test it -- --nocapture
+          cargo test --release --locked -p hg-display-list -- --nocapture
+          cargo test --release --locked -p hg-gpu-hal --test it
+
   # NW-M0's oracle, and the gate 9.1 puts in front of every piece of
   # secret-dependent code (G36, NW-50).
   #

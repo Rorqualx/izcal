@@ -12,29 +12,33 @@ six are claims about the tree, and each is checked here against
 JS-M0 exit table follows, from the JavaScript engine spec's
 [§9.2][JS] row.
 
-**Amended 13 November 2026, at `7626299`** (the M1-X1 plan). Two things
-changed and neither was a re-measurement of what is above: clause 4 of
-§2 became *measurable* — Stage 1 §8.1a now defines "start" in five
-clauses that CI evaluates — and the feature-inventory audit's three
-M1-exit additions, which §8.1 does not carry and this document
-therefore never checked, are checked in the new §6. Everything measured
-against `d11deee` is left as it was measured; where a verdict moved,
-the row says so.
+**Amended 13 November 2026** (the M1-X1 plan), and amended again as
+each track started. Two things changed and neither was a
+re-measurement of what is above: clause 4 of §2 became *measurable* —
+Stage 1 §8.1a now defines "start" in five clauses that CI evaluates,
+and all five tracks now satisfy them — and the feature-inventory
+audit's three M1-exit additions, which §8.1 does not carry and this
+document therefore never checked, are checked in the new §6.
+Everything measured against `d11deee` is left as it was measured;
+where a verdict moved, the row says so.
 
 ## The verdict, up front
 
-**M1 does not exit yet.** Five of its seven clauses hold, one is this
-document, and one does not hold:
+**M1 does not exit yet.** Six of its seven clauses hold, one is this
+document, and one thing outside the seven does not:
 
-- **Open: "ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start."** At
+- **Now met: "ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start."** At
   `d11deee` none of the twenty crates those five milestones name
   existed, and the clause could not have been settled either way,
-  because the row never said what "start" means. **At `7626299` it
-  does**: Stage 1 §8.1a defines it in five clauses, `hg-graph-lint
-  --started` evaluates them, and **four of the five tracks — TX-M0,
-  ST-M0, LY-M0 and NW-M0 — satisfy all five.** GR-M0 does not, so the
-  clause still does not hold; what it now has is a number instead of an
-  argument. The evidence is `measurements/milestones/m0-starts/`.
+  because the row never said what "start" means. **It does now**:
+  Stage 1 §8.1a defines it in five clauses, `hg-graph-lint --started`
+  evaluates them, and **all five tracks satisfy all five clauses**.
+  Each is `claimed = true`, so a regression in any of the twenty-five
+  fails CI. The evidence is `measurements/milestones/m0-starts/`.
+
+  What this does **not** say is that any M0 is near its exit. Four of
+  the five M0 rows name a human role as a precondition and all four
+  are D-S8; that document's §4 is the distance.
 
 - **Open, and new to this document: the M0 waiver.** The
   feature-inventory audit (FI-D1, accepted 24 October 2026) requires
@@ -215,21 +219,21 @@ a defect; §4 carries it.
 | 1 | Process logic starts under both substrates: libraries whose entry function takes a `Substrate`; shipping `hg-*-main` link only `hg-substrate-os`; only the simulation binary and `hg-replay-main` link `hg-substrate-sim`; the graph lint enforces it | **PASS** | §1.1's table; `hg-graph-lint` clean on three triples; `hg-replay-main` not yet built (DevTools G12), which the list tolerates |
 | 2 | An IPC round trip runs in simulation with fault injection | **PASS** | `hg-dst run dst-smoke -- --ipc`, 39 seeds, 39 passed: a renderer launched with channels announces `ready`, then 200 `ping`/`pong` rounds at seeded delays through typed endpoints, under the fault plan's delay, reorder, drop, crash and commit-failure streams. The twin: `--bug` plants a refused-post assumption and DST finds it on **9 of 39 seeds**, groups them under one signature and prints a replay command |
 | 3 | JS-M0's decision-point probe passes on the reference interpreter and `hg-heap` | **PASS** | §3, item 10: 1,000 runs of a seed give one hash on macOS, Linux and Windows, re-measured at this commit |
-| 4 | ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start | **OPEN — 4 of 5** (was OPEN, unmeasurable) | At `d11deee`: none of `hg-htmlgen`, `hg-cssgen`, `hg-style-reference`, `hg-encoding`, `hg-url`, `hg-fontgen`, `hg-ucd`, `hg-unicode`, `hg-layout`, `hg-layout-num`, `hg-layout-reference`, `hg-box-tree`, `hg-raster`, `hg-gpu-hal`, `hg-display-list`, `hg-net-wire`, `hg-netsim`, `hg-crypto` or `hg-tls` existed, and the clause had no definition to be measured against. At `7626299`: Stage 1 §8.1a defines "start" in five clauses; `cargo run -p hg-graph-lint -- --started` reports **TX-M0 5/5, ST-M0 5/5, LY-M0 5/5, NW-M0 5/5, GR-M0 1/5**. The four that hold are `claimed = true` in `tools/graph-rules.toml`, so a regression in any of their five clauses fails CI. Evidence: `measurements/milestones/m0-starts/README.md` |
+| 4 | ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start | **PASS** (was OPEN, unmeasurable) | At `d11deee`: none of `hg-htmlgen`, `hg-cssgen`, `hg-style-reference`, `hg-encoding`, `hg-url`, `hg-fontgen`, `hg-ucd`, `hg-unicode`, `hg-layout`, `hg-layout-num`, `hg-layout-reference`, `hg-box-tree`, `hg-raster`, `hg-gpu-hal`, `hg-display-list`, `hg-net-wire`, `hg-netsim`, `hg-crypto` or `hg-tls` existed, and the clause had no definition to be measured against. At `7626299`: Stage 1 §8.1a defines "start" in five clauses; `cargo run -p hg-graph-lint -- --started` reports **TX-M0 5/5, ST-M0 5/5, LY-M0 5/5, GR-M0 5/5, NW-M0 5/5**. All five are `claimed = true` in `tools/graph-rules.toml`, so a regression in any of the twenty-five clauses fails CI. Evidence: `measurements/milestones/m0-starts/README.md` |
 | 5 | Recordings carry the engine build ID, the data versions and the decision-point log | **PASS** | `hg_types::recording`: `build_id: u64`, `data_versions: Vec<DataVersion>`, `decision_log: Option<DecisionLogRef>`, the last holding the trace hash and entry count of the one ordered log that carries the scheduler's decisions **and** every decision point a process records (JS-D15). `World::recording_header` fills it from `st.trace.hash()` and `st.trace.entries()`, so it carries the real log rather than a placeholder. The probe's **`trace=`** hash covers that log, because each GC completion is a trace line, and it is identical on all three OSes in §3's table — so the field is populated and agreeing, not merely present. (The probe's `state=` hash is the separate one: the heap's address-independent digest, every deref result, every cleanup call and the cycle count.) |
 | 6 | Q-CS-1 is answered at M1's exit | **PASS (this document)** | §1 |
 | 7 | SH-M0 is a gate **before M2** | n/a to M1 | The clause names M2, not M1's exit |
 
-Clause 4 is still the one that does not hold, but it fails for a
-different reason than it did at `d11deee`. There, it could not be
-settled at all: five milestones were to "start" and nothing said what
-starting is. Here, it is a count — one track of five has not started —
-and `measurements/milestones/m0-starts/README.md` §2.4 says exactly
-what it needs.
+Clause 4 now holds, and the way it moved is worth stating: at
+`d11deee` it could not be settled at all, because five milestones were
+to "start" and nothing said what starting is. It was not met by
+redefining it downwards — the definition turns on artefacts that exist
+and are checked, and each of the twenty-five clauses is a thing that
+can break and fail CI tomorrow.
 
-The three that have started are not nearly finished, and §4 of that
-document is the distance. Four of the five M0 rows name a human role as
-a precondition, and all four are **D-S8**.
+None of the five tracks is near its own exit. `m0-starts` §4 is the
+distance, and four of the five M0 rows name a human role as a
+precondition that no amount of work closes. All four are **D-S8**.
 
 ---
 
@@ -319,10 +323,12 @@ be settled by this session.
    **answered**: Stage 1 §8.1a defines it in five clauses and CI
    evaluates them (§6.1). What remains is two kinds of open, and only
    one of them is the owner's:
-   - **Work.** GR-M0 has not started.
-     `measurements/milestones/m0-starts/` §2.4 lists what it needs,
-     and that list contains no staffing item for *starting* — though
-     GR-M0's substance waits on LY-M0's review, which waits on D-S8.
+   - **Work: none left for the clause.** All five tracks satisfy all
+     five clauses and all five are claimed, so the clause holds and a
+     regression in any of the twenty-five fails CI.
+     `measurements/milestones/m0-starts/` §4 is the distance from
+     *starting* to each M0's own exit, which is a different thing and
+     a much longer one.
    - **Owner.** Four of the five M0 rows name a human role as a
      precondition of their own *exit* — the type-design leads, a named
      graphics owner, the root-program lead, the security owner — and
@@ -439,7 +445,7 @@ Stage 1 §8.1 does not carry**. Because this document checked §8.1's row
 and nothing else, it never checked them. All three hold; the fourth
 thing FI-D1 requires does not.
 
-### 6.1 Clause 4 is now measurable, and partly met
+### 6.1 Clause 4 is now measurable, and met
 
 Stage 1 §8.1a defines "start" in five clauses, each turning on an
 artefact in the tree:
@@ -458,8 +464,8 @@ artefact in the tree:
 block the work that satisfies it; setting `claimed` is a gate-file
 change and it fails unless all five hold.
 
-**Measured on this branch:** TX-M0 5/5, ST-M0 5/5, LY-M0 5/5, NW-M0
-5/5, GR-M0 1/5. The four that hold are claimed. **The twin:** removing
+**Measured on this branch:** TX-M0 5/5, ST-M0 5/5, LY-M0 5/5, GR-M0
+5/5, NW-M0 5/5, all five claimed. **The twin:** removing
 `measurements/milestones/m0-starts/README.md` makes
 `hg-graph-lint --locked` exit 1 with one error per claimed track,
 naming clause 5; restoring it returns exit 0. A rule that passed

@@ -11,7 +11,7 @@ use std::process::ExitCode;
 
 /// The crates whose `idl/*.hgidl` the generator writes into their
 /// `src/generated/`.
-const GENERATED_CRATES: [&str; 2] = ["hg-ipc-gen", "hg-os-types"];
+const GENERATED_CRATES: [&str; 3] = ["hg-ipc-gen", "hg-os-types", "hg-display-list"];
 
 fn main() -> ExitCode {
     let check = std::env::args().any(|a| a == "--check");
