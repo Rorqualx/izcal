@@ -242,6 +242,24 @@ name = "hg-types"
 version = "0.0.0"
 
 [[package]]
+name = "hg-ucd"
+version = "0.0.0"
+
+[[package]]
+name = "hg-unicode"
+version = "0.0.0"
+dependencies = [
+ "hg-ucd",
+]
+
+[[package]]
+name = "hg-unicode-build"
+version = "0.0.0"
+dependencies = [
+ "hg-unicode",
+]
+
+[[package]]
 name = "hg-wast"
 version = "0.0.0"
 
