@@ -67,14 +67,26 @@
 //! exactly one character was restored at exactly that point, which pins
 //! the fix rather than merely permitting it.
 //!
-//! It is **not** evidence against a patch set wrong in the same
-//! direction as this tokenizer, which is the failure mode to watch here.
-//! The standard does not specify error columns, and this crate's
-//! convention was calibrated from the suite, so the sixteen column
-//! entries and the tokenizer inherit their numbering from the same nine
-//! cases. A run that agrees with them is one calibration applied twice.
-//! Citing the standard's step instead of the tokenizer's output reduces
-//! that risk; it does not close it.
+//! It is **not** a second opinion on the sixteen column entries. The
+//! standard does not specify error columns, and this crate's convention
+//! was calibrated from the suite, so those entries and the tokenizer
+//! inherit their numbering from the same place — agreement there is one
+//! calibration applied twice. What does bound them is the corpus: the
+//! suite holds **2,577** error expectations this crate judges, the table
+//! touches **17**, and the other **2,560 are untouched and all pass**.
+//! The rule that forces the sixteen has 2,560 independent confirmations;
+//! induction that strong is not proof that the convention is right, only
+//! that it is the one the suite uses.
+//!
+//! **And a convention may have nothing to be right about.** Where the
+//! standard fixes no value, "wrong" means "inconsistent", which is what
+//! those 2,560 measure. That holds only while nothing outside this crate
+//! consumes a column *as a value*; checked 15 November 2026, no other
+//! Izcal spec mentions HTML parse errors at all. The first external
+//! consumer of an error position — a DevTools issue, a diagnostic,
+//! anything compared against another implementation — turns these
+//! sixteen from a convention into a claim. ST-D21's reversal trigger
+//! records it.
 
 pub mod cases;
 pub mod corrections;

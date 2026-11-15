@@ -180,25 +180,65 @@ if exactly one character was restored at exactly that point. Insert the `x`
 elsewhere, or insert two, and that untouched expectation breaks. The fix is
 pinned, not merely permitted.
 
-**No evidence at all against a patch set wrong in the same direction as the
-tokenizer.** This is the residual, and it is worse than "not independent". The
+**Not independent of the tokenizer, and the correlation is total.** The
 standard **does not specify error columns at all** — this crate's own docs say
 so, and say the convention was *calibrated against the suite*: a state that
 consumed a character reports that character's position, and nothing moves the
-position on at EOF. It was calibrated from the nine uncontradicted cases. The
-sixteen column corrections are derived from those same nine cases. So
-correcting 1167–1182 to the end of the input and then observing that the
-tokenizer agrees is **one calibration applied twice**, and carries no
-information about whether the calibration is right. If the shared convention
-is wrong, the sixteen entries are wrong with it and the suite still reports
-100%.
+position on at EOF. The sixteen column corrections rest on the same nine
+uncontradicted cases that convention was calibrated from, so correcting
+1167–1182 to the end of the input and then observing that the tokenizer agrees
+is **one calibration applied twice**. If the convention is wrong, the sixteen
+entries are wrong with it and the suite still reports 100%.
 
-Rule 1 — cite the standard's step, never the tokenizer's output — is what
-holds that risk down, and it *reduces* it rather than closing it. The evidence
-class is therefore named `SpecAndSuite` and not `SpecDerived`, because the
-label is what a reader in six months uses to decide how much to trust a hunk,
-and `SpecDerived` would have claimed the standard fixes a number it never
-mentions.
+**But "one calibration applied twice" was my own overcorrection, and the
+number that bounds it is 2,560.** The convention is not calibrated from nine
+cases. The suite holds **2,577 error expectations this crate judges**, across
+twelve files, and the table touches **17** of them. The other **2,560 are
+untouched third-party expectations that all pass** — every error position in
+`entities.test`, `numericEntities.test`, `test1`, `test2`, `test4` and the
+2,127 in `test3.test` the table never goes near. So the rule that forces the
+sixteen values is not a free choice confirmed by itself; it is a rule with
+2,560 independent confirmations in the same corpus, extrapolated to sixteen
+cases where the corpus contradicts itself. That is ordinary induction, and it
+is strong. What it is *not* is a second opinion: induction on a convention
+cannot tell you the convention is right, only that it is the one the suite
+uses.
+
+**And on a convention there may be nothing to be right about — which is the
+real residual, and it is dated.** A peer session's framing: where the standard
+fixes no value, "wrong" collapses into "inconsistent", and consistency is
+exactly what 2,560 passing expectations evidence. That holds only while
+nothing outside this crate and its tokenizer consumes a column *as a value*.
+Checked, 15 November 2026: **no other Izcal spec mentions HTML parse errors at
+all** — the DevTools spec has zero mentions, and the style spec's two are
+ST-1's own "error codes and positions". So the condition holds today. **The
+first external consumer of an error position — a DevTools issue, a diagnostic,
+anything compared against another implementation — gives the convention an
+external truth it currently lacks and turns these sixteen entries from a
+convention into a claim.** That is the thing to re-check, and it expires the
+same mechanical way the rest of this design does: it becomes false the first
+time a column leaves the crate. Recorded as ST-D21's reversal trigger.
+
+**It also tells us what kind of claim #202 is.** The upstream issue tells a
+third party their columns are wrong, which would be unfounded if columns were
+pure preference. It is not, because the argument filed was **self-inconsistency
+inside one file**: `test3.test` puts the error at the end of the input for
+`<?` and `<?a` and at column 4 for everything longer. A convention owes
+self-consistency, so inconsistency is precisely the defect one may report
+against it — and the only one.
+
+Rule 1 — cite the standard's step, never the tokenizer's output — holds the
+correlated risk down and does not close it. The evidence class is named
+`SpecAndSuite` and not `SpecDerived`, because the label is what a reader in
+six months uses to decide how much to trust a hunk, and `SpecDerived` would
+have claimed the standard fixes a number it never mentions.
+
+**The two halves are evidenced differently, and both are evidenced.** The nine
+input corrections are pinned by 30 expectations the table never touched, one
+of which fixes an insertion point to a single position. The sixteen column
+corrections are forced by a rule 2,560 untouched expectations confirm. Neither
+is unevidenced; they are strong in different ways, and only the second rests
+on something that could turn out to have no fact of the matter.
 
 **This is tonight's own symmetry landing on its author.** A measurement became
 a target, the target was hit, and the hit was being read as proof. The same
