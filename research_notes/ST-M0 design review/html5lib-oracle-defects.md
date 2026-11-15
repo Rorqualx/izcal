@@ -146,7 +146,7 @@ evidence it rests on:
 | Class | Entries | What it rests on |
 |---|---|---|
 | lint-proven | 9 | The file contradicts itself: `description == input` for 1,247 of `test3.test`'s 1,606 cases, and these nine break it. |
-| spec-derived | 17 | 13.2.5.75 and 13.2.5.76 emit only an end-of-file token at EOF, so the column is the end of the input — where cases 1158–1166 already put it. |
+| spec-and-suite | 17 | 13.2.5.75 and 13.2.5.76 emit only an end-of-file token at EOF, so nothing further is consumed. The *number* is not the standard’s: it does not specify error columns at all, so it comes from the nine uncontradicted cases 1158–1166. |
 | series-inferred | 2 | Case 1174's stray `?`. An argument about intent, gated so it can be dropped alone. |
 
 **The weak hunk got stronger while being written down.** Case 1174 is series 1's
@@ -158,14 +158,53 @@ characters lost in the same place. It is still the weakest of the three
 classes, because nothing in the file contradicts itself, so it stays gated and
 labelled.
 
-**The result: 14,092 of 14,092 runs, 100.0%.** Worth reading slowly. The
-tokenizer did not change, so the entire 32-run gap was the oracle's and none
-of it Izcal's. The corrections were derived from the standard and from the
-suite's own nine correct cases, never from this tokenizer's output, so landing
-on exactly 14,092 is **agreement between two independent derivations** rather
-than a measurement fitted to a target. Had any correction been wrong, the
-count would have missed in one direction or the other; there is no value of a
-wrong patch set that lands exactly on the ceiling.
+**The result: 14,092 of 14,092 runs, 100.0%.** The tokenizer did not change,
+so the entire 32-run gap was the oracle's and none of it Izcal's.
+
+### What the 100% is evidence of, and what it is not
+
+I first wrote that the corrections and the tokenizer are two independent
+derivations, so landing exactly on 14,092 is evidence the table is right. That
+is half true and the false half is the half that matters, and a peer session
+caught it by holding me to a residual I had named myself before any of this
+was built: *a patch could be wrong in the same direction as Izcal and look
+green.*
+
+**Strong evidence against a patch set wrong at random.** The table changes 9
+inputs and 17 columns; it leaves **30 expectation fields** on those nine cases
+untouched, and every one still had to be satisfied. Case 500 is the sharp one:
+its first error, `missing-quote-before-doctype-system-identifier` at **column
+20**, is an expectation the table does not touch, and after restoring the `x`
+it describes a *different character* at that column. It stays satisfiable only
+if exactly one character was restored at exactly that point. Insert the `x`
+elsewhere, or insert two, and that untouched expectation breaks. The fix is
+pinned, not merely permitted.
+
+**No evidence at all against a patch set wrong in the same direction as the
+tokenizer.** This is the residual, and it is worse than "not independent". The
+standard **does not specify error columns at all** — this crate's own docs say
+so, and say the convention was *calibrated against the suite*: a state that
+consumed a character reports that character's position, and nothing moves the
+position on at EOF. It was calibrated from the nine uncontradicted cases. The
+sixteen column corrections are derived from those same nine cases. So
+correcting 1167–1182 to the end of the input and then observing that the
+tokenizer agrees is **one calibration applied twice**, and carries no
+information about whether the calibration is right. If the shared convention
+is wrong, the sixteen entries are wrong with it and the suite still reports
+100%.
+
+Rule 1 — cite the standard's step, never the tokenizer's output — is what
+holds that risk down, and it *reduces* it rather than closing it. The evidence
+class is therefore named `SpecAndSuite` and not `SpecDerived`, because the
+label is what a reader in six months uses to decide how much to trust a hunk,
+and `SpecDerived` would have claimed the standard fixes a number it never
+mentions.
+
+**This is tonight's own symmetry landing on its author.** A measurement became
+a target, the target was hit, and the hit was being read as proof. The same
+sentence I insisted on everywhere else — *unexercised is not harmless*,
+*14,060 is a ceiling, not a shortfall* — applies to the number I was pleased
+with.
 
 **The expiry is zero-fuzz, and that is the point.** Every entry must find the
 value it names, or the load fails with a message naming the case. A patch set

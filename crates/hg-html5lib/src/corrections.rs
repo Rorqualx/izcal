@@ -28,10 +28,21 @@
 //!   that lost a character their own description still promises. This is
 //!   the strongest class: the file contradicts itself and only one
 //!   reading survives.
-//! - [`Class::SpecDerived`] — the column follows from the standard.
-//!   §13.2.5.75 and §13.2.5.76 both "Emit an end-of-file token" at EOF,
-//!   so the PI token is never emitted and the error is at the end of the
-//!   input. Cases 1158-1166 already have it there.
+//! - [`Class::SpecAndSuite`] — the standard fixes *what happens* and the
+//!   suite fixes *how it is numbered*. §13.2.5.75 and §13.2.5.76 both
+//!   "Emit an end-of-file token" at EOF, so the PI token is never
+//!   emitted and nothing further is consumed; but **the standard does
+//!   not specify error columns at all**, so the number comes from the
+//!   nine uncontradicted cases 1158-1166.
+//!
+//!   **A passing run is not a second opinion on these entries.** This
+//!   crate's own column convention was calibrated from the suite (see
+//!   "Where parse errors are reported" in the crate docs) — from those
+//!   same nine cases. Correcting 1167-1182 to the end of the input and
+//!   then observing that the tokenizer agrees is one calibration
+//!   applied twice, not two derivations meeting. If that shared
+//!   convention is wrong, these sixteen entries are wrong with it and
+//!   the suite still reports 100%.
 //! - [`Class::SeriesInferred`] — case 1174's stray `?`. Weaker, because
 //!   nothing in the file contradicts itself: it is an argument about
 //!   intent. It is gated by [`SERIES_INFERRED`] so it can be dropped
@@ -94,8 +105,11 @@ pub enum Value {
 pub enum Class {
     /// The file contradicts itself and only one reading survives.
     LintProven,
-    /// The standard fixes the value.
-    SpecDerived,
+    /// The standard fixes what happens; the suite's own uncontradicted
+    /// cases fix how the position is numbered. **Not independent of
+    /// this crate's tokenizer**, whose convention came from the same
+    /// cases.
+    SpecAndSuite,
     /// An argument about intent, from the shape of the series.
     SeriesInferred,
 }
@@ -244,7 +258,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(20),
         to: Value::Col(21),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -258,7 +272,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(6),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -272,7 +286,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(6),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -286,7 +300,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(6),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -300,7 +314,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(6),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -314,7 +328,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(6),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -328,7 +342,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(6),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -342,7 +356,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(6),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -357,7 +371,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(6),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::WithSeriesInferred,
     },
     Correction {
@@ -372,7 +386,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::WithoutSeriesInferred,
     },
     Correction {
@@ -386,7 +400,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -400,7 +414,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -414,7 +428,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -428,7 +442,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -442,7 +456,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -456,7 +470,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -470,7 +484,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {
@@ -484,7 +498,7 @@ pub const CORRECTIONS: &[Correction] = &[
         },
         from: Value::Col(4),
         to: Value::Col(7),
-        class: Class::SpecDerived,
+        class: Class::SpecAndSuite,
         gate: Gate::Always,
     },
     Correction {

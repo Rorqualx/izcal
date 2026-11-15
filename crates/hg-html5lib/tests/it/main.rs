@@ -163,9 +163,9 @@ fn st_d21_the_table_is_well_formed() {
         "lint-proven: 8 series-2 inputs and case 500's"
     );
     assert_eq!(
-        corrections::by_class(corrections::Class::SpecDerived),
+        corrections::by_class(corrections::Class::SpecAndSuite),
         17,
-        "spec-derived: 16 columns and case 500's second error"
+        "spec-and-suite: 16 columns and case 500's second error"
     );
     assert_eq!(
         corrections::by_class(corrections::Class::SeriesInferred),

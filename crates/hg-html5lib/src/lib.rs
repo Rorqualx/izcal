@@ -57,12 +57,24 @@
 //! entry naming the exact value it replaces. The pin does not move.
 //!
 //! With the table applied the suite is **14,092 of 14,092, 100.0%**,
-//! which is what ST-1 asks for. The number is worth reading carefully:
-//! the tokenizer did not change, so the whole 32-run gap was the
-//! oracle's, and the corrections were derived from the standard and from
-//! the suite's own shorter cases rather than from this tokenizer's
-//! output. Reaching exactly 14,092 is therefore agreement between two
-//! independent derivations, not a measurement fitted to a target.
+//! which is what ST-1 asks for. The tokenizer did not change, so the
+//! whole 32-run gap was the oracle's.
+//!
+//! **What the 100% is and is not evidence of.** It is strong evidence
+//! against a patch set wrong at *random*: 30 expectation fields the
+//! table does not touch still had to be satisfied on the nine changed
+//! inputs, and case 500's unchanged `col: 20` is only satisfiable if
+//! exactly one character was restored at exactly that point, which pins
+//! the fix rather than merely permitting it.
+//!
+//! It is **not** evidence against a patch set wrong in the same
+//! direction as this tokenizer, which is the failure mode to watch here.
+//! The standard does not specify error columns, and this crate's
+//! convention was calibrated from the suite, so the sixteen column
+//! entries and the tokenizer inherit their numbering from the same nine
+//! cases. A run that agrees with them is one calibration applied twice.
+//! Citing the standard's step instead of the tokenizer's output reduces
+//! that risk; it does not close it.
 
 pub mod cases;
 pub mod corrections;
