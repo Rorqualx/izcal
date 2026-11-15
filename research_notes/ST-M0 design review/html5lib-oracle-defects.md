@@ -91,10 +91,15 @@ Two consequences:
 
 ## Reported upstream
 
-Filed as **html5lib/html5lib-tests#202** on 14 November 2026, on the owner's
-answer to IZ-5, disclosing AI assistance. It reports defect 1 and the seven
-duplicates. It **understates defect 2**: case 500 and the eighth PI case were
-measured afterwards, by the lint above. Upstream issue #125 ("Logic of
+Filed as **html5lib/html5lib-tests#202** on 14 November 2026, disclosing AI
+assistance, on the owner's answer of that date — "yes, file it" — relayed
+through the decision queue. *Cited by its content and date rather than by the
+queue's id, because that queue renumbered one of its ids the next day: an
+identifier that still resolves while pointing at something it no longer means
+is this note's own subject, in its crudest form.* The issue reports defect 1
+and the seven duplicates, and **understates defect 2**: case 500 and the
+eighth PI case were measured afterwards, by the lint above, and posted as a
+correction on 15 November 2026. Upstream issue #125 ("Logic of
 eof-in-comment error positions", open since 2019, no comments) reports the
 same class for comments, so the convention has been ambiguous upstream for
 seven years and a fix is not imminent.
