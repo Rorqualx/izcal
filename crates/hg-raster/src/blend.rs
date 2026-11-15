@@ -41,6 +41,102 @@ pub const fn div255(x: u32) -> u32 {
     t.wrapping_add(t >> 8) >> 8
 }
 
+/// E16's scale: an E16 integer is the encoded value × **4,080**
+/// (255 × 16), so every S8 value `v` is exactly `v × 16` (§6.5).
+pub const E16_ONE: i32 = 4_080;
+
+/// The largest magnitude [`div4080`] is defined for: a full-range
+/// E16 value times E16's own one.
+pub const E16_PRODUCT_MAX: i32 = 32_767 * E16_ONE;
+
+/// `round_half_even(x / 4080)`, exactly, for every product E16
+/// compositing can form.
+///
+/// # Why E16 needs a tie rule and S8 does not
+///
+/// §6.4's add-shift identity rounds **half away from zero** and §6.5
+/// says every E16 conversion rounds **half to even**. Those disagree
+/// only at a tie, and for ÷255 **a tie cannot occur**: `x/255 =
+/// k + 1/2` needs `x = 255k + 127.5`, which is not an integer.
+/// Measured exhaustively — over all 65,026 products of two bytes,
+/// **zero** ties — which is why [`div255`] may round half up and
+/// still satisfy §6.5's rule for free.
+///
+/// For ÷4080 a tie *is* an integer: `x = 4080k + 2040`, and there are
+/// **32,767** of them in this range. So the S8 identity's licence
+/// does not transfer, and the tie rule has to be written down. GR-D3
+/// requires "one specified rounding at each step", and naming the
+/// mode is not enough when the hot per-pixel operation is where the
+/// mode gets decided.
+///
+/// # The form
+///
+/// No division: one multiply-shift for the floor, one multiply for
+/// the remainder, then a three-way compare against half. 4,080 is not
+/// a power of two, so `floor(m/4080) = (m · 2_155_905_153) >> 43`.
+///
+/// **The multiplier is chosen so the floor is exact for every `i32`,
+/// and the first one here was not.** `(m · 134_744_073) >> 39` is an
+/// exact floor only to 139,111,678; above that it returns one too
+/// many, at 3,803,748 values across the `i32` range.
+///
+/// That did **not** make any answer wrong, and the reason is worth
+/// keeping because it is not obvious: the overshoot happens only
+/// where the true remainder is at least **4,065**, far above half, so
+/// round-half-even was rounding up to exactly the value the overshoot
+/// produced. Every rounded result was right; what was false was this
+/// comment, which called the floor exact.
+///
+/// The multiplier is widened anyway, for two reasons. The agreement
+/// above is a coincidence of this rounding rule, so it would stop
+/// holding the moment anyone reused the floor, changed the tie rule,
+/// or raised the domain -- and a correct answer that depends on an
+/// unstated coincidence is the kind of thing GR-D3 exists to remove.
+/// And documenting a domain is weaker than not having one: [`mul4080`]
+/// can form products to about 1.07e9, so a bound that held only by
+/// the caller's care would be the bound that stops holding. The
+/// largest intermediate is now about 4.63e18, inside `i64`'s 9.22e18.
+///
+/// Round-half-even is symmetric about zero, so a negative input --
+/// E16 holds extended sRGB, which goes below zero -- is handled by
+/// magnitude and sign, `i32::MIN` included.
+#[must_use]
+pub fn div4080(x: i32) -> i32 {
+    let negative = x < 0;
+    let m = i64::from(x).saturating_abs();
+    // Exact `floor(m / 4080)` over every `i64::from(i32)`.
+    let q = m.saturating_mul(2_155_905_153) >> 43;
+    let r = m.saturating_sub(q.saturating_mul(i64::from(E16_ONE)));
+    let half = i64::from(E16_ONE) / 2;
+    let rounded = if r > half || (r == half && q & 1 == 1) {
+        q.saturating_add(1)
+    } else {
+        q
+    };
+    let signed = if negative {
+        rounded.saturating_neg()
+    } else {
+        rounded
+    };
+    // `|x| <= i32::MAX` divided by 4,080 is far inside `i32`.
+    i32::try_from(signed).unwrap_or(0)
+}
+
+/// `round_half_even(value * alpha / 4080)`, for an E16 `value` and an
+/// E16 `alpha`.
+///
+/// `alpha` is an E16 one-based opacity, so `E16_ONE` is opaque and
+/// leaves `value` unchanged. The product of two `i16`s is at most
+/// about 1.07e9, inside `i32` -- and [`div4080`] is exact for every
+/// `i32`, so this is right for *any* pair rather than only for an
+/// `alpha` in range. A caller passing a meaningless opacity gets a
+/// meaningless colour, which is its own bug, but not a wrong
+/// division.
+#[must_use]
+pub fn mul4080(value: i16, alpha: i16) -> i32 {
+    div4080(i32::from(value).saturating_mul(i32::from(alpha)))
+}
+
 /// `round(a * b / 255)` for two 8-bit values.
 #[must_use]
 pub fn mul255(a: u8, b: u8) -> u8 {

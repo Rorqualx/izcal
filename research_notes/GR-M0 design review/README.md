@@ -305,14 +305,33 @@ the small one:
 So GR-18 holds **directionally** — the compositor's input is 254 times
 smaller in the worst case — and does not hold **absolutely**: 28 MiB is
 not small, and it is bytes an untrusted content GPU process can make
-the compositor allocate. The review therefore owes a third option
-alongside the display list's two (shrink the bounds to a message, or
-write the copied-then-validated shared-buffer transport into the
-format): **GR-18's published size should probably record worst-case
-bytes next to the type and variant counts**, because a format can be
-small in types and enormous in bytes, and it is the bytes that are the
-allocation. The counts are what GR-18 names today, and the counts are
-the thing this format is already good at.
+the compositor allocate.
+
+*Corrected, same day:* this passage first said the review "owes a third
+option alongside the display list's two", naming shrink-to-a-message
+and the shared-buffer transport as if both were still open. **They are
+not: §3.1 records the owner deciding (a) on 14 November 2026** — the
+copied-then-validated shared-buffer transport, written into the format,
+with the chunk as the unit of validation and the message carrying a
+generation-tagged buffer handle and length. Citing a decided item as
+open is the mirror image of §3.6's mistake below, where a *met* item
+was carried as open; both come from reading one's own notes for what
+they say rather than for what the record says, and both are an argument
+for the habit §3.4 settles on — put the check where the build runs.
+
+So the transport question is **answered** for the compositor frame
+too, by extension rather than by a new decision: the frame has the same
+shape of problem at 451× rather than 114,688×, and §3.1's reasoning for
+refusing (b) and (c) does not change with the multiple. What this
+review adds is only that the extension should be **stated** in §6.3's
+terms rather than assumed, since §3.1's record names the display list.
+
+What *is* genuinely new is smaller and is about GR-18 rather than about
+transport: **GR-18's published size should record worst-case bytes next
+to the type and variant counts**, because a format can be small in
+types and enormous in bytes, and it is the bytes an untrusted peer
+makes the receiver allocate. The counts are what GR-18 names today, and
+the counts are the thing this format is already good at.
 
 **And one gap that was already there, which writing the second format
 made visible.** §3.6's threat table promises "generated readers with
@@ -409,17 +428,173 @@ smallness G63 and GR-18 are asking for.
 
 ### 3.5 The render graph's remaining half
 
-`RenderGraph::compile` derives barriers from a *sequence* of passes,
-and `ValidationError::Cycle` is a variant nothing can produce because
-a cycle is not expressible in a sequence (`gh11` says so rather than
-leaving a dead variant). The review decides whether the graph gains
-explicit edges — and if it does, the cycle check arrives with them.
+`RenderGraph::compile` derived barriers from a *sequence* of passes,
+and `ValidationError::Cycle` was a variant nothing could produce
+because a cycle is not expressible in a sequence (`gh11` said so rather
+than leaving a dead variant). The review had to decide whether the
+graph gains explicit edges — and if it does, whether the cycle check
+arrives with them.
+
+**Decided, 15 November 2026: the graph gains explicit edges, the edges
+point backwards, and `Cycle` was deleted rather than kept.**
+
+A pass now declares the passes it runs `after`, by index, and **every
+such index must be smaller than the pass's own**. The reasoning is the
+same one §3.4's property trees arrived at from the other direction, and
+it is worth stating as one principle because this review now relies on
+it twice: *where an ordering can be encoded so that the bad case cannot
+be written down, encode it that way, and then do not carry a check for
+the case you made impossible.*
+
+Three things follow, and the second is why edges were worth adding at
+all:
+
+- **A cycle is still unexpressible**, because any cycle needs an edge
+  pointing forwards or at itself, and those are refused one at a time
+  without looking at the graph. So gaining edges did not bring the
+  cycle back, and `ValidationError::Cycle` went instead of being kept
+  reserved. The answer to "when does the dead variant become live" was
+  *never*, and keeping it would have left a refusal nobody has seen
+  work — which is exactly the objection §3.4 raised about G63's rule
+  before it was given fixture tests.
+- **Independence became expressible, and with it a mistake the
+  sequence could not have.** A sequence orders every pass against
+  every other, so it can never tell you that you ordered two passes
+  you did not mean to order. With edges, two passes can be genuinely
+  unordered — and two unordered passes touching one resource, at least
+  one of them writing, is a result that depends on how a driver
+  schedules: a different image on a different machine, which is the
+  thing GR-D3 exists to prevent. That is the new
+  `ValidationError::UnorderedConflict`, and it is the check that
+  justifies the change. Two passes that only *read* are no conflict,
+  and two passes touching different resources need no edge at all.
+- **The barrier walk is unchanged, and the edges are what make it
+  correct rather than plausible.** Because edges point backwards,
+  submission order is always a topological order; because every
+  conflicting pair must be ordered by an edge *path*, submission order
+  agrees with dependency order wherever the agreement matters. Before,
+  walking the sequence was right by assumption. `gh13` tests the
+  transitive case and its twin with the middle edge removed.
+
+The reachability computation is one forward pass rather than a
+traversal with a visited set and a cycle guard, for the same reason:
+when pass *i* is reached, every pass it depends on already has its own
+row complete, so the transitive closure is a union of finished rows.
+The representation pays for itself twice — once in what cannot be
+written down, once in what does not have to be computed.
+
+**The existing contract tests had to gain edges, which is itself the
+finding.** `gh07` and `gh08` shared resources between passes and relied
+on the sequence to order them; under the new check they report
+`UnorderedConflict` until the edges they always implied are written
+down. Nothing about those passes changed except that their ordering is
+now stated rather than inherited from the order they happened to be
+added in.
 
 ### 3.6 The canonical image, E16 and integer composition
 
 Named by the M0 row and not started. These are specification items
 rather than code, and they are the precondition for GR-50 and GR-51's
 hashes at GR-M1.
+
+**That paragraph was wrong, and checking it was the work (15 November
+2026).** The M0 row asks for these three "specified", and all three
+already are:
+
+| Item | Where | State |
+|---|---|---|
+| The canonical-image definition | §6.4, GR-D3's rule | Specified: one integer pass over the whole display list at the frame's recorded scroll offsets and animation samples, offsets snapped to whole device pixels |
+| The compositor's integer composition | §6.4, same paragraph | Specified: tiles composited by `hg-raster`'s integer blending at integer layer origins, compositor opacity by the same integer multiply, so for translation and opacity the composed screen equals the canonical image |
+| E16 | §6.5 | Specified bit for bit: scale 4,080, range, clamping, rounding — and C19 in §9.6 already records it as "Applied" |
+
+So this item was being carried as open when it was met. A review that
+tracks its own items by what someone remembers writing will do that,
+which is an argument for §3.4's habit of putting the check where the
+build runs.
+
+**One real gap, and it was in the one place the specification sounded
+most finished.** §6.5 said every E16 conversion "rounds half to even"
+and §6.4 gives S8 an exact add-shift identity that rounds **half away
+from zero**. Those are different rules, and nothing reconciled them.
+
+Measured, exhaustively, rather than argued:
+
+- Over all **65,026** products of two bytes, ÷255 has **zero** ties —
+  `x/255 = k + 1/2` requires `x = 255k + 127.5`, which is not an
+  integer. So the two rules never disagree for S8, and `div255` gets
+  §6.5's rounding **for free**. The specification was not
+  contradictory; the reason was simply unstated.
+- Over the range E16 compositing uses, ÷4,080 has **32,767** ties,
+  each at `4080k + 2040`. So the licence does not transfer, and E16
+  needs the tie rule written down. GR-D3 asks for "one specified
+  rounding at each step", and naming a rounding *mode* is not
+  specifying a *step* when the hot per-pixel operation is where the
+  mode gets decided — two implementors reading "half to even" and
+  copying `div255`'s shape would have produced results one level apart
+  on 32,767 inputs, which is exactly the class of difference GR-D3
+  exists to forbid and GR-51 would have caught only after the fact.
+
+§6.5 now carries the operation: `floor(x/4080) = (x · 134,744,073) >>
+39` — exact over the whole range, no division — then one multiply for
+the remainder and a three-way compare against 2,040 resolving a tie to
+the **even** quotient. It is implemented as `hg-raster`'s
+`blend::div4080` and verified **exhaustively over every product of
+both signs**, in the spirit of `ra01`'s ÷255 test rather than at spot
+values. The half-up variant was planted to confirm the test fails on
+it, and it does — at a tie, which is the only place it could.
+
+**The multiplier then had to be widened, and the review finding that
+prompted it was half right — which is worth recording in both
+directions.** The first `div4080` used `(m · 134,744,073) >> 39`,
+whose *floor* is exact only to 139,111,678, while the exhaustive test
+stops at E16's own 133,689,360 and so could not have seen it. The
+review predicted that the overshoot would make answers wrong. Measured
+over the whole `i32` range, it does not: the floor overshoots at
+**3,803,748** values and at **every one** the true remainder is at
+least **4,065** — far above half — so round-half-even rounded up to
+exactly the overshot value. Every rounded answer was right; what was
+false was the comment calling the floor exact.
+
+The multiplier was widened anyway (`(m · 2,155,905,153) >> 43`, exact
+for every `i32`), for a reason that is the general one: **a correct
+answer that depends on an unstated coincidence is not a correct
+design.** The agreement above holds only for this tie rule and this
+domain, so it would stop holding the moment anyone reused the floor,
+changed the rounding, or raised the bound — and `mul4080` can already
+form products to about 1.07e9. Documenting a domain would have been
+weaker than not having one.
+
+Two things about how this was found, since both generalise:
+
+- **An exhaustive test is exhaustive over a domain, and the domain is
+  a choice.** `ra20` sweeps every value E16 can form and passes; the
+  defect sat 1.4 M above its upper bound. "Exhaustive" reads like
+  "complete" and is not, so the domain belongs in the test's name and
+  in the claim — which is why the second test is called *for every
+  `i32`, not only for E16's range*.
+- **A multiply-shift's witnesses are a proof, where a sweep is not.**
+  It can only fail where the true quotient changes, so `4080k - 1` and
+  `4080k` for every `k` cover the whole `i32` range in about 1.05 M
+  pairs. Checking the places a thing can break beats checking many
+  places it cannot.
+
+Two notes for the record, because both are the kind of thing that
+would otherwise be found later by a hash mismatch:
+
+- **E16 is specified and nowhere implemented.** `hg-raster` is S8
+  only; before this change `E16`, `4080` and `4_080` appeared nowhere
+  in it. `div4080` is the arithmetic the specification owed, not the
+  encoding: the E16 surface, its per-group selection (§6.5) and GR-2's
+  sibling-group suite are GR-M1's. What is closed here is that the
+  specification no longer has a step whose rounding is undecided.
+- **S8→E16 is ÷16, not ÷4,080.** Writing the round-trip test the first
+  time I conflated the two and asserted `div4080(v·16·16) == v`, which
+  is false for every `v` but 0. `div4080` divides out an *alpha*
+  multiply; the encoding conversion is ÷16, which leaves no remainder,
+  which is what makes S8 a subset of E16 rather than a conversion with
+  its own error. Conflating them is how an encoding acquires a
+  rounding it was specified not to have, so the corrected test asserts
+  both separately (`ra21`).
 
 ---
 
@@ -537,7 +712,9 @@ guesswork.
 
 ## 8. What this review owes before GR-M0's exit
 
-Everything in §3 decided; §2's five properties checked against three
+Everything in §3 decided (§3.4's compositor frame, §3.5's render graph
+and §3.6 are done; §3.4's canvas format remains, and §3.6's E16
+*implementation* is GR-M1's rather than this review's); §2's five properties checked against three
 back ends by someone who has written one; `hg-gpu-alloc`'s interface;
 **one** remaining `.hgidl` format (`canvas_command.hgidl`; the
 compositor frame is written, §3.4); **§3.6's threat table corrected on

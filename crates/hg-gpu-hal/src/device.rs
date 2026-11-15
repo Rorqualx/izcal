@@ -109,8 +109,22 @@ pub enum ValidationError {
     ForeignResource,
     /// A pass that reads what no pass writes.
     UnwrittenRead,
-    /// A graph with a cycle.
-    Cycle,
+    /// A dependency edge to a later pass, or to the pass itself.
+    ///
+    /// Edges point **backwards only**, which is what makes a cycle
+    /// unexpressible rather than merely invalid. There is no `Cycle`
+    /// variant for the same reason: it would be unreachable code in a
+    /// validator, and an unreachable refusal is a refusal nobody has
+    /// ever seen work.
+    ForwardEdge,
+    /// Two passes touch one resource, at least one of them writing,
+    /// and neither runs after the other.
+    ///
+    /// The sequence the graph used to be could not say this, because
+    /// a sequence orders everything; with explicit edges, two passes
+    /// can be genuinely unordered, and an unordered write is a result
+    /// that depends on how a driver schedules.
+    UnorderedConflict,
 }
 
 impl fmt::Display for ValidationError {
@@ -120,7 +134,8 @@ impl fmt::Display for ValidationError {
             Self::AboveLimit => "above the device's advertised limit",
             Self::ForeignResource => "a resource from another device",
             Self::UnwrittenRead => "a pass reads what no pass writes",
-            Self::Cycle => "the render graph has a cycle",
+            Self::ForwardEdge => "a dependency edge to a later pass, or to itself",
+            Self::UnorderedConflict => "two passes share a resource with no ordering between them",
         };
         f.write_str(s)
     }

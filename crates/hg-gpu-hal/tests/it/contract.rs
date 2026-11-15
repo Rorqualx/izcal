@@ -146,27 +146,36 @@ fn gh06_barriers_follow_from_the_states() {
 #[test]
 fn gh07_the_graph_derives_its_barriers() {
     let mut g = RenderGraph::new(1, 0);
-    g.add(Pass {
-        name: "raster",
-        accesses: vec![Access {
+    g.add(Pass::new(
+        "raster",
+        vec![Access {
             resource: res(7),
             usage: Usage::RenderTarget,
         }],
-    })
-    .add(Pass {
-        name: "composite",
-        accesses: vec![Access {
-            resource: res(7),
-            usage: Usage::Sample,
-        }],
-    })
-    .add(Pass {
-        name: "also reads",
-        accesses: vec![Access {
-            resource: res(7),
-            usage: Usage::Sample,
-        }],
-    });
+    ))
+    .add(
+        Pass::new(
+            "composite",
+            vec![Access {
+                resource: res(7),
+                usage: Usage::Sample,
+            }],
+        )
+        .after(&[0]),
+    )
+    .add(
+        Pass::new(
+            "also reads",
+            vec![Access {
+                resource: res(7),
+                usage: Usage::Sample,
+            }],
+        )
+        // After 1, which is after 0, so this read is ordered against
+        // the write transitively -- two reads need no edge between
+        // them, but a read and a write do.
+        .after(&[1]),
+    );
     let (barriers, validation) = g.compile();
     assert!(validation.is_clean(), "{:?}", validation.first());
     assert_eq!(barriers.len(), 2, "create and write, then write to read");
@@ -184,32 +193,35 @@ fn gh07_the_graph_derives_its_barriers() {
 #[test]
 fn gh08_reading_what_nothing_wrote_is_an_error() {
     let mut g = RenderGraph::new(1, 0);
-    g.add(Pass {
-        name: "reads first",
-        accesses: vec![Access {
+    g.add(Pass::new(
+        "reads first",
+        vec![Access {
             resource: res(3),
             usage: Usage::Sample,
         }],
-    });
+    ));
     let (_, validation) = g.compile();
     assert_eq!(validation.first(), Some(ValidationError::UnwrittenRead));
 
     // The twin: the same read, after something wrote it.
     let mut ok = RenderGraph::new(1, 0);
-    ok.add(Pass {
-        name: "writes",
-        accesses: vec![Access {
+    ok.add(Pass::new(
+        "writes",
+        vec![Access {
             resource: res(3),
             usage: Usage::RenderTarget,
         }],
-    })
-    .add(Pass {
-        name: "reads",
-        accesses: vec![Access {
-            resource: res(3),
-            usage: Usage::Sample,
-        }],
-    });
+    ))
+    .add(
+        Pass::new(
+            "reads",
+            vec![Access {
+                resource: res(3),
+                usage: Usage::Sample,
+            }],
+        )
+        .after(&[0]),
+    );
     assert!(ok.compile().1.is_clean());
 }
 
@@ -231,13 +243,13 @@ fn gh09_a_stale_or_foreign_resource_is_caught() {
         },
     ] {
         let mut g = RenderGraph::new(1, 0);
-        g.add(Pass {
-            name: "uses it",
-            accesses: vec![Access {
+        g.add(Pass::new(
+            "uses it",
+            vec![Access {
                 resource: bad,
                 usage: Usage::RenderTarget,
             }],
-        });
+        ));
         let (barriers, validation) = g.compile();
         assert_eq!(
             validation.first(),
@@ -256,17 +268,210 @@ fn gh10_formats_are_integer_only() {
     assert_eq!(Format::Rgba8.bytes(), 4);
 }
 
-/// `Cycle` is a variant nothing produces yet, because the graph is a
-/// sequence and a cycle is not expressible in one. It is here for the
-/// day the graph gains explicit edges, and this test is what keeps
-/// that from being a surprise.
+/// **GR-M0 §3.5's decision, and what replaced the `Cycle` variant.**
+///
+/// The graph gained explicit edges, and the edges point **backwards**:
+/// a pass may only depend on an earlier index. So a cycle stayed
+/// unexpressible, and `Cycle` -- a variant nothing could produce when
+/// the graph was a sequence, and still nothing can produce now --
+/// was deleted rather than kept reserved. An unreachable refusal is a
+/// refusal nobody has ever seen work.
+///
+/// What is checked instead is the edge itself, one at a time, without
+/// looking at the graph.
 #[test]
-fn gh11_the_cycle_variant_is_reserved_and_says_so() {
-    let mut v = Validation::new();
-    v.record(ValidationError::Cycle);
-    assert_eq!(v.first(), Some(ValidationError::Cycle));
+fn gh11_an_edge_pointing_forwards_is_refused() {
+    for bad in [
+        vec![1_usize], // a later pass
+        vec![0_usize], // itself, at index 0
+        vec![9_usize], // past the end
+    ] {
+        let mut g = RenderGraph::new(1, 0);
+        g.add(
+            Pass::new(
+                "writes",
+                vec![Access {
+                    resource: res(1),
+                    usage: Usage::RenderTarget,
+                }],
+            )
+            .after(&bad),
+        );
+        let (_, validation) = g.compile();
+        assert_eq!(
+            validation.first(),
+            Some(ValidationError::ForwardEdge),
+            "{bad:?}"
+        );
+    }
+
+    // The twin: a backward edge from pass 1 to pass 0 is clean, so
+    // the refusals above are about direction and not about having an
+    // edge at all.
+    let mut ok = RenderGraph::new(1, 0);
+    ok.add(Pass::new(
+        "writes",
+        vec![Access {
+            resource: res(1),
+            usage: Usage::RenderTarget,
+        }],
+    ))
+    .add(
+        Pass::new(
+            "reads",
+            vec![Access {
+                resource: res(1),
+                usage: Usage::Sample,
+            }],
+        )
+        .after(&[0]),
+    );
+    assert!(ok.compile().1.is_clean(), "{:?}", ok.compile().1.first());
+}
+
+/// **The check the sequence could not have.**
+///
+/// A sequence orders every pass against every other, so it can never
+/// say that two passes which share a resource were never ordered on
+/// purpose. With edges they can be genuinely unordered, and an
+/// unordered write is a result that depends on how a driver
+/// schedules -- a different image on a different machine, which is
+/// what GR-D3 exists to prevent.
+#[test]
+fn gh12_two_unordered_passes_sharing_a_resource_are_refused() {
+    // Pass 0 writes, pass 1 reads, and nothing orders them.
+    let mut g = RenderGraph::new(1, 0);
+    g.add(Pass::new(
+        "writes",
+        vec![Access {
+            resource: res(5),
+            usage: Usage::RenderTarget,
+        }],
+    ))
+    .add(Pass::new(
+        "reads, unordered",
+        vec![Access {
+            resource: res(5),
+            usage: Usage::Sample,
+        }],
+    ));
+    let (_, validation) = g.compile();
+    assert_eq!(validation.first(), Some(ValidationError::UnorderedConflict));
+
+    // Two passes that only *read* are no conflict: neither changes
+    // the resource, so the order between them cannot change the
+    // result. Requiring an edge there would chain every pass that
+    // samples one texture.
+    let mut reads = RenderGraph::new(1, 0);
+    reads
+        .add(Pass::new(
+            "writes",
+            vec![Access {
+                resource: res(5),
+                usage: Usage::RenderTarget,
+            }],
+        ))
+        .add(
+            Pass::new(
+                "reads",
+                vec![Access {
+                    resource: res(5),
+                    usage: Usage::Sample,
+                }],
+            )
+            .after(&[0]),
+        )
+        .add(
+            Pass::new(
+                "also reads",
+                vec![Access {
+                    resource: res(5),
+                    usage: Usage::Sample,
+                }],
+            )
+            .after(&[0]),
+        );
+    assert!(
+        reads.compile().1.is_clean(),
+        "{:?}",
+        reads.compile().1.first()
+    );
+
+    // And two passes touching *different* resources need no edge at
+    // all, which is the independence the sequence could not express.
+    let mut independent = RenderGraph::new(1, 0);
+    independent
+        .add(Pass::new(
+            "writes one",
+            vec![Access {
+                resource: res(1),
+                usage: Usage::RenderTarget,
+            }],
+        ))
+        .add(Pass::new(
+            "writes another",
+            vec![Access {
+                resource: res(2),
+                usage: Usage::RenderTarget,
+            }],
+        ));
+    assert!(independent.compile().1.is_clean());
+}
+
+/// Ordering is **transitive**: a conflict two edges apart is ordered.
+///
+/// This is what makes the barrier walk correct rather than plausible.
+/// Because edges point backwards, submission order is always a
+/// topological order; because every conflicting pair is ordered by an
+/// edge *path*, submission order agrees with dependency order wherever
+/// it matters.
+#[test]
+fn gh13_ordering_is_transitive() {
+    let mut g = RenderGraph::new(1, 0);
+    g.add(Pass::new(
+        "writes",
+        vec![Access {
+            resource: res(4),
+            usage: Usage::RenderTarget,
+        }],
+    ))
+    .add(Pass::new("unrelated", vec![]).after(&[0]))
+    .add(
+        Pass::new(
+            "reads, two edges away",
+            vec![Access {
+                resource: res(4),
+                usage: Usage::Sample,
+            }],
+        )
+        .after(&[1]),
+    );
+    assert!(g.compile().1.is_clean(), "{:?}", g.compile().1.first());
+
+    // The twin: the same three passes with the middle edge removed
+    // leaves the read unordered against the write.
+    let mut broken = RenderGraph::new(1, 0);
+    broken
+        .add(Pass::new(
+            "writes",
+            vec![Access {
+                resource: res(4),
+                usage: Usage::RenderTarget,
+            }],
+        ))
+        .add(Pass::new("unrelated", vec![]))
+        .add(
+            Pass::new(
+                "reads, no path to the write",
+                vec![Access {
+                    resource: res(4),
+                    usage: Usage::Sample,
+                }],
+            )
+            .after(&[1]),
+        );
     assert_eq!(
-        ValidationError::Cycle.to_string(),
-        "the render graph has a cycle"
+        broken.compile().1.first(),
+        Some(ValidationError::UnorderedConflict)
     );
 }
