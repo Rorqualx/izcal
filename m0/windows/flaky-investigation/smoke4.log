@@ -1,0 +1,468 @@
+start 2026-11-06 23:20:42.497 holds=2 minutes=1
+23:20:42.656 hold 0 started cmd=8912 affinity=F
+23:20:42.672 hold 1 started cmd=14160 affinity=F
+23:20:42.816 RT start pid=22324
+23:20:43.134 hold 1 children NetworkPartition=20420 Renderer=11480
+23:20:43.149 hold 0 children NetworkPartition=928 Renderer=14952
+23:20:43.149 RT end exit=0
+23:20:43.149 RT start pid=6324
+23:20:43.149 COUNT NetworkPartition0 pid=928 age=0.34s n=5
+23:20:42.807 BORN NetworkPartition0 pid=928 tid=21544 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.813 BORN NetworkPartition0 pid=928 tid=22408 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.813 BORN NetworkPartition0 pid=928 tid=6360 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.814 BORN NetworkPartition0 pid=928 tid=11120 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.816 BORN NetworkPartition0 pid=928 tid=21796 age=0.0s start=ntdll.dll+0x7ee20
+23:20:43.149 COUNT Renderer1 pid=11480 age=0.34s n=5
+23:20:42.812 BORN Renderer1 pid=11480 tid=10616 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.819 BORN Renderer1 pid=11480 tid=20320 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.819 BORN Renderer1 pid=11480 tid=9604 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.819 BORN Renderer1 pid=11480 tid=5056 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.821 BORN Renderer1 pid=11480 tid=21580 age=0.0s start=ntdll.dll+0x7ee20
+23:20:43.149 COUNT NetworkPartition1 pid=20420 age=0.34s n=5
+23:20:42.806 BORN NetworkPartition1 pid=20420 tid=22468 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.813 BORN NetworkPartition1 pid=20420 tid=10644 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.813 BORN NetworkPartition1 pid=20420 tid=14624 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.814 BORN NetworkPartition1 pid=20420 tid=18936 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.816 BORN NetworkPartition1 pid=20420 tid=13940 age=0.0s start=ntdll.dll+0x7ee20
+23:20:43.149 COUNT Renderer0 pid=14952 age=0.34s n=4
+23:20:42.812 BORN Renderer0 pid=14952 tid=22236 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.818 BORN Renderer0 pid=14952 tid=13756 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.818 BORN Renderer0 pid=14952 tid=9132 age=0.0s start=ntdll.dll+0x7ee20
+23:20:42.821 BORN Renderer0 pid=14952 tid=22280 age=0.0s start=ntdll.dll+0x7ee20
+23:20:43.501 RT end exit=0
+23:20:43.501 RT start pid=10924
+23:20:43.790 RT end exit=0
+23:20:43.792 RT start pid=17288
+23:20:44.083 RT end exit=0
+23:20:44.084 RT start pid=15160
+23:20:44.398 RT end exit=0
+23:20:44.407 RT start pid=9400
+23:20:44.700 RT end exit=0
+23:20:44.700 RT start pid=8448
+23:20:44.991 RT end exit=0
+23:20:45.003 RT start pid=8304
+23:20:45.280 RT end exit=0
+23:20:45.296 RT start pid=9560
+23:20:45.589 RT end exit=0
+23:20:45.605 RT start pid=18132
+23:20:45.892 RT end exit=0
+23:20:45.907 RT start pid=18192
+23:20:46.199 RT end exit=0
+23:20:46.215 RT start pid=8824
+23:20:46.505 RT end exit=0
+23:20:46.505 RT start pid=8748
+23:20:46.810 RT end exit=0
+23:20:46.810 RT start pid=13212
+23:20:47.114 RT end exit=0
+23:20:47.114 RT start pid=10104
+23:20:47.416 RT end exit=0
+23:20:47.416 RT start pid=17104
+23:20:47.721 RT end exit=0
+23:20:47.737 RT start pid=15552
+23:20:48.038 RT end exit=0
+23:20:48.051 RT start pid=22088
+23:20:48.344 RT end exit=0
+23:20:48.360 RT start pid=20912
+23:20:48.652 RT end exit=0
+23:20:48.668 RT start pid=11488
+23:20:48.951 RT end exit=0
+23:20:48.960 RT start pid=9148
+23:20:49.242 RT end exit=0
+23:20:49.258 RT start pid=19960
+23:20:49.550 RT end exit=0
+23:20:49.565 RT start pid=4580
+23:20:49.858 RT end exit=0
+23:20:49.874 RT start pid=22252
+23:20:50.161 RT end exit=0
+23:20:50.177 RT start pid=18084
+23:20:50.465 RT end exit=0
+23:20:50.481 RT start pid=17712
+23:20:50.770 RT end exit=0
+23:20:50.784 RT start pid=8404
+23:20:51.074 RT end exit=0
+23:20:51.090 RT start pid=9488
+23:20:51.382 RT end exit=0
+23:20:51.397 RT start pid=20640
+23:20:51.703 RT end exit=0
+23:20:51.703 RT start pid=9904
+23:20:52.008 RT end exit=0
+23:20:52.024 RT start pid=8844
+23:20:52.316 RT end exit=0
+23:20:52.316 RT start pid=19308
+23:20:52.618 RT end exit=0
+23:20:52.634 RT start pid=9968
+23:20:52.924 RT end exit=0
+23:20:52.940 RT start pid=22140
+23:20:53.231 RT end exit=0
+23:20:53.231 RT start pid=17828
+23:20:53.534 RT end exit=0
+23:20:53.550 RT start pid=21748
+23:20:53.845 RT end exit=0
+23:20:53.861 RT start pid=18660
+23:20:54.154 RT end exit=0
+23:20:54.170 RT start pid=17104
+23:20:54.459 RT end exit=0
+23:20:54.475 RT start pid=11488
+23:20:54.767 RT end exit=0
+23:20:54.782 RT start pid=22348
+23:20:55.072 RT end exit=0
+23:20:55.072 RT start pid=21508
+23:20:55.376 RT end exit=0
+23:20:55.391 RT start pid=17192
+23:20:55.686 RT end exit=0
+23:20:55.701 RT start pid=3984
+23:20:55.990 RT end exit=0
+23:20:56.006 RT start pid=16692
+23:20:56.294 RT end exit=0
+23:20:56.310 RT start pid=5428
+23:20:56.592 RT end exit=0
+23:20:56.607 RT start pid=18692
+23:20:56.897 RT end exit=0
+23:20:56.913 RT start pid=22416
+23:20:57.203 RT end exit=0
+23:20:57.218 RT start pid=916
+23:20:57.510 RT end exit=0
+23:20:57.526 RT start pid=11976
+23:20:57.816 RT end exit=0
+23:20:57.831 RT start pid=2868
+23:20:58.116 RT end exit=0
+23:20:58.118 RT start pid=3704
+23:20:58.423 RT end exit=0
+23:20:58.437 RT start pid=13308
+23:20:58.729 RT end exit=0
+23:20:58.729 RT start pid=17368
+23:20:59.035 RT end exit=0
+23:20:59.051 RT start pid=2324
+23:20:59.340 RT end exit=0
+23:20:59.340 RT start pid=3036
+23:20:59.648 RT end exit=0
+23:20:59.664 RT start pid=22052
+23:20:59.949 RT end exit=0
+23:20:59.966 RT start pid=14224
+23:21:00.256 RT end exit=0
+23:21:00.271 RT start pid=5604
+23:21:00.561 RT end exit=0
+23:21:00.577 RT start pid=4364
+23:21:00.868 RT end exit=0
+23:21:00.885 RT start pid=15476
+23:21:01.175 RT end exit=0
+23:21:01.191 RT start pid=12232
+23:21:01.483 RT end exit=0
+23:21:01.499 RT start pid=18244
+23:21:01.797 RT end exit=0
+23:21:01.797 RT start pid=10648
+23:21:02.101 RT end exit=0
+23:21:02.117 RT start pid=6324
+23:21:02.411 RT end exit=0
+23:21:02.425 RT start pid=16608
+23:21:02.715 RT end exit=0
+23:21:02.730 RT start pid=17104
+23:21:03.022 RT end exit=0
+23:21:03.038 RT start pid=10816
+23:21:03.329 RT end exit=0
+23:21:03.345 RT start pid=21496
+23:21:03.637 RT end exit=0
+23:21:03.653 RT start pid=10808
+23:21:03.940 RT end exit=0
+23:21:03.956 RT start pid=13964
+23:21:04.244 RT end exit=0
+23:21:04.260 RT start pid=21824
+23:21:04.548 RT end exit=0
+23:21:04.561 RT start pid=18368
+23:21:04.847 RT end exit=0
+23:21:04.857 RT start pid=10728
+23:21:05.144 RT end exit=0
+23:21:05.160 RT start pid=19848
+23:21:05.448 RT end exit=0
+23:21:05.464 RT start pid=8472
+23:21:05.747 RT end exit=0
+23:21:05.753 RT start pid=19352
+23:21:06.046 RT end exit=0
+23:21:06.062 RT start pid=11096
+23:21:06.347 RT end exit=0
+23:21:06.356 RT start pid=7080
+23:21:06.653 RT end exit=0
+23:21:06.669 RT start pid=3616
+23:21:06.960 RT end exit=0
+23:21:06.976 RT start pid=9200
+23:21:07.264 RT end exit=0
+23:21:07.280 RT start pid=12928
+23:21:07.570 RT end exit=0
+23:21:07.586 RT start pid=18860
+23:21:07.876 RT end exit=0
+23:21:07.892 RT start pid=10736
+23:21:08.182 RT end exit=0
+23:21:08.198 RT start pid=17960
+23:21:08.480 RT end exit=0
+23:21:08.496 RT start pid=10924
+23:21:08.787 RT end exit=0
+23:21:08.803 RT start pid=2868
+23:21:09.088 RT end exit=0
+23:21:09.104 RT start pid=22260
+23:21:09.392 RT end exit=0
+23:21:09.408 RT start pid=1708
+23:21:09.699 RT end exit=0
+23:21:09.715 RT start pid=6976
+23:21:10.004 RT end exit=0
+23:21:10.020 RT start pid=22360
+23:21:10.310 RT end exit=0
+23:21:10.326 RT start pid=3368
+23:21:10.618 RT end exit=0
+23:21:10.633 RT start pid=8988
+23:21:10.915 RT end exit=0
+23:21:10.931 RT start pid=22152
+23:21:11.216 RT end exit=0
+23:21:11.231 RT start pid=4464
+23:21:11.524 RT end exit=0
+23:21:11.538 RT start pid=11796
+23:21:11.835 RT end exit=0
+23:21:11.851 RT start pid=15180
+23:21:12.143 RT end exit=0
+23:21:12.143 RT start pid=632
+23:21:12.452 RT end exit=0
+23:21:12.468 RT start pid=22388
+23:21:12.754 RT end exit=0
+23:21:12.777 RT start pid=18844
+23:21:12.721 BORN broker1 pid=21816 tid=22140 age=30.0s start=ntdll.dll+0x7ee20
+23:21:12.722 BORN broker1 pid=21816 tid=932 age=30.0s start=ntdll.dll+0x7ee20
+23:21:12.705 BORN broker0 pid=10484 tid=18192 age=30.0s start=ntdll.dll+0x7ee20
+23:21:12.705 BORN broker0 pid=10484 tid=852 age=30.0s start=ntdll.dll+0x7ee20
+23:21:12.779 COUNT NetworkPartition1 pid=20420 age=29.97s n=2
+23:21:12.779 GONE NetworkPartition1 tid=10644 lived~30.0s
+23:21:12.779 GONE NetworkPartition1 tid=14624 lived~30.0s
+23:21:12.779 GONE NetworkPartition1 tid=18936 lived~30.0s
+23:21:12.779 COUNT Renderer0 pid=14952 age=29.97s n=2
+23:21:12.779 GONE Renderer0 tid=13756 lived~30.0s
+23:21:12.779 GONE Renderer0 tid=9132 lived~30.0s
+23:21:13.100 RT end exit=0
+23:21:13.114 RT start pid=15176
+23:21:13.114 COUNT NetworkPartition0 pid=928 age=30.31s n=2
+23:21:13.114 GONE NetworkPartition0 tid=11120 lived~30.3s
+23:21:13.114 GONE NetworkPartition0 tid=6360 lived~30.3s
+23:21:13.114 GONE NetworkPartition0 tid=22408 lived~30.3s
+23:21:13.114 COUNT Renderer1 pid=11480 age=30.30s n=2
+23:21:13.114 GONE Renderer1 tid=20320 lived~30.3s
+23:21:13.114 GONE Renderer1 tid=9604 lived~30.3s
+23:21:13.114 GONE Renderer1 tid=5056 lived~30.3s
+23:21:13.419 RT end exit=0
+23:21:13.435 RT start pid=7036
+23:21:13.724 RT end exit=0
+23:21:13.740 RT start pid=11336
+23:21:14.029 RT end exit=0
+23:21:14.029 RT start pid=1200
+23:21:14.335 RT end exit=0
+23:21:14.349 RT start pid=820
+23:21:14.646 RT end exit=0
+23:21:14.662 RT start pid=6936
+23:21:14.952 RT end exit=0
+23:21:14.952 RT start pid=18908
+23:21:15.262 RT end exit=0
+23:21:15.277 RT start pid=17644
+23:21:15.569 RT end exit=0
+23:21:15.578 RT start pid=20736
+23:21:15.869 RT end exit=0
+23:21:15.869 RT start pid=14624
+23:21:16.172 RT end exit=0
+23:21:16.187 RT start pid=19352
+23:21:16.482 RT end exit=0
+23:21:16.498 RT start pid=9508
+23:21:16.784 RT end exit=0
+23:21:16.792 RT start pid=18960
+23:21:17.087 RT end exit=0
+23:21:17.102 RT start pid=21556
+23:21:17.393 RT end exit=0
+23:21:17.409 RT start pid=15312
+23:21:17.695 RT end exit=0
+23:21:17.695 RT start pid=20568
+23:21:18.004 RT end exit=0
+23:21:18.019 RT start pid=14328
+23:21:18.312 RT end exit=0
+23:21:18.328 RT start pid=17708
+23:21:18.627 RT end exit=0
+23:21:18.641 RT start pid=8024
+23:21:18.932 RT end exit=0
+23:21:18.945 RT start pid=18564
+23:21:19.240 RT end exit=0
+23:21:19.255 RT start pid=7788
+23:21:19.543 RT end exit=0
+23:21:19.559 RT start pid=19932
+23:21:19.847 RT end exit=0
+23:21:19.849 RT start pid=20652
+23:21:20.161 RT end exit=0
+23:21:20.177 RT start pid=15176
+23:21:20.466 RT end exit=0
+23:21:20.482 RT start pid=10164
+23:21:20.771 RT end exit=0
+23:21:20.787 RT start pid=20736
+23:21:21.082 RT end exit=0
+23:21:21.082 RT start pid=20404
+23:21:21.388 RT end exit=0
+23:21:21.404 RT start pid=22384
+23:21:21.694 RT end exit=0
+23:21:21.710 RT start pid=17920
+23:21:22.000 RT end exit=0
+23:21:22.015 RT start pid=21364
+23:21:22.305 RT end exit=0
+23:21:22.320 RT start pid=19520
+23:21:22.616 RT end exit=0
+23:21:22.632 RT start pid=8140
+23:21:22.921 hold 1 ended exit=0
+23:21:22.939 hold 1 started cmd=11476 affinity=F
+23:21:22.939 hold 0 ended exit=0
+23:21:22.939 hold 0 started cmd=16276 affinity=F
+23:21:22.953 RT end exit=0
+23:21:22.953 RT start pid=14200
+23:21:23.242 hold 1 children NetworkPartition=20528 Renderer=22060
+23:21:23.253 hold 0 children NetworkPartition=12172 Renderer=16424
+23:21:23.253 RT end exit=0
+23:21:23.269 RT start pid=22328
+23:21:23.269 COUNT NetworkPartition1 pid=20528 age=0.28s n=4
+23:21:22.994 BORN NetworkPartition1 pid=20528 tid=16252 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.000 BORN NetworkPartition1 pid=20528 tid=10416 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.001 BORN NetworkPartition1 pid=20528 tid=14068 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.003 BORN NetworkPartition1 pid=20528 tid=22040 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.269 COUNT Renderer1 pid=22060 age=0.27s n=5
+23:21:22.999 BORN Renderer1 pid=22060 tid=13964 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.005 BORN Renderer1 pid=22060 tid=14516 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.005 BORN Renderer1 pid=22060 tid=10100 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.005 BORN Renderer1 pid=22060 tid=7452 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.007 BORN Renderer1 pid=22060 tid=3700 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.269 COUNT Renderer0 pid=16424 age=0.26s n=5
+23:21:23.009 BORN Renderer0 pid=16424 tid=12528 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.014 BORN Renderer0 pid=16424 tid=1440 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.014 BORN Renderer0 pid=16424 tid=5864 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.014 BORN Renderer0 pid=16424 tid=18908 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.017 BORN Renderer0 pid=16424 tid=1200 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.269 COUNT NetworkPartition0 pid=12172 age=0.27s n=5
+23:21:23.003 BORN NetworkPartition0 pid=12172 tid=15056 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.012 BORN NetworkPartition0 pid=12172 tid=17104 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.013 BORN NetworkPartition0 pid=12172 tid=18244 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.013 BORN NetworkPartition0 pid=12172 tid=10648 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.014 BORN NetworkPartition0 pid=12172 tid=820 age=0.0s start=ntdll.dll+0x7ee20
+23:21:23.594 RT end exit=0
+23:21:23.610 RT start pid=8936
+23:21:23.899 RT end exit=0
+23:21:23.915 RT start pid=6616
+23:21:24.207 RT end exit=0
+23:21:24.207 RT start pid=19556
+23:21:24.511 RT end exit=0
+23:21:24.527 RT start pid=9276
+23:21:24.816 RT end exit=0
+23:21:24.832 RT start pid=7052
+23:21:25.121 RT end exit=0
+23:21:25.121 RT start pid=11936
+23:21:25.425 RT end exit=0
+23:21:25.441 RT start pid=9828
+23:21:25.733 RT end exit=0
+23:21:25.749 RT start pid=16404
+23:21:26.036 RT end exit=0
+23:21:26.047 RT start pid=14236
+23:21:26.345 RT end exit=0
+23:21:26.361 RT start pid=14540
+23:21:26.654 RT end exit=0
+23:21:26.670 RT start pid=20156
+23:21:26.957 RT end exit=0
+23:21:26.971 RT start pid=20544
+23:21:27.262 RT end exit=0
+23:21:27.278 RT start pid=18408
+23:21:27.569 RT end exit=0
+23:21:27.569 RT start pid=6632
+23:21:27.876 RT end exit=0
+23:21:27.892 RT start pid=12052
+23:21:28.181 RT end exit=0
+23:21:28.197 RT start pid=15392
+23:21:28.489 RT end exit=0
+23:21:28.505 RT start pid=22236
+23:21:28.809 RT end exit=0
+23:21:28.825 RT start pid=15492
+23:21:29.117 RT end exit=0
+23:21:29.132 RT start pid=18196
+23:21:29.421 RT end exit=0
+23:21:29.437 RT start pid=16404
+23:21:29.727 RT end exit=0
+23:21:29.742 RT start pid=7852
+23:21:30.034 RT end exit=0
+23:21:30.050 RT start pid=6372
+23:21:30.342 RT end exit=0
+23:21:30.342 RT start pid=10580
+23:21:30.649 RT end exit=0
+23:21:30.665 RT start pid=10004
+23:21:30.953 RT end exit=0
+23:21:30.969 RT start pid=1364
+23:21:31.251 RT end exit=0
+23:21:31.267 RT start pid=4572
+23:21:31.559 RT end exit=0
+23:21:31.575 RT start pid=11404
+23:21:31.878 RT end exit=0
+23:21:31.894 RT start pid=21824
+23:21:32.188 RT end exit=0
+23:21:32.204 RT start pid=9884
+23:21:32.495 RT end exit=0
+23:21:32.511 RT start pid=17652
+23:21:32.801 RT end exit=0
+23:21:32.817 RT start pid=19112
+23:21:33.114 RT end exit=0
+23:21:33.114 RT start pid=14224
+23:21:33.421 RT end exit=0
+23:21:33.437 RT start pid=11244
+23:21:33.727 RT end exit=0
+23:21:33.743 RT start pid=16980
+23:21:34.037 RT end exit=0
+23:21:34.053 RT start pid=8824
+23:21:34.345 RT end exit=0
+23:21:34.361 RT start pid=9132
+23:21:34.650 RT end exit=0
+23:21:34.666 RT start pid=9200
+23:21:34.954 RT end exit=0
+23:21:34.970 RT start pid=20036
+23:21:35.258 RT end exit=0
+23:21:35.260 RT start pid=13584
+23:21:35.558 RT end exit=0
+23:21:35.573 RT start pid=11936
+23:21:35.857 RT end exit=0
+23:21:35.872 RT start pid=9992
+23:21:36.154 RT end exit=0
+23:21:36.170 RT start pid=17948
+23:21:36.460 RT end exit=0
+23:21:36.475 RT start pid=16560
+23:21:36.771 RT end exit=0
+23:21:36.787 RT start pid=13668
+23:21:37.073 RT end exit=0
+23:21:37.089 RT start pid=17448
+23:21:37.375 RT end exit=0
+23:21:37.375 RT start pid=16724
+23:21:37.683 RT end exit=0
+23:21:37.697 RT start pid=6064
+23:21:37.988 RT end exit=0
+23:21:38.003 RT start pid=19336
+23:21:38.294 RT end exit=0
+23:21:38.310 RT start pid=17492
+23:21:38.600 RT end exit=0
+23:21:38.616 RT start pid=15228
+23:21:38.905 RT end exit=0
+23:21:38.921 RT start pid=19856
+23:21:39.215 RT end exit=0
+23:21:39.231 RT start pid=19780
+23:21:39.522 RT end exit=0
+23:21:39.522 RT start pid=18596
+23:21:39.834 RT end exit=0
+23:21:39.849 RT start pid=17344
+23:21:40.139 RT end exit=0
+23:21:40.155 RT start pid=22352
+23:21:40.446 RT end exit=0
+23:21:40.462 RT start pid=2868
+23:21:40.751 RT end exit=0
+23:21:40.767 RT start pid=12764
+23:21:41.057 RT end exit=0
+23:21:41.073 RT start pid=5280
+23:21:41.367 RT end exit=0
+23:21:41.383 RT start pid=20156
+23:21:41.672 RT end exit=0
+23:21:41.687 RT start pid=17120
+23:21:41.974 RT end exit=0
+23:21:41.990 RT start pid=16684
+23:21:42.286 RT end exit=0
+23:21:42.301 RT start pid=15664
+23:21:42.589 RT end exit=0
+23:21:42.605 RT start pid=8428
+end 23:21:42.904

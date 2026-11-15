@@ -1,0 +1,638 @@
+start 2026-11-06 20:02:47.055 holds=4 minutes=75
+20:02:47.075 hold 0 started broker=17192
+20:02:47.089 hold 1 started broker=10728
+20:02:47.092 hold 2 started broker=14004
+20:02:47.092 hold 3 started broker=19824
+20:02:47.196 hold 3 children NetworkPartition=11244 Renderer=19920
+20:02:47.213 hold 2 children NetworkPartition=18888 Renderer=18924
+20:02:47.213 hold 1 children NetworkPartition=3540 Renderer=14516
+20:02:47.229 hold 0 children NetworkPartition=11452 Renderer=20412
+20:03:17.117 BORN broker1 pid=10728 tid=18844 age=30.0s start=ntdll.dll+0x7ee20
+20:03:17.117 BORN broker1 pid=10728 tid=4036 age=30.0s start=ntdll.dll+0x7ee20
+20:03:17.133 BORN broker3 pid=19824 tid=16660 age=30.0s start=ntdll.dll+0x7ee20
+20:03:17.134 BORN broker3 pid=19824 tid=18592 age=30.0s start=ntdll.dll+0x7ee20
+20:03:17.117 BORN broker0 pid=17192 tid=7824 age=30.0s start=ntdll.dll+0x7ee20
+20:03:17.117 BORN broker0 pid=17192 tid=18904 age=30.0s start=ntdll.dll+0x7ee20
+20:03:17.133 BORN broker2 pid=14004 tid=15492 age=30.0s start=ntdll.dll+0x7ee20
+20:03:17.134 BORN broker2 pid=14004 tid=22104 age=30.0s start=ntdll.dll+0x7ee20
+20:05:01.178 GONE broker1 tid=4036 lived~104.1s
+20:05:01.178 GONE broker1 tid=18844 lived~104.1s
+20:05:01.178 GONE broker3 tid=18592 lived~104.0s
+20:05:01.178 GONE broker3 tid=16660 lived~104.0s
+20:05:01.178 GONE broker0 tid=18904 lived~104.1s
+20:05:01.178 GONE broker0 tid=7824 lived~104.1s
+20:05:01.178 GONE broker2 tid=15492 lived~104.0s
+20:05:01.178 GONE broker2 tid=22104 lived~104.0s
+20:07:47.112 BORN broker1 pid=10728 tid=11404 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.113 BORN broker1 pid=10728 tid=15392 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN NetworkPartition3 pid=11244 tid=17612 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN NetworkPartition3 pid=11244 tid=18316 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.113 BORN broker3 pid=19824 tid=19676 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.113 BORN broker3 pid=19824 tid=19660 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN NetworkPartition0 pid=11452 tid=932 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN NetworkPartition0 pid=11452 tid=20808 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN Renderer0 pid=20412 tid=9420 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN Renderer0 pid=20412 tid=8932 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN NetworkPartition1 pid=3540 tid=1708 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN NetworkPartition1 pid=3540 tid=13900 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.092 BORN broker0 pid=17192 tid=19728 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.092 BORN broker0 pid=17192 tid=1268 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.112 BORN broker2 pid=14004 tid=14060 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.113 BORN broker2 pid=14004 tid=21764 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.145 BORN NetworkPartition2 pid=18888 tid=14300 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN Renderer2 pid=18924 tid=18720 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN Renderer2 pid=18924 tid=22280 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN Renderer3 pid=19920 tid=15752 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN Renderer3 pid=19920 tid=16292 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN Renderer1 pid=14516 tid=18072 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.162 BORN Renderer1 pid=14516 tid=13696 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.179 BORN ctl-idle pid=12248 tid=16980 age=300.0s start=ntdll.dll+0x7ee20
+20:07:47.179 BORN ctl-idle pid=12248 tid=18796 age=300.0s start=ntdll.dll+0x7ee20
+20:09:29.148 GONE broker1 tid=11404 lived~102.0s
+20:09:29.148 GONE broker1 tid=15392 lived~102.0s
+20:09:29.148 GONE broker3 tid=19676 lived~102.0s
+20:09:29.148 GONE broker3 tid=19660 lived~102.0s
+20:09:29.148 GONE broker0 tid=1268 lived~102.1s
+20:09:29.148 GONE broker0 tid=19728 lived~102.1s
+20:09:29.148 GONE broker2 tid=21764 lived~102.0s
+20:09:29.148 GONE broker2 tid=14060 lived~102.0s
+20:09:29.148 GONE Renderer2 tid=22280 lived~102.0s
+20:09:29.148 GONE Renderer2 tid=18720 lived~102.0s
+20:09:29.148 GONE Renderer3 tid=16292 lived~102.0s
+20:09:29.148 GONE Renderer3 tid=15752 lived~102.0s
+20:09:29.148 GONE Renderer1 tid=13696 lived~102.0s
+20:09:29.148 GONE Renderer1 tid=18072 lived~102.0s
+20:09:29.148 GONE ctl-idle tid=16980 lived~102.0s
+20:09:29.148 GONE ctl-idle tid=18796 lived~102.0s
+20:09:29.472 GONE NetworkPartition3 tid=17612 lived~102.3s
+20:09:29.472 GONE NetworkPartition3 tid=18316 lived~102.3s
+20:09:29.472 GONE NetworkPartition0 tid=20808 lived~102.3s
+20:09:29.472 GONE NetworkPartition0 tid=932 lived~102.3s
+20:09:29.472 GONE Renderer0 tid=8932 lived~102.3s
+20:09:29.472 GONE Renderer0 tid=9420 lived~102.3s
+20:09:29.472 GONE NetworkPartition1 tid=13900 lived~102.3s
+20:09:29.472 GONE NetworkPartition1 tid=1708 lived~102.3s
+20:09:29.472 GONE NetworkPartition2 tid=14300 lived~102.3s
+20:12:47.119 BORN broker1 pid=10728 tid=21744 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.120 BORN broker1 pid=10728 tid=7640 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.119 BORN broker3 pid=19824 tid=17448 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.120 BORN broker3 pid=19824 tid=17920 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.103 BORN broker0 pid=17192 tid=4736 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.104 BORN broker0 pid=17192 tid=19688 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.119 BORN broker2 pid=14004 tid=21836 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.120 BORN broker2 pid=14004 tid=4328 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.182 BORN ctl-idle pid=12248 tid=3656 age=600.0s start=ntdll.dll+0x7ee20
+20:12:47.477 hold 3 ended exit=
+20:12:47.492 hold 3 started broker=9420
+20:12:47.495 hold 2 ended exit=
+20:12:47.500 hold 2 started broker=8448
+20:12:47.500 hold 1 ended exit=
+20:12:47.504 hold 1 started broker=4280
+20:12:47.507 hold 0 ended exit=
+20:12:47.513 hold 0 started broker=7764
+20:12:47.816 hold 3 children NetworkPartition=18980 Renderer=5840
+20:12:47.831 hold 2 children NetworkPartition=13932 Renderer=4796
+20:12:47.831 hold 1 children NetworkPartition=11120 Renderer=11856
+20:12:47.847 hold 0 children NetworkPartition=8696 Renderer=9712
+20:13:17.537 BORN broker1 pid=4280 tid=14124 age=30.0s start=ntdll.dll+0x7ee20
+20:13:17.538 BORN broker1 pid=4280 tid=4084 age=30.0s start=ntdll.dll+0x7ee20
+20:13:17.536 BORN broker3 pid=9420 tid=7328 age=30.0s start=ntdll.dll+0x7ee20
+20:13:17.537 BORN broker3 pid=9420 tid=18688 age=30.0s start=ntdll.dll+0x7ee20
+20:13:17.537 BORN broker2 pid=8448 tid=4388 age=30.0s start=ntdll.dll+0x7ee20
+20:13:17.538 BORN broker2 pid=8448 tid=18464 age=30.0s start=ntdll.dll+0x7ee20
+20:13:17.537 BORN broker0 pid=7764 tid=4844 age=30.0s start=ntdll.dll+0x7ee20
+20:13:17.537 BORN broker0 pid=7764 tid=21616 age=30.0s start=ntdll.dll+0x7ee20
+20:13:57.423 GONE ctl-idle tid=3656 lived~70.2s
+20:15:01.521 GONE broker3 tid=7328 lived~104.0s
+20:15:01.521 GONE broker3 tid=18688 lived~104.0s
+20:15:01.521 GONE broker2 tid=4388 lived~104.0s
+20:15:01.521 GONE broker2 tid=18464 lived~104.0s
+20:15:01.521 GONE broker0 tid=4844 lived~104.0s
+20:15:01.521 GONE broker0 tid=21616 lived~104.0s
+20:15:01.834 GONE broker1 tid=4084 lived~104.3s
+20:15:01.834 GONE broker1 tid=14124 lived~104.3s
+20:17:47.555 BORN NetworkPartition3 pid=18980 tid=18796 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN NetworkPartition3 pid=18980 tid=22016 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.524 BORN broker1 pid=4280 tid=10820 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.524 BORN broker1 pid=4280 tid=7992 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.524 BORN broker1 pid=4280 tid=18072 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN Renderer2 pid=4796 tid=22060 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN Renderer2 pid=4796 tid=11800 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.523 BORN broker3 pid=9420 tid=18068 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.524 BORN broker3 pid=9420 tid=8848 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.524 BORN broker3 pid=9420 tid=2352 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN NetworkPartition2 pid=13932 tid=17612 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN NetworkPartition2 pid=13932 tid=19820 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.571 BORN Renderer0 pid=9712 tid=18648 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.571 BORN Renderer0 pid=9712 tid=21528 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN Renderer1 pid=11856 tid=21464 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.556 BORN Renderer1 pid=11856 tid=14060 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.524 BORN broker2 pid=8448 tid=22388 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.524 BORN broker2 pid=8448 tid=22468 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.524 BORN broker2 pid=8448 tid=19200 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN Renderer3 pid=5840 tid=11372 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN Renderer3 pid=5840 tid=9716 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.539 BORN broker0 pid=7764 tid=7984 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.539 BORN broker0 pid=7764 tid=17576 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.540 BORN broker0 pid=7764 tid=15752 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.571 BORN NetworkPartition0 pid=8696 tid=22052 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.571 BORN NetworkPartition0 pid=8696 tid=15200 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN NetworkPartition1 pid=11120 tid=21496 age=300.0s start=ntdll.dll+0x7ee20
+20:17:47.555 BORN NetworkPartition1 pid=11120 tid=20348 age=300.0s start=ntdll.dll+0x7ee20
+20:19:29.702 GONE NetworkPartition3 tid=18796 lived~102.1s
+20:19:29.702 GONE NetworkPartition3 tid=22016 lived~102.1s
+20:19:29.702 GONE broker1 tid=7992 lived~102.2s
+20:19:29.702 GONE broker1 tid=18072 lived~102.2s
+20:19:29.702 GONE broker1 tid=10820 lived~102.2s
+20:19:29.702 GONE Renderer2 tid=11800 lived~102.1s
+20:19:29.702 GONE Renderer2 tid=22060 lived~102.1s
+20:19:29.702 GONE broker3 tid=8848 lived~102.2s
+20:19:29.702 GONE broker3 tid=18068 lived~102.2s
+20:19:29.702 GONE broker3 tid=2352 lived~102.2s
+20:19:29.702 GONE NetworkPartition2 tid=17612 lived~102.1s
+20:19:29.702 GONE NetworkPartition2 tid=19820 lived~102.1s
+20:19:29.702 GONE Renderer0 tid=18648 lived~102.1s
+20:19:29.702 GONE Renderer0 tid=21528 lived~102.1s
+20:19:29.702 GONE Renderer1 tid=21464 lived~102.1s
+20:19:29.702 GONE Renderer1 tid=14060 lived~102.1s
+20:19:29.702 GONE broker2 tid=19200 lived~102.2s
+20:19:29.702 GONE broker2 tid=22388 lived~102.2s
+20:19:29.702 GONE broker2 tid=22468 lived~102.2s
+20:19:29.702 GONE Renderer3 tid=11372 lived~102.1s
+20:19:29.702 GONE Renderer3 tid=9716 lived~102.1s
+20:19:29.702 GONE broker0 tid=7984 lived~102.2s
+20:19:29.702 GONE broker0 tid=17576 lived~102.2s
+20:19:29.702 GONE broker0 tid=15752 lived~102.2s
+20:19:29.702 GONE NetworkPartition0 tid=15200 lived~102.1s
+20:19:29.702 GONE NetworkPartition0 tid=22052 lived~102.1s
+20:19:29.702 GONE NetworkPartition1 tid=21496 lived~102.1s
+20:19:29.702 GONE NetworkPartition1 tid=20348 lived~102.1s
+20:21:58.875 BORN ctl-idle pid=12248 tid=15956 age=1,151.7s start=ntdll.dll+0x7ee20
+20:22:47.792 hold 3 ended exit=
+20:22:47.792 hold 3 started broker=18452
+20:22:47.792 hold 2 ended exit=
+20:22:47.809 hold 2 started broker=5280
+20:22:47.809 hold 1 ended exit=
+20:22:47.809 hold 1 started broker=21816
+20:22:47.809 hold 0 ended exit=
+20:22:47.809 hold 0 started broker=18924
+20:22:48.117 hold 3 children NetworkPartition=14068 Renderer=20484
+20:22:48.133 hold 2 children NetworkPartition=11816 Renderer=9884
+20:22:48.133 hold 1 children NetworkPartition=22008 Renderer=8452
+20:22:48.148 hold 0 children NetworkPartition=15284 Renderer=15092
+20:23:17.836 BORN broker3 pid=18452 tid=17564 age=30.0s start=ntdll.dll+0x7ee20
+20:23:17.836 BORN broker3 pid=18452 tid=13816 age=30.0s start=ntdll.dll+0x7ee20
+20:23:17.852 BORN broker1 pid=21816 tid=10800 age=30.0s start=ntdll.dll+0x7ee20
+20:23:17.853 BORN broker1 pid=21816 tid=22252 age=30.0s start=ntdll.dll+0x7ee20
+20:23:17.853 BORN broker0 pid=18924 tid=19892 age=30.0s start=ntdll.dll+0x7ee20
+20:23:17.853 BORN broker0 pid=18924 tid=17888 age=30.0s start=ntdll.dll+0x7ee20
+20:23:17.836 BORN broker2 pid=5280 tid=2780 age=30.0s start=ntdll.dll+0x7ee20
+20:23:17.836 BORN broker2 pid=5280 tid=11224 age=30.0s start=ntdll.dll+0x7ee20
+20:24:00.359 GONE ctl-idle tid=15956 lived~121.5s
+20:25:02.069 GONE broker3 tid=17564 lived~104.2s
+20:25:02.069 GONE broker3 tid=13816 lived~104.2s
+20:25:02.069 GONE broker1 tid=22252 lived~104.2s
+20:25:02.069 GONE broker1 tid=10800 lived~104.2s
+20:25:02.069 GONE broker0 tid=17888 lived~104.2s
+20:25:02.069 GONE broker0 tid=19892 lived~104.2s
+20:25:02.069 GONE broker2 tid=11224 lived~104.2s
+20:25:02.069 GONE broker2 tid=2780 lived~104.2s
+20:27:47.886 BORN Renderer0 pid=15092 tid=19492 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.886 BORN Renderer0 pid=15092 tid=11444 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN NetworkPartition1 pid=22008 tid=20320 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN NetworkPartition1 pid=22008 tid=9856 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.822 BORN broker3 pid=18452 tid=5520 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.823 BORN broker3 pid=18452 tid=1008 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.838 BORN broker1 pid=21816 tid=15056 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.839 BORN broker1 pid=21816 tid=5908 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN Renderer3 pid=20484 tid=11780 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN Renderer3 pid=20484 tid=21196 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.839 BORN broker0 pid=18924 tid=12148 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.839 BORN broker0 pid=18924 tid=17960 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN Renderer1 pid=8452 tid=21172 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN Renderer1 pid=8452 tid=21760 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN NetworkPartition2 pid=11816 tid=15024 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN NetworkPartition2 pid=11816 tid=18904 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.854 BORN NetworkPartition3 pid=14068 tid=11888 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.854 BORN NetworkPartition3 pid=14068 tid=21672 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN Renderer2 pid=9884 tid=8884 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN Renderer2 pid=9884 tid=14996 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN NetworkPartition0 pid=15284 tid=8440 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.870 BORN NetworkPartition0 pid=15284 tid=14004 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.838 BORN broker2 pid=5280 tid=18620 age=300.0s start=ntdll.dll+0x7ee20
+20:27:47.839 BORN broker2 pid=5280 tid=20912 age=300.0s start=ntdll.dll+0x7ee20
+20:29:29.910 GONE NetworkPartition1 tid=9856 lived~102.0s
+20:29:29.910 GONE NetworkPartition1 tid=20320 lived~102.0s
+20:29:29.910 GONE broker3 tid=5520 lived~102.1s
+20:29:29.910 GONE broker3 tid=1008 lived~102.1s
+20:29:29.910 GONE broker1 tid=5908 lived~102.1s
+20:29:29.910 GONE broker1 tid=15056 lived~102.1s
+20:29:29.910 GONE Renderer3 tid=21196 lived~102.0s
+20:29:29.910 GONE Renderer3 tid=11780 lived~102.0s
+20:29:29.910 GONE broker0 tid=12148 lived~102.1s
+20:29:29.910 GONE broker0 tid=17960 lived~102.1s
+20:29:29.910 GONE Renderer1 tid=21172 lived~102.0s
+20:29:29.910 GONE Renderer1 tid=21760 lived~102.0s
+20:29:29.910 GONE NetworkPartition2 tid=18904 lived~102.0s
+20:29:29.910 GONE NetworkPartition2 tid=15024 lived~102.0s
+20:29:29.910 GONE NetworkPartition3 tid=21672 lived~102.1s
+20:29:29.910 GONE NetworkPartition3 tid=11888 lived~102.1s
+20:29:29.910 GONE Renderer2 tid=14996 lived~102.0s
+20:29:29.910 GONE Renderer2 tid=8884 lived~102.0s
+20:29:29.910 GONE NetworkPartition0 tid=8440 lived~102.0s
+20:29:29.910 GONE NetworkPartition0 tid=14004 lived~102.0s
+20:29:29.910 GONE broker2 tid=18620 lived~102.1s
+20:29:29.910 GONE broker2 tid=20912 lived~102.1s
+20:29:30.251 GONE Renderer0 tid=11444 lived~102.4s
+20:29:30.251 GONE Renderer0 tid=19492 lived~102.4s
+20:32:47.836 BORN broker3 pid=18452 tid=18688 age=600.0s start=ntdll.dll+0x7ee20
+20:32:47.837 BORN broker3 pid=18452 tid=8928 age=600.0s start=ntdll.dll+0x7ee20
+20:32:47.852 BORN broker1 pid=21816 tid=16712 age=600.0s start=ntdll.dll+0x7ee20
+20:32:47.853 BORN broker1 pid=21816 tid=18036 age=600.0s start=ntdll.dll+0x7ee20
+20:32:47.852 BORN broker0 pid=18924 tid=18752 age=600.0s start=ntdll.dll+0x7ee20
+20:32:47.853 BORN broker0 pid=18924 tid=14116 age=600.0s start=ntdll.dll+0x7ee20
+20:32:48.220 hold 3 ended exit=
+20:32:48.229 hold 3 started broker=18464
+20:32:48.229 hold 2 ended exit=
+20:32:48.236 hold 2 started broker=22096
+20:32:48.236 hold 1 ended exit=
+20:32:48.245 hold 1 started broker=20384
+20:32:48.245 hold 0 ended exit=
+20:32:48.245 hold 0 started broker=15136
+20:32:48.543 hold 3 children NetworkPartition=21960 Renderer=20348
+20:32:48.558 hold 2 children NetworkPartition=11472 Renderer=18908
+20:32:48.558 hold 1 children NetworkPartition=21920 Renderer=7880
+20:32:48.574 hold 0 children NetworkPartition=10800 Renderer=17564
+20:33:18.276 BORN broker1 pid=20384 tid=19688 age=30.0s start=ntdll.dll+0x7ee20
+20:33:18.277 BORN broker1 pid=20384 tid=18220 age=30.0s start=ntdll.dll+0x7ee20
+20:33:18.260 BORN broker3 pid=18464 tid=8844 age=30.0s start=ntdll.dll+0x7ee20
+20:33:18.261 BORN broker3 pid=18464 tid=18232 age=30.0s start=ntdll.dll+0x7ee20
+20:33:18.261 BORN broker2 pid=22096 tid=5728 age=30.0s start=ntdll.dll+0x7ee20
+20:33:18.261 BORN broker2 pid=22096 tid=22272 age=30.0s start=ntdll.dll+0x7ee20
+20:33:18.277 BORN broker0 pid=15136 tid=22396 age=30.0s start=ntdll.dll+0x7ee20
+20:33:18.277 BORN broker0 pid=15136 tid=21616 age=30.0s start=ntdll.dll+0x7ee20
+20:35:02.430 GONE broker1 tid=18220 lived~104.2s
+20:35:02.430 GONE broker1 tid=19688 lived~104.2s
+20:35:02.430 GONE broker3 tid=18232 lived~104.2s
+20:35:02.430 GONE broker3 tid=8844 lived~104.2s
+20:35:02.430 GONE broker2 tid=22272 lived~104.2s
+20:35:02.430 GONE broker2 tid=5728 lived~104.2s
+20:35:02.430 GONE broker0 tid=21616 lived~104.2s
+20:35:02.430 GONE broker0 tid=22396 lived~104.2s
+20:37:48.256 BORN broker2 pid=22096 tid=15468 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.256 BORN broker2 pid=22096 tid=21992 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.304 BORN Renderer1 pid=7880 tid=7012 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.305 BORN Renderer1 pid=7880 tid=22084 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.304 BORN Renderer3 pid=20348 tid=19544 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.305 BORN Renderer3 pid=20348 tid=17240 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.256 BORN broker1 pid=20384 tid=17628 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.256 BORN broker1 pid=20384 tid=4596 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.305 BORN NetworkPartition0 pid=10800 tid=10108 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.305 BORN NetworkPartition0 pid=10800 tid=22416 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.256 BORN broker3 pid=18464 tid=14960 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.256 BORN broker3 pid=18464 tid=14544 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.256 BORN broker3 pid=18464 tid=18480 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.319 BORN Renderer0 pid=17564 tid=10104 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.320 BORN Renderer0 pid=17564 tid=4292 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.288 BORN NetworkPartition3 pid=21960 tid=18132 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.288 BORN NetworkPartition3 pid=21960 tid=15040 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.304 BORN Renderer2 pid=18908 tid=20492 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.305 BORN Renderer2 pid=18908 tid=21464 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.288 BORN NetworkPartition1 pid=21920 tid=21872 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.288 BORN NetworkPartition1 pid=21920 tid=15176 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.271 BORN broker0 pid=15136 tid=17112 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.272 BORN broker0 pid=15136 tid=10852 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.272 BORN broker0 pid=15136 tid=3760 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.287 BORN NetworkPartition2 pid=11472 tid=11444 age=300.0s start=ntdll.dll+0x7ee20
+20:37:48.288 BORN NetworkPartition2 pid=11472 tid=9352 age=300.0s start=ntdll.dll+0x7ee20
+20:39:30.501 GONE Renderer1 tid=22084 lived~102.2s
+20:39:30.501 GONE Renderer1 tid=7012 lived~102.2s
+20:39:30.501 GONE Renderer3 tid=19544 lived~102.2s
+20:39:30.501 GONE Renderer3 tid=17240 lived~102.2s
+20:39:30.501 GONE broker1 tid=17628 lived~102.2s
+20:39:30.501 GONE broker1 tid=4596 lived~102.2s
+20:39:30.501 GONE NetworkPartition0 tid=22416 lived~102.2s
+20:39:30.501 GONE NetworkPartition0 tid=10108 lived~102.2s
+20:39:30.501 GONE broker3 tid=14544 lived~102.2s
+20:39:30.501 GONE broker3 tid=18480 lived~102.2s
+20:39:30.501 GONE broker3 tid=14960 lived~102.2s
+20:39:30.501 GONE Renderer0 tid=10104 lived~102.2s
+20:39:30.501 GONE Renderer0 tid=4292 lived~102.2s
+20:39:30.501 GONE NetworkPartition3 tid=15040 lived~102.2s
+20:39:30.501 GONE NetworkPartition3 tid=18132 lived~102.2s
+20:39:30.501 GONE Renderer2 tid=20492 lived~102.2s
+20:39:30.501 GONE Renderer2 tid=21464 lived~102.2s
+20:39:30.501 GONE NetworkPartition1 tid=21872 lived~102.2s
+20:39:30.501 GONE NetworkPartition1 tid=15176 lived~102.2s
+20:39:30.501 GONE broker2 tid=21992 lived~102.2s
+20:39:30.501 GONE broker2 tid=15468 lived~102.2s
+20:39:30.501 GONE broker0 tid=3760 lived~102.2s
+20:39:30.501 GONE broker0 tid=17112 lived~102.2s
+20:39:30.501 GONE broker0 tid=10852 lived~102.2s
+20:39:30.501 GONE NetworkPartition2 tid=9352 lived~102.2s
+20:39:30.501 GONE NetworkPartition2 tid=11444 lived~102.2s
+20:42:48.268 BORN broker1 pid=20384 tid=14240 age=600.0s start=ntdll.dll+0x7ee20
+20:42:48.269 BORN broker1 pid=20384 tid=14300 age=600.0s start=ntdll.dll+0x7ee20
+20:42:48.268 BORN broker3 pid=18464 tid=17652 age=600.0s start=ntdll.dll+0x7ee20
+20:42:48.269 BORN broker3 pid=18464 tid=19028 age=600.0s start=ntdll.dll+0x7ee20
+20:42:48.268 BORN broker2 pid=22096 tid=17960 age=600.0s start=ntdll.dll+0x7ee20
+20:42:48.269 BORN broker2 pid=22096 tid=7240 age=600.0s start=ntdll.dll+0x7ee20
+20:42:48.284 BORN broker0 pid=15136 tid=17448 age=600.0s start=ntdll.dll+0x7ee20
+20:42:48.284 BORN broker0 pid=15136 tid=11780 age=600.0s start=ntdll.dll+0x7ee20
+20:42:48.654 hold 3 ended exit=
+20:42:48.663 hold 3 started broker=18512
+20:42:48.670 hold 2 ended exit=
+20:42:48.670 hold 2 started broker=22040
+20:42:48.670 hold 1 ended exit=
+20:42:48.677 hold 1 started broker=14936
+20:42:48.681 hold 0 ended exit=
+20:42:48.681 hold 0 started broker=22036
+20:42:48.986 hold 3 children NetworkPartition=13868 Renderer=14068
+20:42:48.997 hold 2 children NetworkPartition=9796 Renderer=22196
+20:42:49.009 hold 1 children NetworkPartition=19448 Renderer=12260
+20:42:49.014 hold 0 children NetworkPartition=21952 Renderer=20692
+20:43:18.700 BORN broker2 pid=22040 tid=22160 age=30.0s start=ntdll.dll+0x7ee20
+20:43:18.700 BORN broker2 pid=22040 tid=13964 age=30.0s start=ntdll.dll+0x7ee20
+20:43:18.718 BORN broker0 pid=22036 tid=17164 age=30.0s start=ntdll.dll+0x7ee20
+20:43:18.718 BORN broker0 pid=22036 tid=14812 age=30.0s start=ntdll.dll+0x7ee20
+20:43:18.718 BORN broker1 pid=14936 tid=21604 age=30.0s start=ntdll.dll+0x7ee20
+20:43:18.718 BORN broker1 pid=14936 tid=19504 age=30.0s start=ntdll.dll+0x7ee20
+20:43:18.699 BORN broker3 pid=18512 tid=16724 age=30.0s start=ntdll.dll+0x7ee20
+20:43:18.700 BORN broker3 pid=18512 tid=10804 age=30.0s start=ntdll.dll+0x7ee20
+20:45:02.988 GONE broker2 tid=13964 lived~104.3s
+20:45:02.988 GONE broker2 tid=22160 lived~104.3s
+20:45:02.988 GONE broker0 tid=17164 lived~104.3s
+20:45:02.988 GONE broker0 tid=14812 lived~104.3s
+20:45:02.988 GONE broker1 tid=19504 lived~104.3s
+20:45:02.988 GONE broker1 tid=21604 lived~104.3s
+20:45:02.988 GONE broker3 tid=16724 lived~104.3s
+20:45:02.988 GONE broker3 tid=10804 lived~104.3s
+20:47:48.739 BORN Renderer2 pid=22196 tid=19688 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.740 BORN Renderer2 pid=22196 tid=17612 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.723 BORN NetworkPartition3 pid=13868 tid=15312 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.724 BORN NetworkPartition3 pid=13868 tid=8472 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.724 BORN NetworkPartition2 pid=9796 tid=18128 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.724 BORN NetworkPartition2 pid=9796 tid=14576 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.690 BORN broker2 pid=22040 tid=15316 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.690 BORN broker2 pid=22040 tid=7080 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.739 BORN NetworkPartition1 pid=19448 tid=10644 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.740 BORN NetworkPartition1 pid=19448 tid=21716 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.705 BORN broker0 pid=22036 tid=14160 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.706 BORN broker0 pid=22036 tid=11144 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.706 BORN broker0 pid=22036 tid=912 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.705 BORN broker1 pid=14936 tid=720 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.706 BORN broker1 pid=14936 tid=17708 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.706 BORN broker1 pid=14936 tid=19728 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.739 BORN Renderer1 pid=12260 tid=21616 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.740 BORN Renderer1 pid=12260 tid=19116 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.690 BORN broker3 pid=18512 tid=15136 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.690 BORN broker3 pid=18512 tid=22096 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.690 BORN broker3 pid=18512 tid=3636 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.740 BORN NetworkPartition0 pid=21952 tid=9856 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.740 BORN NetworkPartition0 pid=21952 tid=18792 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.740 BORN Renderer0 pid=20692 tid=21924 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.740 BORN Renderer0 pid=20692 tid=21892 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.739 BORN Renderer3 pid=14068 tid=19860 age=300.0s start=ntdll.dll+0x7ee20
+20:47:48.740 BORN Renderer3 pid=14068 tid=13856 age=300.0s start=ntdll.dll+0x7ee20
+20:49:30.933 GONE Renderer2 tid=19688 lived~102.2s
+20:49:30.933 GONE Renderer2 tid=17612 lived~102.2s
+20:49:30.933 GONE NetworkPartition3 tid=8472 lived~102.2s
+20:49:30.933 GONE NetworkPartition3 tid=15312 lived~102.2s
+20:49:30.933 GONE NetworkPartition2 tid=18128 lived~102.2s
+20:49:30.933 GONE NetworkPartition2 tid=14576 lived~102.2s
+20:49:30.933 GONE broker2 tid=15316 lived~102.2s
+20:49:30.933 GONE broker2 tid=7080 lived~102.2s
+20:49:30.933 GONE NetworkPartition1 tid=10644 lived~102.2s
+20:49:30.933 GONE NetworkPartition1 tid=21716 lived~102.2s
+20:49:30.933 GONE broker0 tid=11144 lived~102.2s
+20:49:30.933 GONE broker0 tid=14160 lived~102.2s
+20:49:30.933 GONE broker0 tid=912 lived~102.2s
+20:49:30.933 GONE broker1 tid=720 lived~102.2s
+20:49:30.933 GONE broker1 tid=19728 lived~102.2s
+20:49:30.933 GONE broker1 tid=17708 lived~102.2s
+20:49:30.933 GONE Renderer1 tid=21616 lived~102.2s
+20:49:30.933 GONE Renderer1 tid=19116 lived~102.2s
+20:49:30.933 GONE broker3 tid=22096 lived~102.2s
+20:49:30.933 GONE broker3 tid=15136 lived~102.2s
+20:49:30.933 GONE broker3 tid=3636 lived~102.2s
+20:49:30.933 GONE NetworkPartition0 tid=9856 lived~102.2s
+20:49:30.933 GONE NetworkPartition0 tid=18792 lived~102.2s
+20:49:30.933 GONE Renderer0 tid=21892 lived~102.2s
+20:49:30.933 GONE Renderer0 tid=21924 lived~102.2s
+20:49:30.933 GONE Renderer3 tid=13856 lived~102.2s
+20:49:30.933 GONE Renderer3 tid=19860 lived~102.2s
+20:52:48.696 BORN broker2 pid=22040 tid=18072 age=600.0s start=ntdll.dll+0x7ee20
+20:52:48.697 BORN broker2 pid=22040 tid=19652 age=600.0s start=ntdll.dll+0x7ee20
+20:52:48.711 BORN broker0 pid=22036 tid=1164 age=600.0s start=ntdll.dll+0x7ee20
+20:52:48.712 BORN broker0 pid=22036 tid=9412 age=600.0s start=ntdll.dll+0x7ee20
+20:52:48.711 BORN broker1 pid=14936 tid=20520 age=600.0s start=ntdll.dll+0x7ee20
+20:52:48.712 BORN broker1 pid=14936 tid=19884 age=600.0s start=ntdll.dll+0x7ee20
+20:52:48.696 BORN broker3 pid=18512 tid=4572 age=600.0s start=ntdll.dll+0x7ee20
+20:52:48.697 BORN broker3 pid=18512 tid=13668 age=600.0s start=ntdll.dll+0x7ee20
+20:52:49.019 hold 3 ended exit=
+20:52:49.028 hold 3 started broker=4984
+20:52:49.028 hold 2 ended exit=
+20:52:49.036 hold 2 started broker=14624
+20:52:49.038 hold 1 ended exit=
+20:52:49.041 hold 1 started broker=17688
+20:52:49.041 hold 0 ended exit=
+20:52:49.048 hold 0 started broker=22340
+20:52:49.354 hold 3 children NetworkPartition=19888 Renderer=21628
+20:52:49.360 hold 2 children NetworkPartition=18248 Renderer=5804
+20:52:49.365 hold 1 children NetworkPartition=3940 Renderer=3064
+20:52:49.376 hold 0 children NetworkPartition=19984 Renderer=21664
+20:53:19.085 BORN broker0 pid=22340 tid=4716 age=30.0s start=ntdll.dll+0x7ee20
+20:53:19.085 BORN broker0 pid=22340 tid=768 age=30.0s start=ntdll.dll+0x7ee20
+20:53:19.069 BORN broker3 pid=4984 tid=9068 age=30.0s start=ntdll.dll+0x7ee20
+20:53:19.069 BORN broker3 pid=4984 tid=22396 age=30.0s start=ntdll.dll+0x7ee20
+20:53:19.069 BORN broker2 pid=14624 tid=5396 age=30.0s start=ntdll.dll+0x7ee20
+20:53:19.069 BORN broker2 pid=14624 tid=14296 age=30.0s start=ntdll.dll+0x7ee20
+20:53:19.069 BORN broker1 pid=17688 tid=7984 age=30.0s start=ntdll.dll+0x7ee20
+20:53:19.069 BORN broker1 pid=17688 tid=18480 age=30.0s start=ntdll.dll+0x7ee20
+20:55:03.260 GONE broker0 tid=4716 lived~104.2s
+20:55:03.260 GONE broker0 tid=768 lived~104.2s
+20:55:03.260 GONE broker3 tid=9068 lived~104.2s
+20:55:03.260 GONE broker3 tid=22396 lived~104.2s
+20:55:03.260 GONE broker2 tid=5396 lived~104.2s
+20:55:03.260 GONE broker2 tid=14296 lived~104.2s
+20:55:03.260 GONE broker1 tid=7984 lived~104.2s
+20:55:03.260 GONE broker1 tid=18480 lived~104.2s
+20:57:49.089 BORN Renderer2 pid=5804 tid=18692 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.104 BORN Renderer1 pid=3064 tid=7336 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.104 BORN Renderer1 pid=3064 tid=19976 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.072 BORN broker0 pid=22340 tid=18620 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.073 BORN broker0 pid=22340 tid=21672 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.073 BORN broker0 pid=22340 tid=14228 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.056 BORN broker3 pid=4984 tid=17628 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.056 BORN broker3 pid=4984 tid=4736 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.057 BORN broker3 pid=4984 tid=9552 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.089 BORN Renderer3 pid=21628 tid=21084 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.089 BORN Renderer3 pid=21628 tid=11472 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.088 BORN NetworkPartition3 pid=19888 tid=22240 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.089 BORN NetworkPartition3 pid=19888 tid=7880 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.089 BORN NetworkPartition1 pid=3940 tid=8936 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.089 BORN NetworkPartition1 pid=3940 tid=10868 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.056 BORN broker2 pid=14624 tid=21700 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.056 BORN broker2 pid=14624 tid=14224 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.057 BORN broker2 pid=14624 tid=15752 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.088 BORN NetworkPartition2 pid=18248 tid=22088 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.089 BORN NetworkPartition2 pid=18248 tid=3476 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.104 BORN NetworkPartition0 pid=19984 tid=3984 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.104 BORN NetworkPartition0 pid=19984 tid=2308 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.104 BORN Renderer0 pid=21664 tid=18412 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.104 BORN Renderer0 pid=21664 tid=10888 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.056 BORN broker1 pid=17688 tid=18648 age=300.0s start=ntdll.dll+0x7ee20
+20:57:49.056 BORN broker1 pid=17688 tid=9148 age=300.0s start=ntdll.dll+0x7ee20
+20:59:31.272 GONE Renderer2 tid=18692 lived~102.2s
+20:59:31.272 GONE Renderer1 tid=19976 lived~102.2s
+20:59:31.272 GONE Renderer1 tid=7336 lived~102.2s
+20:59:31.272 GONE broker0 tid=14228 lived~102.2s
+20:59:31.272 GONE broker0 tid=21672 lived~102.2s
+20:59:31.272 GONE broker0 tid=18620 lived~102.2s
+20:59:31.272 GONE broker3 tid=4736 lived~102.2s
+20:59:31.272 GONE broker3 tid=17628 lived~102.2s
+20:59:31.272 GONE broker3 tid=9552 lived~102.2s
+20:59:31.272 GONE Renderer3 tid=11472 lived~102.2s
+20:59:31.272 GONE Renderer3 tid=21084 lived~102.2s
+20:59:31.272 GONE NetworkPartition3 tid=7880 lived~102.2s
+20:59:31.272 GONE NetworkPartition3 tid=22240 lived~102.2s
+20:59:31.272 GONE NetworkPartition1 tid=10868 lived~102.2s
+20:59:31.272 GONE NetworkPartition1 tid=8936 lived~102.2s
+20:59:31.272 GONE broker2 tid=21700 lived~102.2s
+20:59:31.272 GONE broker2 tid=14224 lived~102.2s
+20:59:31.272 GONE broker2 tid=15752 lived~102.2s
+20:59:31.272 GONE NetworkPartition2 tid=22088 lived~102.2s
+20:59:31.272 GONE NetworkPartition2 tid=3476 lived~102.2s
+20:59:31.272 GONE NetworkPartition0 tid=2308 lived~102.2s
+20:59:31.272 GONE NetworkPartition0 tid=3984 lived~102.2s
+20:59:31.272 GONE Renderer0 tid=10888 lived~102.2s
+20:59:31.272 GONE Renderer0 tid=18412 lived~102.2s
+20:59:31.272 GONE broker1 tid=18648 lived~102.2s
+20:59:31.272 GONE broker1 tid=9148 lived~102.2s
+21:02:49.084 BORN broker0 pid=22340 tid=7440 age=600.0s start=ntdll.dll+0x7ee20
+21:02:49.085 BORN broker0 pid=22340 tid=20452 age=600.0s start=ntdll.dll+0x7ee20
+21:02:49.068 BORN broker3 pid=4984 tid=18880 age=600.0s start=ntdll.dll+0x7ee20
+21:02:49.069 BORN broker3 pid=4984 tid=21856 age=600.0s start=ntdll.dll+0x7ee20
+21:02:49.069 BORN broker2 pid=14624 tid=21724 age=600.0s start=ntdll.dll+0x7ee20
+21:02:49.069 BORN broker2 pid=14624 tid=22248 age=600.0s start=ntdll.dll+0x7ee20
+21:02:49.069 BORN broker1 pid=17688 tid=20412 age=600.0s start=ntdll.dll+0x7ee20
+21:02:49.069 BORN broker1 pid=17688 tid=17120 age=600.0s start=ntdll.dll+0x7ee20
+21:02:49.456 hold 3 ended exit=
+21:02:49.467 hold 3 started broker=17332
+21:02:49.468 hold 2 ended exit=
+21:02:49.473 hold 2 started broker=19992
+21:02:49.475 hold 1 ended exit=
+21:02:49.477 hold 1 started broker=18908
+21:02:49.481 hold 0 ended exit=
+21:02:49.484 hold 0 started broker=8912
+21:02:49.784 hold 3 children NetworkPartition=21972 Renderer=9956
+21:02:49.800 hold 2 children NetworkPartition=22300 Renderer=17968
+21:02:49.800 hold 1 children NetworkPartition=10820 Renderer=14060
+21:02:49.819 hold 0 children NetworkPartition=19084 Renderer=21544
+21:03:19.514 BORN broker0 pid=8912 tid=8936 age=30.0s start=ntdll.dll+0x7ee20
+21:03:19.514 BORN broker0 pid=8912 tid=22088 age=30.0s start=ntdll.dll+0x7ee20
+21:03:19.513 BORN broker1 pid=18908 tid=3700 age=30.0s start=ntdll.dll+0x7ee20
+21:03:19.514 BORN broker1 pid=18908 tid=11472 age=30.0s start=ntdll.dll+0x7ee20
+21:03:19.513 BORN broker3 pid=17332 tid=21692 age=30.0s start=ntdll.dll+0x7ee20
+21:03:19.514 BORN broker3 pid=17332 tid=10888 age=30.0s start=ntdll.dll+0x7ee20
+21:03:19.513 BORN broker2 pid=19992 tid=22012 age=30.0s start=ntdll.dll+0x7ee20
+21:03:19.514 BORN broker2 pid=19992 tid=3476 age=30.0s start=ntdll.dll+0x7ee20
+21:05:03.687 GONE broker0 tid=8936 lived~104.2s
+21:05:03.687 GONE broker0 tid=22088 lived~104.2s
+21:05:03.687 GONE broker1 tid=3700 lived~104.2s
+21:05:03.687 GONE broker1 tid=11472 lived~104.2s
+21:05:03.687 GONE broker3 tid=10888 lived~104.2s
+21:05:03.687 GONE broker3 tid=21692 lived~104.2s
+21:05:03.687 GONE broker2 tid=22012 lived~104.2s
+21:05:03.687 GONE broker2 tid=3476 lived~104.2s
+21:07:49.499 BORN broker0 pid=8912 tid=14240 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker0 pid=8912 tid=16700 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN NetworkPartition0 pid=19084 tid=16724 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN NetworkPartition0 pid=19084 tid=21984 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN NetworkPartition2 pid=22300 tid=22188 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN NetworkPartition2 pid=22300 tid=18808 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN Renderer2 pid=17968 tid=8428 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN Renderer2 pid=17968 tid=3540 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN NetworkPartition1 pid=10820 tid=17880 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN NetworkPartition1 pid=10820 tid=11268 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN NetworkPartition3 pid=21972 tid=18500 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN NetworkPartition3 pid=21972 tid=18812 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker1 pid=18908 tid=2528 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker1 pid=18908 tid=20432 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker1 pid=18908 tid=7540 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.498 BORN broker3 pid=17332 tid=22152 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker3 pid=17332 tid=2324 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker3 pid=17332 tid=3040 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker2 pid=19992 tid=20808 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker2 pid=19992 tid=10152 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.499 BORN broker2 pid=19992 tid=18248 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.547 BORN Renderer0 pid=21544 tid=18652 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.548 BORN Renderer0 pid=21544 tid=19652 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN Renderer3 pid=9956 tid=20428 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN Renderer3 pid=9956 tid=19780 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN Renderer1 pid=14060 tid=11800 age=300.0s start=ntdll.dll+0x7ee20
+21:07:49.531 BORN Renderer1 pid=14060 tid=15552 age=300.0s start=ntdll.dll+0x7ee20
+21:09:31.706 GONE broker0 tid=14240 lived~102.2s
+21:09:31.706 GONE broker0 tid=16700 lived~102.2s
+21:09:31.706 GONE NetworkPartition0 tid=16724 lived~102.2s
+21:09:31.706 GONE NetworkPartition0 tid=21984 lived~102.2s
+21:09:31.706 GONE NetworkPartition2 tid=22188 lived~102.2s
+21:09:31.706 GONE NetworkPartition2 tid=18808 lived~102.2s
+21:09:31.706 GONE Renderer2 tid=8428 lived~102.2s
+21:09:31.706 GONE Renderer2 tid=3540 lived~102.2s
+21:09:31.706 GONE NetworkPartition1 tid=17880 lived~102.2s
+21:09:31.706 GONE NetworkPartition1 tid=11268 lived~102.2s
+21:09:31.706 GONE NetworkPartition3 tid=18500 lived~102.2s
+21:09:31.706 GONE NetworkPartition3 tid=18812 lived~102.2s
+21:09:31.706 GONE broker1 tid=7540 lived~102.2s
+21:09:31.706 GONE broker1 tid=2528 lived~102.2s
+21:09:31.706 GONE broker1 tid=20432 lived~102.2s
+21:09:31.706 GONE broker3 tid=2324 lived~102.2s
+21:09:31.706 GONE broker3 tid=3040 lived~102.2s
+21:09:31.706 GONE broker3 tid=22152 lived~102.2s
+21:09:31.706 GONE broker2 tid=10152 lived~102.2s
+21:09:31.706 GONE broker2 tid=18248 lived~102.2s
+21:09:31.706 GONE broker2 tid=20808 lived~102.2s
+21:09:31.706 GONE Renderer0 tid=19652 lived~102.2s
+21:09:31.706 GONE Renderer0 tid=18652 lived~102.2s
+21:09:31.706 GONE Renderer3 tid=19780 lived~102.2s
+21:09:31.706 GONE Renderer3 tid=20428 lived~102.2s
+21:09:31.706 GONE Renderer1 tid=11800 lived~102.2s
+21:09:31.706 GONE Renderer1 tid=15552 lived~102.2s
+21:12:49.507 BORN broker0 pid=8912 tid=18912 age=600.0s start=ntdll.dll+0x7ee20
+21:12:49.507 BORN broker0 pid=8912 tid=10804 age=600.0s start=ntdll.dll+0x7ee20
+21:12:49.507 BORN broker1 pid=18908 tid=4316 age=600.0s start=ntdll.dll+0x7ee20
+21:12:49.507 BORN broker1 pid=18908 tid=22340 age=600.0s start=ntdll.dll+0x7ee20
+21:12:49.507 BORN broker3 pid=17332 tid=7788 age=600.0s start=ntdll.dll+0x7ee20
+21:12:49.508 BORN broker3 pid=17332 tid=21676 age=600.0s start=ntdll.dll+0x7ee20
+21:12:49.507 BORN broker2 pid=19992 tid=18244 age=600.0s start=ntdll.dll+0x7ee20
+21:12:49.507 BORN broker2 pid=19992 tid=16928 age=600.0s start=ntdll.dll+0x7ee20
+21:12:49.865 hold 3 ended exit=
+21:12:49.876 hold 3 started broker=19520
+21:12:49.876 hold 2 ended exit=
+21:12:49.880 hold 2 started broker=9532
+21:12:49.880 hold 1 ended exit=
+21:12:49.880 hold 1 started broker=22352
+21:12:49.880 hold 0 ended exit=
+21:12:49.895 hold 0 started broker=10744
+21:12:50.201 hold 3 children NetworkPartition=21924 Renderer=9488
+21:12:50.220 hold 2 children NetworkPartition=22016 Renderer=20192
+21:12:50.234 hold 1 children NetworkPartition=15740 Renderer=5136
+21:12:50.249 hold 0 children NetworkPartition=10964 Renderer=19780
+21:13:19.919 BORN broker2 pid=9532 tid=18408 age=30.0s start=ntdll.dll+0x7ee20
+21:13:19.919 BORN broker2 pid=9532 tid=22372 age=30.0s start=ntdll.dll+0x7ee20
+21:13:19.919 BORN broker3 pid=19520 tid=19116 age=30.0s start=ntdll.dll+0x7ee20
+21:13:19.919 BORN broker3 pid=19520 tid=13988 age=30.0s start=ntdll.dll+0x7ee20
+21:13:19.935 BORN broker0 pid=10744 tid=11576 age=30.0s start=ntdll.dll+0x7ee20
+21:13:19.936 BORN broker0 pid=10744 tid=11976 age=30.0s start=ntdll.dll+0x7ee20
+21:13:19.919 BORN broker1 pid=22352 tid=21892 age=30.0s start=ntdll.dll+0x7ee20
+21:13:19.919 BORN broker1 pid=22352 tid=2640 age=30.0s start=ntdll.dll+0x7ee20
+21:15:03.952 GONE broker2 tid=18408 lived~104.0s
+21:15:03.952 GONE broker2 tid=22372 lived~104.0s
+21:15:03.952 GONE broker3 tid=19116 lived~104.0s
+21:15:03.952 GONE broker3 tid=13988 lived~104.0s
+21:15:03.952 GONE broker0 tid=11576 lived~104.0s
+21:15:03.952 GONE broker0 tid=11976 lived~104.0s
+21:15:03.952 GONE broker1 tid=21892 lived~104.0s
+21:15:03.952 GONE broker1 tid=2640 lived~104.0s
+end 21:17:47.297

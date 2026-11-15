@@ -1,0 +1,6 @@
+start 2026-11-06 20:01:39.010 holds=1 minutes=1
+20:01:40.618 hold 0 started broker=19368
+20:01:42.353 hold 0 children NetworkPartition=14116 Renderer=9968
+20:02:10.673 BORN broker0 pid=19368 tid=17796 age=30.1s start=ntdll.dll+0x7ee20
+20:02:10.674 BORN broker0 pid=19368 tid=21828 age=30.1s start=ntdll.dll+0x7ee20
+end 20:02:42.385
