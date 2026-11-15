@@ -122,9 +122,143 @@ re-derives.
 **(c) ST-1 held until upstream fixes it.** A ship blocker gated on a third
 party's tracker, where the sibling issue has been open since 2019.
 
+**(d) Correct the oracle.** Not among the options first put to the owner, and
+the one they wrote: a committed table of patches, applied as each case is
+read.
+
 **Either way, two factual corrections are owed to ST-1** and are independent
 of the choice: the count is **6,824 at the pin, not 6,827**, and a count is
-not a coverage claim while 18 of `test3.test`'s cases are redundant.
+not a coverage claim while 18 of `test3.test`'s cases are redundant (10 with
+(d) applied).
+
+## Decided: (d), and what it measured
+
+The owner's answer of 15 November 2026, relayed through the decision queue,
+was ***"fork and add patches"***. The patches are not a pushed fork, because
+a second remote is the owner's own to ask for; they are
+`crates/hg-html5lib/src/corrections.rs`, a table applied at load. The pin
+does not move and the fetched tree stays byte-identical to upstream, so there
+is still one digest in `tools/test-data.toml`.
+
+**28 corrections**, each naming the exact value it replaces and the class of
+evidence it rests on:
+
+| Class | Entries | What it rests on |
+|---|---|---|
+| lint-proven | 9 | The file contradicts itself: `description == input` for 1,247 of `test3.test`'s 1,606 cases, and these nine break it. |
+| spec-and-suite | 17 | 13.2.5.75 and 13.2.5.76 emit only an end-of-file token at EOF, so nothing further is consumed. The *number* is not the standard’s: it does not specify error columns at all, so it comes from the nine uncontradicted cases 1158–1166. |
+| series-inferred | 2 | Case 1174's stray `?`. An argument about intent, gated so it can be dropped alone. |
+
+**The weak hunk got stronger while being written down.** Case 1174 is series 1's
+only member carrying a trailing `?` and case 1182 is series 2's only member
+lacking one, so applying both hunks **moves one character between two rows** —
+a transposition, which also removes the file's last duplicate pair rather than
+creating one. That is a far better account of the evidence than eight
+characters lost in the same place. It is still the weakest of the three
+classes, because nothing in the file contradicts itself, so it stays gated and
+labelled.
+
+**The result: 14,092 of 14,092 runs, 100.0%.** The tokenizer did not change,
+so the entire 32-run gap was the oracle's and none of it Izcal's.
+
+### What the 100% is evidence of, and what it is not
+
+I first wrote that the corrections and the tokenizer are two independent
+derivations, so landing exactly on 14,092 is evidence the table is right. That
+is half true and the false half is the half that matters, and a peer session
+caught it by holding me to a residual I had named myself before any of this
+was built: *a patch could be wrong in the same direction as Izcal and look
+green.*
+
+**Strong evidence against a patch set wrong at random.** The table changes 9
+inputs and 17 columns; it leaves **30 expectation fields** on those nine cases
+untouched, and every one still had to be satisfied. Case 500 is the sharp one:
+its first error, `missing-quote-before-doctype-system-identifier` at **column
+20**, is an expectation the table does not touch, and after restoring the `x`
+it describes a *different character* at that column. It stays satisfiable only
+if exactly one character was restored at exactly that point. Insert the `x`
+elsewhere, or insert two, and that untouched expectation breaks. The fix is
+pinned, not merely permitted.
+
+**Not independent of the tokenizer, and the correlation is total.** The
+standard **does not specify error columns at all** — this crate's own docs say
+so, and say the convention was *calibrated against the suite*: a state that
+consumed a character reports that character's position, and nothing moves the
+position on at EOF. The sixteen column corrections rest on the same nine
+uncontradicted cases that convention was calibrated from, so correcting
+1167–1182 to the end of the input and then observing that the tokenizer agrees
+is **one calibration applied twice**. If the convention is wrong, the sixteen
+entries are wrong with it and the suite still reports 100%.
+
+**But "one calibration applied twice" was my own overcorrection, and the
+number that bounds it is 2,560.** The convention is not calibrated from nine
+cases. The suite holds **2,577 error expectations this crate judges**, across
+twelve files, and the table touches **17** of them. The other **2,560 are
+untouched third-party expectations that all pass** — every error position in
+`entities.test`, `numericEntities.test`, `test1`, `test2`, `test4` and the
+2,127 in `test3.test` the table never goes near. So the rule that forces the
+sixteen values is not a free choice confirmed by itself; it is a rule with
+2,560 independent confirmations in the same corpus, extrapolated to sixteen
+cases where the corpus contradicts itself. That is ordinary induction, and it
+is strong. What it is *not* is a second opinion: induction on a convention
+cannot tell you the convention is right, only that it is the one the suite
+uses.
+
+**And on a convention there may be nothing to be right about — which is the
+real residual, and it is dated.** A peer session's framing: where the standard
+fixes no value, "wrong" collapses into "inconsistent", and consistency is
+exactly what 2,560 passing expectations evidence. That holds only while
+nothing outside this crate and its tokenizer consumes a column *as a value*.
+Checked, 15 November 2026: **no other Izcal spec mentions HTML parse errors at
+all** — the DevTools spec has zero mentions, and the style spec's two are
+ST-1's own "error codes and positions". So the condition holds today. **The
+first external consumer of an error position — a DevTools issue, a diagnostic,
+anything compared against another implementation — gives the convention an
+external truth it currently lacks and turns these sixteen entries from a
+convention into a claim.** That is the thing to re-check, and it expires the
+same mechanical way the rest of this design does: it becomes false the first
+time a column leaves the crate. Recorded as ST-D21's reversal trigger.
+
+**It also tells us what kind of claim #202 is.** The upstream issue tells a
+third party their columns are wrong, which would be unfounded if columns were
+pure preference. It is not, because the argument filed was **self-inconsistency
+inside one file**: `test3.test` puts the error at the end of the input for
+`<?` and `<?a` and at column 4 for everything longer. A convention owes
+self-consistency, so inconsistency is precisely the defect one may report
+against it — and the only one.
+
+Rule 1 — cite the standard's step, never the tokenizer's output — holds the
+correlated risk down and does not close it. The evidence class is named
+`SpecAndSuite` and not `SpecDerived`, because the label is what a reader in
+six months uses to decide how much to trust a hunk, and `SpecDerived` would
+have claimed the standard fixes a number it never mentions.
+
+**The two halves are evidenced differently, and both are evidenced.** The nine
+input corrections are pinned by 30 expectations the table never touched, one
+of which fixes an insertion point to a single position. The sixteen column
+corrections are forced by a rule 2,560 untouched expectations confirm. Neither
+is unevidenced; they are strong in different ways, and only the second rests
+on something that could turn out to have no fact of the matter.
+
+**This is tonight's own symmetry landing on its author.** A measurement became
+a target, the target was hit, and the hit was being read as proof. The same
+sentence I insisted on everywhere else — *unexercised is not harmless*,
+*14,060 is a ceiling, not a shortfall* — applies to the number I was pleased
+with.
+
+**The expiry is zero-fuzz, and that is the point.** Every entry must find the
+value it names, or the load fails with a message naming the case. A patch set
+whose hunks silently stop applying is how a fork rots: upstream fixes the
+case, the patch does nothing, and the tree goes on claiming to correct
+something. Here the next re-pin reports it. Options (a) and (d) share that
+property — it is the half of the recommendation that survived the owner
+choosing differently.
+
+**Two counts corrected while implementing**, both mine and both found by
+measuring rather than by re-reading: the lost-character defect makes **eight**
+cases byte-identical duplicates, not seven (case 500 duplicates 499 and was
+left out of the first count), and `test3.test`'s redundant cases fall from 18
+to **10**.
 
 ## The general shape, because it is not about html5lib
 
@@ -135,6 +269,29 @@ what it means has changed underneath.** `14,060 of 14,092` re-derives
 byte-for-byte on every run and will keep doing so after upstream fixes the 16
 cases — at which point the same number means "32 runs are now failing for a
 real reason". The ratchet would not notice, because the number did not move.
+
+**One test tells you whether same-source evidence is contamination or the only
+evidence there is: ask whether the claim is about the world or about the
+source.** Both appear in this note, with opposite valences, and the structure
+is identical. "Izcal's tokenizer reports error positions correctly" is a claim
+about the world, so drawing its evidence from the suite the tokenizer was
+calibrated against is contamination — that is what made the 100% silent on
+correlated error. "The suite reports parse-error positions at the end of the
+input" is a claim *about the source*, so 2,560 untouched expectations drawn
+from that source are not a tainted second opinion but the only kind of
+evidence the proposition admits. The same corpus, the same 2,560 numbers,
+worthless for one claim and decisive for the other. Before discounting
+evidence for sharing a source with its subject, check which of the two you are
+making; and where the claim is about a convention, there is nothing above the
+source to appeal to, so a second opinion was never available to want.
+
+A second, smaller one, from the same exchange: **a condition is a thing
+someone must remember, and a trigger is not.** "These sixteen entries are a
+convention only while nothing outside the crate consumes an error position"
+was true when written and would have been forgotten; as ST-D21's reversal
+trigger it is re-read whenever the decision is. Where a caveat can be attached
+to a mechanism that already gets re-read, attach it there instead of stating
+it.
 
 What stops it here is that the exception list names *which* cases and
 re-checks the contradiction, not just the total. The rule that generalises:
