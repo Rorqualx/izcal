@@ -264,6 +264,37 @@ The GPU process is where every engine now loses: 209 of the 535 Chrome graphics 
 
 **The display-list format (GR-D6)** is a generated `.hgidl` type, read by `hg-ipc-gen`'s generated reader with a Kani harness (VER-1), copied once and validated (IPC-R7). It is not an IPC-R16 exception, so **IPC-R16 entry 1 (WebRender display lists) is removed**. Generation is not enough: the Firefox "Graphics: WebRender" component (largely Rust) still had 2026 sandbox escapes for "incorrect boundary conditions" ([SR 9.1][SR]), and the advisories name a component, not the faulty code's language, so the content GPU process checks **semantic limits** before use: property-tree depth ≤ 1,024†, clip chain length ≤ 256†, filter chain ≤ 64† primitives, every referenced resource (image region, atlas entry, canvas, surface) owned by the sender's (site, container) through generation-tagged ids (IPC-R8), total painted area per frame ≤ 64× the viewport†, and paths in the **bounded path format**. Each limit has a **deterministic degradation** that the renderer applies before sending, with the same function the validator runs, so a deep but legitimate page renders and only hostile input is rejected: property-tree nodes deeper than the limit are flattened into their nearest representable ancestor (transforms composed, clips intersected), clip chains beyond the limit are intersected into one clip, and painted area beyond the limit is culled outside the prepaint region; each degradation is a logged, explainable event (GR-D24).
 
+**The transport (GR-D6, decided 14 November 2026).** The bounds above are
+deliberate, and the generated reader enforces them, but they do not fit in a
+message: a chunk at its own limits measures **7,516,291,092 B** against
+Appendix C's **65,536 B** message cap, about **114,000×** (measured by
+`hg-display-list`'s `the_measured_bounds`, not estimated — a `Segment` is 28 B,
+a `Path` at 65,536 segments is 1,835,024 B, an `Item` 1,835,032 B). So "a
+generated, typed IPC format" needed a stated carrier, and the owner decided it:
+**a chunk travels in a shared buffer, copied once and then validated, with the
+chunk as the unit of validation.** This is what FP 6.4's "display list copied
+then validated" already implied; it is now the format's own rule rather than an
+inference from the process model. Three consequences bind:
+
+- **The message carries a buffer handle and the chunk's length, never the chunk.**
+  The handle is generation-tagged and owned by the sender's (site, container)
+  under IPC-R8, like every other referenced resource.
+- **Validation is per chunk and happens after the copy, never in place.** The
+  content GPU process reads from its own copy, so a renderer cannot mutate a
+  chunk between the validator's read and the rasterizer's — the
+  time-of-check-to-time-of-use shape that a shared buffer invites and a copy
+  removes.
+- **A chunk that fails validation is dropped whole.** Partial acceptance would
+  make the chunk's bounds unenforceable, since the bounds are properties of the
+  chunk and not of the items in it.
+
+The two alternatives were considered and refused: shrinking the per-chunk bounds
+so that a chunk *is* a message would move the complexity into path reassembly
+across chunks, which is new parsing on the untrusted-renderer boundary and is
+exactly the "incorrect boundary conditions" class the paragraph above cites; a
+hybrid, small chunks as messages and large ones by buffer, would give the
+validator two paths to be correct on instead of one.
+
 **The bounded path format** (asked for by TX 9.5, R21) is defined here; its **types live in `hg-display-list` (L2)**, so the text stack (L2t) can emit them without depending on L2g, while flattening, stroking and dashing live in `hg-path` (L2g) ([RN2 Q18][RN2]): segments are lines, quadratic and cubic Béziers and elliptical arcs in fixed point (24.8 in local units, ±8,388,607, relative to the path's own origin); at most **65,536† segments per path**, **4,096† paths per chunk**, subpath nesting not applicable (flat), coordinates within the range, and every count checked in G18's checked arithmetic. Large glyphs and colour-glyph vectors from the text stack use the same format (TX 6.1).
 
 **SVG records (the SVG spec's R7, applied 20 October 2026).** An SVG display item carries, per path, a **binary exponent** (|e| ≤ 100†) chosen as a pure function of the path's coordinates and its CTM, with an f64-to-device fallback for the rare path whose exponent would overflow the fixed-point grid, so SVG user units of unbounded range (SV-D2) flatten exactly; and **one f64-composed CTM per SVG record**, relative to the nearest property-tree node, so an SVG transform list is composed once in f64 in the renderer and its integer conversion happens at the record boundary, not per segment. **Display items reference paths by content hash**, so a `use` instance and its source share one path body, and an HTML element's `url()` paint resource (clip, mask, gradient referenced from CSS) resolves through the **same resolver** as an SVG-internal reference, so `clip-path: url(#c)` means one thing everywhere. Static transform trigonometry (a `rotate(30)` in a transform attribute or CSS transform) uses `hg-interp`'s degree functions (the animation spec's amendment), so a static and an animated transform at the same angle flatten identically.
@@ -557,7 +588,7 @@ A new sub-layer **L2g (graphics core)**, a sibling of L2e, L2p, L2t and L2m: pur
 | L5 | `hg-present-host` (broker), `hg-present-gpu` (compositor) | Per-OS presentation on both sides of the window boundary; the broker side parses only typed layer updates, sets colour metadata, and places prompt surfaces in their own OS layer (GR-D28) | P |
 | L5 | `hg-gpu-policy` (broker) | HAL registry, blocklists, workaround table, device-loss policy | P |
 | L6 | `hg-gpu-main`, `hg-gpu-content-main` | Process mains | P |
-| tools | `hg-raster-ref` | An independent float64 analytic reference rasterizer for accuracy targets (GR-6); shares no code with `hg-raster` | T |
+| tools | `hg-raster-ref` | An independent **exact** analytic reference rasterizer for accuracy targets (GR-6), on `i128` rational arithmetic (Sutherland–Hodgman clipping, doubled shoelace area); shares no code with `hg-raster`. Amended from "float64" by owner decision of 14 November 2026: a float64 reference rounds too, so it cannot say whether a one-level difference is the rasterizer's or its own | T |
 | tools | `hg-gfx-fuzz`, `hg-shader-fuzz`, `hg-gpu-lab`, `hg-cts`, `hg-wpt-paint` | Fuzzers, device-lab harness, WebGPU and WebGL CTS runners, exact-match WPT runner | T |
 
 `hg-reftest-raster` (layout's interim test rasterizer) is retired once `hg-raster` passes it at GR-M1. Stage 1's L0 loses `webrender` and `wgpu`; `hg-gpu` becomes the crates above. SIMD in `hg-raster` uses the one `hg-simd` crate, in L2s and owned by the media spec, through its safe API; one owner per shared crate is tabled in [reconciliation 2 Q20][RN2].
@@ -877,7 +908,7 @@ A bare "yes" means the recommendation. Build-versus-reuse is not on this list: t
 | **★ GR-D3** | Canonical pixels | (a) integer-only raster and composition on CPU and GPU for the canonical image (whole display list, snapped scroll offsets, translation and opacity on the compositor) and readable surfaces; (b) canonical for readable surfaces only, GPU float with tolerance for display; (c) no canonical guarantee | **(a)**, with (b) per device class only by measurement (6.4) | Integer GPU raster cost and energy (unmeasured); no fixed-function blending or filtering for page content | GR-34 (time or energy) fails on a device class: (b) there; readable surfaces stay canonical |
 | **GR-D4** | Rasterizer | (a) sparse strips with exact counts from CPU coarse raster, integer fine raster on CPU or GPU, hybrid AA, per-tile placement by the cost model; (b) compute-only GPU raster; (c) stencil-then-cover or MSAA | **(a)** (6.4) | A research-grade rasterizer track (10–13†) | MotionMark or corpus p95 below GR-30's Stage 1 ratio with no remaining hot spot in coarse raster |
 | **GR-D5** | Paint and layerization | (a) property trees, content-addressed chunks, deltas by hash with chunk resend, layerization after paint from compositor-mutable nodes with a cap of 16† (overflow to main-thread animation, never merging), backdrop consumers in their backdrop's layer; (b) DOM-derived layers | **(a)** (6.3) | — | Cap overflow on more than 1%† of corpus pages |
-| **GR-D6** | Display-list format | (a) generated `.hgidl` with semantic limits, IPC-R16 entry 1 removed; (b) a custom serialized format as an IPC-R16 exception | **(a)** | Generator support for large variable-length records | — |
+| **GR-D6** | Display-list format | (a) generated `.hgidl` with semantic limits, IPC-R16 entry 1 removed; (b) a custom serialized format as an IPC-R16 exception | **(a)**, with the transport settled on 14 November 2026: a chunk travels in a shared buffer, copied once then validated, the chunk being the unit of validation (6.3) | Generator support for large variable-length records | — |
 | **GR-D7** | Shader architecture | (a) own IR, WGSL and GLSL ES front ends, direct MSL, SPIR-V, DXIL emission, own validators, WGSL-subset internal shaders precompiled at build; (b) emit HLSL or GLSL for OS or bundled compilers | **(a)** (6.12) | Three back ends and validators | — |
 | **★ GR-D8** | Direct3D 12 shader ingestion | (a) self-produced DXIL with own validator and hash, in-box D3D12 only; (b) DXBC SM 5.1 only; (c) ship the Agility SDK and `dxil.dll` | **(a)**, (b) per vendor if GR-S1 fails and DXBC is shown to load (unproven; token encoding and checksum derived black-box), else the CPU path on that vendor; (c) is excluded by MIT-only | SM 6 features depend on in-box D3D12 | GR-S1 shows a vendor rejecting self-hashed DXIL |
 | **GR-D9** | WebGL | (a) on Izcal's HAL with GL emulation per back end; (b) on native GL where present | **(a)** (6.14) | Emulations without Vulkan's GL extensions on Metal and D3D12 | — |

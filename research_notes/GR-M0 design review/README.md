@@ -102,7 +102,7 @@ and told the review nothing, so there is none.
 
 ## 3. Items the review must decide, in their own right
 
-### 3.1 The display list does not fit in a message — **decide the transport**
+### 3.1 The display list does not fit in a message — **decided (a), 14 November 2026**
 
 Measured, not estimated (`hg-display-list`'s
 `a_maximal_chunk_is_far_larger_than_a_message` and
@@ -123,14 +123,21 @@ message cap, so a chunk cannot travel as one IPC message, and GR-D6's
 transport. FP 6.4's "display list copied then validated" points at a
 shared buffer; §6.3 does not say so in the format's own terms.
 
-**The review decides one of:** (a) write the copied-then-validated
-shared-buffer transport into the format, with the chunk as the unit of
-validation; (b) shrink the per-chunk bounds so a chunk *is* a message
-and let a path spill across chunks; (c) a hybrid — small chunks as
-messages, large ones by buffer. The bounds are §6.3's, so this is the
-graphics spec's decision and not the IPC layer's.
+**Decided: (a)** — the owner, 14 November 2026. The
+copied-then-validated shared-buffer transport is written into the
+format, with the chunk as the unit of validation; the message carries a
+generation-tagged buffer handle and the chunk's length, never the chunk;
+validation runs on the copy, not in place, which removes the
+time-of-check-to-time-of-use window a shared buffer would otherwise
+open; and a chunk that fails validation is dropped whole, because the
+bounds are properties of the chunk. (b) was refused for moving the
+complexity into path reassembly across chunks — new parsing on the
+untrusted-renderer boundary, in the same class as the WebRender
+"incorrect boundary conditions" escapes §6.3 cites; (c) for giving the
+validator two paths to be correct on instead of one. Recorded in the
+graphics spec §6.3 and in GR-D6's row.
 
-### 3.2 The accumulator's unit — **1/256 px² or exact**
+### 3.2 The accumulator's unit — **still open, 14 November 2026**
 
 §6.4 specifies "exact area coverage by signed-area accumulation in
 **1/256 px² units**". `hg-raster` accumulates in `SUB`-squared units
@@ -140,11 +147,19 @@ rounds, and "exact area coverage" and "1/256 px² units" cannot both
 hold. The code took the exact route and the difference is recorded
 here rather than resolved silently.
 
-**The review decides:** whether §6.4's unit is corrected to the finer
-one, or the coarser unit is kept and "exact" is weakened. The
-measurement that bears on it is in §3.3.
+**Still open.** Put to the owner on 14 November 2026 with §3.1, §3.3
+and four other decisions and **not answered**; the other six were. A row
+against it in the decision queue read "defer this one", but the
+coordinator identified that text as its own browser-test string re-sent
+by a stale tab and declined to relay it as an answer, which is the right
+call — a test fixture is not a decision. So this one is unanswered
+rather than deferred, and the distinction matters: nobody has yet chosen
+between correcting §6.4's unit to the finer one and keeping the coarser
+unit with "exact" weakened. The code continues to accumulate in `SUB`²
+units, which is the exact route, so the spec and the code still disagree
+until this is taken. The measurement that bears on it is in §3.3.
 
-### 3.3 `hg-raster-ref` is exact, not float64 — **confirm or revert**
+### 3.3 `hg-raster-ref` is exact, not float64 — **confirmed, 14 November 2026**
 
 §6.26's crate table says "an independent **float64** analytic
 reference rasterizer". It is built instead on exact `i128` rational
@@ -160,8 +175,13 @@ on 99.9% of edge pixels and ≤ 2/255 on all; every differing pixel here
 is at 1/255, so both halves hold — and they hold against an oracle
 with no error of its own, which is the point of the deviation.
 
-**The review decides:** confirm the deviation and amend §6.26, or
-require float64 and explain what the extra rounding buys.
+**Decided: confirm the deviation** — the owner, 14 November 2026.
+§6.26's crate table is amended to read "an independent **exact**
+analytic reference rasterizer ... on `i128` rational arithmetic", with
+the reason recorded in the row: a float64 reference rounds too, so it
+cannot say whether a one-level difference is the rasterizer's or its
+own. The 18-of-720 measurement above stands as GR-6's evidence, and it
+now stands against an oracle with no error of its own.
 
 ### 3.4 The two formats not yet written
 

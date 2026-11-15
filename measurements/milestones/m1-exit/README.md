@@ -24,8 +24,12 @@ where a verdict moved, the row says so.
 
 ## The verdict, up front
 
-**M1 does not exit yet.** Six of its seven clauses hold, one is this
-document, and one thing outside the seven does not:
+**M1 exits.** *(Amended 14 November 2026, when the owner took the two
+decisions this document was waiting on. The body below is unchanged
+except where it says so; what changed is two answers, not a
+measurement.)* Six of its seven clauses hold, the seventh is this
+document, the one thing outside the seven that did not hold now does,
+and the one question that could have blocked it is settled:
 
 - **Now met: "ST-M0, TX-M0, LY-M0, GR-M0 and NW-M0 start."** At
   `d11deee` none of the twenty crates those five milestones name
@@ -40,19 +44,37 @@ document, and one thing outside the seven does not:
   the five M0 rows name a human role as a precondition and all four
   are D-S8; that document's §4 is the distance.
 
-- **Open, and new to this document: the M0 waiver.** The
-  feature-inventory audit (FI-D1, accepted 24 October 2026) requires
-  M0's own start conditions — D-S8 funding, M1–M2 staffing — to be
-  "formally waived or met". The record is now drafted as **D-S13**
-  (Stage 1 §13.1b) and is **open**. M1 depends on M0, so until the
-  owner takes it this blocks M1's exit independently of clause 4. §6.5.
+- **Now met: the M0 waiver.** The feature-inventory audit (FI-D1,
+  accepted 24 October 2026) requires M0's own start conditions — D-S8
+  funding, M1–M2 staffing — to be "formally waived or met". **D-S13 is
+  decided (a) on 14 November 2026** (Stage 1 §13.1b): both are waived
+  **for M1 and M2 only**, recording that the work was done by this
+  project's agentic engineering rather than by a funded team, that D-S8
+  stays open and undecided, and that **the waiver lapses at M3**. M1's
+  own dependency on M0 is therefore satisfied in FI-D1's sense. §6.5.
 
-**JS-M0 does not exit yet either**, on five items: four riscv64 ones
-that need a K3 board which has not arrived, and the **ESMeta and
-SpecTec harnesses, which do not exist** — found while producing this
-document, because the exit row was checked against the tree rather than
-against the crate's name. Whether JS-M0's state blocks M1 depends on a
-reading the two specs do not settle, which §4 puts to the owner.
+  Two things this does not do. It does not reach M3: there the
+  conditions return unwaived and D-S8 must have been decided, so the
+  milestone after next inherits an open funding question rather than a
+  closed one. And it does not touch the four human-role preconditions
+  in the component M0s' *exits*, which are unchanged.
+
+- **Settled: whether JS-M0's incompleteness blocks M1.** The two specs
+  disagreed and §4 item 1 put it to the owner. Decided on 14 November
+  2026 on the **narrow** reading: Stage 1 §8.1's M1 row means what it
+  says, so what M1 requires of JS-M0 is the decision-point probe and
+  nothing else, and JS-M0's open items are tracked against **JS-M0's
+  own exit**. The JS spec §9.2's "Needed by" column is amended to say
+  so, so the disagreement is no longer load-bearing.
+
+**JS-M0 does not exit**, on five items: four riscv64 ones that need a
+K3 board which has not arrived, and the **ESMeta and SpecTec harnesses,
+which do not exist** — found while producing this document, because the
+exit row was checked against the tree rather than against the crate's
+name. Under the narrow reading that is now settled, none of the five
+blocks M1; all five still block **JS-M0**, whose exit row is unchanged.
+M1 exiting is therefore not a claim that the engine's foundations are
+finished, and nothing here should be read as one.
 
 Everything else measured here passes, including the decision-point
 probe, re-run on all three OSes at `d11deee` and bit-identical.
@@ -308,15 +330,23 @@ not moved across the heap work, on any OS.
 ## 4. What is open, and who owns it
 
 Each of these is a decision or a dependency, not a defect, and none can
-be settled by this session.
+be settled by this session. **Two have since been settled by the owner
+on 14 November 2026 and are kept here, struck through, because the
+record of what was asked is part of the evidence.**
 
-1. **Does JS-M0's incompleteness block M1?** The two specs do not agree
-   on the question. Stage 1's M1 row names only "**JS-M0**'s
-   decision-point probe passes", which holds. JS spec §9.2's "Needed
-   by" column says **JS-M0** — the whole milestone — is needed by
-   Stage 1 M1, and items 13–17 are open on hardware. Under the first
-   reading JS-M0's riscv64 items do not gate M1; under the second they
-   do, and M1 waits for a board. **Owner.**
+1. ~~**Does JS-M0's incompleteness block M1?**~~ **Settled 14 November
+   2026: the narrow reading.** The two specs did not agree. Stage 1's
+   M1 row names only "**JS-M0**'s decision-point probe passes", which
+   holds; JS spec §9.2's "Needed by" column said **JS-M0** — the whole
+   milestone — with items 13–17 open on hardware, which would have left
+   M1 waiting for a board. The owner chose the first reading: M1
+   requires the probe and nothing else of JS-M0, and JS-M0's open items
+   are tracked against JS-M0's own exit. The JS spec §9.2 row and the
+   note under it now say so, so the two documents no longer disagree.
+   The reason the narrow reading was recommended, and is recorded here
+   because it generalises: under the broad reading M1 could not exit
+   for a reason no engineering step can clear, which is the same shape
+   as the staffing preconditions 8.1a was written to avoid.
 2. **Clause 4 of the M1 row: the five other tracks' M0s.** *(Amended
    13 November 2026.)* The half of this that was a question — "record
    what 'start' means as a measurable thing, or amend the row" — is
@@ -335,10 +365,12 @@ be settled by this session.
      all four are **D-S8**. The five-clause definition was written to
      turn on artefacts precisely so that starting would not depend on
      them; exiting still does.
-   - **Owner, and separate from clause 4.** The **M0 waiver** FI-D1
-     requires — D-S8 funding and M1–M2 staffing "formally waived or
-     met" — is drafted and open as **D-S13** (Stage 1 §13.1b), not
-     decided, and M1 depends on M0. §6.5.
+   - ~~**Owner, and separate from clause 4.** The M0 waiver.~~
+     **Settled 14 November 2026: D-S13 decided (a)** — D-S8 funding and
+     M1–M2 staffing are formally waived **for M1 and M2 only**, D-S8
+     stays open, and the waiver lapses at M3. M1's dependency on M0 is
+     satisfied in FI-D1's sense. §6.5. The staffing question itself is
+     not settled and returns at M3.
 3. **JS-D1 on AArch64.** (c) is 3.5–40% faster per dependent load than
    the chosen (a). The two encodings hold identical bytes, so this is
    the measured price of the 16 GB cage on that ISA. JS-D1's stated
@@ -500,7 +532,7 @@ golden, and there is no `OsAdapter` variant in `ProcessKind` anywhere
 in the workspace. FI-D1 asked for the pattern to be decided, so this
 item holds; it would not hold if it had asked for the process.
 
-### 6.5 What does not hold: the M0 waiver
+### 6.5 The M0 waiver, now taken *(amended 14 November 2026)*
 
 FI-D1 also requires M0's own start conditions — **D-S8 funding, and the
 team for M1–M2 staffed** — to be "formally waived or met". Neither has
@@ -513,17 +545,31 @@ happened:
   options "conflict with something: search deals pull against privacy
   defaults, ads against content blocking, and a single corporate
   sponsor against Servo's lesson".
-- The record FI-D1 asks for now exists as a **drafted and open
-  decision**: Stage 1 §13.1b, **D-S13**, with three options — (a)
-  waive both for M1 and M2 only, recording that the work was done by
-  this project's agentic engineering rather than by a funded team,
-  that D-S8 stays open, and that the waiver lapses at M3; (b) waive
-  them for the whole of Stage 1; (c) do not waive. The section
-  recommends (a) as the narrowest claim the evidence supports.
+- The record FI-D1 asks for is **D-S13** (Stage 1 §13.1b), and the
+  owner **decided it on 14 November 2026: option (a)** — waive both
+  "D-S8 funding decided" and "team for M1–M2 staffed" **for M1 and M2
+  only**, recording that the work was done by this project's agentic
+  engineering rather than by a funded team (C-6R's Ledger B), that
+  **D-S8 stays open and undecided**, and that the waiver **lapses at
+  M3**. Options (b), the whole of Stage 1, and (c), do not waive, were
+  refused.
 
-**M1 depends on M0.** A drafted decision is not a decision: until the
-owner takes D-S13, M1 cannot exit on its own dependency however
-complete its seven clauses are. **Owner.** §4 lists it.
+**M1 depends on M0, and that dependency is now satisfied** in FI-D1's
+sense: M0's two open start conditions are formally waived for M1 and
+M2. This was the one thing outside the seven clauses that did not hold,
+and it holds.
+
+**What the waiver is, stated plainly, because it is easy to over-read.**
+It is a record that M1's and M2's exits are not held open waiting for
+funding and staffing that have not happened. It is **not** a finding
+that they are unnecessary, and it is not a decision about D-S8, which
+13.1 still records as deferred with its options still in conflict. It
+**expires**: at M3 the conditions return unwaived, and 8.3's staffing
+rows and 8.1a's four human-role preconditions begin to bind. So the
+honest reading of M1's exit is "the engineering was done and measured,
+and the project chose to record the staffing gap as waived for two
+milestones rather than to block on it" — which is a different statement
+from "M1 was staffed".
 
 [S1]: ../../../reports/HGBA%20Stage%201%20architecture%20design.md
 [JS]: ../../../reports/Izcal%20JavaScript%20engine.md

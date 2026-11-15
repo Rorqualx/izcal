@@ -393,7 +393,10 @@ or its review agenda, and none is satisfied by anything in §2.
   rather than what closes it.
 - **It does not replace the M0 waiver.** FI-D1 requires M0's own start
   conditions — D-S8 funding, M1–M2 staffing — to be "formally waived or
-  met". The record is drafted as **D-S13** (Stage 1 §13.1b) and is
-  open; its recommendation is to waive both **for M1 and M2 only**,
-  with the waiver lapsing at M3. M1 depends on M0, so until the owner
-  takes it that blocks M1's exit independently of clause 4.
+  met". That record is **D-S13** (Stage 1 §13.1b), and the owner
+  **decided it on 14 November 2026: waived for M1 and M2 only**, with
+  D-S8 left open and the waiver lapsing at M3. *(Amended 14 November
+  2026; it was open when this document was written.)* So M1's
+  dependency on M0 no longer blocks its exit — but the waiver is a
+  record about two milestones, not a change to any track's M0, and §4
+  below is unaffected by it.
