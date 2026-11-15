@@ -270,6 +270,29 @@ byte-for-byte on every run and will keep doing so after upstream fixes the 16
 cases — at which point the same number means "32 runs are now failing for a
 real reason". The ratchet would not notice, because the number did not move.
 
+**One test tells you whether same-source evidence is contamination or the only
+evidence there is: ask whether the claim is about the world or about the
+source.** Both appear in this note, with opposite valences, and the structure
+is identical. "Izcal's tokenizer reports error positions correctly" is a claim
+about the world, so drawing its evidence from the suite the tokenizer was
+calibrated against is contamination — that is what made the 100% silent on
+correlated error. "The suite reports parse-error positions at the end of the
+input" is a claim *about the source*, so 2,560 untouched expectations drawn
+from that source are not a tainted second opinion but the only kind of
+evidence the proposition admits. The same corpus, the same 2,560 numbers,
+worthless for one claim and decisive for the other. Before discounting
+evidence for sharing a source with its subject, check which of the two you are
+making; and where the claim is about a convention, there is nothing above the
+source to appeal to, so a second opinion was never available to want.
+
+A second, smaller one, from the same exchange: **a condition is a thing
+someone must remember, and a trigger is not.** "These sixteen entries are a
+convention only while nothing outside the crate consumes an error position"
+was true when written and would have been forgotten; as ST-D21's reversal
+trigger it is re-read whenever the decision is. Where a caveat can be attached
+to a mechanism that already gets re-read, attach it there instead of stating
+it.
+
 What stops it here is that the exception list names *which* cases and
 re-checks the contradiction, not just the total. The rule that generalises:
 **re-derive the question, not only the number.** Three rungs, in order of
