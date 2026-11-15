@@ -347,3 +347,8 @@ why = "Graphics spec 6.24 crate table: tools, tier T. The independent reference 
 tier = "P"
 layer = "L5"
 why = "Graphics spec 6.24 crate table: L5, tier P. The contract three back ends keep, before any back end: capabilities and never vendors, fences on one monotonic timeline per device, no blocking map, sticky validation, device loss resolved exactly once with an epoch (6.6, HGBA-2 Section 5). GR-M0 asks for the design review across Metal, Direct3D 12 and Vulkan, not for the back ends, so what is here is the types and the invariants a back end cannot keep by accident."
+
+[crates.hg-gpu-alloc]
+tier = "P"
+layer = "L5"
+why = "Graphics spec 6.24 crate table: L5, tier P, already named there beside hg-gpu-hal, so this row is the table's own placement and not an amendment to it. The sub-allocator's interface, which 6.2 makes Izcal's own because \"placement decides fragmentation, residency and per-site accounting\" (FP-14, FP 6.6): the ledger tag every allocation carries, who may name a site (a content GPU process is one renderer key and cannot name another), what each budget class does under pressure, and what a volatile allocation is worth when it comes back -- two of three back ends cannot promise its contents survived. GR-M0's row asks for the allocator in the HAL design review across three back ends, not for the allocator, so placement is GR-M1's and none of it is here."
