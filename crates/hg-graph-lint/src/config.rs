@@ -55,6 +55,27 @@ impl Tier {
     }
 }
 
+/// One `[[refuted]]` row: a clause of Stage 1 design 8.1a that was
+/// **attempted and found not to hold**, recorded so that a later session
+/// does not re-attempt it and re-derive the same refusal.
+///
+/// A refusal is a record, never an exemption. It does not make a failing
+/// clause pass and it does not excuse a claimed track — see
+/// [`crate::started`] for the two findings that keep it honest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refuted {
+    /// The milestone, which must name a `[[started]]` row.
+    pub track: String,
+    /// Which of 8.1a's five clauses, 1 to 5.
+    pub clause: u8,
+    /// When the attempt was made, `YYYY-MM-DD`.
+    pub date: String,
+    /// Where the attempt and its outcome are written down.
+    pub evidence: String,
+    /// Why it does not hold, in one sentence.
+    pub why: String,
+}
+
 /// One `[[started]]` row: a track of Stage 1 design 8.1a, with the
 /// artefacts its five clauses turn on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,6 +187,12 @@ impl<'v> Strict<'v> {
             None => Ok(Vec::new()),
             Some(v) => string_list(&format!("{what}.{key}"), v),
         }
+    }
+
+    fn int(&mut self, key: &'static str) -> Result<i64, ConfigError> {
+        let v = self.req(key)?;
+        v.as_int()
+            .ok_or_else(|| ConfigError(format!("{}.{key}: expected an integer", self.what)))
     }
 
     fn bool(&mut self, key: &'static str) -> Result<bool, ConfigError> {
@@ -393,6 +420,8 @@ pub struct Rules {
     pub disjoint: Vec<Disjoint>,
     /// `[[started]]` rows (Stage 1 design 8.1a).
     pub started: Vec<Started>,
+    /// `[[refuted]]`: clauses attempted and found not to hold.
+    pub refuted: Vec<Refuted>,
 }
 
 fn table_list<'v>(what: &str, v: Option<&'v Value>) -> Result<Vec<&'v Value>, ConfigError> {
@@ -535,6 +564,43 @@ impl Rules {
                 )));
             }
             r.started.push(row);
+        }
+
+        for t in table_list("refuted", top.opt("refuted"))? {
+            let mut t = Strict::new("[[refuted]]", t)?;
+            let clause = t.int("clause")?;
+            let row = Refuted {
+                track: t.string("track")?,
+                clause: u8::try_from(clause).map_err(|_| {
+                    ConfigError(format!("[[refuted]]: clause {clause} is not 1 to 5"))
+                })?,
+                date: t.string("date")?,
+                evidence: t.string("evidence")?,
+                why: t.string("why")?,
+            };
+            t.finish()?;
+            if !(1..=5).contains(&row.clause) {
+                return Err(ConfigError(format!(
+                    "[[refuted]] {}: clause {} is not 1 to 5",
+                    row.track, row.clause
+                )));
+            }
+            if !r.started.iter().any(|s| s.track == row.track) {
+                return Err(ConfigError(format!(
+                    "[[refuted]] {}: no [[started]] row names that track",
+                    row.track
+                )));
+            }
+            if r.refuted
+                .iter()
+                .any(|o| o.track == row.track && o.clause == row.clause)
+            {
+                return Err(ConfigError(format!(
+                    "[[refuted]] {} clause {}: listed twice",
+                    row.track, row.clause
+                )));
+            }
+            r.refuted.push(row);
         }
 
         for f in table_list("forbid", top.opt("forbid"))? {

@@ -791,6 +791,140 @@ fn a_started_row_whose_generator_is_not_its_own_crate_is_rejected() {
     );
 }
 
+/// Stage 1 design 8.1a's third state: a clause recorded as attempted and
+/// refused, on a track that does not claim to have started, is a record
+/// and not a finding. This is the state that did not exist before —
+/// without it the refusal is written as silence and re-attempted.
+#[test]
+fn a_refused_clause_on_an_unclaimed_track_is_recorded_not_failed() {
+    let mut f = Fixture::baseline();
+    f.files
+        .get_mut("tools/graph-rules.toml")
+        .unwrap()
+        .push_str(&format!(
+            "{}{REFUTED_ROW}",
+            STARTED_ROW.replace("claimed = true", "claimed = false")
+        ));
+    let r = f.lint(&[LINUX], false);
+    assert!(
+        !r.has("started"),
+        "expected no started finding; got:\n{}",
+        r.render()
+    );
+}
+
+/// A refusal cannot excuse a claim. Claiming to have started while
+/// recording that a clause of starting was refused asserts both at once,
+/// and without this finding `refuted` would be a way to weaken clause 4
+/// of M1's exit one clause at a time.
+#[test]
+fn a_refusal_cannot_excuse_a_claim() {
+    let mut f = Fixture::baseline();
+    f.files
+        .get_mut("tools/graph-rules.toml")
+        .unwrap()
+        .push_str(&format!("{STARTED_ROW}{REFUTED_ROW}"));
+    let r = f.lint(&[LINUX], false);
+    assert_finding(
+        &r,
+        "started",
+        "ZZ-M0",
+        "a refusal is a record, not an exemption",
+    );
+}
+
+/// A refusal cannot rot into a false claim: once the clause holds against
+/// the tree, the record is stale and saying so is the finding. The
+/// refusal stays checkable exactly as a claim does.
+#[test]
+fn a_refusal_that_has_become_true_is_a_finding() {
+    let mut f = Fixture::baseline();
+    f.files
+        .get_mut("tools/graph-rules.toml")
+        .unwrap()
+        .push_str(&format!(
+            "{}{}",
+            STARTED_ROW.replace("claimed = true", "claimed = false"),
+            REFUTED_ROW.replace("clause = 3", "clause = 2")
+        ));
+    // Clause 2 is the generator, so making the crate exist makes the
+    // refused clause hold.
+    f.lib("hg-zzgen", "T", "tools", "", "//! The ZZ generator.\n");
+    let r = f.lint(&[LINUX], false);
+    assert_finding(&r, "started", "ZZ-M0", "but it holds against the tree now");
+}
+
+/// The twin of the two findings above: the same refusal, on the same
+/// unclaimed track, with the clause genuinely not holding, passes. So
+/// each refusal above is attributable to what it names and not to the
+/// `[[refuted]]` row existing at all.
+#[test]
+fn a_refusal_of_a_clause_that_does_not_hold_passes() {
+    let mut f = Fixture::baseline();
+    f.files
+        .get_mut("tools/graph-rules.toml")
+        .unwrap()
+        .push_str(&format!(
+            "{}{}",
+            STARTED_ROW.replace("claimed = true", "claimed = false"),
+            REFUTED_ROW.replace("clause = 3", "clause = 2")
+        ));
+    let r = f.lint(&[LINUX], false);
+    assert!(
+        !r.has("started"),
+        "expected no started finding; got:\n{}",
+        r.render()
+    );
+}
+
+/// A `[[refuted]]` row naming no `[[started]]` track is a malformed gate
+/// file, not a violation: the lint refuses to run rather than silently
+/// recording a refusal against nothing.
+#[test]
+fn a_refusal_against_an_unknown_track_is_rejected() {
+    let v = hg_graph_lint::toml::parse(&format!(
+        "{}{}",
+        std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/graph-rules.toml")
+        )
+        .unwrap(),
+        REFUTED_ROW.replace("ZZ-M0", "QQ-M0")
+    ))
+    .expect("parses as TOML");
+    let e = hg_graph_lint::config::Rules::from_value(&v).expect_err("rejected");
+    assert!(
+        format!("{e}").contains("no [[started]] row names that track"),
+        "got: {e}"
+    );
+}
+
+/// A clause number outside 1 to 5 is refused by the parser.
+#[test]
+fn a_refusal_of_a_clause_that_does_not_exist_is_rejected() {
+    let mut f = Fixture::baseline();
+    f.files
+        .get_mut("tools/graph-rules.toml")
+        .unwrap()
+        .push_str(&format!(
+            "{}{}",
+            STARTED_ROW,
+            REFUTED_ROW.replace("clause = 3", "clause = 6")
+        ));
+    let v = hg_graph_lint::toml::parse(f.files["tools/graph-rules.toml"].as_str())
+        .expect("parses as TOML");
+    let e = hg_graph_lint::config::Rules::from_value(&v).expect_err("rejected");
+    assert!(format!("{e}").contains("is not 1 to 5"), "got: {e}");
+}
+
+const REFUTED_ROW: &str = r#"
+[[refuted]]
+track = "ZZ-M0"
+clause = 3
+date = "2026-11-14"
+evidence = "measurements/milestones/m0-starts/README.md"
+why = "The oracle's data is not published in a form that can be pinned."
+"#;
+
 const STARTED_ROW: &str = r#"
 [[started]]
 track = "ZZ-M0"
