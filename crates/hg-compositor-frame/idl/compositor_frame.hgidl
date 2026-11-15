@@ -1,0 +1,427 @@
+/// The compositor frame: what a content GPU process sends the shared
+/// compositor GPU service (graphics 6.3 and the process diagram of
+/// 3.1; GR-18, G63, G71, G72).
+///
+/// This format is **separate from the display list on purpose**, and
+/// the separation is the whole point of the crate. G63 says the
+/// compositor GPU service's binary closure contains no display-list
+/// reader, and `hg-graph-lint` reads `cargo metadata`, so the only
+/// granularity at which that rule can be checked is the **package**.
+/// A compositor that must read compositor frames cannot get them from
+/// the package that also holds the display-list reader without putting
+/// that reader in its closure, which is exactly what G63 forbids.
+///
+/// So the vocabulary here is deliberately disjoint from the display
+/// list's: no paths, no segments, no fill rules, no gradients, no
+/// filters, no ICC data, no glyphs. The compositor's page-controlled
+/// inputs are tile grids, a property-tree subset of transforms,
+/// rectangular and rounded-rectangle clips in fixed point, opacity,
+/// scroll nodes, surface embeds, transform and opacity animations,
+/// damage and one CPU-observed fence (3.1, 6.8). Anything a page can
+/// vary that is not in that list re-rasters in the content GPU
+/// process instead.
+///
+/// Every count is a limit. The compositor holds **every site's**
+/// composited pixels, so its input is the smallest typed format in
+/// Izcal (GR-18), and a count without a bound is a content GPU
+/// process -- which the compositor does not trust -- choosing how
+/// much the compositor allocates.
+///
+/// Numbers marked † are this format's own choice and are the review's
+/// to fix; the ones that are not marked come from the spec.
+protocol compositor_frame;
+
+/// Why a compositor frame was refused. Closed: no free text crosses a
+/// process boundary (CS-ER-6).
+///
+/// Every variant names something the format itself states, so a
+/// refusal tells a content GPU process nothing it did not know when it
+/// built the frame.
+error CompositorFrameError {
+    /// A property-tree node's parent is not a node of its own tree.
+    ParentOutOfRange,
+    /// A property-tree node's parent is at or after its own index, so
+    /// the nodes are not a forest in topological order.
+    ParentNotEarlier,
+    /// A layer, embed or animation names a property-tree node that
+    /// does not exist.
+    NodeOutOfRange,
+    /// More compositor-mutable nodes than the per-document cap.
+    TooManyMutableNodes,
+    /// A rectangle has a negative width or height.
+    NegativeExtent,
+    /// A tile's column or row is outside its layer's own grid.
+    TileOutsideGrid,
+    /// Two tiles claim the same cell of one grid.
+    DuplicateTile,
+    /// A tile grid declares a zero width or height.
+    ZeroTileExtent,
+    /// A corner radius is below zero, which no corner has.
+    NegativeRadius,
+    /// Corner radii are wider than the rectangle they round. CSS
+    /// scales such radii; the compositor refuses them, because
+    /// scaling is a decision and the compositor makes none.
+    RadiiExceedBounds,
+    /// A device scale whose denominator is zero or above 2^16.
+    BadDeviceScale,
+    /// A damage rectangle outside the frame's own viewport.
+    DamageOutsideViewport,
+    /// An animation's keyframe offsets are not ascending, or one is
+    /// above the end of the range.
+    KeyframesUnordered,
+    /// An animation declared fewer than the two keyframes any
+    /// interpolation needs.
+    TooFewKeyframes,
+    /// A `Steps` timing function with zero steps.
+    ZeroSteps,
+    /// An animation whose target is not a node of the tree its
+    /// property lives in: a `Transform` animation must drive a
+    /// transform node and an `Opacity` animation an effect node.
+    /// Without this the two index spaces are interchangeable to a
+    /// sender, and the compositor would animate the wrong node.
+    TargetWrongKind,
+    /// A keyframe whose value is not of its animation's property -- a
+    /// `Transform` value in an `Opacity` animation or the reverse.
+    /// The union admits both, the animation means one.
+    KeyframeWrongProperty,
+}
+
+/// A 2D affine transform. The linear part is **Q32.32** fixed point
+/// and the translation is in **1/2^32 of a device pixel**, the same
+/// numeric contract style converts to once at the boundary (6.4's
+/// transform row: "fixed point (i64, 32 fractional bits) ... as
+/// layout converts its numbers (LY-D3, G39)").
+///
+/// 2D rather than 3D because 3D plane splitting belongs to `hg-raster`
+/// in the content GPU process, and the compositor's whole clip
+/// vocabulary -- rectangles and rounded rectangles -- is 2D. A frame
+/// that needs a 3D transform re-rasters instead.
+struct Transform {
+    /// Row 0, column 0.
+    a: i64,
+    /// Row 1, column 0.
+    b: i64,
+    /// Row 0, column 1.
+    c: i64,
+    /// Row 1, column 1.
+    d: i64,
+    /// Translation in x.
+    tx: i64,
+    /// Translation in y.
+    ty: i64,
+}
+
+/// A rectangle in whole device pixels.
+struct Rect {
+    /// Left.
+    x: i32,
+    /// Top.
+    y: i32,
+    /// Width; a negative width is refused.
+    width: i32,
+    /// Height; a negative height is refused.
+    height: i32,
+}
+
+/// The eight radii of a rounded rectangle, in **1/256 of a device
+/// pixel**, in the order CSS writes them.
+struct Corners {
+    /// Top-left horizontal radius.
+    top_left_x: i32,
+    /// Top-left vertical radius.
+    top_left_y: i32,
+    /// Top-right horizontal radius.
+    top_right_x: i32,
+    /// Top-right vertical radius.
+    top_right_y: i32,
+    /// Bottom-right horizontal radius.
+    bottom_right_x: i32,
+    /// Bottom-right vertical radius.
+    bottom_right_y: i32,
+    /// Bottom-left horizontal radius.
+    bottom_left_x: i32,
+    /// Bottom-left vertical radius.
+    bottom_left_y: i32,
+}
+
+/// The only two clip shapes the compositor has (G63).
+union ClipShape {
+    /// An axis-aligned rectangle.
+    Rectangular {
+        /// Its bounds.
+        bounds: Rect,
+    },
+    /// A rectangle with rounded corners.
+    Rounded {
+        /// Its bounds.
+        bounds: Rect,
+        /// Its radii.
+        radii: Corners,
+    },
+}
+
+/// A transform node of the property-tree subset.
+///
+/// The tree is carried as a flat vector with parent indices, because
+/// a recursive type has no size bound (the IDL forbids one) and
+/// because property trees are data (HGBA-3 B6). `NO_PARENT` is
+/// `u32::MAX`; every other parent must be an **earlier** index, which
+/// makes the nodes a forest in topological order and makes a cycle
+/// unexpressible rather than merely invalid.
+struct TransformNode {
+    /// Its parent's index, or `u32::MAX` for a root.
+    parent: u32,
+    /// Its transform, relative to its parent.
+    matrix: Transform,
+}
+
+/// A clip node of the property-tree subset.
+struct ClipNode {
+    /// Its parent's index, or `u32::MAX` for a root.
+    parent: u32,
+    /// The transform node its shape is expressed in.
+    transform: u32,
+    /// Its shape.
+    shape: ClipShape,
+}
+
+/// An effect node. The compositor's whole effect vocabulary is
+/// opacity (G63): no filters, no masks, no blend modes beyond the
+/// precompiled internal set.
+struct EffectNode {
+    /// Its parent's index, or `u32::MAX` for a root.
+    parent: u32,
+    /// Opacity, 0 to 255, applied by the same integer multiply as
+    /// `hg-raster`'s blending so that for translation and opacity the
+    /// composed screen equals the canonical image (6.4).
+    opacity: u8,
+}
+
+/// A scroll node. Compositor scroll offsets are **whole device
+/// pixels**, snapped at presentation, which is what keeps the composed
+/// screen equal to the canonical image under scrolling (6.4).
+struct ScrollNode {
+    /// Its parent's index, or `u32::MAX` for a root.
+    parent: u32,
+    /// The transform node its rectangles are expressed in.
+    transform: u32,
+    /// The visible container.
+    container: Rect,
+    /// The scrollable content's extent.
+    content: Rect,
+    /// Current offset in x, whole device pixels.
+    offset_x: i32,
+    /// Current offset in y, whole device pixels.
+    offset_y: i32,
+    /// Whether the user may scroll it in x.
+    user_scrollable_x: bool,
+    /// Whether the user may scroll it in y.
+    user_scrollable_y: bool,
+}
+
+/// A texture the compositor was granted. Granted **once** and never
+/// re-granted (G71), and the id carries a generation so a stale
+/// reference is a refusal rather than a different texture (IPC-R8).
+///
+/// The compositor never receives pixels in a frame; it receives the
+/// identity of memory it already holds.
+struct TextureRef {
+    /// Which texture.
+    id: u64,
+    /// Its generation.
+    generation: u32,
+    /// Its width in texels.
+    width: u32,
+    /// Its height in texels.
+    height: u32,
+}
+
+/// One tile of a layer's grid.
+struct Tile {
+    /// Its column in the grid.
+    column: u32,
+    /// Its row in the grid.
+    row: u32,
+    /// The texture holding it.
+    texture: TextureRef,
+}
+
+/// A layer: a tile grid with its property-tree attachments.
+struct Layer {
+    /// The layer origin in whole device pixels. Two fields rather
+    /// than a pair because the IDL has no pair type; the halves are
+    /// read together and mean nothing apart.
+    origin_x: i64,
+    /// The layer origin's y.
+    origin_y: i64,
+    /// One tile's width in device pixels; zero is refused.
+    tile_width: u32,
+    /// One tile's height in device pixels; zero is refused.
+    tile_height: u32,
+    /// Columns in the grid.
+    columns: u32,
+    /// Rows in the grid.
+    rows: u32,
+    /// Its transform node.
+    transform: u32,
+    /// Its clip node, or `u32::MAX` for none.
+    clip: u32,
+    /// Its effect node, or `u32::MAX` for none.
+    effect: u32,
+    /// Its scroll node, or `u32::MAX` for none.
+    scroll: u32,
+    /// Whether every texel is opaque, which lets the compositor skip
+    /// what is behind it.
+    is_opaque: bool,
+    /// Its tiles, at most 4,096†. A grid is sparse: a cell with no
+    /// tile is not drawn.
+    tiles: vec<Tile, 4096>,
+}
+
+/// Another process's surface, embedded. **The clip is enforced at
+/// every embed**: a child's quads are clipped to the geometry its
+/// parent drew, so LY-15 holds even against a compromised child
+/// (3.1, [CS 10.4]).
+struct Embed {
+    /// Which surface.
+    surface: u64,
+    /// Its generation.
+    generation: u32,
+    /// The transform node it is placed by.
+    transform: u32,
+    /// The clip node the parent drew, which the compositor enforces.
+    /// Never `u32::MAX`: an embed without a clip is the failure this
+    /// field exists to prevent.
+    clip: u32,
+    /// Its bounds in whole device pixels.
+    bounds: Rect,
+}
+
+/// The two properties the compositor animates (G63).
+enum AnimatedProperty {
+    /// `transform`.
+    Transform,
+    /// `opacity`.
+    Opacity,
+}
+
+/// One keyframe's value, in `hg-interp`'s integer form.
+union KeyframeValue {
+    /// A transform.
+    Transform {
+        /// Its matrix.
+        matrix: Transform,
+    },
+    /// An opacity, 0 to 255.
+    Opacity {
+        /// Its value.
+        opacity: u8,
+    },
+}
+
+/// A timing function, with every coefficient an integer so that a
+/// sample is the same on every device (GR-D3).
+union TimingFunction {
+    /// `linear`.
+    Linear,
+    /// `cubic-bezier`, with control points in **1/65,536** units so
+    /// that the standard keywords are exact.
+    CubicBezier {
+        /// First control point's x.
+        x1: i32,
+        /// First control point's y.
+        y1: i32,
+        /// Second control point's x.
+        x2: i32,
+        /// Second control point's y.
+        y2: i32,
+    },
+    /// `steps`.
+    ///
+    /// Easing Functions 1's four `<step-position>` keywords are
+    /// carried as the two booleans they actually are, rather than as a
+    /// four-variant enum: `jump-start` is (true, false), `jump-end`
+    /// (false, true), `jump-none` (false, false) and `jump-both`
+    /// (true, true). The legacy `start` and `end` keywords are
+    /// resolved to `jump-start` and `jump-end` in the renderer and
+    /// never reach here. Two booleans rather than an enum because
+    /// GR-18 asks this format to be small and this removes a type and
+    /// four variants from its published size without losing a value.
+    Steps {
+        /// How many steps; zero is refused.
+        count: u32,
+        /// Whether it jumps at the start of the interval.
+        jump_at_start: bool,
+        /// Whether it jumps at the end of the interval.
+        jump_at_end: bool,
+    },
+}
+
+/// One keyframe.
+struct Keyframe {
+    /// Its progress offset, in **1/65,536** of the animation, so 0 is
+    /// the start and 65,536 the end.
+    offset: u32,
+    /// Its value.
+    value: KeyframeValue,
+    /// How it eases to the next keyframe.
+    easing: TimingFunction,
+}
+
+/// The animation spec's **bounded record** (its 6.5), which replaced
+/// the prose list in 6.8 and 6.28 on 20 October 2026: id, property,
+/// keyframes in `hg-interp`'s integer form, timing function, start
+/// time at "ready", class and bounds. The compositor samples only at
+/// the document's recorded frame tick (AN-D3).
+struct Animation {
+    /// Its id.
+    id: u64,
+    /// The property-tree node it drives.
+    target: u32,
+    /// Which property.
+    property: AnimatedProperty,
+    /// Its start time on the compositor timeline, in microseconds,
+    /// fixed at "ready".
+    start_time_us: i64,
+    /// Its duration in microseconds.
+    duration_us: i64,
+    /// The bounds the record declares, which the compositor uses to
+    /// damage without reading content.
+    bounds: Rect,
+    /// Its keyframes, at least 2 and at most 64†.
+    keyframes: vec<Keyframe, 64>,
+}
+
+/// One compositor frame.
+struct Frame {
+    /// Its id, ascending per (content process, compositor) pair.
+    frame_id: u64,
+    /// The fence the compositor observes **on the CPU** before
+    /// sampling any texture in this frame. One per (content process,
+    /// compositor) pair, never a foreign GPU fence waited on by the
+    /// GPU (G72).
+    fence: u64,
+    /// The device scale's numerator, as an exact rational p/q (6.5).
+    device_scale_num: u32,
+    /// Its denominator; zero or above 2^16 is refused.
+    device_scale_den: u32,
+    /// The frame's viewport in whole device pixels.
+    viewport: Rect,
+    /// Transform nodes, at most 1,024†.
+    transforms: vec<TransformNode, 1024>,
+    /// Clip nodes, at most 1,024†.
+    clips: vec<ClipNode, 1024>,
+    /// Effect nodes, at most 1,024†.
+    effects: vec<EffectNode, 1024>,
+    /// Scroll nodes, at most 256†.
+    scrolls: vec<ScrollNode, 256>,
+    /// Layers, at most 256†.
+    layers: vec<Layer, 256>,
+    /// Surface embeds, at most 64†.
+    embeds: vec<Embed, 64>,
+    /// Animations, at most 16: the cap of 16† compositor-mutable
+    /// nodes per document (6.22).
+    animations: vec<Animation, 16>,
+    /// The damaged rectangles, at most 256†, each inside `viewport`.
+    damage: vec<Rect, 256>,
+}

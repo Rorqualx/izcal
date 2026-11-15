@@ -37,6 +37,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-compositor-frame"
+version = "0.0.0"
+dependencies = [
+ "hg-ipc",
+ "hg-ipc-codegen",
+ "hg-substrate",
+]
+
+[[package]]
 name = "hg-crypto"
 version = "0.0.0"
 

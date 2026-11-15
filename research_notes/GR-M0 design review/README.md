@@ -203,6 +203,210 @@ it a display-list reader at all), and the canvas command log is read
 by the in-renderer CPU replay GR-D12 requires. The review fixes both
 before GR-M1.
 
+**The compositor frame is written (15 November 2026), and writing it
+settled a question the crate table had answered wrongly.**
+
+§6.24's L2 row put all three formats in `hg-display-list`. That cannot
+hold for the compositor frame, for a mechanical reason rather than an
+aesthetic one: **`hg-graph-lint` reads `cargo metadata`**, so the
+finest thing it can name in a rule is a *package*. A compositor that
+reads compositor frames out of `hg-display-list` necessarily carries
+that package — and so the display-list reader — in its own binary
+closure, and G63 becomes unenforceable by the tool that enforces every
+other rule of its kind. "The linker probably dropped it" is not a
+security argument.
+
+So `crates/hg-compositor-frame` is its own package, and **G63 is now an
+ordinary `forbid` row** in `tools/graph-rules.toml`. The crate-table
+amendment this implies is **proposed, not decided**: it changes a gate
+file and a spec table, so it is in §9 for the owner.
+
+Three things about it are worth recording, because each is a mechanism
+rather than an intention:
+
+- **G63's rule is tested before the crate it governs exists.** Every
+  crate the rule names but `hg-display-list` and `hg-raster` is
+  unbuilt, so the row would otherwise be one nothing has ever seen
+  fire — the same dead-code problem §3.5 raises about the cycle
+  variant, and the reason that problem is worth taking seriously. Two
+  fixture tests fire it against the real `graph-rules.toml`: a
+  synthetic `hg-compositor` that links `hg-display-list` is refused,
+  and the twin that links `hg-compositor-frame` instead is clean. The
+  second case is what stops the rule being satisfied by a compositor
+  that cannot read its own input.
+- **GR-18's size artifact is a constant with a test, not a figure in a
+  report.** GR-18 asks for the IDL's size — types, variants, maximum
+  nesting — to be published and not to grow without a security review.
+  `src/size.rs` holds it (**19** types, **26** variants, **92** fields,
+  **10** bounded vectors, maximum nesting **4**) and the test beside it
+  recomputes every figure from the IDL, so adding a type or a variant
+  is a **build failure** whose fix is a diff a review can be asked
+  for. Two of those five numbers were wrong when written by hand and
+  the test corrected them, which is the argument for the mechanism in
+  one line. The deepest chain is `Frame` → `Animation` → `Keyframe` →
+  `KeyframeValue` → `Transform`, not the tile grid as guessed; the tile
+  grid is the only place a vector holds a vector, and so the only place
+  one declared count multiplies another (256 layers × 4,096 tiles).
+- **G63's "0 page-controlled filters, paths or ICC data" is checked
+  against the format.** A second test asserts no declared type or
+  field name contains `path`, `segment`, `fillrule`, `gradient`,
+  `filter`, `mask`, `icc`, `glyph` or `shader`, with a planted name to
+  prove the check can fail. The clause stops being a sentence about the
+  format and becomes a property of it.
+- **The four generated crates' `src/sample.rs` are now checked to be
+  one file.** The generator emits `impl crate::sample::Sample` under
+  `cfg(test)`, so every crate in `GENERATED_CRATES` must supply that
+  generic module; the three existing copies were byte-identical and
+  nothing checked it, so adding a fourth would have made an unguarded
+  duplication wider. `oc20` in `hg-ipc-codegen` now compares all four
+  and fails on a planted edit. It is the cheap half of §9.2's
+  question, settled in the direction that is obviously right for a
+  generic support module whatever is decided for the IDL.
+
+A fourth mechanism was not planned and is worth recording, because it
+came from a lint rather than from the design. `StepPosition`'s four
+variants — `jump-start`, `jump-end`, `jump-none`, `jump-both` — share a
+prefix, which clippy's `enum_variant_names` refuses, and the generator
+emits no lint escapes, so generated output has to be clean under the
+crate's own block. Renaming the variants would have broken their
+correspondence with Easing Functions 1. The four values **are two
+booleans** (`jump-none` is neither, `jump-both` is both), so the enum
+became `jump_at_start` and `jump_at_end`, which is the exact semantics
+and removes a type and four variants from the published size. A lint
+about naming found a redundant encoding in a format whose stated goal
+is to be small.
+
+The format carries what §3.1's diagram says it carries and nothing
+else: tile grids of textures granted once (G71), one CPU-observed
+fence per (content process, compositor) pair (G72), a property-tree
+subset of transforms, rectangular and rounded-rectangle clips in fixed
+point, opacity, scroll nodes, surface embeds, the animation spec's
+bounded record for transform and opacity, and damage. The property
+trees are **flat vectors with parent indices**, because the IDL forbids
+a recursive type and because B6 asks for property trees as data — and
+a parent must be an **earlier** index than its child, which makes a
+cycle unexpressible rather than merely invalid. That is why there is no
+cycle variant in its error enum, and it is the same move §3.5 has to
+decide for the render graph.
+
+**One measurement the format forced, and it bears on GR-18 rather than
+only on transport.** A maximal frame encodes to **29,591,432 B**
+(28.2 MiB) against the 64 KiB `MAX_MESSAGE_BYTES` cap — 451 times over.
+`hg-display-list` has the same problem and records it the same way
+(its `a_maximal_chunk_is_far_larger_than_a_message`), but the numbers
+are worth putting side by side, because GR-18 asks *this* format to be
+the small one:
+
+| | Worst case | Over the 64 KiB message cap |
+|---|---|---|
+| `Frame` (compositor) | 29,591,432 B | 451× |
+| `Chunk` (display list) | 7,516,291,092 B | 114,688× |
+
+So GR-18 holds **directionally** — the compositor's input is 254 times
+smaller in the worst case — and does not hold **absolutely**: 28 MiB is
+not small, and it is bytes an untrusted content GPU process can make
+the compositor allocate. The review therefore owes a third option
+alongside the display list's two (shrink the bounds to a message, or
+write the copied-then-validated shared-buffer transport into the
+format): **GR-18's published size should probably record worst-case
+bytes next to the type and variant counts**, because a format can be
+small in types and enormous in bytes, and it is the bytes that are the
+allocation. The counts are what GR-18 names today, and the counts are
+the thing this format is already good at.
+
+**And one gap that was already there, which writing the second format
+made visible.** §3.6's threat table promises "generated readers with
+**Kani harnesses** (VER-1)" against a hostile display list, command
+stream or compositor frame. Neither format has one. Measured:
+
+| IDL | `interface` declarations | Kani attributes in the generated reader |
+|---|---|---|
+| `os.hgidl` | 2 | 463 |
+| `display_list.hgidl` | 0 | 0 |
+| `compositor_frame.hgidl` | 0 | 0 |
+
+The cause is structural rather than an omission: `hg-ipc-codegen`
+emits validator harnesses **per interface message**, and a format
+written as a type library declares no interface. Neither
+`hg-display-list` nor `hg-compositor-frame` is in `KANI_PACKAGES`,
+which is consistent — there is nothing for Kani to prove — but it
+means the row in §3.6 describes something that does not exist for
+either format, and has not since the display list landed.
+
+This is the **same** finding as the transport measurement above, which
+is why it is worth stating once: both follow from the formats
+declaring no interface. The message cap that makes a 28 MiB frame a
+problem is the *interface's* cap, and the harnesses that are missing
+are the *interface's* harnesses. So the options converge: if the two
+formats gain the interfaces that carry them, the transport decision is
+forced into the open and the harnesses arrive with it; if they stay
+type libraries, VER-1's row needs amending to say where the proof
+actually lives (today: the property and mutation tests in
+`src/tests.rs`, 4,000 seeded cases per leaf type with every mutation
+required to be rejected or to re-encode exactly). Either way §3.6's
+table should stop claiming the harnesses. That is a review decision,
+not a code change, and it is added to §8.
+
+The validator holds **seventeen** things the wire format cannot say
+against the **ten** counts it can. Two are worth naming because they
+are decisions rather than bounds: radii wider than the rectangle they
+round are **refused rather than scaled**, because CSS scales them and
+scaling is a decision, and every decision about page pixels belongs to
+the content GPU process if the composed screen is to equal the
+canonical image (6.4); and an embed's clip is **never optional**,
+because LY-15 holds against a compromised child only through the clip
+the parent drew.
+
+**Two of the seventeen were found by review rather than by design, and
+both were the same mistake in different clothes: treating an index as
+if it identified a node.**
+
+- `mutable_node_count` keyed each compositor-mutable node by its
+  index, and the three trees are separate vectors — so transform 0,
+  effect 0 and scroll 0 counted as **one** node. A content GPU process
+  could have held far more than the 16† the cap allows while appearing
+  not to. Keyed by **(tree, index)** the same frame counts 3 where it
+  counted 2.
+- `check_animation` accepted a target that named an element of
+  *either* the transform or the effect vector, whatever `property`
+  said, and never checked that a keyframe's value was of the
+  animation's property. So an `Opacity` animation could drive a
+  transform node, or carry `Transform` keyframes, and the sampler
+  would have received the mismatch from an untrusted sender. Both are
+  now refused (`TargetWrongKind`, `KeyframeWrongProperty`).
+
+The lesson generalises past this format: **a flat property tree
+replaces pointers with indices, and an index is only a node relative to
+the vector it indexes.** Every check that compares or deduplicates
+indices across trees has to carry the tree with it. The parent-earlier
+rule got this right by construction, because a parent is always in its
+own tree; the two bugs were in exactly the places where a value from
+one tree met a value from another. That is the shape to look for when
+§3.5 decides the render graph's edges, which will have the same
+representation and so the same trap.
+
+Worth recording about the mechanism too: adding the two error variants
+made GR-18's size test fail, which is what it is for — the format grew,
+and growing it required editing the published artifact rather than
+merely passing CI.
+
+**`canvas_command.hgidl` is not written, and the reason is a real
+dependency rather than a shortage of time.** The IDL language has **no
+import**: each `.hgidl` is a standalone protocol, and `pairs()` globs
+`idl/*.hgidl` per crate. The canvas log needs the bounded path
+vocabulary — `Point`, `Segment`, `Path`, `FillRule`, `Colour`,
+`BlendMode`, `Rect`, `ImageRef`, `Sampling` — which is about **140 of
+`display_list.hgidl`'s 240 lines**. Writing it standalone would copy
+60% of another format into the same crate, with nothing making the two
+copies agree. That is a drift source of exactly the kind this review
+is meant to remove, so the choice is the owner's and it is in §9: add
+an `import` to the IDL (a change to `hg-ipc-codegen`, whose
+`generate()` takes one source string and so needs a resolver), or
+accept the duplication guarded by a byte-identity test. The compositor
+frame did not raise the question because its vocabulary is **disjoint
+from the display list's by design** — the duplication there is the
+smallness G63 and GR-18 are asking for.
+
 ### 3.5 The render graph's remaining half
 
 `RenderGraph::compile` derives barriers from a *sequence* of passes,
@@ -335,7 +539,42 @@ guesswork.
 
 Everything in §3 decided; §2's five properties checked against three
 back ends by someone who has written one; `hg-gpu-alloc`'s interface;
-the two remaining `.hgidl` formats; the canonical image, E16 and
+**one** remaining `.hgidl` format (`canvas_command.hgidl`; the
+compositor frame is written, §3.4); **§3.6's threat table corrected on
+the Kani harnesses it claims for the display list and compositor
+frame, which neither has** (§3.4), together with the transport
+decision that is the same finding; the canonical image, E16 and
 integer composition specified; GR-S1, GR-S2, GR-S6 (first pass) and
 GR-S9 done, GR-S3 and GR-S4 started; and §4.1 and §4.5 unblocked by
 D-S13.
+
+## 9. For the owner
+
+Two items, both from §3.4, and both of a kind this project does not
+settle on its own authority.
+
+**9.1 The crate-table amendment (a gate-file and spec change).**
+`hg-compositor-frame` is its own package, so that G63 — the compositor
+links no display-list reader — is checkable at the granularity
+`hg-graph-lint` works at. This changes §6.24's L2 row, adds a
+`tools/tiers.toml` row and adds a `G63` row to
+`tools/graph-rules.toml`. The code is written and the rule is tested;
+what is owed is acceptance or amendment of the table change.
+
+**9.2 How `canvas_command.hgidl` gets the path vocabulary it needs.**
+The IDL has no import, and the canvas log needs about 140 of
+`display_list.hgidl`'s 240 lines. Three options, with a
+recommendation:
+
+| | Option | What it costs | What it risks |
+|---|---|---|---|
+| **(a)** | **Add `import` to the IDL** (recommended) | A change to `hg-ipc-codegen`: `generate()` takes one source string, so it needs a resolver, and `emit.rs` must emit `use` rather than a second definition. Its golden tests churn. Three crates depend on the generator | A language feature written for one caller |
+| (b) | Duplicate the vocabulary, guarded by a byte-identity test on the shared block | Nothing in the generator; ~140 duplicated lines in the repo | The copies agree only while the test is kept honest; two `Point` types in one crate |
+| (c) | Put the canvas commands in `display_list.hgidl` itself | Nothing; they share one declaration | One protocol means **one** closed error enum (CS-ER-6), so display-list readers would see canvas-only refusal variants, and the two formats' limits would stop being separable |
+
+(a) is recommended because the duplication in (b) is a drift source of
+exactly the kind this review exists to remove, and because the reason
+for (c)'s cost — one error enum per protocol — is a rule worth keeping
+rather than working around. But (a) is the largest change and touches a
+generator three crates share, which is why it is a decision rather
+than a step.
