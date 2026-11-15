@@ -305,14 +305,33 @@ the small one:
 So GR-18 holds **directionally** — the compositor's input is 254 times
 smaller in the worst case — and does not hold **absolutely**: 28 MiB is
 not small, and it is bytes an untrusted content GPU process can make
-the compositor allocate. The review therefore owes a third option
-alongside the display list's two (shrink the bounds to a message, or
-write the copied-then-validated shared-buffer transport into the
-format): **GR-18's published size should probably record worst-case
-bytes next to the type and variant counts**, because a format can be
-small in types and enormous in bytes, and it is the bytes that are the
-allocation. The counts are what GR-18 names today, and the counts are
-the thing this format is already good at.
+the compositor allocate.
+
+*Corrected, same day:* this passage first said the review "owes a third
+option alongside the display list's two", naming shrink-to-a-message
+and the shared-buffer transport as if both were still open. **They are
+not: §3.1 records the owner deciding (a) on 14 November 2026** — the
+copied-then-validated shared-buffer transport, written into the format,
+with the chunk as the unit of validation and the message carrying a
+generation-tagged buffer handle and length. Citing a decided item as
+open is the mirror image of §3.6's mistake below, where a *met* item
+was carried as open; both come from reading one's own notes for what
+they say rather than for what the record says, and both are an argument
+for the habit §3.4 settles on — put the check where the build runs.
+
+So the transport question is **answered** for the compositor frame
+too, by extension rather than by a new decision: the frame has the same
+shape of problem at 451× rather than 114,688×, and §3.1's reasoning for
+refusing (b) and (c) does not change with the multiple. What this
+review adds is only that the extension should be **stated** in §6.3's
+terms rather than assumed, since §3.1's record names the display list.
+
+What *is* genuinely new is smaller and is about GR-18 rather than about
+transport: **GR-18's published size should record worst-case bytes next
+to the type and variant counts**, because a format can be small in
+types and enormous in bytes, and it is the bytes an untrusted peer
+makes the receiver allocate. The counts are what GR-18 names today, and
+the counts are the thing this format is already good at.
 
 **And one gap that was already there, which writing the second format
 made visible.** §3.6's threat table promises "generated readers with
