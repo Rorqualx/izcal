@@ -409,11 +409,68 @@ smallness G63 and GR-18 are asking for.
 
 ### 3.5 The render graph's remaining half
 
-`RenderGraph::compile` derives barriers from a *sequence* of passes,
-and `ValidationError::Cycle` is a variant nothing can produce because
-a cycle is not expressible in a sequence (`gh11` says so rather than
-leaving a dead variant). The review decides whether the graph gains
-explicit edges — and if it does, the cycle check arrives with them.
+`RenderGraph::compile` derived barriers from a *sequence* of passes,
+and `ValidationError::Cycle` was a variant nothing could produce
+because a cycle is not expressible in a sequence (`gh11` said so rather
+than leaving a dead variant). The review had to decide whether the
+graph gains explicit edges — and if it does, whether the cycle check
+arrives with them.
+
+**Decided, 15 November 2026: the graph gains explicit edges, the edges
+point backwards, and `Cycle` was deleted rather than kept.**
+
+A pass now declares the passes it runs `after`, by index, and **every
+such index must be smaller than the pass's own**. The reasoning is the
+same one §3.4's property trees arrived at from the other direction, and
+it is worth stating as one principle because this review now relies on
+it twice: *where an ordering can be encoded so that the bad case cannot
+be written down, encode it that way, and then do not carry a check for
+the case you made impossible.*
+
+Three things follow, and the second is why edges were worth adding at
+all:
+
+- **A cycle is still unexpressible**, because any cycle needs an edge
+  pointing forwards or at itself, and those are refused one at a time
+  without looking at the graph. So gaining edges did not bring the
+  cycle back, and `ValidationError::Cycle` went instead of being kept
+  reserved. The answer to "when does the dead variant become live" was
+  *never*, and keeping it would have left a refusal nobody has seen
+  work — which is exactly the objection §3.4 raised about G63's rule
+  before it was given fixture tests.
+- **Independence became expressible, and with it a mistake the
+  sequence could not have.** A sequence orders every pass against
+  every other, so it can never tell you that you ordered two passes
+  you did not mean to order. With edges, two passes can be genuinely
+  unordered — and two unordered passes touching one resource, at least
+  one of them writing, is a result that depends on how a driver
+  schedules: a different image on a different machine, which is the
+  thing GR-D3 exists to prevent. That is the new
+  `ValidationError::UnorderedConflict`, and it is the check that
+  justifies the change. Two passes that only *read* are no conflict,
+  and two passes touching different resources need no edge at all.
+- **The barrier walk is unchanged, and the edges are what make it
+  correct rather than plausible.** Because edges point backwards,
+  submission order is always a topological order; because every
+  conflicting pair must be ordered by an edge *path*, submission order
+  agrees with dependency order wherever the agreement matters. Before,
+  walking the sequence was right by assumption. `gh13` tests the
+  transitive case and its twin with the middle edge removed.
+
+The reachability computation is one forward pass rather than a
+traversal with a visited set and a cycle guard, for the same reason:
+when pass *i* is reached, every pass it depends on already has its own
+row complete, so the transitive closure is a union of finished rows.
+The representation pays for itself twice — once in what cannot be
+written down, once in what does not have to be computed.
+
+**The existing contract tests had to gain edges, which is itself the
+finding.** `gh07` and `gh08` shared resources between passes and relied
+on the sequence to order them; under the new check they report
+`UnorderedConflict` until the edges they always implied are written
+down. Nothing about those passes changed except that their ordering is
+now stated rather than inherited from the order they happened to be
+added in.
 
 ### 3.6 The canonical image, E16 and integer composition
 
@@ -537,7 +594,8 @@ guesswork.
 
 ## 8. What this review owes before GR-M0's exit
 
-Everything in §3 decided; §2's five properties checked against three
+Everything in §3 decided (§3.4's compositor frame and §3.5's render
+graph are done; §3.4's canvas format and §3.6 remain); §2's five properties checked against three
 back ends by someone who has written one; `hg-gpu-alloc`'s interface;
 **one** remaining `.hgidl` format (`canvas_command.hgidl`; the
 compositor frame is written, §3.4); **§3.6's threat table corrected on

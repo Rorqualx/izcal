@@ -336,14 +336,14 @@ why = "Graphics spec 6.24 crate table: L2, tier P. The display-list and bounded 
 [crates.hg-raster]
 tier = "P"
 layer = "L2g"
-why = "Graphics spec 6.26 crate table: L2g, tier P. The canonical raster: coverage by signed-area accumulation, blending, images. GR-D3 and G61 make it integer-only -- no f32 or f64 anywhere, including the tests -- so that a pixel is the same on the CPU and on every GPU back end of every device, which is what makes exact reftests and the absence of a rendering fingerprint possible at once."
+why = "Graphics spec 6.24 crate table: L2g, tier P. The canonical raster: coverage by signed-area accumulation, blending, images. GR-D3 and G61 make it integer-only -- no f32 or f64 anywhere, including the tests -- so that a pixel is the same on the CPU and on every GPU back end of every device, which is what makes exact reftests and the absence of a rendering fingerprint possible at once."
 
 [crates.hg-raster-ref]
 tier = "T"
 layer = "tools"
-why = "Graphics spec 6.26 crate table: tools, tier T. The independent reference rasterizer GR-6's accuracy target is phrased against, sharing no code with hg-raster. The spec says float64 analytic; this is exact i128 rational arithmetic instead, which is strictly stronger -- a float64 reference has its own rounding and cannot say whether a one-level difference is the rasterizer's or its own. The deviation is recorded for GR-M0's review."
+why = "Graphics spec 6.24 crate table: tools, tier T. The independent reference rasterizer GR-6's accuracy target is phrased against, sharing no code with hg-raster. The spec says float64 analytic; this is exact i128 rational arithmetic instead, which is strictly stronger -- a float64 reference has its own rounding and cannot say whether a one-level difference is the rasterizer's or its own. The deviation is recorded for GR-M0's review."
 
 [crates.hg-gpu-hal]
 tier = "P"
 layer = "L5"
-why = "Graphics spec 6.26 crate table: L5, tier P. The contract three back ends keep, before any back end: capabilities and never vendors, fences on one monotonic timeline per device, no blocking map, sticky validation, device loss resolved exactly once with an epoch (6.6, HGBA-2 Section 5). GR-M0 asks for the design review across Metal, Direct3D 12 and Vulkan, not for the back ends, so what is here is the types and the invariants a back end cannot keep by accident."
+why = "Graphics spec 6.24 crate table: L5, tier P. The contract three back ends keep, before any back end: capabilities and never vendors, fences on one monotonic timeline per device, no blocking map, sticky validation, device loss resolved exactly once with an epoch (6.6, HGBA-2 Section 5). GR-M0 asks for the design review across Metal, Direct3D 12 and Vulkan, not for the back ends, so what is here is the types and the invariants a back end cannot keep by accident."
