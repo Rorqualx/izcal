@@ -122,9 +122,64 @@ re-derives.
 **(c) ST-1 held until upstream fixes it.** A ship blocker gated on a third
 party's tracker, where the sibling issue has been open since 2019.
 
+**(d) Correct the oracle.** Not among the options first put to the owner, and
+the one they wrote: a committed table of patches, applied as each case is
+read.
+
 **Either way, two factual corrections are owed to ST-1** and are independent
 of the choice: the count is **6,824 at the pin, not 6,827**, and a count is
-not a coverage claim while 18 of `test3.test`'s cases are redundant.
+not a coverage claim while 18 of `test3.test`'s cases are redundant (10 with
+(d) applied).
+
+## Decided: (d), and what it measured
+
+The owner's answer of 15 November 2026, relayed through the decision queue,
+was ***"fork and add patches"***. The patches are not a pushed fork, because
+a second remote is the owner's own to ask for; they are
+`crates/hg-html5lib/src/corrections.rs`, a table applied at load. The pin
+does not move and the fetched tree stays byte-identical to upstream, so there
+is still one digest in `tools/test-data.toml`.
+
+**28 corrections**, each naming the exact value it replaces and the class of
+evidence it rests on:
+
+| Class | Entries | What it rests on |
+|---|---|---|
+| lint-proven | 9 | The file contradicts itself: `description == input` for 1,247 of `test3.test`'s 1,606 cases, and these nine break it. |
+| spec-derived | 17 | 13.2.5.75 and 13.2.5.76 emit only an end-of-file token at EOF, so the column is the end of the input — where cases 1158–1166 already put it. |
+| series-inferred | 2 | Case 1174's stray `?`. An argument about intent, gated so it can be dropped alone. |
+
+**The weak hunk got stronger while being written down.** Case 1174 is series 1's
+only member carrying a trailing `?` and case 1182 is series 2's only member
+lacking one, so applying both hunks **moves one character between two rows** —
+a transposition, which also removes the file's last duplicate pair rather than
+creating one. That is a far better account of the evidence than eight
+characters lost in the same place. It is still the weakest of the three
+classes, because nothing in the file contradicts itself, so it stays gated and
+labelled.
+
+**The result: 14,092 of 14,092 runs, 100.0%.** Worth reading slowly. The
+tokenizer did not change, so the entire 32-run gap was the oracle's and none
+of it Izcal's. The corrections were derived from the standard and from the
+suite's own nine correct cases, never from this tokenizer's output, so landing
+on exactly 14,092 is **agreement between two independent derivations** rather
+than a measurement fitted to a target. Had any correction been wrong, the
+count would have missed in one direction or the other; there is no value of a
+wrong patch set that lands exactly on the ceiling.
+
+**The expiry is zero-fuzz, and that is the point.** Every entry must find the
+value it names, or the load fails with a message naming the case. A patch set
+whose hunks silently stop applying is how a fork rots: upstream fixes the
+case, the patch does nothing, and the tree goes on claiming to correct
+something. Here the next re-pin reports it. Options (a) and (d) share that
+property — it is the half of the recommendation that survived the owner
+choosing differently.
+
+**Two counts corrected while implementing**, both mine and both found by
+measuring rather than by re-reading: the lost-character defect makes **eight**
+cases byte-identical duplicates, not seven (case 500 duplicates 499 and was
+left out of the first count), and `test3.test`'s redundant cases fall from 18
+to **10**.
 
 ## The general shape, because it is not about html5lib
 

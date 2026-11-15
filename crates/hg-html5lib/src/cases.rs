@@ -11,6 +11,8 @@ use std::path::Path;
 use hg_html_syntax::State;
 use hg_json::{self as json, Json};
 
+use crate::corrections;
+
 /// One expected token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expected {
@@ -249,13 +251,14 @@ pub fn read_file(path: &Path) -> Result<Vec<Case>, String> {
         return Ok(Vec::new());
     };
     let mut out = Vec::new();
-    for t in tests {
+    let mut applied = 0;
+    for (index, t) in tests.iter().enumerate() {
         let double = t
             .get("doubleEscaped")
             .and_then(Json::as_bool)
             .unwrap_or(false);
         let raw_input = t.get("input").and_then(Json::as_str).unwrap_or_default();
-        let input = if double {
+        let mut input = if double {
             unescape_again(raw_input)
         } else {
             raw_input.to_owned()
@@ -272,25 +275,42 @@ pub fn read_file(path: &Path) -> Result<Vec<Case>, String> {
                 .collect(),
             None => vec![State::Data],
         };
-        let mut errors = Vec::new();
+        // Every error the file has, before NOT_THE_TOKENIZERS drops
+        // any, so a correction's `nth` indexes the file and does not
+        // move when that list changes.
+        let mut all_errors = Vec::new();
         for e in t.get("errors").and_then(Json::as_arr).unwrap_or_default() {
-            let code = e.get("code").and_then(Json::as_str).unwrap_or_default();
-            if NOT_THE_TOKENIZERS.contains(&code) {
-                continue;
-            }
-            errors.push(ExpectedError {
-                code: code.to_owned(),
+            all_errors.push(ExpectedError {
+                code: e
+                    .get("code")
+                    .and_then(Json::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
                 line: u32::try_from(e.get("line").and_then(Json::as_i64).unwrap_or(0)).unwrap_or(0),
                 col: u32::try_from(e.get("col").and_then(Json::as_i64).unwrap_or(0)).unwrap_or(0),
             });
         }
+        let mut description = t
+            .get("description")
+            .and_then(Json::as_str)
+            .unwrap_or("(no description)")
+            .to_owned();
+        applied += corrections::apply(
+            &file,
+            index,
+            corrections::Target {
+                description: &mut description,
+                input: &mut input,
+                errors: &mut all_errors,
+            },
+        )?;
+        let errors = all_errors
+            .into_iter()
+            .filter(|e| !NOT_THE_TOKENIZERS.contains(&e.code.as_str()))
+            .collect();
         out.push(Case {
             file: file.clone(),
-            description: t
-                .get("description")
-                .and_then(Json::as_str)
-                .unwrap_or("(no description)")
-                .to_owned(),
+            description,
             input,
             output,
             initial_states,
@@ -302,6 +322,20 @@ pub fn read_file(path: &Path) -> Result<Vec<Case>, String> {
             errors,
             lone_surrogate: has_lone_surrogate(raw_input) || raw_input.contains('\u{FFFD}'),
         });
+    }
+    // Every open correction for this file must have been made. One that
+    // found nothing to change is the expiry firing, and `apply` has
+    // already said why; one that was never reached means the case it
+    // names is gone.
+    if file == corrections::FILE {
+        let want = corrections::open_count();
+        if applied != want {
+            return Err(format!(
+                "{file}: made {applied} of {want} corrections (ST-D21). A \
+                 correction that is never reached names a case the file no \
+                 longer has: re-measure before changing the table."
+            ));
+        }
     }
     Ok(out)
 }

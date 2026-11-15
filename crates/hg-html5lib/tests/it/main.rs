@@ -9,7 +9,9 @@
 mod encoding;
 
 use hg_html_syntax::Back;
-use hg_html5lib::{BASELINE, Ledger, Outcome, cases, run_case, suite_dir};
+use hg_html5lib::{
+    BASELINE, ExpectedError, Ledger, Outcome, cases, corrections, run_case, suite_dir,
+};
 
 fn suite() -> Option<Vec<hg_html5lib::Case>> {
     let dir = suite_dir().ok()?;
@@ -63,6 +65,18 @@ fn st_1_the_measured_pass_count_does_not_fall() {
         "{} runs pass, below the recorded baseline of {BASELINE}. If this is deliberate, the \
          baseline moves in its own commit with the date.",
         ledger.pass
+    );
+    // ST-1 is a ship blocker at 100%, and with the suite's own defects
+    // corrected (ST-D21) there is no ceiling below that, so the ratchet
+    // above is no longer the strongest thing true: assert the whole of
+    // it. A single failing run is then a finding on the day it appears
+    // rather than a slow slide that stays above a baseline.
+    assert_eq!(
+        ledger.pass,
+        hg_html5lib::RUNS,
+        "ST-1 asks for 100%: {} of {} runs pass",
+        ledger.pass,
+        hg_html5lib::RUNS
     );
 }
 
@@ -134,4 +148,139 @@ fn the_escapes_above_are_written_as_escapes() {
     );
     assert_eq!(PAIR.len(), 14, "a, 12 escape characters, b");
     assert!(ASCII.is_ascii() && ASCII.len() == 12, "two escapes");
+}
+
+// --- ST-D21: the correction table --------------------------------------
+
+/// The table is consistent with itself, whatever the data says.
+#[test]
+fn st_d21_the_table_is_well_formed() {
+    corrections::check().expect("the table is consistent");
+    assert_eq!(corrections::open_count(), 28, "open corrections");
+    assert_eq!(
+        corrections::by_class(corrections::Class::LintProven),
+        9,
+        "lint-proven: 8 series-2 inputs and case 500's"
+    );
+    assert_eq!(
+        corrections::by_class(corrections::Class::SpecDerived),
+        17,
+        "spec-derived: 16 columns and case 500's second error"
+    );
+    assert_eq!(
+        corrections::by_class(corrections::Class::SeriesInferred),
+        2,
+        "series-inferred: case 1174's input and description"
+    );
+}
+
+/// A correction that no longer finds its value **fails the load**.
+///
+/// This is the whole discipline. A patch set whose hunks silently stop
+/// applying is how a fork rots: upstream fixes the case, the patch does
+/// nothing, and the tree still claims to be correcting something. Here
+/// the next re-pin turns that into a message naming the case.
+#[test]
+fn st_d21_a_correction_that_no_longer_matches_is_a_finding() {
+    let mut description = String::from("something else entirely");
+    let mut input = String::from("<?a a");
+    let mut errors = Vec::new();
+    let e = corrections::apply(
+        corrections::FILE,
+        1175,
+        corrections::Target {
+            description: &mut description,
+            input: &mut input,
+            errors: &mut errors,
+        },
+    )
+    .expect_err("case 1175 has one column correction, and this case has no errors");
+    assert!(
+        e.contains("no error 0"),
+        "expected the missing-error message; got: {e}"
+    );
+
+    // And the input hunk, which does match, with the value changed.
+    let mut input = String::from("<?a A");
+    let mut errors = vec![ExpectedError {
+        code: "eof-in-processing-instruction".into(),
+        line: 1,
+        col: 4,
+    }];
+    let e = corrections::apply(
+        corrections::FILE,
+        1175,
+        corrections::Target {
+            description: &mut description,
+            input: &mut input,
+            errors: &mut errors,
+        },
+    )
+    .expect_err("the input is not what the table names");
+    assert!(
+        e.contains("expected \"<?a a\" and found \"<?a A\"") && e.contains("not a no-op"),
+        "expected the mismatch message; got: {e}"
+    );
+}
+
+/// The series-inferred hunks can be dropped without leaving a field
+/// half-corrected: case 1174's column has a value under each gate, and
+/// exactly one of them is live.
+#[test]
+fn st_d21_the_series_inferred_hunk_is_droppable() {
+    let cols: Vec<_> = corrections::CORRECTIONS
+        .iter()
+        .filter(|c| c.index == 1174 && matches!(c.field, corrections::Field::ErrorCol { .. }))
+        .collect();
+    assert_eq!(cols.len(), 2, "one column value per gate");
+    assert_ne!(
+        cols[0].to, cols[1].to,
+        "the two gates disagree, as they must"
+    );
+    assert_eq!(
+        cols.iter().filter(|c| c.gate.open()).count(),
+        1,
+        "exactly one is live"
+    );
+}
+
+/// The suite, as read, carries the corrected values — the table is not
+/// merely present but applied.
+#[test]
+fn st_d21_the_suite_is_read_corrected() {
+    let Some(cases) = suite() else { return };
+    let t3: Vec<_> = cases
+        .iter()
+        .filter(|c| c.file == corrections::FILE)
+        .collect();
+
+    let by_input = |s: &str| t3.iter().filter(|c| c.input == s).count();
+    assert_eq!(by_input("<?Z Z?"), 1, "case 1182 regained its ?");
+    assert_eq!(
+        by_input("<?Z Z"),
+        1,
+        "case 1174 lost the one that was not its"
+    );
+
+    // Every case that reaches the end of the file inside a processing
+    // instruction reports it at the end of the input — the nine the
+    // suite already had right and the sixteen corrected here, by the
+    // same rule rather than by a list. Cases whose single error is
+    // `invalid-first-character-of-processing-instruction-target` are
+    // not these: that state consumed the offending character and
+    // reports *its* position, which is why the sweep names the code.
+    let mut eof_cases = 0;
+    for c in &t3 {
+        if c.errors.len() != 1 || c.errors[0].code != "eof-in-processing-instruction" {
+            continue;
+        }
+        eof_cases += 1;
+        let want = u32::try_from(c.input.chars().count() + 1).unwrap();
+        assert_eq!(
+            c.errors[0].col, want,
+            "{:?}: eof-in-processing-instruction is at the end of the input",
+            c.description
+        );
+    }
+    assert_eq!(eof_cases, 25, "9 the suite had right and 16 corrected");
 }

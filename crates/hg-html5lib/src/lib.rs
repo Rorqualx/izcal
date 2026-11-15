@@ -30,28 +30,42 @@
 //! move to. Columns count **UTF-16 code units**, so an astral character
 //! is two.
 //!
-//! # The one disagreement left
+//! # The suite's own defects, and what they cost
 //!
-//! 16 cases expect `eof-in-processing-instruction` at **column 4**
-//! whatever follows the target: `<?a a` and `<?Z Z?` both, where the
-//! end of the file is at column 6 and 7. The same file's `<?` expects
-//! column 3 and `<?a` expects column 4, which are right, so the column
-//! in the longer cases simply never advanced past the target. The
-//! tokenizer reports the end of the file where it is, and these 16 fail
-//! — 32 runs, one per back end. Reported here rather than worked
-//! around, which is why [`BASELINE`] is 14,060 and not 14,092: that is
-//! the **ceiling** a correct tokenizer can reach at this pin, not a
-//! shortfall.
+//! The 32 runs that did not pass at this pin were **all** the suite's,
+//! and none the tokenizer's. Two defects in `test3.test`:
 //!
-//! Since measured and taken further: the suite also has nine cases whose
-//! inputs lost a character their descriptions still promise, which makes
-//! seven of them byte-identical duplicates. Both defects are reported
-//! upstream as html5lib/html5lib-tests#202, and the measurement is
-//! `research_notes/ST-M0 design review/html5lib-oracle-defects.md`.
-//! **ST-D21** is open on what ST-1's pass condition becomes; until it is
-//! answered this crate keeps reporting what it finds and changes nothing.
+//! - **16 columns.** The cases expect `eof-in-processing-instruction` at
+//!   **column 4** whatever follows the target: `<?a a` and `<?Z Z?`
+//!   both, where the end of the file is at column 6 and 7. The same
+//!   file's `<?` expects column 3 and `<?a` expects column 4, which are
+//!   right, so the column in the longer cases simply never advanced past
+//!   the target.
+//! - **Nine lost characters.** Nine inputs lost a character their own
+//!   descriptions still promise, which made **eight** of them
+//!   byte-identical duplicates of their neighbours and left eight
+//!   promised inputs tested nowhere. (Measured as eight, not the seven
+//!   first reported: case 500 duplicates 499 and was left out of that
+//!   count. `test3.test` holds 18 redundant cases at this pin and 10
+//!   with the table applied.)
+//!
+//! Both are reported upstream as html5lib/html5lib-tests#202 and
+//! measured in `research_notes/ST-M0 design review/
+//! html5lib-oracle-defects.md`. The owner's answer to **ST-D21** on
+//! 15 November 2026 was *"fork and add patches"*, so
+//! [`corrections`] holds them as a committed table applied at load, each
+//! entry naming the exact value it replaces. The pin does not move.
+//!
+//! With the table applied the suite is **14,092 of 14,092, 100.0%**,
+//! which is what ST-1 asks for. The number is worth reading carefully:
+//! the tokenizer did not change, so the whole 32-run gap was the
+//! oracle's, and the corrections were derived from the standard and from
+//! the suite's own shorter cases rather than from this tokenizer's
+//! output. Reaching exactly 14,092 is therefore agreement between two
+//! independent derivations, not a measurement fitted to a target.
 
 pub mod cases;
+pub mod corrections;
 pub mod encoding;
 pub mod report;
 pub mod run;
@@ -69,13 +83,18 @@ pub const DATA_SET: &str = "html5lib";
 /// The pinned commit, as `tools/test-data.toml` records it.
 pub const PIN: &str = "c5495c539ca8a79c3c5107f5f14010bcff9a35d5";
 
-/// The recorded pass count, by both back ends, at the pinned commit:
-/// **14,060 of 14,092 runs, 99.8%**, with **0** token mismatches,
-/// measured 13 November 2026.
+/// The recorded pass count, by both back ends, at the pinned commit
+/// with [`corrections`] applied: **14,092 of 14,092 runs, 100.0%**, with
+/// **0** token mismatches, measured 15 November 2026. It was 14,060
+/// before the corrections, and the 32 runs between the two numbers were
+/// the suite's defects rather than the tokenizer's.
 ///
 /// A number that can only go up: the crate's own test fails if a change
-/// lowers it. Raising it is a line in a commit, with the date.
-pub const BASELINE: usize = 14_060;
+/// lowers it. Raising it is a line in a commit, with the date. It now
+/// equals [`RUNS`], so the only way it can move is down, and the test
+/// asserts the stronger thing — that **every** run passes, because ST-1
+/// is a ship blocker at 100% and no longer has a ceiling below it.
+pub const BASELINE: usize = 14_092;
 
 /// How many runs there are at the pinned commit: 6,820 cases, some run
 /// from more than one initial state, each on both back ends.
