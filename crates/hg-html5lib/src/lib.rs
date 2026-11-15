@@ -39,7 +39,17 @@
 //! in the longer cases simply never advanced past the target. The
 //! tokenizer reports the end of the file where it is, and these 16 fail
 //! — 32 runs, one per back end. Reported here rather than worked
-//! around.
+//! around, which is why [`BASELINE`] is 14,060 and not 14,092: that is
+//! the **ceiling** a correct tokenizer can reach at this pin, not a
+//! shortfall.
+//!
+//! Since measured and taken further: the suite also has nine cases whose
+//! inputs lost a character their descriptions still promise, which makes
+//! seven of them byte-identical duplicates. Both defects are reported
+//! upstream as html5lib/html5lib-tests#202, and the measurement is
+//! `research_notes/ST-M0 design review/html5lib-oracle-defects.md`.
+//! **ST-D21** is open on what ST-1's pass condition becomes; until it is
+//! answered this crate keeps reporting what it finds and changes nothing.
 
 pub mod cases;
 pub mod encoding;
