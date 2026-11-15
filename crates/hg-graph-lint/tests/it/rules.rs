@@ -471,6 +471,51 @@ fn g260_a_main_linking_a_compliance_tool_fails() {
 }
 
 #[test]
+fn g63_the_compositor_may_not_reach_a_display_list_reader() {
+    // G63 names crates that mostly do not exist yet, so it would
+    // otherwise be a rule nothing has ever seen fire -- the same dead
+    // -code problem GR-M0's review raises about the render graph's
+    // cycle variant. This test fires it against the real
+    // graph-rules.toml, so the rule is known to work before the
+    // compositor it governs is written.
+    let mut f = Fixture::baseline();
+    f.lib("hg-display-list", "P", "L2", "", "//! The display list.\n");
+    f.lib(
+        "hg-compositor",
+        "P",
+        "L5",
+        "hg-display-list = { path = \"../hg-display-list\" }\n",
+        "//! The compositor.\n",
+    );
+    let r = f.lint(&[], false);
+    assert_finding(&r, "G63", "hg-compositor", "hg-display-list");
+}
+
+#[test]
+fn g63_the_compositor_may_read_compositor_frames() {
+    // The twin, and the reason the format is its own package: the
+    // same compositor linking hg-compositor-frame is clean. Without
+    // this case the rule above would also be satisfied by a
+    // compositor that cannot read its own input.
+    let mut f = Fixture::baseline();
+    f.lib(
+        "hg-compositor-frame",
+        "P",
+        "L2",
+        "",
+        "//! The compositor frame.\n",
+    );
+    f.lib(
+        "hg-compositor",
+        "P",
+        "L5",
+        "hg-compositor-frame = { path = \"../hg-compositor-frame\" }\n",
+        "//! The compositor.\n",
+    );
+    assert_clean(&f.lint(&[], false));
+}
+
+#[test]
 fn g252_update_parsers_only_in_the_updater() {
     let mut f = Fixture::baseline();
     f.lib("hg-delta", "P", "L2s", "", "//! Deltas.\n");

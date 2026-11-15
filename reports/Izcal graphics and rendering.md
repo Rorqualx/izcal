@@ -570,7 +570,8 @@ A new sub-layer **L2g (graphics core)**, a sibling of L2e, L2p, L2t and L2m: pur
 
 | Layer | Crate | Role | Tier |
 |---|---|---|---|
-| L2 | `hg-display-list` | The `.hgidl` display-list, compositor-frame and canvas-command types (generated readers), and the bounded path types the text stack also emits (Q18) | P |
+| L2 | `hg-display-list` | The `.hgidl` display-list and canvas-command types (generated readers), and the bounded path types the text stack also emits (Q18) | P |
+| L2 | `hg-compositor-frame` | The `.hgidl` compositor-frame types (generated reader), **a separate package from `hg-display-list`**. This splits the row the table carried, and it is **proposed by GR-M0's review (15 November 2026) and still the owner's to accept or amend** (§3.4). The reason: G63 forbids the compositor GPU service's binary closure a display-list reader, `hg-graph-lint` reads `cargo metadata`, so a package is the finest granularity at which that rule can be stated or checked, and a compositor reading frames out of `hg-display-list` would carry the display-list reader in its own closure. Its vocabulary is disjoint by design (no paths, filters, ICC or glyphs), and `src/size.rs` publishes GR-18's size artifact, recomputed from the IDL by a test so growth is a build failure | P |
 | L2g | `hg-path` | Fixed-point flattening of the bounded path format; the stroker and dasher | P |
 | L2g | `hg-raster` | Canonical raster: coarse raster (strips), CPU fine raster, blending, images, gradients, filters, masks, 3D plane splitting; GPU fine-raster pass descriptions | P |
 | L2g | `hg-layerize` | Layerization as a pure function, layer reasons | P |

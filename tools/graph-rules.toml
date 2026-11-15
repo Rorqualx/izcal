@@ -404,3 +404,47 @@ why = "G30 (NW-D1, sans-IO): a protocol crate depends on no substrate implementa
 # implementation of that trait and names it nowhere. Adding a third name
 # to a list whose residual escape is already documented would have
 # widened the hole measured at M1's exit for nothing.
+
+# --- Graphics (GR-M0) G63 ---------------------------------------------------
+# G63: the compositor GPU service's binary closure contains no display-list
+# reader, hg-path, hg-raster path code, shader front end, hg-webgl or
+# hg-webgpu; it links hg-anim-time and hg-interp only, and samples class C
+# records, which carry no path data (the animation spec's amendment of
+# 20 October 2026).
+#
+# This rule is the reason `hg-compositor-frame` is a package of its own.
+# hg-graph-lint reads `cargo metadata`, so a package is the finest thing it
+# can name. The graphics spec's 6.24 crate table had put all three .hgidl
+# formats in hg-display-list; a compositor that read compositor frames from
+# that package would carry the display-list reader in its own closure, and
+# G63 would be unenforceable by the tool that enforces every rule like it.
+# "The linker probably dropped it" is not a security argument, so the format
+# moved instead and the crate table is amended (15 November 2026).
+#
+# Named exactly rather than by glob, for the reason G7's note gives above:
+# a glob over `hg-gpu-*` would wrongly catch `hg-gpu-hal`, `hg-gpu-graph`
+# and `hg-gpu-alloc`, which the compositor links by design, and a glob over
+# `hg-interp*` would catch `hg-interp` itself, which G63 explicitly permits
+# while forbidding the `hg-interp-geom` it was split from.
+#
+# Every crate here is still unbuilt except hg-display-list and hg-raster;
+# the rule binds as each lands, which is how G7's networking half was
+# written too.
+[[forbid]]
+rule = "G63"
+from = ["hg-compositor", "hg-gpu-main", "hg-present-gpu"]
+crates = [
+  # The display list and the paths it carries.
+  "hg-display-list", "hg-path", "hg-raster", "hg-raster-ref",
+  # The geometry interpolation hg-interp was split from: it holds path
+  # data, and the compositor samples only class C records, which do not.
+  "hg-interp-geom",
+  # Shader front ends, IRs and back ends: the compositor's only shaders
+  # are Izcal's precompiled internal compositing set (GR-D7).
+  "hg-wgsl", "hg-glsl-es", "hg-shader-ir", "hg-shader-check",
+  "hg-shader-msl", "hg-shader-spirv", "hg-shader-dxil",
+  # The page-facing GPU services and the painters.
+  "hg-webgl", "hg-webgpu", "hg-paint", "hg-svg-paint", "hg-canvas",
+  "hg-layerize",
+]
+why = "G63 (GR-D2, GR-18): the shared compositor holds every site's composited pixels and is the one I-1 shared-process exception, so its page-controlled input is the smallest typed format in Izcal and it parses no display list, path, shader or page-controlled filter. It links hg-compositor-frame for its input and hg-anim-time and hg-interp for sampling; hg-gpu-hal, hg-gpu-graph and hg-gpu-alloc it links by design. This is why hg-compositor-frame is a separate package from hg-display-list."

@@ -1,4 +1,4 @@
-//! Regenerates the checked-in code of `hg-ipc-gen` and `hg-os-types` from
+//! Regenerates the checked-in code of the crates in [`GENERATED_CRATES`] from
 //! their `.hgidl` files.
 //!
 //! ```text
@@ -11,7 +11,12 @@ use std::process::ExitCode;
 
 /// The crates whose `idl/*.hgidl` the generator writes into their
 /// `src/generated/`.
-const GENERATED_CRATES: [&str; 3] = ["hg-ipc-gen", "hg-os-types", "hg-display-list"];
+const GENERATED_CRATES: [&str; 4] = [
+    "hg-ipc-gen",
+    "hg-os-types",
+    "hg-display-list",
+    "hg-compositor-frame",
+];
 
 fn main() -> ExitCode {
     let check = std::env::args().any(|a| a == "--check");
