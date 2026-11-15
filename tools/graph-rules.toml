@@ -136,31 +136,36 @@ exempt = ["xtask"]
 #   3 oracle     the named job exists in .github/workflows/checks.yml
 #   4 review     the design review is open with its agenda fixed
 #   5 interlock  the cross-track obligations are recorded
-# A row is checked only when `claimed = true`. An unclaimed track is
-# reported by `hg-graph-lint --started` and never failed: the rule must
+# A row is checked only when its `claimed` key is set. An unclaimed track
+# is reported by `hg-graph-lint --started` and never failed: the rule must
 # not block the work that satisfies it. Setting `claimed` is a gate-file
 # change (CS-GA-1), and it fails unless all five hold.
+#
+# Prose in this file never spells a table header or an assignment the way a
+# row does, and carries no example rows. A gate file holds data and prose
+# *about* data; imitation data is read as data by anything that counts lines
+# rather than parsing TOML, and one peer session's dashboard did exactly
+# that — it read this file's comments and reported six tracks started as
+# seven. The examples live in `crates/hg-graph-lint/tests/it/rules.rs`
+# (`STARTED_ROW`, `REFUTED_ROW`), where the parser reads them and they
+# cannot drift from it.
 #
 # The crates are the ones each M0 row names, which is a smaller set than
 # the crates its milestone names in total: production crates such as
 # hg-style and hg-layout belong to ST-M1 and LY-M1, not to the M0s.
 #
-# --- The third state: [[refuted]] (owner decision, 14 November 2026) --------
+# --- The third state: the refuted table (owner decision, 14 Nov 2026) -------
 # `claimed` is two-state, so a clause that was *attempted* and found not to
 # hold left no trace, and the next session re-attempted it and re-derived
-# the same refusal. A [[refuted]] row records the attempt:
-#
-#   [[refuted]]
-#   track    = "ZZ-M0"   # must name a [[started]] row
-#   clause   = 3         # 1 to 5
-#   date     = "2026-11-14"
-#   evidence = "measurements/..."   # where the attempt is written down
-#   why      = "One sentence."
+# the same refusal. A row in the `refuted` table records the attempt. Its
+# keys are `track` (must name a row in the `started` table), `clause` (1 to
+# 5), `date`, `evidence` (where the attempt is written down) and `why` (one
+# sentence); `REFUTED_ROW` in the test file above is the live example.
 #
 # A refusal is a RECORD, NEVER AN EXEMPTION. Two findings keep it so:
-#   - it cannot excuse a claim. `claimed = true` with a refuted clause
+#   - it cannot excuse a claim. A claimed track with a refuted clause
 #     asserts both that the track started and that a clause of starting
-#     was refused, which is a finding. Without this, [[refuted]] would be
+#     was refused, which is a finding. Without this, a refusal would be
 #     a way to weaken clause 4 of M1's exit one clause at a time.
 #   - it cannot rot into a false claim. If a refuted clause holds against
 #     the tree now, the record is stale, and that is a finding too. The
@@ -170,7 +175,7 @@ exempt = ["xtask"]
 # third. The idea is taken from staticR's hypothesis -> measured | refuted
 # ladder, which keeps what was disproved instead of deleting it.
 #
-# There are no [[refuted]] rows today: all five tracks are claimed and all
+# There are no refusals recorded today: all five tracks are claimed and all
 # twenty-five clauses hold. The schema exists so that the next refusal has
 # somewhere to go that CI reads.
 
