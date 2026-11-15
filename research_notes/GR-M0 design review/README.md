@@ -137,7 +137,7 @@ untrusted-renderer boundary, in the same class as the WebRender
 validator two paths to be correct on instead of one. Recorded in the
 graphics spec §6.3 and in GR-D6's row.
 
-### 3.2 The accumulator's unit — **still open, 14 November 2026**
+### 3.2 The accumulator's unit — **decided, 14 November 2026: the finer unit**
 
 §6.4 specifies "exact area coverage by signed-area accumulation in
 **1/256 px² units**". `hg-raster` accumulates in `SUB`-squared units
@@ -147,17 +147,27 @@ rounds, and "exact area coverage" and "1/256 px² units" cannot both
 hold. The code took the exact route and the difference is recorded
 here rather than resolved silently.
 
-**Still open.** Put to the owner on 14 November 2026 with §3.1, §3.3
-and four other decisions and **not answered**; the other six were. A row
-against it in the decision queue read "defer this one", but the
-coordinator identified that text as its own browser-test string re-sent
-by a stale tab and declined to relay it as an answer, which is the right
-call — a test fixture is not a decision. So this one is unanswered
-rather than deferred, and the distinction matters: nobody has yet chosen
-between correcting §6.4's unit to the finer one and keeping the coarser
-unit with "exact" weakened. The code continues to accumulate in `SUB`²
-units, which is the exact route, so the spec and the code still disagree
-until this is taken. The measurement that bears on it is in §3.3.
+**Decided: correct §6.4's unit to the finer one, keeping "exact"** — the
+owner, 14 November 2026. §6.4 now reads "exact area coverage by
+signed-area accumulation in **1/131,072 px² units**", which is
+`2 · SUB²` at `SUB = 256`: the denominator that makes a trapezoid's area
+exactly representable, with the factor of two so that its half needs no
+division. The code is unchanged; the specification moved to the code,
+which is the right direction here because the code's unit is the one
+that keeps GR-D3's bit-identical claim free of a rounding inside the
+accumulator.
+
+**The provenance of this answer, recorded because the id was polluted.**
+This decision was put to the owner with §3.1, §3.3 and four others. A
+first row against it read "defer this one", which the coordinator
+identified as its own browser-test string re-sent by a stale tab and
+declined to relay as an answer — a test fixture is not a decision, and
+refusing to pass it on was correct. That row was purged, and the answer
+above arrived afterwards in a batch with unrelated sessions' answers.
+The distinction is worth keeping in the record: for a few hours this
+item was *unanswered*, which is not the same as *deferred*, and
+treating the fixture as a deferral would have left the spec and the code
+disagreeing with a note saying the owner had chosen to let them.
 
 ### 3.3 `hg-raster-ref` is exact, not float64 — **confirmed, 14 November 2026**
 

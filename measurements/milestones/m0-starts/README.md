@@ -195,6 +195,9 @@ measurements the work produced:
 - **`hg-raster` accumulates in `SUB`² units, not §6.4's 1/256 px²**,
   because exact trapezoid areas need the finer denominator — "exact
   area coverage" and "1/256 px² units" cannot both hold (review §3.2).
+  *(Settled 14 November 2026: the owner corrected §6.4's unit to the
+  finer `2 · SUB²`, keeping "exact". The code did not move; the
+  specification moved to it.)*
 
 **Clause 2 is met by the format, not by the HAL**, and the review says
 so: GR-M0 is the one M0 whose "Needed by" is another track's milestone
@@ -365,8 +368,8 @@ or its review agenda, and none is satisfied by anything in §2.
 |---|---|
 | `hg-gpu-alloc`'s interface, then the allocator | nothing — the review decides the interface; GR-M1 implements it |
 | `compositor_frame.hgidl` and `canvas_command.hgidl` | nothing — work (review §3.4) |
-| The transport decision for a chunk too large to be a message | nothing — a decision (review §3.1) |
-| §6.4's accumulator unit, and `hg-raster-ref`'s exactness | nothing — two spec amendments or two reverts (review §3.2, §3.3) |
+| ~~The transport decision for a chunk too large to be a message~~ | **settled 14 November 2026**: a shared buffer, copied once then validated, the chunk being the unit of validation (review §3.1) |
+| ~~§6.4's accumulator unit, and `hg-raster-ref`'s exactness~~ | **both settled 14 November 2026**: §6.4's unit corrected to the finer `2 · SUB²` keeping "exact", and the exact reference confirmed with §6.26 amended (review §3.2, §3.3) |
 | The canonical image, E16 and integer composition, specified | nothing — work, and the precondition for GR-50 and GR-51 |
 | The three back ends themselves | the HAL contract is written; no back end exists |
 | GR-S1, GR-S2, GR-S6 (first pass), GR-S9 done; GR-S3, GR-S4 started | four need hardware or a running engine (review §6) |
