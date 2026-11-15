@@ -144,6 +144,35 @@ exempt = ["xtask"]
 # The crates are the ones each M0 row names, which is a smaller set than
 # the crates its milestone names in total: production crates such as
 # hg-style and hg-layout belong to ST-M1 and LY-M1, not to the M0s.
+#
+# --- The third state: [[refuted]] (owner decision, 14 November 2026) --------
+# `claimed` is two-state, so a clause that was *attempted* and found not to
+# hold left no trace, and the next session re-attempted it and re-derived
+# the same refusal. A [[refuted]] row records the attempt:
+#
+#   [[refuted]]
+#   track    = "ZZ-M0"   # must name a [[started]] row
+#   clause   = 3         # 1 to 5
+#   date     = "2026-11-14"
+#   evidence = "measurements/..."   # where the attempt is written down
+#   why      = "One sentence."
+#
+# A refusal is a RECORD, NEVER AN EXEMPTION. Two findings keep it so:
+#   - it cannot excuse a claim. `claimed = true` with a refuted clause
+#     asserts both that the track started and that a clause of starting
+#     was refused, which is a finding. Without this, [[refuted]] would be
+#     a way to weaken clause 4 of M1's exit one clause at a time.
+#   - it cannot rot into a false claim. If a refuted clause holds against
+#     the tree now, the record is stale, and that is a finding too. The
+#     only way to remove a refusal is deliberately, here.
+# So the three states are: claimed and checked, refused and checked, or
+# silent — and the point is that the second is no longer written as the
+# third. The idea is taken from staticR's hypothesis -> measured | refuted
+# ladder, which keeps what was disproved instead of deleting it.
+#
+# There are no [[refuted]] rows today: all five tracks are claimed and all
+# twenty-five clauses hold. The schema exists so that the next refusal has
+# somewhere to go that CI reads.
 
 [[started]]
 track = "TX-M0"

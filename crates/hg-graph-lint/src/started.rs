@@ -29,6 +29,30 @@
 //! This is the same shape as the rest of `graph-rules.toml`, whose header
 //! notes that "a rule whose crates do not exist yet costs nothing and
 //! binds the moment they do".
+//!
+//! # The third state: a clause attempted and refused
+//!
+//! `claimed` is two-state, so a clause that was *tried* and found not to
+//! hold leaves no trace, and the next session re-attempts it and
+//! re-derives the same refusal. A `[[refuted]]` row records that attempt:
+//! the track, the clause, the date, the evidence and why.
+//!
+//! A refusal is a **record, never an exemption**, and two findings keep it
+//! that way:
+//!
+//! - **It cannot excuse a claim.** A track that is `claimed = true` with a
+//!   refuted clause is a contradiction — it says both that the track has
+//!   started and that one of the five clauses of starting was refused —
+//!   and that is a finding. Without this rule, `refuted` would be a way to
+//!   weaken clause 4 of M1's exit one clause at a time.
+//! - **It cannot rot into a false claim.** If a refuted clause now holds,
+//!   the record is stale, and that is a finding too. A refusal must stay
+//!   checkable against the tree, exactly as a claim must; the only way to
+//!   remove it is deliberately, in the gate file.
+//!
+//! So the three states are: claimed and checked, refused and checked, or
+//! silent. What the third state buys is that the second is no longer
+//! written as the third.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -57,6 +81,8 @@ pub struct TrackStatus {
     pub claimed: bool,
     /// The five clauses, in order.
     pub clauses: Vec<Clause>,
+    /// Clause numbers recorded as attempted and refused, with the date.
+    pub refuted: Vec<(u8, String)>,
 }
 
 impl TrackStatus {
@@ -129,9 +155,18 @@ pub fn status(inputs: &Inputs) -> Vec<TrackStatus> {
             let review_ok = read(inputs, &t.review).is_some();
             let interlock_ok = read(inputs, &t.interlock).is_some();
 
+            let refuted: Vec<(u8, String)> = inputs
+                .rules
+                .refuted
+                .iter()
+                .filter(|r| r.track == t.track)
+                .map(|r| (r.clause, r.date.clone()))
+                .collect();
+
             TrackStatus {
                 track: t.track.clone(),
                 claimed: t.claimed,
+                refuted,
                 clauses: vec![
                     Clause {
                         number: 1,
@@ -188,9 +223,41 @@ pub fn status(inputs: &Inputs) -> Vec<TrackStatus> {
         .collect()
 }
 
-/// Adds a finding for every claimed track whose clauses do not hold.
+/// Adds a finding for every claimed track whose clauses do not hold, and
+/// for every `[[refuted]]` record that has stopped being true.
 pub fn check(inputs: &Inputs, report: &mut Report) {
     for t in status(inputs) {
+        for &(clause, ref date) in &t.refuted {
+            // A refusal cannot excuse a claim: claiming to have started
+            // while recording that a clause of starting was refused says
+            // both things at once.
+            if t.claimed {
+                report.add(
+                    "started",
+                    &t.track,
+                    format!(
+                        "claims to have started and records clause {clause} as refused on \
+                         {date}; a refusal is a record, not an exemption, so one of the two is \
+                         wrong (Stage 1 design 8.1a)"
+                    ),
+                    None,
+                );
+            }
+            // A refusal cannot rot into a false claim: if the clause holds
+            // now, the record is stale and must be removed deliberately.
+            if t.clauses.iter().any(|c| c.number == clause && c.ok) {
+                report.add(
+                    "started",
+                    &t.track,
+                    format!(
+                        "records clause {clause} as refused on {date}, but it holds against the \
+                         tree now; a stale refusal is removed in the gate file, not left to \
+                         contradict the artefacts"
+                    ),
+                    None,
+                );
+            }
+        }
         if !t.claimed {
             continue;
         }
@@ -237,6 +304,9 @@ pub fn render(inputs: &Inputs) -> String {
                 c.name,
                 c.missing.join(", ")
             );
+        }
+        for &(clause, ref date) in &t.refuted {
+            let _ = writeln!(out, "         {clause}. refused {date}");
         }
     }
     let started = all.iter().filter(|t| t.started()).count();

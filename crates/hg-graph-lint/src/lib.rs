@@ -114,6 +114,12 @@
 //! `--started` prints the matrix for the milestone evidence to quote,
 //! claimed or not. See [`started`].
 //!
+//! A clause that was *attempted and refused* is recorded by a
+//! `[[refuted]]` row (owner decision, 14 November 2026), which is a
+//! record and never an exemption: it cannot excuse a claim, and it
+//! becomes a finding if the clause it refuses starts holding. See
+//! [`started`] for both rules.
+//!
 //! # Not checked here
 //!
 //! G3's ambient-API rule on code is clippy's (`clippy.toml`); G9 is
