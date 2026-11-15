@@ -1025,3 +1025,50 @@ fn a_crate_outside_the_layout_set_may_name_a_float() {
     );
     assert_clean(&f.lint(&[], true));
 }
+
+/// The gate file's prose does not imitate its data.
+///
+/// `tools/graph-rules.toml` is read by this lint, which parses TOML, and
+/// also by things that count lines — a peer session's dashboard read its
+/// comments and reported six started tracks as seven, and would have read
+/// five recorded refusals where there are none. So the file carries no
+/// example rows and never spells a table header or an assignment in prose
+/// the way a row spells it, and the property is that **the naive count and
+/// the anchored count are the same number** for every token a counter
+/// would reach for. A reader that is wrong about this file is then wrong
+/// only about TOML, not about Izcal.
+#[test]
+fn the_gate_files_prose_does_not_imitate_its_data() {
+    let text = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/graph-rules.toml"),
+    )
+    .unwrap();
+
+    for token in ["[[started]]", "[[refuted]]", "claimed = true", "track = "] {
+        let anywhere = text.lines().filter(|l| l.contains(token)).count();
+        let anchored = text.lines().filter(|l| l.starts_with(token)).count();
+        assert_eq!(
+            anywhere,
+            anchored,
+            "{anywhere} lines contain `{token}` but only {anchored} are rows: \
+             a line-counting reader would over-report. Offending lines:\n{}",
+            text.lines()
+                .filter(|l| l.contains(token) && !l.starts_with(token))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    // The counts themselves, so the property above cannot be satisfied by
+    // an empty file: five tracks claimed, no refusal recorded.
+    assert_eq!(
+        text.lines().filter(|l| *l == "[[started]]").count(),
+        5,
+        "five M0 tracks"
+    );
+    assert_eq!(
+        text.lines().filter(|l| *l == "claimed = true").count(),
+        5,
+        "all five claimed"
+    );
+}
