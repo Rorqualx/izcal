@@ -90,13 +90,16 @@ of "one rendering model on every OS" (P2).
    its device, so "resolves once" must be once per process per epoch,
    not once globally.
 
-**And the one piece of §6.6's mandate that is not built: the
-allocator.** `hg-gpu-alloc` does not exist. §6.5 makes placement the
-thing that decides fragmentation, residency and per-site accounting,
-and every allocation carries FP 6.6's ledger tag. The review decides
-its interface here; the implementation is GR-M1's. Writing a
-placeholder crate would have met the letter of the start definition
-and told the review nothing, so there is none.
+**And the one piece of §6.6's mandate that was not built: the
+allocator** — now its interface, and only that (**§3.7**, 15 November
+2026). §6.2 makes placement the thing that decides fragmentation,
+residency and per-site accounting, and every allocation carries
+FP 6.6's ledger tag. `crates/hg-gpu-alloc` is the ledger tag, the
+budget classes and residency; **placement is still GR-M1's** and no
+part of it is written, because GR-S1's measurements are what should
+decide it. Writing a placeholder that allocated badly would have met
+the letter of the start definition and told the review nothing, so
+there is none.
 
 ---
 
@@ -596,6 +599,223 @@ would otherwise be found later by a hash mismatch:
   rounding it was specified not to have, so the corrected test asserts
   both separately (`ra21`).
 
+### 3.7 The allocator's interface — **decided, 15 November 2026**
+
+GR-M0's row puts the allocator inside the "HAL design review across
+three back ends (resource type states, render graph, **allocator**,
+fences, epochs)", and §2's note above records that this was the one
+piece of §6.6's mandate with nothing built: "The review decides its
+interface here; the implementation is GR-M1's."
+
+It now is decided, as `crates/hg-gpu-alloc` — the interface and
+nothing else. **There is no placement**: no free lists, no heaps, no
+suballocation strategy, no fragmentation policy, because that is what
+GR-S1's measurements exist to inform and guessing it now would be a
+number nobody could defend. The crate is already in §6.24's table at
+L5 beside `hg-gpu-hal`, so its `tools/tiers.toml` row is the table's
+own placement and **not** an amendment of the kind §9.1 asks the
+owner for.
+
+Six decisions, each a type rather than a convention, because the
+failure mode of every one of them is silence.
+
+**(1) The ledger tag is not five fields the caller fills in.** FP 6.6
+says every GPU allocation carries a tag of "(site, container,
+partition, tab, kind)", and the obvious interface takes five
+parameters. That interface is wrong, and the reason is that the two
+GPU process kinds stand in a different relation to the site. A
+content GPU process is one per renderer key — §6.2: keyed "exactly
+like the renderer it serves" — so its site, container and partition
+are properties of the **process**, fixed before it allocates
+anything. Only the compositor GPU service holds every site's
+composited pixels, and only for it does the site genuinely vary per
+allocation.
+
+So a five-parameter tag hands the content GPU process a parameter it
+has no right to vary, and the way that goes wrong is silent: bytes
+charged to a site that did not ask for them, in the one table
+attribution reads (FP 6.14). The scope is therefore a type.
+`KeyScope::tag` takes a kind and a tab and **has no parameter of type
+`SiteId`**, so a content GPU process cannot write another site's tag;
+`CompositorScope::tag` takes the site, because GR 6.22 charges its
+tiles "to the site whose content they hold". A `Ledger` additionally
+refuses a tag its own scope could not have made, which catches one
+that arrived by some route the type did not cover — `ga01` plants
+exactly that, for the site and for the container and partition too.
+
+**(2) Over budget is a state, not an error.** FP 6.6 requires each GPU
+process to react "to **budget changes**, not only to system memory
+pressure", because D3D12 budgets "fluctuate dramatically when the
+user switches away to another application". So the budget can shrink
+**below what is already allocated** with nothing done wrong by
+anyone, and the interface has to stay usable inside that.
+
+The failure here is circular and worth writing down because it is not
+obvious: refuse every allocation while over budget, and the process
+cannot allocate the swapchain image it needs in order to present the
+frame whose completion releases the tiles. The budget then never
+recovers. `Class` is the way out — `Reserved` is admitted whatever the
+budget says, `Working` while there is room, `Discretionary` refused
+first and reclaimed first, which is FP 6.6's "the prepaint margin
+shrinks first under pressure" stated once for every kind instead of
+for tiles alone.
+
+**The admission rule needs the reserved cap as a parameter**, which a
+naive signature would omit. Without it a run of discretionary
+allocations fills the budget to the last byte, and the swapchain that
+must then be admitted puts the process over with no way back; with it,
+discretionary work is held off the room the reserved classes are
+guaranteed and the deadlock cannot start. `ga04` holds both halves,
+including the degenerate case: with a cap of zero the two classes
+agree, which is the interface this parameter exists to avoid.
+
+**(3) The class is not a function of the kind.** A viewport tile and a
+prepaint tile beyond it are the same `Kind` — FP 6.6 counts both
+inside the same 2.5-viewport budget — and they are not the same class,
+because the prepaint one is what shrinks first. One field cannot
+answer both "which ledger line" and "what happens under pressure", so
+a `Request` carries both and `default_class` is documented as a
+default whose answer for a prepaint tile is wrong. This is the same
+shape as every other finding in this review: a single number asked to
+mean two things.
+
+The reclamation order is stated once, here, rather than left to each
+back end, because three back ends that drop different things under
+pressure make one page behave differently on Metal and on Vulkan for
+reasons no test would catch (`ga07`).
+
+**(4) A volatile allocation's contents may be gone, and two of the
+three back ends cannot promise otherwise.** This is the item §2 asks
+for — a property checked against three back ends — and the three do
+not mean the same thing by "volatile":
+
+| Back end | What "volatile" is | Contents |
+|---|---|---|
+| **Metal** | `setPurgeableState(_:)` with `volatile`: the system "can reclaim the underlying storage at any time **without informing the app**" ([GA 4.10](../Izcal%20graphics%20and%20rendering/gpu_apis_platforms.md)) | May be gone, with no callback saying so |
+| **Direct3D 12** | `Evict`/`MakeResident` with `SetResidencyPriority` ([GA 3.18](../Izcal%20graphics%20and%20rendering/gpu_apis_platforms.md)) | Paged out, not discarded |
+| **Vulkan** | No purgeable state in the surveyed APIs: `VK_EXT_memory_budget` "reports per-heap budget and usage" ([GA 5.3](../Izcal%20graphics%20and%20rendering/gpu_apis_platforms.md)) and nothing more, so volatility is free-and-reallocate | Gone by construction |
+
+Two of three cannot keep the pixels, so **the contract is that they do
+not**, and D3D12's stronger guarantee is invisible at the interface.
+That is the right way round: an interface written to D3D12's
+behaviour would show stale or foreign pixels on the other two, on the
+path that runs when a tab has been hidden for half a minute — the
+least-tested path there is.
+
+This is a **safety** property and not a correctness one. Sampling a
+texture whose storage the system reclaimed reads whatever is there
+now, which is the class `hg-display-list`'s bounds check already
+exists to stop ("whatever the sampler then reads is memory the
+renderer did not put there") and the second-largest Chrome graphics
+CVE class (§9's uninitialized-use row). So `Allocation::can_sample`
+is **residency *and* written-since**, and nothing about residency
+alone makes it true. A freshly created allocation is in the same
+position as a recovered one — new GPU memory is not zero on every back
+end and the engine does not get to assume it is — so it too is a
+destination until written (`ga08`).
+
+**(5) A grant is a move.** G71 makes a shared texture "granted once
+and never re-granted", so `Grant` is neither `Clone` nor `Copy`: a
+grant that can be duplicated is a grant that can be re-granted, and
+the compiler is a better place to say that than a comment. The
+consequence that a naive ledger gets wrong is the total. FP 6.6: "a
+holder that keeps a released texture is charged for it, so pinning
+memory is charged and killed at budget" — so `Ledger::charged` is
+live **plus** pinned bytes. A ledger summing live rows alone reports a
+process under budget while its pinned textures keep the memory, which
+is the under-report that makes pinning free (`ga12`).
+
+Writing this turned up an ordering the spec does not mention: the
+holder's give-back can arrive **before** the owner's release, and both
+orders must end in the same place without the row becoming grantable
+again. The first draft of `unpin` handled only the after case and
+returned "no such allocation" for the before one. `ga13` is that
+order.
+
+**(6) Caps come from geometry and build constants, never from the
+budget.** FP-D19 decided this already — "a device-dependent JS-visible
+limit is a fingerprint of the device's memory" — and FP 6.6 applies it
+to the glyph pools by name. What the allocator adds is that the
+obvious implementation violates it: an allocator that sizes its pools
+from the budget it just read makes how many glyphs a page can use
+before re-raster starts, how large a canvas it can get and when an
+atlas stops growing into a reading of the machine's VRAM, all
+page-observable through timing. This spec already treats far less as a
+fingerprint: "3.05 bits from one canvas text test, 5.73 bits from six
+canvas and WebGL tests".
+
+So no function in `caps` takes a `Budget`, and that is not prose
+alone: `ga16` reads `caps.rs`, takes the parameter list of every `pub
+const fn` in it, and fails if any mentions a budget. It reads
+parameter lists rather than the whole file because the module's own
+documentation says "budget" nine times, and a test its own
+documentation defeats is a test that gets deleted. **Planted and
+confirmed**: a cap function taking `budget_bytes` fails it with the
+file, the line and the parameter named; removing the plant passes
+again. The first plant was no proof at all — changing an existing
+signature broke the build before the test could run — which is the
+distinction between a test that catches a violation and a compiler
+that catches an edit.
+
+#### Two defects the review found in it, both the same shape
+
+Caught by the automated review on the commit, and both are the family
+this review has now hit four times — an index or an id taken for an
+identity it does not carry on its own.
+
+- **An id was charged more than once.** `Ledger::charge` did not
+  reject an `AllocationId` already in the table, so a repeated id
+  double-charged the site; and because `grant`, `release` and `unpin`
+  all act on the first match, the duplicate row could never be
+  released and stayed charged until the epoch reset. The under- and
+  over-report are in the same table attribution reads.
+  `LedgerError::AlreadyCharged` now refuses it (`ga20`).
+- **An epoch that did not advance.** `reset_for` took any epoch,
+  including the one it was already in, which defeats the whole (id,
+  epoch) discipline: a `Grant` taken before such a reset would reach
+  a *new* row that reused its index. It now requires the epoch to
+  advance (`LedgerError::EpochNotNewer`), and writing the test for it
+  exposed a third gap — `unpin` checked no epoch at all, where
+  `charge`, `grant` and `release` all did (`ga21`).
+
+The second is worth the note it gets: the epoch check was the thing
+this interface cited G45 for, and it was absent from one of the four
+functions that needed it. A rule applied in three places out of four
+reads, in a review, exactly like a rule applied everywhere.
+
+#### What this interface deliberately leaves open
+
+- **Whether a back end can answer `survived`.** `make_resident` takes
+  the back end's report of whether the contents came back, and a back
+  end that cannot tell **must** pass `false`. Whether Metal can tell
+  is a question for GR-S1; until it is measured the sound answer is
+  the conservative one, and the Vulkan path's answer is `false`
+  always.
+- **The OS's usage and the ledger's total are two numbers.**
+  `Budget::usage` is the OS's view, `Ledger::charged` is Izcal's, and
+  the driver's own allocations are in one and not the other.
+  Reconciling them is a measurement (GR-S1), so the interface keeps
+  them apart rather than assuming a relation it has not measured.
+
+#### A discrepancy found while doing this, not fixed here
+
+§6.24's L5 row and §6.2 both name **`hg-gpu-graph`** for the render
+graph — §6.2: "barriers computed by Izcal's render graph
+(`hg-gpu-graph`)", and §6.13's WebGPU text sends barriers "through
+`hg-gpu-graph`". No such package exists: §3.5's render graph was built
+in `hg-gpu-hal/src/graph.rs`, and `tools/graph-rules.toml`'s G63
+comment already names `hg-gpu-graph` among the crates "the compositor
+links by design".
+
+This is the same class as §9.1 — the crate table and the tree
+disagreeing about a package boundary — but **not** the same stakes:
+G63's enforceability turned on `hg-compositor-frame` being its own
+package, and nothing known today turns on the render graph being one.
+So it is recorded rather than resolved, with the note that resolving
+it one way is a one-line table correction and the other way is a
+package split, and that the question to ask first is whether any rule
+needs to name the graph without the HAL.
+
 ---
 
 ## 4. Cross-track items, each with its counterpart named
@@ -712,12 +932,13 @@ guesswork.
 
 ## 8. What this review owes before GR-M0's exit
 
-Everything in §3 decided (§3.4's compositor frame, §3.5's render graph
-and §3.6 are done; §3.4's canvas format remains, and §3.6's E16
-*implementation* is GR-M1's rather than this review's); §2's five properties checked against three
-back ends by someone who has written one; `hg-gpu-alloc`'s interface;
-**one** remaining `.hgidl` format (`canvas_command.hgidl`; the
-compositor frame is written, §3.4); **§3.6's threat table corrected on
+Everything in §3 decided (§3.4's compositor frame, §3.5's render
+graph, §3.6 and §3.7's allocator interface are done; §3.4's canvas
+format remains, and §3.6's E16 and §3.7's placement are GR-M1's
+rather than this review's); §2's five properties checked against three
+back ends by someone who has written one; **one** remaining `.hgidl`
+format (`canvas_command.hgidl`; the compositor frame is written,
+§3.4); **§3.6's threat table corrected on
 the Kani harnesses it claims for the display list and compositor
 frame, which neither has** (§3.4), together with the transport
 decision that is the same finding; the canonical image, E16 and

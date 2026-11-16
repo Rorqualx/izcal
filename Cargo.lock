@@ -136,6 +136,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hg-gpu-alloc"
+version = "0.0.0"
+dependencies = [
+ "hg-gpu-hal",
+]
+
+[[package]]
 name = "hg-gpu-hal"
 version = "0.0.0"
 
