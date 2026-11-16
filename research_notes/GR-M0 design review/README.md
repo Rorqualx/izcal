@@ -816,7 +816,7 @@ it one way is a one-line table correction and the other way is a
 package split, and that the question to ask first is whether any rule
 needs to name the graph without the HAL.
 
-### 3.8 The threat table and GR-11 claim harnesses the formats cannot have — **resolved by §3.1's decision, not by a new one**
+### 3.8 The threat table and GR-11 claim harnesses the formats cannot have — **resolved by §3.1's decision, not by a new one; GR-11's metric amended 16 November 2026**
 
 §3.4 recorded the gap: §6.19's threat row and GR-11 both promise
 "generated readers with **Kani harnesses** (VER-1)" against a hostile
@@ -867,10 +867,14 @@ before it is enforced, not a reason to stop.
 **Applied here:** §6.19's threat row, which is a description of
 mitigations and so the review's to correct.
 
-**Not applied here:** GR-11's metric. Amending a T2 ship target's
-metric is not something this review does on its own authority, even
-when the amendment only aligns the target with a decision the owner
-has already taken. It goes to §9.3 with the exact replacement text.
+**Not applied here, and now answered:** GR-11's metric. Amending a T2
+ship target's metric is not something this review does on its own
+authority, even when the amendment only aligns the target with a
+decision the owner has already taken. It went to §9.3 with the exact
+replacement text, and **the owner took it on 16 November 2026**
+(option (a), ratify). The metric in the spec's §9.1 now reads as §9.3
+proposed; the failure clause that blocked `canvas_command.hgidl` is
+cleared.
 
 ---
 
@@ -1031,7 +1035,12 @@ rather than working around. But (a) is the largest change and touches a
 generator three crates share, which is why it is a decision rather
 than a step.
 
-**9.3 GR-11's metric, aligned with §3.1's decision (a).** GR-11 is a
+**9.3 GR-11's metric, aligned with §3.1's decision (a)** — **decided
+(a), 16 November 2026: take the proposed first clause.** Applied to
+the spec's §9.1 GR-11 row; the text below is what was proposed and
+what was taken, with the cross-reference written in the spec's own
+citation form (`GR-M0's review 3.1`) because a bare `3.1` inside the
+spec points at the spec's own §3. GR-11 is a
 T2 security target whose metric reads "generated readers with Kani
 harnesses" for the display list, compositor frame and canvas stream.
 Those formats declare no interface, so `hg-ipc-codegen` emits no
