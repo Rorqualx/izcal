@@ -1009,13 +1009,15 @@ Three items — two from §3.4, one from §3.8 — all of a kind this
 project does not settle on its own authority: a package boundary, a
 format's vocabulary, and a ship target's metric.
 
-**9.1 The crate-table amendment (a gate-file and spec change).**
+**9.1 The crate-table amendment (a gate-file and spec change)** —
+**decided (a), 16 November 2026: land it as described.**
 `hg-compositor-frame` is its own package, so that G63 — the compositor
 links no display-list reader — is checkable at the granularity
 `hg-graph-lint` works at. This changes §6.24's L2 row, adds a
 `tools/tiers.toml` row and adds a `G63` row to
-`tools/graph-rules.toml`. The code is written and the rule is tested;
-what is owed is acceptance or amendment of the table change.
+`tools/graph-rules.toml`. The code was written and the rule tested
+when this was proposed; all three carried the amendment as *proposed
+and not yet accepted*, and that wording is now retired in each.
 
 **9.2 How `canvas_command.hgidl` gets the path vocabulary it needs.**
 The IDL has no import, and the canvas log needs about 140 of
