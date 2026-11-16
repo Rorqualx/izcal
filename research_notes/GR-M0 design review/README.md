@@ -816,6 +816,62 @@ it one way is a one-line table correction and the other way is a
 package split, and that the question to ask first is whether any rule
 needs to name the graph without the HAL.
 
+### 3.8 The threat table and GR-11 claim harnesses the formats cannot have — **resolved by §3.1's decision, not by a new one**
+
+§3.4 recorded the gap: §6.19's threat row and GR-11 both promise
+"generated readers with **Kani harnesses** (VER-1)" against a hostile
+display list, command stream or compositor frame, and neither format
+has one. Measured there:
+
+| IDL | `interface` declarations | Kani attributes in the generated reader |
+|---|---|---|
+| `os.hgidl` | 2 | 463 |
+| `display_list.hgidl` | 0 | 0 |
+| `compositor_frame.hgidl` | 0 | 0 |
+
+Surveyed across the whole tree now, which is new: of the six `.hgidl`
+files in the repository, four declare interfaces (`os` 2, `process` 2,
+`sample` 4, `policy` 2) and the two graphics formats declare none. And
+**no message carrying a buffer handle and a length exists anywhere**,
+in any IDL.
+
+That last measurement is what resolves this, because it shows the
+claim is not wrong so much as **attached to the wrong thing**. §3.1's
+decision (a) — the owner's, 14 November 2026 — already drew the line:
+the display list travels as a copied-then-validated shared buffer, and
+"the message carries a generation-tagged buffer handle and the chunk's
+length, **never the chunk**". So there are two artefacts on this
+boundary, not one, and they need different proofs:
+
+| | What it is | Where its proof lives |
+|---|---|---|
+| **The transport message** | A generation-tagged buffer handle and a length. Small, fixed-size, an interface message | **Kani harnesses**, which `hg-ipc-codegen` emits per interface message. VER-1 applies by its own wording — "renderer-to-broker **message types**" — and the proof is cheap precisely because the message is small |
+| **The payload** | A chunk in the shared buffer, validated on a copy and dropped whole on failure | The validator, plus the property and mutation suites in `src/tests.rs` (4,000 seeded cases per leaf type, every mutation required to be rejected or to re-encode exactly), plus GR-11's own nightly fuzzers |
+
+So the harnesses VER-1 asks for are real and belong on a message that
+**has not been written yet**: §3.1(a) decided the transport, and
+nothing has declared it. GR-11 is therefore not unmeetable in
+principle, as §3.4 left it reading — it is **unmeetable today for a
+scheduled reason**, and it becomes meetable when the transport message
+lands. Conflating the two is what made this look like an omission in
+the formats.
+
+One consequence worth stating plainly, because it bites the work
+immediately next to it: GR-11 is a **T2 target whose failure clause is
+"New format work stops until fixed"**. Read literally, with the
+harnesses absent, that clause falls on `canvas_command.hgidl` — the
+one remaining format, already waiting on §9.2. A target that stops the
+work needed to satisfy it is a target that needs its wording fixed
+before it is enforced, not a reason to stop.
+
+**Applied here:** §6.19's threat row, which is a description of
+mitigations and so the review's to correct.
+
+**Not applied here:** GR-11's metric. Amending a T2 ship target's
+metric is not something this review does on its own authority, even
+when the amendment only aligns the target with a decision the owner
+has already taken. It goes to §9.3 with the exact replacement text.
+
 ---
 
 ## 4. Cross-track items, each with its counterpart named
@@ -933,23 +989,21 @@ guesswork.
 ## 8. What this review owes before GR-M0's exit
 
 Everything in §3 decided (§3.4's compositor frame, §3.5's render
-graph, §3.6 and §3.7's allocator interface are done; §3.4's canvas
-format remains, and §3.6's E16 and §3.7's placement are GR-M1's
-rather than this review's); §2's five properties checked against three
-back ends by someone who has written one; **one** remaining `.hgidl`
-format (`canvas_command.hgidl`; the compositor frame is written,
-§3.4); **§3.6's threat table corrected on
-the Kani harnesses it claims for the display list and compositor
-frame, which neither has** (§3.4), together with the transport
-decision that is the same finding; the canonical image, E16 and
+graph, §3.6, §3.7's allocator interface and §3.8's threat-table
+correction are done; §3.4's canvas format remains, and §3.6's E16 and
+§3.7's placement are GR-M1's rather than this review's); §2's five
+properties checked against three back ends by someone who has written
+one; **one** remaining `.hgidl` format (`canvas_command.hgidl`; the
+compositor frame is written, §3.4); the canonical image, E16 and
 integer composition specified; GR-S1, GR-S2, GR-S6 (first pass) and
 GR-S9 done, GR-S3 and GR-S4 started; and §4.1 and §4.5 unblocked by
 D-S13.
 
 ## 9. For the owner
 
-Two items, both from §3.4, and both of a kind this project does not
-settle on its own authority.
+Three items — two from §3.4, one from §3.8 — all of a kind this
+project does not settle on its own authority: a package boundary, a
+format's vocabulary, and a ship target's metric.
 
 **9.1 The crate-table amendment (a gate-file and spec change).**
 `hg-compositor-frame` is its own package, so that G63 — the compositor
@@ -976,3 +1030,48 @@ for (c)'s cost — one error enum per protocol — is a rule worth keeping
 rather than working around. But (a) is the largest change and touches a
 generator three crates share, which is why it is a decision rather
 than a step.
+
+**9.3 GR-11's metric, aligned with §3.1's decision (a).** GR-11 is a
+T2 security target whose metric reads "generated readers with Kani
+harnesses" for the display list, compositor frame and canvas stream.
+Those formats declare no interface, so `hg-ipc-codegen` emits no
+harness for them, and under §3.1(a) the display list is explicitly not
+a message: the message carries a handle and a length. The harnesses
+belong on that transport message, which is not written yet. §6.19's
+threat row is corrected here because it describes mitigations; this is
+a ship target's metric, so it is yours.
+
+The failure clause makes it worth doing rather than noting: GR-11's is
+"New format work stops until fixed", and read literally, with the
+harnesses absent, that clause falls on `canvas_command.hgidl` — the
+one remaining format, already waiting on 9.2 above.
+
+Current metric:
+
+> Display lists, compositor frames, canvas, WebGL and WebGPU streams:
+> generated readers with Kani harnesses; semantic-limit and
+> degradation suites pass; nightly fuzzers with **0** crash bugs older
+> than 30 days†; adversarial content processes that never signal,
+> signal fences to `u64::MAX` and write after release stall **0**
+> compositor frames and reach **0** bytes of another key's tiles
+
+Proposed, with only the first clause changed:
+
+> Display lists, compositor frames, canvas, WebGL and WebGPU streams:
+> generated readers, with **Kani harnesses on every transport message
+> type** and **the validator plus property and mutation suites on
+> every payload that is validated on a copy** (3.1's decision (a));
+> semantic-limit and degradation suites pass; nightly fuzzers with
+> **0** crash bugs older than 30 days†; adversarial content processes
+> that never signal, signal fences to `u64::MAX` and write after
+> release stall **0** compositor frames and reach **0** bytes of
+> another key's tiles
+
+**Recommended**, because it changes no threshold and adds no
+exemption: it says where each proof lives for a transport the owner
+has already decided, and it is the difference between a target that
+can be met and one that stops the work needed to meet it. The
+alternative — leaving GR-11 as written and giving the two formats
+interfaces so the harnesses attach to them — was refused in §3.1 for
+the display list on its own merits, so adopting it here would reopen
+a decided item in order to preserve a sentence.
