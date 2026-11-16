@@ -513,3 +513,38 @@ fn cf28_mutable_nodes_are_counted_per_tree_not_per_index() {
     g.animations = bv(vec![animation(0), animation(0)]);
     assert_eq!(mutable_node_count(&g), 3);
 }
+
+/// §6.19's threat row and GR-11 promised "generated readers with Kani
+/// harnesses" for this format. It has none, and cannot: the generator
+/// emits a validator harness **per interface message**, and this IDL
+/// is a type library that declares no interface. GR-M0's review §3.8
+/// corrected the row to put the harnesses on the transport message
+/// that carries the buffer handle and length (§3.1's decision (a)),
+/// and the payload's proof on the validator and the mutation suites.
+///
+/// That correction rests on a measurement, so it is measured here
+/// rather than asserted in prose: if this IDL ever declares an
+/// interface, the row's premise is false and this fails, which is the
+/// point.
+#[test]
+fn cf29_the_format_declares_no_interface_so_no_harness_can_attach() {
+    let idl = include_str!("../../idl/compositor_frame.hgidl");
+    let interfaces = idl
+        .lines()
+        .filter(|l| l.trim_start().starts_with("interface "))
+        .count();
+    assert_eq!(
+        interfaces, 0,
+        "a type library declares no interface; an interface here means \
+         the review's §3.8 correction and §6.19's row are both stale"
+    );
+
+    // And the generated reader therefore carries no Kani attribute.
+    let generated = include_str!("../../src/generated/compositor_frame.rs");
+    let harnesses = generated.matches("kani::proof").count();
+    assert_eq!(
+        harnesses, 0,
+        "no interface, so hg-ipc-codegen emits no harness; a harness \
+         here means the generator changed and §3.8 needs re-measuring"
+    );
+}
