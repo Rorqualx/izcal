@@ -20,7 +20,9 @@ The report line is the `hg-dst` line plus `state=`, a hash of:
 
 ## Results
 
-Built at `acd8249` (`js/m0-probe`, with the shared cage of #64), release, rustc 1.99.1 on every host.
+Built at `acd8249` (then on `js/m0-probe`, with the shared cage of #64), release, rustc 1.99.1 on every host.
+
+**That commit is not reachable from `origin/main`.** The work landed squashed as **#67 (`4af5992`)**, which is the anchor to cite; `acd8249` survives only as a local branch on the machine the numbers were taken on, so it is reproducible for nobody else and a branch sweep would end it. Measured 15 November 2026.
 
 | Host | OS, ISA | `hg-dst repeat --seed 1 --times 1000` | seed 1 | seed 2 |
 |---|---|---|---|---|

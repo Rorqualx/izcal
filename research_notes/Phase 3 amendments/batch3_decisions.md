@@ -1,6 +1,6 @@
 # Phase 3, batch 3: record of the owner's decisions of 21 October 2026
 
-Written 21 October 2026. Most of the work lands on branch `spec/phase2c`; the security-scope amendments land on `spec/security-scope` and the coding-standard amendments on `spec/cs-amendments`, each in its own worktree and published when that branch merges. This file records what the owner decided on 21 October 2026 and where each decision is applied. It is a decision record, not a research note: it cites the documents it changes, and every change it names carries its own dated revision line in the document it lands in.
+Written 21 October 2026. Most of the work lands on branch `spec/phase2c` (reached `main` as #29, `dc1099a`); the security-scope amendments land on `spec/security-scope` and the coding-standard amendments on `spec/cs-amendments`, each in its own worktree and published when that branch merges. This file records what the owner decided on 21 October 2026 and where each decision is applied. It is a decision record, not a research note: it cites the documents it changes, and every change it names carries its own dated revision line in the document it lands in.
 
 ## 1. Every batch-3 recommendation is accepted
 

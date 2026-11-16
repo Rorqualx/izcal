@@ -1,6 +1,6 @@
 # Phase 3, wave 1: ledger rows applied to the JS engine spec
 
-Applied 19 October 2026 on branch `spec/hgba2-2.4` to [the JS engine spec][JS], which moves from 0.3.1 to **draft 0.4**. Source: the [Phase 3 amendment ledger][LDG], section "JavaScript engine spec (A-JS)". Each row was checked against the 9.5 row of the spec that raised it and against the reconciliation item that settles it ([RN][RN] P3, P4, P9; [RN2][RN2] Q15, Q16, Q29). Owner decisions were applied as final. The only other files touched are `README.md` (the JS row) and a new research note, [riscv64.md][RV].
+Applied 19 October 2026 on branch `spec/hgba2-2.4` (reached `main` as #29, `dc1099a`) to [the JS engine spec][JS], which moves from 0.3.1 to **draft 0.4**. Source: the [Phase 3 amendment ledger][LDG], section "JavaScript engine spec (A-JS)". Each row was checked against the 9.5 row of the spec that raised it and against the reconciliation item that settles it ([RN][RN] P3, P4, P9; [RN2][RN2] Q15, Q16, Q29). Owner decisions were applied as final. The only other files touched are `README.md` (the JS row) and a new research note, [riscv64.md][RV].
 
 ## Rows
 

@@ -14,7 +14,7 @@
 #
 # Checks: conflict, size, binary, secrets, rustfmt, shellcheck, actionlint,
 #         kanipkgs, refusals, mutants, tokenaudit, mdlinks, revision,
-#         provenance, security, graph, review.
+#         anchors, provenance, security, graph, review.
 # Bash 3.2 compatible (macOS /bin/bash).
 
 set -u
@@ -351,6 +351,40 @@ if ! skipped revision; then
 $spec"
   done
   if [ -n "$bad" ]; then fail revision; echo "    spec changed without a revision line:$bad" | indent; else ok revision; fi
+fi
+
+# --- anchors: a cited branch name carries a permanent anchor -------------------
+# A branch name is not an anchor. Branches merge and are deleted -- this repo
+# sets delete_branch_on_merge -- so "measured on branch `x/y`" names a ref the
+# reader cannot resolve, and the evidence behind it becomes an assertion.
+# Measured 15 November 2026: all 14 branch names then cited across the corpus
+# had already stopped resolving, three of them in milestone measurement
+# records, and one had been deleted hours earlier by a branch sweep that had
+# correctly verified the branch's CONTENT was on main and never checked
+# whether a document cited its NAME.
+# So a line naming a branch must also carry a permanent anchor on the same
+# line: a PR reference (#123) or a commit sha (7-40 hex in backticks). `main`
+# is exempt: it is a protected branch that cannot be force-pushed or deleted.
+# The ellipsis below is a LITERAL U+2026, not an escape: POSIX ERE has no \x,
+# so '\xe2\x80\xa6' would match the text 'xe2x80xa6' and flag the placeholder.
+if ! skipped anchors; then
+  bad=""
+  while IFS= read -r f; do
+    case "$f" in reports/*.md|research_notes/*.md|measurements/*.md) ;; *) continue ;; esac
+    [ -f "$f" ] || continue
+    # Lines naming a branch, excluding a placeholder (an ellipsis or a glob)
+    # and excluding `main`, which cannot be deleted.
+    hits=$(grep -nE 'branch `[^`]+`' "$f" \
+           | grep -vE 'branch `(main|[^`]*[.][.][.][^`]*|[^`]*…[^`]*|[^`]*[*][^`]*)`' \
+           | grep -vE '#[0-9]+|`[0-9a-f]{7,40}`') || true
+    if [ -n "$hits" ]; then bad="$bad
+$f:
+$(echo "$hits" | sed 's/^/  /')"; fi
+  done < "$FILES"
+  if [ -n "$bad" ]; then
+    fail anchors
+    echo "    a cited branch name needs a permanent anchor (#PR or \`sha\`) on the same line:$bad" | indent
+  else ok anchors; fi
 fi
 
 # --- provenance: no code from other browsers (Stage 1 design D-S10) ----------

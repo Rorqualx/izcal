@@ -1,6 +1,6 @@
 # JS-M0 design review: the optimizer IR (T2 and W2)
 
-Compiled 31 October 2026 for the JS-M0 design review (part 2), against the [JS engine spec](../../reports/Izcal%20JavaScript%20engine.md) draft 0.4.4 on `main` (0.4.5's JS-M0 row is pending on `docs/js-m0-amendments`). Method: the first-principles-spec skill. Index and decisions: [part-2-index.md](part-2-index.md).
+Compiled 31 October 2026 for the JS-M0 design review (part 2), against the [JS engine spec](../../reports/Izcal%20JavaScript%20engine.md) draft 0.4.4 when written (0.4.5's JS-M0 row was pending then; it merged as #57, `430acdc`, and is now the version on `main`). Method: the first-principles-spec skill. Index and decisions: [part-2-index.md](part-2-index.md).
 
 Confidence: **High** = primary source read and the claim checked in its text; **Medium** = primary abstract or snippet, or a claim recalled from a primary source and not re-read this session; **Low** = secondary source only. A † marks a threshold set here from first principles; none is measured.
 

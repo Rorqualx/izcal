@@ -2,7 +2,7 @@
 
 Measured 25–26 October 2026 on hueyj (Intel Core i7-7700K, 8 threads,
 31 GiB, Linux 6.8.0-147-generic), Kani 0.68.0 with CBMC 6.11.0 and
-CaDiCaL 3.0.0, branch `substrate/m1e-pure`. Each run was the only Kani
+CaDiCaL 3.0.0, branch `substrate/m1e-pure` (reached `main` as #48, `257453e`). Each run was the only Kani
 job on the host, under `prlimit --as=<limit>`, timed with
 `/usr/bin/time -v` (its "Maximum resident set size" is the largest
 process, CBMC), with a 15-minute limit per harness.
