@@ -1,7 +1,8 @@
 //! `.hgidl` syntax: the lexer, the tree and the parser.
 //!
 //! ```text
-//! file      = doc* "protocol" NAME ";" item*
+//! file      = doc* "protocol" NAME ";" import* item*
+//! import    = "import" NAME "{" NAME { "," NAME } [","] "}" ";"
 //! item      = doc* ( "error" NAME "{" variant* "}"
 //!                  | "enum" NAME "{" variant* "}"
 //!                  | "union" NAME "{" case* "}"
@@ -23,6 +24,15 @@
 //! ```
 //!
 //! `//` starts a comment. Numbers are decimal and may use `_`.
+//!
+//! An `import` names a sibling protocol in the same crate's `idl/`
+//! directory and the types it takes from it. The name is a bare
+//! identifier with no path syntax, so an import cannot leave that
+//! directory: a format cannot acquire a dependency on another package,
+//! which is what keeps rules like G63 — stated over packages, because
+//! `hg-graph-lint` reads `cargo metadata` — meaningful. An imported
+//! file may not itself import (see `check`), so the graph is one level
+//! deep and cycles cannot be written.
 
 use std::fmt;
 
@@ -376,8 +386,22 @@ pub enum Item {
 pub struct File {
     /// The protocol.
     pub protocol: Named,
+    /// What it takes from sibling protocols, in order.
+    pub imports: Vec<Import>,
     /// Its declarations, in order.
     pub items: Vec<Item>,
+}
+
+/// `import <protocol> { Name, Name };` — types taken from a sibling
+/// protocol in the same `idl/` directory.
+#[derive(Debug, Clone)]
+pub struct Import {
+    /// The protocol imported from, which is also its file stem.
+    pub protocol: String,
+    /// Where it was written.
+    pub pos: Pos,
+    /// The types taken, in the order written.
+    pub names: Vec<(String, Pos)>,
 }
 
 struct Parser {
@@ -599,11 +623,46 @@ impl Parser {
         Ok(v)
     }
 
+    /// `import* ` — zero or more, each `import NAME { NAME, .. };`.
+    fn imports(&mut self) -> Result<Vec<Import>, Error> {
+        let mut out = Vec::new();
+        while matches!(&self.peek().tok, Tok::Name(n) if n == "import") {
+            let pos = self.next().pos;
+            let (protocol, _) = self.name()?;
+            self.punct('{')?;
+            let mut names = Vec::new();
+            loop {
+                if self.is_punct('}') {
+                    self.next();
+                    break;
+                }
+                names.push(self.name()?);
+                if self.is_punct(',') {
+                    self.next();
+                } else {
+                    self.punct('}')?;
+                    break;
+                }
+            }
+            self.punct(';')?;
+            if names.is_empty() {
+                return err(pos, "an `import` takes at least one type");
+            }
+            out.push(Import {
+                protocol,
+                pos,
+                names,
+            });
+        }
+        Ok(out)
+    }
+
     fn file(&mut self) -> Result<File, Error> {
         let doc = self.docs();
         self.keyword("protocol")?;
         let protocol = self.named(doc)?;
         self.punct(';')?;
+        let imports = self.imports()?;
         let mut items = Vec::new();
         loop {
             let doc = self.docs();
@@ -619,6 +678,12 @@ impl Parser {
                     );
                 }
             };
+            if kw == "import" {
+                return err(
+                    t.pos,
+                    "`import` comes before the declarations, after `protocol`",
+                );
+            }
             let id = self.named(doc)?;
             items.push(match kw.as_str() {
                 "error" => Item::Error(id, self.variants()?),
@@ -658,7 +723,11 @@ impl Parser {
                 _ => return err(t.pos, format!("unknown declaration `{kw}`")),
             });
         }
-        Ok(File { protocol, items })
+        Ok(File {
+            protocol,
+            imports,
+            items,
+        })
     }
 }
 

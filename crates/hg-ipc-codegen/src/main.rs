@@ -33,14 +33,7 @@ fn main() -> ExitCode {
     }
     let mut stale = 0;
     for p in &pairs {
-        let src = match std::fs::read_to_string(&p.idl) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("{}: {e}", p.label);
-                return ExitCode::FAILURE;
-            }
-        };
-        let out = match hg_ipc_codegen::generate(&src, &p.label) {
+        let out = match hg_ipc_codegen::generate_pair(p) {
             Ok(o) => o,
             Err(e) => {
                 eprintln!("{}:{e}", p.label);

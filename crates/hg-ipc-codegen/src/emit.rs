@@ -399,6 +399,16 @@ pub fn emit(checked: &Checked, source_label: &str) -> String {
     }
     o.line("");
     o.line("use hg_ipc::wire::{BadMessage, Reader, Wire, Writer};");
+    // Imported types are re-exported, never re-defined: one declaration,
+    // one set of harnesses, and a consumer of this module sees the same
+    // type the sibling protocol encodes. Both modules are written side
+    // by side into `src/generated/`, so `super::` reaches the sibling.
+    for (protocol, names) in &checked.imported {
+        o.line(&format!(
+            "pub use super::{protocol}::{{{}}};",
+            names.join(", ")
+        ));
+    }
     o.line("");
     let bound: BTreeSet<String> = file
         .items
