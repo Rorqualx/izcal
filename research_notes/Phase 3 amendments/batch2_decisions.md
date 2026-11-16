@@ -1,6 +1,6 @@
 # Phase 3, batch 2: record of the owner's decisions of 20 October 2026
 
-Written 20 October 2026, on branch `spec/phase2c`. This file records what the owner decided on 20 October 2026 and where each decision is applied. It is a decision record, not a research note: it cites the documents it changes, and every change it names carries its own dated revision line in the document it lands in.
+Written 20 October 2026, on branch `spec/phase2c` (reached `main` as #29, `dc1099a`). This file records what the owner decided on 20 October 2026 and where each decision is applied. It is a decision record, not a research note: it cites the documents it changes, and every change it names carries its own dated revision line in the document it lands in.
 
 ## 1. Every batch-2 recommendation is accepted
 

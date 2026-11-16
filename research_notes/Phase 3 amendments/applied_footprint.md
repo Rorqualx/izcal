@@ -1,6 +1,6 @@
 # Phase 3 wave 1: footprint spec rows applied
 
-19 October 2026, branch `spec/hgba2-2.4`. Target: [resource footprint spec][FP], draft 0.3.1 → **0.4**. Source: the [ledger][LG], section "Resource footprint spec (A-FP)", 40 rows; the source specs' 9.5 (9.4 for FP) rows; [reconciliation 1][RN] (P9–P19, OD-2 to OD-4) and [reconciliation 2][RN2] (Q3, Q7, Q8, Q11, Q27, OD-5); the owner decision of 19 October 2026 that riscv64 is a target from the start (the ledger's G-4). Only the footprint spec, the README's footprint cell and this file were edited.
+19 October 2026, branch `spec/hgba2-2.4` (reached `main` as #29, `dc1099a`). Target: [resource footprint spec][FP], draft 0.3.1 → **0.4**. Source: the [ledger][LG], section "Resource footprint spec (A-FP)", 40 rows; the source specs' 9.5 (9.4 for FP) rows; [reconciliation 1][RN] (P9–P19, OD-2 to OD-4) and [reconciliation 2][RN2] (Q3, Q7, Q8, Q11, Q27, OD-5); the owner decision of 19 October 2026 that riscv64 is a target from the start (the ledger's G-4). Only the footprint spec, the README's footprint cell and this file were edited.
 
 ## Rows
 

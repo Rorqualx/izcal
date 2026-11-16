@@ -7,7 +7,7 @@ Measured 25 October 2026 on hueyj. This is the first baseline for the transport 
 | | |
 |---|---|
 | Host | hueyj: Intel Core i7-7700K, 4 cores and 8 threads at 4.2 GHz, Linux 6.8.0-147-generic |
-| Build | `rustc 1.99.1`, `--release`, branch `ipc/d3-linux` |
+| Build | `rustc 1.99.1`, `--release`, branch `ipc/d3-linux` (reached `main` as #44, `39ec2a1`) |
 | Booking | `rig check OK: hueyj kind=exclusive session=m1-substrate \| load 0.43/cpu (3.46 / 8 cpus) \| bookings: b-7418f5 exclusive cpu by m1-substrate until 05:10 \| game lock: free q0 \| 2026-10-25T04:10:12-06:00` |
 | Background | The host's own services ran throughout (load 3.46 on 8 CPUs); they were not stopped |
 | Test | `cargo test --release -p hg-substrate-os --lib measure_round_trip_and_throughput -- --ignored --nocapture` |
