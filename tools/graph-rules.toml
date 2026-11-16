@@ -419,7 +419,8 @@ why = "G30 (NW-D1, sans-IO): a protocol crate depends on no substrate implementa
 # that package would carry the display-list reader in its own closure, and
 # G63 would be unenforceable by the tool that enforces every rule like it.
 # "The linker probably dropped it" is not a security argument, so the format
-# moved instead and the crate table is amended (15 November 2026).
+# moved instead and the crate table is amended (proposed 15 November
+# 2026, accepted by the owner 16 November 2026; GR-M0's review 9.1).
 #
 # Named exactly rather than by glob, for the reason G7's note gives above:
 # a glob over `hg-gpu-*` would wrongly catch `hg-gpu-hal`, `hg-gpu-graph`
