@@ -423,7 +423,41 @@ vocabulary — `Point`, `Segment`, `Path`, `FillRule`, `Colour`,
 copies agree. That is a drift source of exactly the kind this review
 is meant to remove, so the choice was the owner's and it went to §9.
 **They took (a) on 16 November 2026: add an `import` to the IDL.** The
-generator has it; the format itself is the next step. The compositor
+generator has it (#109), and GR-11's failure clause, which fell on this
+same file, is cleared (#107). Both blockers are gone; the format itself
+is the next step and is owed before **GR-M1**.
+
+**The question it will have to answer, stated here so that work starts
+from it.** The canvas log is not a second display list, and the
+difference is not size. §6.15 says the renderer "keeps the command log
+since its last CPU snapshot and replays it with `hg-raster`", and that
+**display rasterization in the content GPU process runs "from the same
+command stream"** — so the log crosses a process boundary from a
+renderer that process does not trust, exactly as the display list does.
+But the display list is *flattened*: every `Item` carries everything it
+needs, so `check.rs` can validate a chunk without executing it. The
+Canvas 2D API is *stateful* — `save`/`restore`, the current transform,
+the current path, `fillStyle`, `lineWidth`, `clip`, `globalAlpha`,
+`globalCompositeOperation` — and a log of those calls cannot be
+validated without replaying the state machine, because what a draw
+resolves to depends on every command before it.
+
+So the format has to choose, and the choice is a security property
+rather than a taste: **a stateful log** (small, faithful to the API,
+but its validator is an interpreter, and an interpreter in the
+validating position is the thing generated readers exist to avoid), or
+**resolved commands** (each draw carries its own resolved state, so
+validation stays a structural check, at the cost of repeating state
+that the API expresses once). §6.15's 256 KiB† budget bears on it: the
+budget is what forces a CPU snapshot, so a representation that repeats
+state reaches the budget sooner and snapshots more often, which is a
+measurable cost rather than an argument.
+
+Nothing is decided here. What is recorded is that it is a decision,
+that it is the review's to make rather than the owner's — it is a
+format's internal shape, not a gate file or a ship target — and that
+whichever way it goes, the reader must be able to refuse a hostile log
+without running it. The compositor
 frame did not raise the question because its vocabulary is **disjoint
 from the display list's by design** — the duplication there is the
 smallness G63 and GR-18 are asking for.
