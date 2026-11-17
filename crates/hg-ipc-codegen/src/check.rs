@@ -64,6 +64,9 @@ pub struct Checked {
     pub facts: BTreeMap<String, TypeFacts>,
     /// Each interface's messages, in declaration order.
     pub message_sizes: BTreeMap<String, Vec<MessageFacts>>,
+    /// Types taken from sibling protocols: (protocol, type names),
+    /// sorted, as `emit` writes them.
+    pub imported: Vec<(String, Vec<String>)>,
 }
 
 const RUST_KEYWORDS: &[&str] = &[
@@ -387,6 +390,16 @@ fn item_id(item: &Item) -> &Named {
 /// # Errors
 /// The first rule broken.
 pub fn check(file: File) -> Result<Checked, Error> {
+    check_with(file, &BTreeMap::new())
+}
+
+/// Checks `file`, resolving its imports against already-checked sibling
+/// protocols keyed by protocol name.
+///
+/// # Errors
+/// The first syntax or rule error, including an import that names a
+/// protocol not in `siblings` or a type that protocol does not define.
+pub fn check_with(file: File, siblings: &BTreeMap<String, Checked>) -> Result<Checked, Error> {
     snake(&file.protocol, "protocol")?;
     unique(file.items.iter().map(item_id), "declaration")?;
     let errors: Vec<&Named> = file
@@ -407,13 +420,17 @@ pub fn check(file: File) -> Result<Checked, Error> {
         [_] => {}
         [_, second, ..] => return err(second.pos, "a protocol declares only one `error` enum"),
     }
+    let (imported, seeded) = resolve_imports(&file, siblings)?;
     let mut ctx = Ctx {
         decls: file
             .items
             .iter()
             .map(|i| (item_id(i).name.as_str(), i))
             .collect(),
-        facts: BTreeMap::new(),
+        // Seeded before anything is resolved: `Ctx::named` consults
+        // `facts` first, so an imported type resolves there and is never
+        // looked for among this file's declarations.
+        facts: seeded,
         visiting: Vec::new(),
     };
     let mut message_sizes = BTreeMap::new();
@@ -550,7 +567,107 @@ pub fn check(file: File) -> Result<Checked, Error> {
         facts: ctx.facts,
         file,
         message_sizes,
+        imported,
     })
+}
+
+/// What `resolve_imports` returns: the re-exports `emit` writes, and
+/// the facts to seed the checking context with.
+type Resolved = (Vec<(String, Vec<String>)>, BTreeMap<String, TypeFacts>);
+
+/// Checks each `import` and returns what `emit` writes, plus the facts
+/// to seed the context with.
+///
+/// The rules, each the reason for one error below:
+///
+/// - the protocol must be a sibling that resolved;
+/// - it must not be this file (a protocol cannot import itself);
+/// - **it must not itself import**, so the graph is one level deep and a
+///   cycle cannot be written. Nothing has asked for more, and a deeper
+///   graph is a language feature with no caller;
+/// - the name must be a type there — a `struct`, `enum` or `union`. An
+///   `error` enum is per protocol (CS-ER-6) and an `interface` is not a
+///   type;
+/// - no name may be imported twice, or collide with a declaration here.
+fn resolve_imports(file: &File, siblings: &BTreeMap<String, Checked>) -> Result<Resolved, Error> {
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    let mut seeded = BTreeMap::new();
+    let local: BTreeMap<&str, ()> = file
+        .items
+        .iter()
+        .map(|i| (item_id(i).name.as_str(), ()))
+        .collect();
+    let mut seen_protocols: Vec<&str> = Vec::new();
+    for imp in &file.imports {
+        if imp.protocol == file.protocol.name {
+            return err(imp.pos, "a protocol cannot import itself");
+        }
+        if seen_protocols.contains(&imp.protocol.as_str()) {
+            return err(
+                imp.pos,
+                format!("`{}` is imported twice; use one import", imp.protocol),
+            );
+        }
+        seen_protocols.push(&imp.protocol);
+        let Some(other) = siblings.get(&imp.protocol) else {
+            return err(
+                imp.pos,
+                format!(
+                    "no sibling protocol `{0}`; `import {0}` needs `{0}.hgidl` beside this file",
+                    imp.protocol
+                ),
+            );
+        };
+        if !other.file.imports.is_empty() {
+            return err(
+                imp.pos,
+                format!(
+                    "`{}` itself imports; an imported protocol may not import, so the graph stays one level deep",
+                    imp.protocol
+                ),
+            );
+        }
+        let mut names = Vec::new();
+        for (name, pos) in &imp.names {
+            if local.contains_key(name.as_str()) {
+                return err(*pos, format!("`{name}` is imported and also declared here"));
+            }
+            if seeded.contains_key(name) {
+                return err(*pos, format!("`{name}` is imported twice"));
+            }
+            match other.file.items.iter().find(|i| &item_id(i).name == name) {
+                Some(Item::Struct(..) | Item::Enum(..) | Item::Union(..)) => {}
+                Some(Item::Error(..)) => {
+                    return err(
+                        *pos,
+                        format!(
+                            "`{name}` is `{}`'s error enum; a protocol declares its own (CS-ER-6)",
+                            imp.protocol
+                        ),
+                    );
+                }
+                Some(Item::Interface { .. }) => {
+                    return err(*pos, format!("`{name}` is an interface, not a type"));
+                }
+                None => {
+                    return err(
+                        *pos,
+                        format!("`{}` declares no type `{name}`", imp.protocol),
+                    );
+                }
+            }
+            let facts = *other.facts.get(name).ok_or_else(|| Error {
+                pos: *pos,
+                message: format!("`{name}` has no checked facts in `{}`", imp.protocol),
+            })?;
+            seeded.insert(name.clone(), facts);
+            names.push(name.clone());
+        }
+        names.sort();
+        out.push((imp.protocol.clone(), names));
+    }
+    out.sort();
+    Ok((out, seeded))
 }
 
 /// The D6 rules for a `region<…>` parameter.

@@ -26,12 +26,13 @@ fn the_reserved_policy_protocol_generates() {
 /// tests of each crate would then be sampling from different
 /// distributions while reporting the same thing.
 ///
-/// This is the cheap half of a question GR-M0's review puts to the
+/// This was the cheap half of a question GR-M0's review put to the
 /// owner (its §9.2): whether duplication guarded by an identity test
-/// is good enough, or whether the IDL should gain an `import`. Here
-/// the duplication is of a hand-written support module rather than of
-/// a wire format, the file is generic, and the test is four lines --
-/// so guarding it is clearly right whatever is decided about the IDL.
+/// is good enough, or whether the IDL should gain an `import`. **They
+/// chose the `import` on 16 November 2026**, so wire formats share a
+/// declaration rather than a copy. This check stays as it is: the
+/// duplication here is of a hand-written support module rather than of
+/// a wire format, the file is generic, and the test is four lines.
 #[test]
 #[expect(
     clippy::disallowed_methods,

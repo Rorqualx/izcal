@@ -5,3 +5,6 @@ mod rules;
 
 #[cfg(test)]
 mod golden;
+
+#[cfg(test)]
+mod imports;

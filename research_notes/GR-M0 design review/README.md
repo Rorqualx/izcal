@@ -421,10 +421,9 @@ vocabulary — `Point`, `Segment`, `Path`, `FillRule`, `Colour`,
 `display_list.hgidl`'s 240 lines**. Writing it standalone would copy
 60% of another format into the same crate, with nothing making the two
 copies agree. That is a drift source of exactly the kind this review
-is meant to remove, so the choice is the owner's and it is in §9: add
-an `import` to the IDL (a change to `hg-ipc-codegen`, whose
-`generate()` takes one source string and so needs a resolver), or
-accept the duplication guarded by a byte-identity test. The compositor
+is meant to remove, so the choice was the owner's and it went to §9.
+**They took (a) on 16 November 2026: add an `import` to the IDL.** The
+generator has it; the format itself is the next step. The compositor
 frame did not raise the question because its vocabulary is **disjoint
 from the display list's by design** — the duplication there is the
 smallness G63 and GR-18 are asking for.
@@ -1007,7 +1006,9 @@ D-S13.
 
 Three items — two from §3.4, one from §3.8 — all of a kind this
 project does not settle on its own authority: a package boundary, a
-format's vocabulary, and a ship target's metric.
+format's vocabulary, and a ship target's metric. **All three were
+answered on 16 November 2026, each option (a).** Each is recorded
+below against the item it answers.
 
 **9.1 The crate-table amendment (a gate-file and spec change)** —
 **decided (a), 16 November 2026: land it as described.**
@@ -1019,7 +1020,8 @@ links no display-list reader — is checkable at the granularity
 when this was proposed; all three carried the amendment as *proposed
 and not yet accepted*, and that wording is now retired in each.
 
-**9.2 How `canvas_command.hgidl` gets the path vocabulary it needs.**
+**9.2 How `canvas_command.hgidl` gets the path vocabulary it needs** —
+**decided (a), 16 November 2026: add `import` to the IDL.**
 The IDL has no import, and the canvas log needs about 140 of
 `display_list.hgidl`'s 240 lines. Three options, with a
 recommendation:
@@ -1037,6 +1039,28 @@ rather than working around. But (a) is the largest change and touches a
 generator three crates share, which is why it is a decision rather
 than a step.
 
+**What (a) turned out to cost, measured rather than estimated.** The
+grammar gains one production, `import NAME { NAME, .. };`. The name is
+a bare identifier with **no path syntax**, so an import cannot leave
+the crate's own `idl/` directory and no format can acquire a
+dependency on another package behind the back of a rule stated over
+packages — G63's whole mechanism. An imported protocol **may not
+itself import**, so the graph is one level deep and a cycle cannot be
+written; that is the answer to the risk this card named, a language
+feature written for one caller. `check` needed no change to resolve
+imported types: `Ctx::named` already consults the facts map first, so
+seeding it with the sibling's facts is the whole of it. `emit` writes
+`pub use super::<protocol>::{…}` — one declaration, one set of
+harnesses, and the type a consumer sees is the one the sibling
+encodes.
+
+The generator's callers got **smaller**, not larger: each of the four
+freshness tests read its own `.hgidl` and called `generate`, and now
+calls `generate_pair`, which puts the resolution rule in one place
+instead of four. `generate` keeps its signature and refuses an import,
+so nothing that does not import changed — the checked-in output of all
+four generated crates is byte-identical.
+
 **9.3 GR-11's metric, aligned with §3.1's decision (a)** — **decided
 (a), 16 November 2026: take the proposed first clause.** Applied to
 the spec's §9.1 GR-11 row; the text below is what was proposed and
@@ -1050,7 +1074,7 @@ harness for them, and under §3.1(a) the display list is explicitly not
 a message: the message carries a handle and a length. The harnesses
 belong on that transport message, which is not written yet. §6.19's
 threat row is corrected here because it describes mitigations; this is
-a ship target's metric, so it is yours.
+a ship target's metric, so it was yours — and #107 applied the answer.
 
 The failure clause makes it worth doing rather than noting: GR-11's is
 "New format work stops until fixed", and read literally, with the

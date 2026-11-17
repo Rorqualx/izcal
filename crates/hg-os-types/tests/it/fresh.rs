@@ -13,8 +13,7 @@ fn generated_code_is_fresh() {
     let pairs = hg_ipc_codegen::pairs(root, "hg-os-types").unwrap();
     assert_eq!(pairs.len(), 1, "{pairs:?}");
     for p in pairs {
-        let src = std::fs::read_to_string(&p.idl).unwrap();
-        let want = hg_ipc_codegen::generate(&src, &p.label).unwrap();
+        let want = hg_ipc_codegen::generate_pair(&p).unwrap();
         let have = std::fs::read_to_string(&p.rust).unwrap();
         assert!(
             have == want,
